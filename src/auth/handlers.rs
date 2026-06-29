@@ -66,8 +66,9 @@ pub async fn register(
 
     // Create default settings for tenant
     sqlx::query(
-        "INSERT INTO tenant_settings (tenant_id, key, value) VALUES ($1, 'lead_stages', $2)",
+        "INSERT INTO tenant_settings (id, tenant_id, key, value) VALUES ($1, $2, 'lead_stages', $3)",
     )
+    .bind(Uuid::new_v4())
     .bind(tenant_id)
     .bind(serde_json::json!(["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"]))
     .execute(&state.pool)
@@ -276,7 +277,7 @@ pub async fn reset_password(
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?;
 
     sqlx::query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
-        .bind(&new_hash.to_string())
+        .bind(new_hash.to_string())
         .bind(user_id)
         .execute(&state.pool)
         .await?;

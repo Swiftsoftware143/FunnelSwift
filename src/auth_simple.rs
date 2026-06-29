@@ -1,12 +1,10 @@
 use axum::{
     async_trait,
-    extract::{FromRequestParts, State},
-    http::{request::Parts, StatusCode},
-    RequestPartsExt,
+    extract::FromRequestParts,
+    http::request::Parts,
 };
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::db::Database;
 use crate::error::{AppError, Result};
@@ -37,7 +35,7 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self> {
         // Extract token from Authorization header
         let auth_header = parts
             .headers

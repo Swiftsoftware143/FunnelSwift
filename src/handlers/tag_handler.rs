@@ -44,7 +44,7 @@ pub async fn create_tag(
     .bind(tenant_id)
     .bind(&req.name)
     .bind(&req.color)
-    .bind(&req.group_id)
+    .bind(req.group_id)
     .bind(&req.metadata)
     .execute(&state.pool)
     .await?;

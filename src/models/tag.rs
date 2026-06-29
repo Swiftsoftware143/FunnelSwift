@@ -8,12 +8,12 @@ pub struct Tag {
     pub tenant_id: Uuid,
     pub name: String,
     pub color: Option<String>,
-    pub description: Option<String>,
+    // pub description: Option<String>,
     pub is_system: bool,
     pub group_id: Option<Uuid>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    // pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -26,7 +26,7 @@ pub struct SystemTag {
     pub payload_template: Option<serde_json::Value>,  // Template for webhook payload
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    // pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ pub struct AssignTagRequest {
 pub struct CreateTagRequest {
     pub name: String,
     pub color: Option<String>,
-    pub description: Option<String>,
+    // pub description: Option<String>,
     pub group_id: Option<Uuid>,
     pub metadata: Option<serde_json::Value>,
 }
@@ -56,7 +56,7 @@ pub struct CreateTagRequest {
 pub struct UpdateTagRequest {
     pub name: Option<String>,
     pub color: Option<String>,
-    pub description: Option<String>,
+    // pub description: Option<String>,
     pub group_id: Option<Uuid>,
     pub metadata: Option<serde_json::Value>,
 }

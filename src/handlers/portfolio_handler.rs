@@ -64,7 +64,7 @@ pub async fn list_portfolio_companies(
     .await?;
 
     let companies: Vec<PortfolioCompany> = rows.iter()
-        .map(|row| row_to_portfolio_company(row))
+        .map(row_to_portfolio_company)
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Json(companies))

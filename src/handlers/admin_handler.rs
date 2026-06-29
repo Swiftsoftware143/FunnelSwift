@@ -85,7 +85,7 @@ pub async fn portfolio_sync(
     .bind(&email)
     .bind(&password_hash)
     .bind(&name)
-    .bind(now.clone())
+    .bind(now)
     .bind(now)
     .execute(&state.pool)
     .await?;
@@ -102,6 +102,43 @@ pub async fn portfolio_sync(
     .bind(&description)
     .execute(&state.pool)
     .await?;
+
+    // Sync to all other apps via internal endpoints
+    let sync_body = json!({
+        "tenant_id": tenant_id,
+        "name": name,
+        "slug": tenant_slug,
+        "email": email,
+        "description": description
+    });
+    let key = &state.internal_sync_key;
+    let apps = [
+        ("http://localhost:8087/api/v1/internal/portfolio-companies", "ADASwift"),
+        ("http://localhost:8088/api/v1/internal/portfolio-companies", "MissedCall"),
+        ("http://localhost:8085/api/v1/internal/portfolio-companies", "WorkflowSwift"),
+        ("http://localhost:8084/api/portfolio/internal", "CoreSwift CRM"),
+        ("http://localhost:8083/api/internal/portfolio-companies", "IncentiveSwift"),
+    ];
+    for (url, app_name) in apps {
+        match reqwest::Client::new()
+            .post(url)
+            .header("x-internal-key", key)
+            .header("Content-Type", "application/json")
+            .json(&sync_body)
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                let status = resp.status();
+                if !status.is_success() {
+                    tracing::warn!("Portfolio sync to {} returned {}", app_name, status);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Portfolio sync to {} failed: {}", app_name, e);
+            }
+        }
+    }
 
     Ok(Json(json!({
         "status": "synced",

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use axum::Router;
 use std::net::SocketAddr;
 use tower_http::{
@@ -48,7 +50,9 @@ async fn main() -> Result<()> {
     let pool = database.pool().clone();
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| "default-secret-change-me-in-production".to_string());
-    let app_state = AppState::new(pool, jwt_secret);
+    let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY")
+        .unwrap_or_else(|_| "".to_string());
+    let app_state = AppState::new(pool, jwt_secret, internal_sync_key);
 
     // Build router
     let app = create_router(app_state);

@@ -89,7 +89,7 @@ pub async fn list_integration_targets(
     };
 
     let targets: Vec<IntegrationTarget> = rows.iter()
-        .map(|row| row_to_integration_target(row))
+        .map(row_to_integration_target)
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Json(targets))
