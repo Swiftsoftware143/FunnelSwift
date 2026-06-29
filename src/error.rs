@@ -7,6 +7,7 @@ use serde_json::json;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, AppError>;
+pub type AppResult<T> = std::result::Result<T, AppError>;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -42,6 +43,12 @@ pub enum AppError {
     
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+    
+    #[error("Conflict: {0}")]
+    Conflict(String),
+    
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for AppError {
@@ -76,6 +83,8 @@ impl IntoResponse for AppError {
                 tracing::warn!("Not implemented: {}", msg);
                 (StatusCode::NOT_IMPLEMENTED, format!("Not implemented: {}", msg))
             }
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
         };
 
         let body = Json(json!({

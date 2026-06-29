@@ -1,14 +1,15 @@
 use axum::{
-    http::{Request, StatusCode},
+    extract::Request,
+    http::StatusCode,
     middleware::Next,
     response::Response,
 };
 
-use crate::auth::validate_token;
+use crate::auth_simple::validate_token;
 
-pub async fn auth_middleware<B>(
-    request: Request<B>,
-    next: Next<B>,
+pub async fn auth_middleware(
+    request: Request,
+    next: Next,
 ) -> Result<Response, StatusCode> {
     // Skip auth for public routes
     let path = request.uri().path();

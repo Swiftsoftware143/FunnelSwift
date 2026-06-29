@@ -133,13 +133,13 @@ pub async fn update_lead(
     .await?
     .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
 
-    let name = req.name.unwrap_or(existing.name);
-    let email = req.email.or(existing.email);
-    let phone = req.phone.or(existing.phone);
-    let company = req.company.or(existing.company);
-    let source = req.source.or(existing.source);
-    let status = req.status.or(existing.status);
-    let stage = req.stage.or(existing.stage);
+    let name = req.name.clone().or(existing.name.clone()).unwrap_or_default();
+    let email = req.email.clone().or(existing.email.clone());
+    let phone = req.phone.clone().or(existing.phone.clone());
+    let company = req.company.clone().or(existing.company.clone());
+    let source = req.source.clone().or(existing.source.clone());
+    let status = req.status.clone().or(Some(existing.status.clone())).unwrap_or_else(|| "active".to_string());
+    let stage = req.stage.clone().or(existing.stage.clone());
     let score = req.score.or(existing.score);
     let notes = req.notes.or(existing.notes);
     let assigned_to = req.assigned_to.or(existing.assigned_to);

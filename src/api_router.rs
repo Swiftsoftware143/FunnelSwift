@@ -28,6 +28,8 @@ pub fn create_router(state: AppState) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
+        .route("/api/health", get(health))
         .route("/api/v1/health", get(health))
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/auth/login", post(login))

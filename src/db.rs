@@ -38,9 +38,4 @@ impl Database {
     }
 }
 
-// Implement FromRef for Axum state extraction
-impl axum::extract::FromRef<Database> for Database {
-    fn from_ref(state: &Database) -> Self {
-        state.clone()
-    }
-}
+// FromRef is auto-implemented via axum's blanket impl (T: FromRef<T>) since Rust 1.75+

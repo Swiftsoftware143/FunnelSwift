@@ -1,8 +1,18 @@
-pub mod user;
+pub mod activity;
+pub mod affiliate;
+pub mod api_key;
+pub mod dashboard;
 pub mod lead;
-pub mod workflow;
+pub mod plan;
+pub mod plan_tag_mapping;
+pub mod routing;
+pub mod setting;
 pub mod settings;
 pub mod tag;
+pub mod tag_group;
+pub mod user;
+pub mod webhook;
+pub mod workflow;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
