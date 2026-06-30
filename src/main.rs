@@ -52,7 +52,9 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "default-secret-change-me-in-production".to_string());
     let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY")
         .unwrap_or_else(|_| "".to_string());
-    let app_state = AppState::new(pool, jwt_secret, internal_sync_key);
+    let workflowswift_url = std::env::var("WORKFLOWSWIFT_URL")
+        .unwrap_or_else(|_| "http://localhost:8084".to_string());
+    let app_state = AppState::new(pool, jwt_secret, internal_sync_key, workflowswift_url);
 
     // Build router
     let app = create_router(app_state);

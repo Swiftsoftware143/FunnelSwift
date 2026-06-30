@@ -45,6 +45,25 @@ pub async fn create_affiliate(
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_affiliates", "Affiliates").await?;
+
+    // Check for duplicate email within tenant
+    if !req.email.trim().is_empty() {
+        let existing: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM affiliates WHERE email = $1 AND tenant_id = $2)",
+        )
+    .bind(&req.email)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+
+    if existing {
+        return Err(AppError::BadRequest(format!(
+            "An affiliate with email '{}' already exists in this workspace", req.email
+        )));
+    }
+}
+
     let aff_id = generate_affiliate_id();
 
     sqlx::query(

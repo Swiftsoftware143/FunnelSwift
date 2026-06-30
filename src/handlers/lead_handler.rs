@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::models::lead::*;
+use crate::handlers::workflowswift_push::push_to_workflowswift;
 use crate::state::AppState;
 use crate::features;
 
@@ -73,6 +74,27 @@ pub async fn create_lead(
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
+
+    // Check for duplicate email within tenant
+    if let Some(ref email) = req.email {
+        if !email.trim().is_empty() {
+            let existing: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM leads WHERE email = $1 AND tenant_id = $2)",
+            )
+            .bind(email)
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(false);
+
+            if existing {
+                return Err(AppError::BadRequest(format!(
+                    "A lead with email '{}' already exists in this workspace", email
+                )));
+            }
+        }
+    }
+
     let lead_id = Uuid::new_v4();
 
     sqlx::query(
@@ -93,6 +115,15 @@ pub async fn create_lead(
     .bind(req.assigned_to)
     .execute(&state.pool)
     .await?;
+
+    // Best-effort push to WorkflowSwift
+    tokio::spawn({
+        let pool = state.pool.clone();
+        let url = state.workflowswift_url.clone();
+        async move {
+            push_to_workflowswift(&pool, &url, lead_id, tenant_id).await;
+        }
+    });
 
     Ok((StatusCode::CREATED, Json(json!({"id": lead_id, "message": "Lead created"}))))
 }
