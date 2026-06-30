@@ -61,7 +61,6 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/webhooks", get(webhook_handler::list_webhooks).post(webhook_handler::create_webhook))
         .route("/api/webhooks/:id", delete(webhook_handler::delete_webhook))
         .route("/api/webhooks/:id/test", post(webhook_handler::test_webhook))
-        .route("/api/webhooks/mintbird", post(crate::handlers::mintbird_handler::handle_purchase))
         .route("/api/settings", get(settings_handler::get_settings).put(settings_handler::update_settings))
         .route("/api/target-software", get(routing_handler::list_target_software).post(routing_handler::create_target_software))
         .route("/api/routing-logs", get(routing_handler::list_routing_logs))

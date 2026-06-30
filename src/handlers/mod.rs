@@ -4,7 +4,6 @@ pub mod api_key_handler;
 pub mod dashboard_handler;
 pub mod integration_target_handler;
 pub mod lead_handler;
-pub mod mintbird_handler;
 pub mod plan_handler;
 pub mod plan_tag_handler;
 pub mod portfolio_handler;
