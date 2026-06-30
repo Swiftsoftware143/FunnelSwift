@@ -11,7 +11,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api_router;
 mod auth;
-mod auth_simple;
 mod db;
 mod email;
 mod error;
