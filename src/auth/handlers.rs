@@ -6,12 +6,14 @@ use argon2::{
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{Deserialize};
 use serde_json::json;
 use uuid::Uuid;
-
+use std::env;
+use crate::error::AppResult;
+use crate::error::AppError;
 use crate::auth::models::*;
 use crate::auth::middleware::AuthUser;
-use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 pub async fn register(
@@ -61,6 +63,27 @@ pub async fn register(
     .bind(&password_hash)
     .bind(&req.name)
     .bind("admin")
+    .execute(&state.pool)
+    .await?;
+
+    // Auto-generate API key for the user
+    let api_key_id = Uuid::new_v4();
+    let api_key_raw = format!("fs_{}_{}", 
+        env::var("JWT_SECRET").unwrap_or_default().chars().take(4).collect::<String>(),
+        Uuid::new_v4().to_string().replace("-", "").chars().take(24).collect::<String>()
+    );
+    let api_key_hash = format!("hash:{}", &api_key_raw);
+    sqlx::query(
+        "INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash, prefix, permissions, full_key) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(api_key_id)
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind("Auto-generated")
+    .bind(&api_key_hash)
+    .bind(&api_key_raw.chars().take(8).collect::<String>())
+    .bind(serde_json::json!(["read", "write"]))
+    .bind(&api_key_raw)
     .execute(&state.pool)
     .await?;
 
@@ -155,13 +178,71 @@ pub async fn login(
     })))
 }
 
-pub async fn me(auth: AuthUser) -> Json<serde_json::Value> {
+pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Value> {
+    // Get user's name and username
+    let user_info: Option<(String, Option<String>)> = 
+        sqlx::query_as::<_, (String, Option<String>)>("SELECT name, username FROM users WHERE id::text = $1")
+            .bind(&auth.user_id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
+    // Get user's API key
+    let api_key_row: Option<(String, String, Option<String>)> = 
+        match sqlx::query_as::<_, (String, String, Option<String>)>("SELECT prefix, name, full_key FROM api_keys WHERE user_id::text = $1 AND name = 'Auto-generated' LIMIT 1")
+            .bind(&auth.user_id)
+            .fetch_optional(&state.pool)
+            .await {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("API key query error: {:?}", e);
+                    None
+                }
+            };
+
+    // Get integration targets (affiliate products)
+    let products: Vec<serde_json::Value> = 
+        sqlx::query_as::<_, (serde_json::Value,)>(r#"SELECT row_to_json(t.*)::jsonb FROM target_software t ORDER BY t.name"#)
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(r,)| r)
+            .collect();
+
     Json(json!({
         "user_id": auth.user_id,
         "tenant_id": auth.tenant_id,
         "email": auth.email,
-        "role": auth.role
+        "name": user_info.as_ref().map(|(n,_)| n.clone()).unwrap_or_default(),
+        "username": user_info.as_ref().map(|(_,u)| u.clone()).flatten().unwrap_or_default(),
+        "role": auth.role,
+        "is_admin": auth.is_admin,
+        "api_key": api_key_row.map(|(p, n, fk)| json!({"prefix": p, "name": n, "key": fk.unwrap_or_default()})),
+        "available_products": products
     }))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateProfileRequest {
+    pub name: Option<String>,
+    pub username: Option<String>,
+}
+
+pub async fn update_profile(
+    state: State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Json<serde_json::Value> {
+    sqlx::query("UPDATE users SET name = COALESCE($1, name), username = COALESCE($2, username) WHERE id::text = $3")
+        .bind(&req.name)
+        .bind(&req.username)
+        .bind(&auth.user_id)
+        .execute(&state.pool)
+        .await
+        .unwrap_or_else(|_| panic!("Failed to update profile"));
+
+    Json(json!({"status": "ok"}))
 }
 
 pub async fn change_password(

@@ -49,6 +49,7 @@ pub struct CreateTagRequest {
     pub color: Option<String>,
     // pub description: Option<String>,
     pub group_id: Option<Uuid>,
+    pub is_system: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -58,6 +59,7 @@ pub struct UpdateTagRequest {
     pub color: Option<String>,
     // pub description: Option<String>,
     pub group_id: Option<Uuid>,
+    pub is_system: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 

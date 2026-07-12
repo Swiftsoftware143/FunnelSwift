@@ -1,4 +1,4 @@
-use axum::{extract::State, Json};
+use axum::{extract::{Path, State}, Json};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -41,4 +41,24 @@ pub async fn update_settings(
     .await?;
 
     Ok(Json(json!({"message": "Setting updated"})))
+}
+pub async fn delete_setting(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // Don't allow deleting seo settings or lead_stages
+    if key.starts_with("seo_") || key == "lead_stages" {
+        return Err(AppError::BadRequest("Cannot delete protected setting".into()));
+    }
+
+    sqlx::query("DELETE FROM tenant_settings WHERE tenant_id = $1 AND key = $2")
+        .bind(tenant_id)
+        .bind(&key)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(json!({"message": "Setting deleted"})))
 }

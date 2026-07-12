@@ -15,6 +15,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "m
 
 # Auth
 jsonwebtoken = "9"
+bcrypt = "0.15"
 reqwest = { version = "0.12", features = ["json"] }
 
 # Serialization
@@ -46,6 +47,12 @@ argon2 = "0.5"
 
 # Random number generation
 rand = "0.8"
+
+# Base64 encoding/decoding
+base64 = "0.21"
+
+# Regex
+regex-lite = "0.1"
 
 # Async trait
 async-trait = "0.1"

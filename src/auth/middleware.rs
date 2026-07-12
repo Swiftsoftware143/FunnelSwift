@@ -15,6 +15,7 @@ pub struct AuthUser {
     pub tenant_id: String,
     pub email: String,
     pub role: String,
+    pub is_admin: bool,
 }
 
 #[async_trait::async_trait]
@@ -68,6 +69,7 @@ where
             user_id: token_data.claims.sub,
             tenant_id: token_data.claims.tenant_id,
             email: token_data.claims.email,
+            is_admin: token_data.claims.role == "admin",
             role: token_data.claims.role,
         })
     }

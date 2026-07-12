@@ -11,6 +11,7 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::models::lead::*;
 use crate::handlers::workflowswift_push::push_to_workflowswift;
+use crate::handlers::adaswift_provision;
 use crate::state::AppState;
 use crate::features;
 
@@ -98,11 +99,13 @@ pub async fn create_lead(
     let lead_id = Uuid::new_v4();
 
     sqlx::query(
-        r#"INSERT INTO leads (id, tenant_id, name, email, phone, company, source, stage, tags, custom_fields, notes, assigned_to)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
+        r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company, source, stage, tags, custom_fields, notes, assigned_to)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"#,
     )
     .bind(lead_id)
     .bind(tenant_id)
+    .bind(&req.first_name)
+    .bind(&req.last_name)
     .bind(&req.name)
     .bind(&req.email)
     .bind(&req.phone)
@@ -125,6 +128,15 @@ pub async fn create_lead(
         }
     });
 
+
+    // Best-effort check for ADASwift tags and auto-provision
+    tokio::spawn({
+        let pool = state.pool.clone();
+        let adaswift_url = state.adaswift_url.clone();
+        async move {
+            adaswift_provision::check_and_provision(&pool, &adaswift_url, lead_id, tenant_id).await;
+        }
+    });
     Ok((StatusCode::CREATED, Json(json!({"id": lead_id, "message": "Lead created"}))))
 }
 

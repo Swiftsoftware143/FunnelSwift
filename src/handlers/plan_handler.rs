@@ -28,13 +28,14 @@ pub async fn create_plan(
     let plan_id = Uuid::new_v4();
 
     sqlx::query(
-        r#"INSERT INTO plans (id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"#,
+        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
     )
     .bind(plan_id)
     .bind(&req.name)
     .bind(&req.slug)
     .bind(req.price)
+    .bind(&req.purchase_url)
     .bind(req.max_leads)
     .bind(req.max_tags)
     .bind(req.has_dual_routing.unwrap_or(false))
@@ -79,6 +80,7 @@ pub async fn update_plan(
     .bind(req.name.unwrap_or(existing.name))
     .bind(req.slug.unwrap_or(existing.slug))
     .bind(req.price.unwrap_or(existing.price))
+    .bind(&req.purchase_url)
     .bind(req.max_leads.or(existing.max_leads))
     .bind(req.max_tags.or(existing.max_tags))
     .bind(req.has_dual_routing.unwrap_or(existing.has_dual_routing))
@@ -149,6 +151,7 @@ pub async fn admin_create_plan_json(
     let has_dual_routing = req.get("has_dual_routing").and_then(|v| v.as_bool()).unwrap_or(false);
     let has_multi_tenant = req.get("has_multi_tenant").and_then(|v| v.as_bool()).unwrap_or(false);
     let has_white_label = req.get("has_white_label").and_then(|v| v.as_bool()).unwrap_or(false);
+    let purchase_url = req.get("purchase_url").and_then(|v| v.as_str()).map(|s| s.to_string());
     let features = req.get("features").cloned();
 
     if name.is_empty() {
@@ -156,13 +159,14 @@ pub async fn admin_create_plan_json(
     }
 
     sqlx::query(
-        r#"INSERT INTO plans (id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"#,
+        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
     )
     .bind(plan_id)
     .bind(&name)
     .bind(&slug)
     .bind(price)
+    .bind(&purchase_url)
     .bind(max_leads)
     .bind(max_tags)
     .bind(has_dual_routing)

@@ -13,6 +13,8 @@ pub struct Affiliate {
     pub commission_rate: Option<f64>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: bool,
+    pub is_visible: Option<bool>,
+    pub tags: Option<serde_json::Value>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -24,6 +26,8 @@ pub struct CreateAffiliateRequest {
     pub industry: Option<String>,
     pub commission_rate: Option<f64>,
     pub tax_docs: Option<serde_json::Value>,
+    pub tags: Option<serde_json::Value>,
+    pub is_visible: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,6 +38,8 @@ pub struct UpdateAffiliateRequest {
     pub commission_rate: Option<f64>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: Option<bool>,
+    pub tags: Option<serde_json::Value>,
+    pub is_visible: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]

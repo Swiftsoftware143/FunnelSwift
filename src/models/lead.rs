@@ -7,8 +7,8 @@ use validator::Validate;
 pub struct Lead {
     pub id: Uuid,
     pub tenant_id: Uuid,
-    // pub first_name: Option<String>,
-    // pub last_name: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
@@ -28,8 +28,8 @@ pub struct Lead {
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateLeadRequest {
     pub name: Option<String>,
-    // pub first_name: Option<String>,
-    // pub last_name: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     #[validate(email(message = "Invalid email format"))]
     pub email: Option<String>,
     pub phone: Option<String>,
@@ -47,8 +47,8 @@ pub struct CreateLeadRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateLeadRequest {
     pub name: Option<String>,
-    // pub first_name: Option<String>,
-    // pub last_name: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     #[validate(email(message = "Invalid email format"))]
     pub email: Option<String>,
     pub phone: Option<String>,
@@ -66,8 +66,8 @@ pub struct UpdateLeadRequest {
 #[derive(Debug, Serialize)]
 pub struct LeadResponse {
     pub id: Uuid,
-    // pub first_name: Option<String>,
-    // pub last_name: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
     pub company: Option<String>,

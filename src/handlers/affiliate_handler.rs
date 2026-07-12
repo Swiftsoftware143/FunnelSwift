@@ -67,7 +67,7 @@ pub async fn create_affiliate(
     let aff_id = generate_affiliate_id();
 
     sqlx::query(
-        "INSERT INTO affiliates (id, tenant_id, name, email, industry, commission_rate, tax_docs) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO affiliates (id, tenant_id, name, email, industry, commission_rate, tax_docs, tags, is_visible) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&aff_id)
     .bind(tenant_id)
@@ -119,7 +119,7 @@ pub async fn update_affiliate(
     .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     sqlx::query(
-        "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, updated_at=NOW() WHERE id=$7 AND tenant_id=$8",
+        "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, updated_at=NOW() WHERE id=$9 AND tenant_id=$10",
     )
     .bind(req.name.unwrap_or(existing.name))
     .bind(req.email.unwrap_or(existing.email))
@@ -160,4 +160,28 @@ pub async fn get_affiliate_commissions(
     .await?;
 
     Ok(Json(commissions))
+}
+pub async fn delete_affiliate(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let existing = sqlx::query_as::<_, Affiliate>(
+        "SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(&id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+
+    sqlx::query("DELETE FROM affiliates WHERE id = $1 AND tenant_id = $2")
+        .bind(&id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(json!({"message": "Affiliate deleted"})))
 }
