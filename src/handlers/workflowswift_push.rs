@@ -8,7 +8,7 @@ pub async fn push_to_workflowswift(
     pool: &PgPool,
     workflowswift_url: &str,
     lead_id: Uuid,
-    tenant_id: Uuid,
+    aid: Uuid,
 ) {
     if workflowswift_url.is_empty() {
         tracing::debug!("workflowswift_url is empty, skipping push");
@@ -17,16 +17,16 @@ pub async fn push_to_workflowswift(
 
     // Fetch the full lead from DB
     let lead = match sqlx::query_as::<_, crate::models::lead::Lead>(
-        "SELECT * FROM leads WHERE id = $1 AND tenant_id = $2",
+        "SELECT * FROM leads WHERE id = $1 AND aid = $2",
     )
     .bind(lead_id)
-    .bind(tenant_id)
+    .bind(aid)
     .fetch_optional(pool)
     .await
     {
         Ok(Some(lead)) => lead,
         Ok(None) => {
-            tracing::warn!("Lead {lead_id} not found for tenant {tenant_id}, skipping WorkflowSwift push");
+            tracing::warn!("Lead {lead_id} not found for account {aid}, skipping WorkflowSwift push");
             return;
         }
         Err(e) => {
@@ -59,7 +59,7 @@ pub async fn push_to_workflowswift(
         "data": {
             "lead": {
                 "id": lead.id,
-                "tenant_id": lead.tenant_id,
+                "aid": lead.id,
                 "name": lead.name,
                 "email": lead.email,
                 "phone": lead.phone,

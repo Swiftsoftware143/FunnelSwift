@@ -29,7 +29,7 @@ pub async fn register(
     .await?;
 
     if existing > 0 {
-        return Err(AppError::Conflict("Email already registered".into()));
+        return Err(AppError::Conflict("A user with this email already exists. Try signing in.".into()));
     }
 
     // Hash password
@@ -62,7 +62,7 @@ pub async fn register(
     .bind(&req.email)
     .bind(&password_hash)
     .bind(&req.name)
-    .bind("admin")
+    .bind("user")
     .execute(&state.pool)
     .await?;
 
@@ -103,7 +103,7 @@ pub async fn register(
         sub: user_id.to_string(),
         tenant_id: tenant_id.to_string(),
         email: req.email.clone(),
-        role: "admin".into(),
+        role: "user".into(),
         exp: now + 86400 * 30,
         iat: now,
     };
@@ -123,7 +123,7 @@ pub async fn register(
                 "id": user_id,
                 "email": req.email,
                 "name": req.name,
-                "role": "admin",
+                "role": "user",
                 "tenant_id": tenant_id
             }
         })),

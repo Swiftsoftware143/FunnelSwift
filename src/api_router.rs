@@ -4,13 +4,17 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tower_http::services::ServeDir;
+use axum::routing::any;
 
 use crate::auth::handlers::{login, me, register, change_password, forgot_password, reset_password, update_profile};
 use crate::handlers::{
+    site_settings_handler,
+    public_signup_handler,
     affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
     ocr, plan_handler,
     plan_tag_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
-    sync_plan_tag_handler, linkedin_auth_handler,
+    sync_plan_tag_handler, linkedin_auth_handler, web_to_lead_handler,
     webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
     affiliate_lead_handler,
     provider_keys_handler, tenant_handler,
@@ -36,6 +40,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/v1/health", get(health))
         .route("/api/v1/auth/register", post(register))
+        .route("/api/v1/auth/signup", post(public_signup_handler::public_signup))
         .route("/api/v1/auth/login", post(login))
         .route("/api/v1/auth/forgot-password", post(forgot_password))
         .route("/api/v1/auth/reset-password", post(reset_password))
@@ -103,6 +108,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/portfolio-sync", post(crate::handlers::admin_handler::portfolio_sync))
         .route("/api/v1/admin/impersonate", post(crate::handlers::admin_handler::impersonate))
         .route("/api/v1/admin/stop-impersonation", post(crate::handlers::admin_handler::stop_impersonation))
+        // Site settings management (admin only)
+        .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
+        .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
         // Admin plan management
         .route("/api/v1/admin/plans", get(crate::handlers::plan_handler::admin_list_all_plans).post(crate::handlers::plan_handler::admin_create_plan_json))
         .route("/api/v1/admin/plans/assign", post(crate::handlers::plan_handler::admin_assign_plan))
@@ -126,6 +134,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/linkedin/auth/status", get(linkedin_auth_handler::get_linkedin_auth_status))
         .route("/api/v1/linkedin/auth", delete(linkedin_auth_handler::delete_linkedin_auth))
         .route("/api/v1/linkedin/cookies/:user_id", get(linkedin_auth_handler::get_linkedin_cookies_for_user))
+        .route("/api/v1/web-to-lead/configs", get(web_to_lead_handler::list_web_to_lead_configs).post(web_to_lead_handler::create_web_to_lead_config))
+        .route("/api/v1/web-to-lead/configs/:id", put(web_to_lead_handler::update_web_to_lead_config).delete(web_to_lead_handler::delete_web_to_lead_config))
+        .route("/api/v1/web-to-lead/configs/:id/embed", get(web_to_lead_handler::get_web_to_lead_embed))
+        .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
+        .nest("/downloads", axum::Router::new().fallback_service(ServeDir::new("/tmp")))
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

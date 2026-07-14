@@ -28,6 +28,8 @@ pub struct PortfolioCompany {
 pub struct CreatePortfolioCompanyRequest {
     pub name: String,
     pub slug: String,
+    pub email: Option<String>,
+    pub description: Option<String>,
     pub settings: Option<Value>,
 }
 
@@ -82,12 +84,14 @@ pub async fn create_portfolio_company(
     let now = chrono::Utc::now();
 
     sqlx::query(
-        "INSERT INTO portfolio_companies (id, tenant_id, name, slug, settings, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO portfolio_companies (id, tenant_id, name, slug, email, description, settings, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(company_id)
     .bind(tenant_id)
     .bind(&req.name)
     .bind(&req.slug)
+    .bind(&req.email)
+    .bind(&req.description)
     .bind(&settings)
     .bind(now)
     .bind(now)
