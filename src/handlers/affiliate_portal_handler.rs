@@ -53,6 +53,8 @@ pub async fn affiliate_signup(
     let user_id = Uuid::new_v4().to_string();
     let default_commission = req.commission_rate.unwrap_or(10.0);
     
+    let aff_code = format!("kinetic-{}", &Uuid::new_v4().to_string()[..8].to_lowercase());
+    
     sqlx::query(
         "INSERT INTO affiliates (id, tenant_id, name, email, commission_rate, status) VALUES ($1, $2, $3, $4, $5, 'active')"
     )
@@ -76,6 +78,13 @@ pub async fn affiliate_signup(
     .bind(&req.last_name)
     .execute(&state.pool)
     .await?;
+
+    // Set the tenant's affiliate_code so it appears in bio-link/micro-page branding
+    sqlx::query("UPDATE tenants SET affiliate_code = $1 WHERE id = $2")
+        .bind(&aff_code)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
     
     for app in &req.selected_apps {
         sqlx::query(
@@ -97,7 +106,43 @@ pub async fn affiliate_signup(
     .bind(&code)
     .execute(&state.pool)
     .await?;
-    
+
+    // If signed up with a referrer's affiliate_code, set referred_by and track conversion
+    if let Some(ref code) = req.affiliate_code {
+        if !code.is_empty() {
+            // Track who referred this signup
+            let _ = sqlx::query("UPDATE tenants SET referred_by = $1 WHERE id = $2")
+                .bind(code)
+                .bind(tenant_id)
+                .execute(&state.pool)
+                .await;
+
+            // Find which affiliate owns this code
+            let ref_affiliate: Option<String> = sqlx::query_scalar(
+                "SELECT au.affiliate_id FROM affiliate_users au JOIN tenants t ON t.id = au.tenant_id WHERE t.affiliate_code = $1"
+            )
+            .bind(code)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(ref_affiliate_id) = ref_affiliate {
+                // Create a pending commission for the referring affiliate
+                let _ = sqlx::query(
+                    "INSERT INTO affiliate_conversions (id, affiliate_id, tenant_id, commission_amount, status, notes) VALUES ($1, $2, $3, $4, 'pending', $5)"
+                )
+                .bind(Uuid::new_v4())
+                .bind(&ref_affiliate_id)
+                .bind(tenant_id)
+                .bind(5.00)
+                .bind(&format!("Affiliate portal signup, email: {}", req.email))
+                .execute(&state.pool)
+                .await;
+            }
+        }
+    }
+
     Ok(Json(json!({"success": true, "affiliate_id": aff_id})))
 }
 
@@ -209,6 +254,16 @@ pub async fn affiliate_portal_dashboard(
     .map(|(a, s, m, p)| json!({"amount": a, "status": s, "method": m, "paid_at": p}))
     .collect();
     
+    // Get all available products (sister apps) that affiliates can market
+    let products: Vec<serde_json::Value> = sqlx::query_as::<_, (Uuid, String, Option<String>, f64, bool)>(
+        "SELECT id, name, description, default_commission_rate, is_active FROM affiliate_products ORDER BY name"
+    )
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(|(id, name, desc, rate, active)| json!({"id": id.to_string(), "name": name, "description": desc, "commission_rate": rate, "is_active": active}))
+    .collect();
+    
     Ok(Json(json!({
         "stats": {
             "total_clicks": clicks,
@@ -220,6 +275,7 @@ pub async fn affiliate_portal_dashboard(
         },
         "links": links,
         "selections": selections,
-        "payouts": payouts
+        "payouts": payouts,
+        "products": products
     })))
 }

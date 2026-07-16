@@ -14,11 +14,13 @@ mod auth;
 mod db;
 mod email;
 mod error;
+mod tag_logic;
 mod features;
 mod handlers;
 #[path = "middleware/mod.rs"]
 mod app_middleware;
 mod models;
+mod templates;
 mod security;
 mod state;
 
@@ -55,7 +57,9 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "http://localhost:8084".to_string());
     let adaswift_url = std::env::var("ADASWIFT_URL")
         .unwrap_or_else(|_| "http://localhost:8087".to_string());
-    let app_state = AppState::new(pool, jwt_secret, internal_sync_key, workflowswift_url, adaswift_url);
+    let coreswift_url = std::env::var("CORESWIFT_URL")
+        .unwrap_or_else(|_| "http://localhost:8084".to_string());
+    let app_state = AppState::new(pool, jwt_secret, internal_sync_key, workflowswift_url, adaswift_url, coreswift_url);
 
     // Build router
     let app = create_router(app_state);

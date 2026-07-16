@@ -57,5 +57,10 @@ regex-lite = "0.1"
 # Async trait
 async-trait = "0.1"
 
+# Templating (Askama for SSR bio-link pages)
+askama = "0.12"
+qrcode = { version = "0.14", default-features = false, features = ["svg", "image"] }
+image = "0.25"
+
 [dev-dependencies]
 tokio-test = "0.4"

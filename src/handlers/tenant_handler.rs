@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+use crate::tag_logic;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Tenant {
@@ -305,6 +306,18 @@ pub async fn update_tenant(
 
     // Update plan if provided
     if let Some(plan_id) = req.plan_id {
+        // Get the new plan slug
+        let new_plan_slug: Option<String> = match sqlx::query_scalar::<_, String>(
+            "SELECT slug FROM plans WHERE id = $1"
+        )
+        .bind(plan_id)
+        .fetch_optional(&state.pool)
+        .await?
+        {
+            Some(slug) => Some(slug),
+            None => None,
+        };
+
         // Deactivate existing
         sqlx::query(
             "UPDATE tenant_plan_subscriptions SET status = 'cancelled' WHERE tenant_id = $1 AND status = 'active'",
@@ -324,6 +337,15 @@ pub async fn update_tenant(
         .bind(plan_id)
         .execute(&state.pool)
         .await?;
+
+        // Auto-apply Sold tag if upgrading to pro/enterprise
+        if let Some(ref slug) = new_plan_slug {
+            tag_logic::apply_sold_to_tenant_leads(
+                &state.pool,
+                id,
+                slug,
+            ).await?;
+        }
     }
 
     Ok(Json(json!({"message": "Tenant updated"})))
@@ -424,6 +446,15 @@ pub async fn assign_plan(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
 
+    // Get the new plan slug before activating
+    let new_plan_slug: String = sqlx::query_scalar(
+        "SELECT slug FROM plans WHERE id = $1"
+    )
+    .bind(req.plan_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+
     // Deactivate existing subscriptions
     sqlx::query(
         "UPDATE tenant_plan_subscriptions SET status = 'cancelled' WHERE tenant_id = $1 AND status = 'active'",
@@ -443,6 +474,14 @@ pub async fn assign_plan(
     .bind(req.plan_id)
     .execute(&state.pool)
     .await?;
+
+    // Auto-apply Sold tag to all leads in this tenant
+    // This only applies when upgrading to paid plans (pro/enterprise)
+    tag_logic::apply_sold_to_tenant_leads(
+        &state.pool,
+        id,
+        &new_plan_slug,
+    ).await?;
 
     Ok(Json(json!({"message": "Plan assigned successfully"})))
 }

@@ -13,11 +13,12 @@ use crate::handlers::{
     public_signup_handler,
     affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
     ocr, plan_handler,
-    plan_tag_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
+    plan_tag_handler, tag_rule_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
     sync_plan_tag_handler, linkedin_auth_handler, web_to_lead_handler,
     webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
+    product_category_handler,
     affiliate_lead_handler,
-    provider_keys_handler, tenant_handler,
+    provider_keys_handler, tenant_handler, kinetic_handler, qr_handler,
 };
 use crate::state::AppState;
 
@@ -36,6 +37,11 @@ pub fn create_router(state: AppState) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        // Public kinetic routes (no auth — SSR bio-link pages + tracking)
+        .route("/k/:slug", get(kinetic_handler::render_card))
+        .route("/k/:slug/lead", post(kinetic_handler::submit_lead))
+        .route("/track/click", get(kinetic_handler::track_click))
+        // Default
         .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
         .route("/api/health", get(health))
         .route("/api/v1/health", get(health))
@@ -51,9 +57,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/leads/export", get(lead_handler::export_leads))
         .route("/api/v1/leads/:id", get(lead_handler::get_lead).put(lead_handler::update_lead).delete(lead_handler::delete_lead))
         .route("/api/v1/leads/:id/assign", post(lead_handler::assign_lead))
-        .route("/api/v1/leads/:id/stage", post(lead_handler::update_lead_stage))
+        .route("/api/v1/leads/:id/stage", post(lead_handler::update_lead_stage))        .route("/api/v1/leads/:id/tags", post(lead_handler::assign_lead_tags))
         .route("/api/v1/tags", get(tag_handler::list_tags).post(tag_handler::create_tag))
         .route("/api/v1/tags/:id", get(tag_handler::get_tag).put(tag_handler::update_tag).delete(tag_handler::delete_tag))
+        .route("/api/v1/tag-rules", get(tag_rule_handler::list_tag_rules).post(tag_rule_handler::create_tag_rule))
+        .route("/api/v1/tag-rules/:id", put(tag_rule_handler::update_tag_rule).delete(tag_rule_handler::delete_tag_rule))
+        .route("/api/v1/tag-change-log", get(tag_rule_handler::list_tag_change_log))
         .route("/api/v1/tag-groups", get(tag_group_handler::list_tag_groups).post(tag_group_handler::create_tag_group))
         .route("/api/v1/tag-groups/:id", put(tag_group_handler::update_tag_group).delete(tag_group_handler::delete_tag_group))
         .route("/api/v1/plan-tag-mappings", get(plan_tag_handler::list_plan_tag_mappings))
@@ -61,8 +70,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/affiliates", get(affiliate_handler::list_affiliates).post(affiliate_handler::create_affiliate))
         .route("/api/v1/affiliates/:id", get(affiliate_handler::get_affiliate).put(affiliate_handler::update_affiliate).delete(affiliate_handler::delete_affiliate))
         .route("/api/v1/affiliates/:id/commissions", get(affiliate_handler::get_affiliate_commissions))
-        .route("/api/v1/affiliate-products", get(affiliate_product_handler::list_affiliate_products).post(affiliate_product_handler::create_affiliate_product))
+        .route("/api/v1/affiliate-products", get(affiliate_product_handler::list_affiliate_products).post(affiliate_product_handler::create_affiliate_product))        .route("/api/v1/affiliate-products/admin", get(affiliate_product_handler::list_all_affiliate_products_admin))
         .route("/api/v1/affiliate-products/:id", put(affiliate_product_handler::update_affiliate_product).delete(affiliate_product_handler::delete_affiliate_product))
+        .route("/api/v1/product-categories", get(product_category_handler::list_categories).post(product_category_handler::create_category))
+        .route("/api/v1/product-categories/:id", put(product_category_handler::update_category).delete(product_category_handler::delete_category))
         .route("/api/v1/affiliate-links", get(affiliate_tracking_handler::list_affiliate_links).post(affiliate_tracking_handler::create_affiliate_link))
         .route("/api/v1/affiliate-stats", get(affiliate_tracking_handler::get_affiliate_stats))
         .route("/api/v1/affiliate-conversions", get(affiliate_tracking_handler::list_conversions).post(affiliate_tracking_handler::track_conversion))
@@ -137,6 +148,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/web-to-lead/configs", get(web_to_lead_handler::list_web_to_lead_configs).post(web_to_lead_handler::create_web_to_lead_config))
         .route("/api/v1/web-to-lead/configs/:id", put(web_to_lead_handler::update_web_to_lead_config).delete(web_to_lead_handler::delete_web_to_lead_config))
         .route("/api/v1/web-to-lead/configs/:id/embed", get(web_to_lead_handler::get_web_to_lead_embed))
+        // Kinetic bio-links
+        .route("/api/v1/kinetic/cards", get(kinetic_handler::list_cards).post(kinetic_handler::create_card))
+        .route("/api/v1/kinetic/cards/:id", put(kinetic_handler::update_card).delete(kinetic_handler::delete_card))
+        .route("/api/v1/kinetic/cards/:id/buttons", get(kinetic_handler::list_buttons).post(kinetic_handler::create_button))
+        .route("/api/v1/kinetic/cards/:id/sources", get(kinetic_handler::list_sources).post(kinetic_handler::create_source))
+        .route("/api/v1/kinetic/buttons/:id", delete(kinetic_handler::delete_button))
+        .route("/api/v1/kinetic/sources/:id", delete(kinetic_handler::delete_source))
+        .route("/api/v1/kinetic/metrics", get(kinetic_handler::get_metrics))
+        // QR codes for kinetic cards
+        .route("/api/v1/kinetic/qr", get(qr_handler::list_qr_codes).post(qr_handler::create_qr_code))
+        .route("/api/v1/kinetic/qr/:id", put(qr_handler::update_qr_code).delete(qr_handler::delete_qr_code))
+        .route("/api/v1/kinetic/qr/:id/svg", get(qr_handler::get_qr_svg))
+        .route("/api/v1/kinetic/qr/:id/png", get(qr_handler::get_qr_png))
         .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
         .nest("/downloads", axum::Router::new().fallback_service(ServeDir::new("/tmp")))
         .with_state(state)

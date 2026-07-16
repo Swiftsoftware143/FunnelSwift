@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::models::plan::*;
 use crate::state::AppState;
+use crate::tag_logic;
 use sqlx::Row;
 
 pub async fn list_plans(
@@ -208,17 +209,41 @@ pub async fn admin_assign_plan(
     let plan_id = req.get("plan_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("Valid plan_id is required".into()))?;
 
+    // Get the new plan slug before activating
+    let new_plan_slug: String = sqlx::query_scalar(
+        "SELECT slug FROM plans WHERE id = $1"
+    )
+    .bind(plan_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+
+    // Deactivate existing subscription first
+    sqlx::query(
+        "UPDATE tenant_plan_subscriptions SET status = 'cancelled' WHERE tenant_id = $1 AND status = 'active'"
+    )
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+
     let subscription_id = Uuid::new_v4();
     sqlx::query(
         r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
-           VALUES ($1, $2, $3, 'active', NOW())
-           ON CONFLICT (tenant_id, plan_id) DO UPDATE SET status = 'active', start_date = NOW()"#,
+           VALUES ($1, $2, $3, 'active', NOW())"#,
     )
     .bind(subscription_id)
     .bind(tenant_id)
     .bind(plan_id)
     .execute(&state.pool)
     .await?;
+
+    // Auto-apply Sold tag to all leads in this tenant
+    // This only applies when upgrading to paid plans (pro/enterprise)
+    tag_logic::apply_sold_to_tenant_leads(
+        &state.pool,
+        tenant_id,
+        &new_plan_slug,
+    ).await?;
 
     Ok(Json(json!({"message": "Plan assigned to tenant", "subscription_id": subscription_id})))
 }

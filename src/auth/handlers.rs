@@ -210,6 +210,22 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
             .map(|(r,)| r)
             .collect();
 
+    // Get current plan subscription
+    let current_plan: Option<serde_json::Value> =
+        sqlx::query_as::<_, (serde_json::Value,)>(r#"
+            SELECT row_to_json(p.*)::jsonb
+            FROM plans p
+            JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
+            WHERE tps.tenant_id::text = $1 AND tps.status = 'active'
+            ORDER BY tps.start_date DESC
+            LIMIT 1
+        "#)
+            .bind(&auth.tenant_id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None)
+            .map(|(r,)| r);
+
     Json(json!({
         "user_id": auth.user_id,
         "tenant_id": auth.tenant_id,
@@ -219,7 +235,8 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "role": auth.role,
         "is_admin": auth.is_admin,
         "api_key": api_key_row.map(|(p, n, fk)| json!({"prefix": p, "name": n, "key": fk.unwrap_or_default()})),
-        "available_products": products
+        "available_products": products,
+        "current_plan": current_plan
     }))
 }
 

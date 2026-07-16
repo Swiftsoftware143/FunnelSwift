@@ -12,6 +12,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::lead::*;
 use crate::handlers::workflowswift_push::push_to_workflowswift;
 use crate::handlers::adaswift_provision;
+use crate::handlers::coreswift_push;
 use crate::state::AppState;
 use crate::features;
 
@@ -137,6 +138,17 @@ pub async fn create_lead(
             adaswift_provision::check_and_provision(&pool, &adaswift_url, lead_id, tenant_id).await;
         }
     });
+
+    // Best-effort push to CoreSwift CRM
+    tokio::spawn({
+        let pool = state.pool.clone();
+        let cs_url = state.coreswift_url.clone();
+        let sync_key = state.internal_sync_key.clone();
+        async move {
+            coreswift_push::push_to_coreswift(&pool, &cs_url, &sync_key, lead_id, tenant_id).await;
+        }
+    });
+
     Ok((StatusCode::CREATED, Json(json!({"id": lead_id, "message": "Lead created"}))))
 }
 
@@ -277,7 +289,140 @@ pub async fn update_lead_stage(
     .execute(&state.pool)
     .await?;
 
+    // Best-effort push to CoreSwift CRM on stage change
+    tokio::spawn({
+        let pool = state.pool.clone();
+        let cs_url = state.coreswift_url.clone();
+        let sync_key = state.internal_sync_key.clone();
+        async move {
+            coreswift_push::push_to_coreswift(&pool, &cs_url, &sync_key, id, tenant_id).await;
+        }
+    });
+
     Ok(Json(json!({"message": "Stage updated"})))
+}
+
+#[derive(Deserialize)]
+pub struct LeadTagsRequest {
+    pub tags: Vec<String>,
+    pub triggered_by: Option<String>,
+}
+
+pub async fn assign_lead_tags(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LeadTagsRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // Get current lead tags
+    let row = sqlx::query_as::<_, (serde_json::Value,)>("SELECT tags FROM leads WHERE id = $1 AND tenant_id = $2")
+        .bind(id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let row = row.ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
+    let (tag_val,) = row;
+    let mut current_tags: Vec<String> = match tag_val {
+        serde_json::Value::Array(ref arr) => arr.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+        _ => vec![],
+    };
+
+    // Determine which tags are new (to evaluate rules against)
+    let new_tags: Vec<Uuid> = {
+        let all_tags = sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM tags WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_all(&state.pool)
+            .await?;
+        all_tags.into_iter()
+            .filter(|(_, name)| req.tags.contains(name) && !current_tags.contains(name))
+            .map(|(id, _)| id)
+            .collect()
+    };
+
+    // Merge new tags
+    for t in &req.tags {
+        if !current_tags.contains(t) {
+            current_tags.push(t.clone());
+        }
+    }
+
+    // Evaluate tag rules
+    let (to_remove, to_add) = crate::tag_logic::evaluate_tag_rules(
+        &state.pool, tenant_id,
+        &current_tags.iter().map(|s| serde_json::Value::String(s.clone())).collect::<Vec<_>>(),
+        &new_tags
+    ).await?;
+
+    // Apply rule results
+    current_tags.retain(|t| !to_remove.contains(t));
+    for t in &to_add {
+        if !current_tags.contains(t) {
+            current_tags.push(t.clone());
+        }
+    }
+
+    let tags_json: serde_json::Value = serde_json::Value::Array(current_tags.iter().map(|t| serde_json::Value::String(t.clone())).collect());
+
+    sqlx::query("UPDATE leads SET tags = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3")
+        .bind(&tags_json)
+        .bind(id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
+
+    // Log change
+    let triggered_by = req.triggered_by.unwrap_or_else(|| "manual".to_string());
+    crate::tag_logic::log_tag_change(&state.pool, tenant_id, id, &req.tags, &to_remove, &triggered_by).await?;
+
+    // Fire cross-app sync to CoreSwift CRM
+    if !state.coreswift_url.is_empty() {
+        let lead = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT name, email, company FROM leads WHERE id = $1"
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+        if let Some((lname, lemail, lcompany)) = lead {
+            let sync_payload = serde_json::json!({
+                "event": "tag_sync",
+                "source_app": "funnelswift",
+                "tenant_id": tenant_id,
+                "lead": {
+                    "id": id,
+                    "name": lname,
+                    "email": lemail,
+                    "company": lcompany
+                },
+                "tags": current_tags,
+                "added_tags": req.tags,
+                "removed_tags": to_remove,
+                "triggered_by": triggered_by
+            });
+
+            // Fire and forget — don't block the response
+            let url = format!("{}/api/v1/webhooks/cross-app/tag-sync", state.coreswift_url);
+            let internal_sync_key = state.internal_sync_key.clone();
+            let client = reqwest::Client::new();
+            tokio::spawn(async move {
+                let _ = client.post(&url)
+                    .header("x-internal-key", &internal_sync_key)
+                    .json(&sync_payload)
+                    .timeout(std::time::Duration::from_secs(5))
+                    .send()
+                    .await;
+            });
+        }
+    }
+
+    Ok(Json(json!({
+        "message": "Tags updated",
+        "tags": current_tags,
+        "rules_applied": to_remove.len() + to_add.len()
+    })))
 }
 
 #[derive(Deserialize)]

@@ -134,15 +134,20 @@ pub async fn delete_tag(
     if tag.is_system && !auth.is_admin {
         return Err(AppError::Forbidden("Only admins can delete system tags".into()));
     }
-    if tag.is_system {
-        return Err(AppError::BadRequest("Cannot delete system tags".into()));
-    }
+    // System tags can be deleted by admins
 
-    sqlx::query("DELETE FROM tags WHERE id = $1 AND tenant_id = $2")
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+    if auth.is_admin {
+        sqlx::query("DELETE FROM tags WHERE id = $1")
+            .bind(id)
+            .execute(&state.pool)
+            .await?;
+    } else {
+        sqlx::query("DELETE FROM tags WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .execute(&state.pool)
+            .await?;
+    }
 
     Ok(Json(json!({"message": "Tag deleted"})))
 }

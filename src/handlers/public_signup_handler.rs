@@ -20,6 +20,10 @@ pub struct PublicSignupRequest {
     pub name: String,
     #[serde(default = "default_source")]
     pub source: String,
+    #[serde(default)]
+    pub plan: String,
+    #[serde(default)]
+    pub affiliate_code: Option<String>,
 }
 
 fn default_source() -> String {
@@ -111,16 +115,118 @@ pub async fn public_signup(
     .execute(&state.pool)
     .await?;
 
-    // Assign Free plan
-    let free_plan_id = uuid::Uuid::parse_str("f0000000-0000-0000-0000-000000000001").expect("Free plan UUID");
+    // Assign plan (default: free, override: kinetic_free etc)
+    let target_plan_slug = if req.plan.trim() == "kinetic_free" || req.plan.trim() == "kinetic" {
+        "kinetic_free"
+    } else {
+        "free"
+    };
+    let plan_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM plans WHERE slug = $1"
+    )
+    .bind(target_plan_slug)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or_else(|_| uuid::Uuid::parse_str("f0000000-0000-0000-0000-000000000001").expect("Free plan UUID"));
+
     sqlx::query(
         "INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status) VALUES ($1, $2, $3, 'active')"
     )
     .bind(Uuid::new_v4())
     .bind(tenant_id)
-    .bind(free_plan_id)
+    .bind(plan_id)
     .execute(&state.pool)
     .await?;
+
+    // Auto-apply "Qualified" tag: create an initial lead with the Qualified tag
+    // The Qualified system tag ID is deterministic (namespace-based UUID)
+    let qualified_tag_id = uuid::Uuid::parse_str("15698a9a-67fe-5bf1-9aac-1dcd7a1ccd9e").unwrap();
+    let qualified_tag_name = "Qualified";
+    
+    // Check if the tag exists in the System tenant and create an initial lead
+    let tag_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1)"
+    )
+    .bind(qualified_tag_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+
+    if tag_exists {
+        // Create an initial lead for the new user tagged as Qualified
+        let lead_id = Uuid::new_v4();
+        let lead_name = req.name.trim().to_string();
+        let lead_email = req.email.trim().to_string();
+        
+        sqlx::query(
+            r#"INSERT INTO leads (id, tenant_id, name, email, source, stage, tags)
+               VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)"#
+        )
+        .bind(lead_id)
+        .bind(tenant_id)
+        .bind(&lead_name)
+        .bind(&lead_email)
+        .bind(&source)
+        .bind("New")
+        .bind(serde_json::json!([qualified_tag_name]))
+        .execute(&state.pool)
+        .await?;
+
+        // Log the tag change for audit
+        crate::tag_logic::log_tag_change(
+            &state.pool,
+            tenant_id,
+            lead_id,
+            &[qualified_tag_name.to_string()],
+            &[],
+            "signup",
+        ).await?;
+
+        tracing::info!(
+            "Auto-applied Qualified tag to lead {} for new tenant {} (signup)",
+            lead_id, tenant_id
+        );
+    } else {
+        tracing::warn!(
+            "Qualified system tag (id={}) not found — skipping auto-apply on signup for tenant {}",
+            qualified_tag_id, tenant_id
+        );
+    }
+
+    // If referred by an affiliate, set referred_by and create a pending commission
+    if let Some(ref code) = req.affiliate_code {
+        if !code.trim().is_empty() {
+            let ref_code = code.trim();
+            sqlx::query("UPDATE tenants SET referred_by = $1 WHERE id = $2")
+                .bind(ref_code)
+                .bind(tenant_id)
+                .execute(&state.pool)
+                .await?;
+
+            // Find which affiliate owns this code
+            let ref_affiliate: Option<String> = sqlx::query_scalar(
+                "SELECT au.affiliate_id FROM affiliate_users au JOIN tenants t ON t.id = au.tenant_id WHERE t.affiliate_code = $1"
+            )
+            .bind(ref_code)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(ref_affiliate_id) = ref_affiliate {
+                sqlx::query(
+                    "INSERT INTO affiliate_conversions (id, affiliate_id, tenant_id, commission_amount, status, notes) VALUES ($1, $2, $3, $4, 'pending', $5)"
+                )
+                .bind(Uuid::new_v4())
+                .bind(&ref_affiliate_id)
+                .bind(tenant_id)
+                .bind(5.00)
+                .bind(&format!("Signup from kinetic landing page, email: {}", req.email))
+                .execute(&state.pool)
+                .await?;
+            }
+        }
+    }
 
     // Generate JWT
     let now = Utc::now().timestamp() as usize;
