@@ -119,6 +119,7 @@ var WALKTHROUGHS = {
   ak:{t:"API Keys",d:"Generate API keys for programmatic lead ingestion. Keys can be revoked individually. Integrate via webhooks and HTTP API."},
   ic:{t:"Integrations",d:"View your API key and connect FunnelSwift with other SwiftSoftware products. Promote affiliate products and generate referral links."},
   wh:{t:"Webhooks",d:"Configure outbound webhooks for real-time event delivery. Supports lead.created, lead.converted, tenant.updated, and more. Automatic retry on failure."},
+  cr:{t:"City Requests",d:"Review visitor-submitted city requests sorted by popularity. Click Add to Directory to remove them from the list. Customize the form text in Form Settings tab."},
   st:{t:"Settings",d:"Configure your account, change password, and manage tenant preferences."}
 };
 function showWalkthrough(p){var e=document.getElementById("wt-overlay");if(!e)return;var w=WALKTHROUGHS[p];if(!w)return;if(localStorage.getItem("ws_fs_"+p+"_dismissed")){document.getElementById("wt-help").style.display="flex";return}document.getElementById("wt-title").textContent=w.t;document.getElementById("wt-desc").textContent=w.d;e.style.display="flex";document.getElementById("wt-help").style.display="none"}

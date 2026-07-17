@@ -85,6 +85,7 @@ ul{color:var(--ts);margin:8px 0 16px 24px}ul li{margin-bottom:4px}
 <div class="st">Integrations</div>
 <a href="#ak" class="ni" onclick="cm()">K API Keys</a>
 <a href="#wl" class="ni" onclick="cm()">W Web-to-Lead</a>
+<a href="#cr" class="ni" onclick="cm()">C City Requests</a>
 <a href="#st" class="ni" onclick="cm()">S Settings</a>
 <div class="st">Support</div>
 <a href="#fq" class="ni" onclick="cm()">Q FAQ</a>
@@ -254,5 +255,30 @@ ul{color:var(--ts);margin:8px 0 16px 24px}ul li{margin-bottom:4px}
 <div class="fc"><div class="fi">3</div><h4>Lead Created</h4><p>The script sends the form data to FunnelSwift. A new lead appears instantly in your dashboard with the tag you selected.</p></div>
 </div>
 <div class="al a2"><strong>Note:</strong> The script does NOT prevent the normal form submission. Your existing form will still work as before — the lead capture happens in the background.</div>
+
+<h2 id="cr">City Requests</h2>
+<p>The City Request system lets visitors suggest new cities (or products/niches) directly from the directory homepage. Manage all requests from one network-wide admin dashboard.</p>
+<h3>How It Works</h3>
+<ol class="sl">
+<li><strong>Visitor submits</strong><p>At the bottom of the homepage, visitors enter a city and state. Submissions are stored in a central database.</p></li>
+<li><strong>Deduplication</strong><p>If 3 people request "Queens, New York", the count goes to 3. No duplicate entries.</p></li>
+<li><strong>Admin reviews</strong><p>Open the admin dashboard to see all requests sorted by popularity.</p></li>
+<li><strong>Add to directory</strong><p>When you add a requested city, click "Add to Directory" and it disappears from the request list.</p></li>
+</ol>
+<h3>Admin Dashboard</h3>
+<p>Accessible at <code>https://zaarhub.com/admin/requests</code> (or your directory&rsquo;s <code>/admin/requests</code> path).</p>
+<table><thead><tr><th>Feature</th><th>How To</th></tr></thead><tbody>
+<tr><td>View requests</td><td>Dashboard opens to the Requests tab. Cities sorted by request count (highest first).</td></tr>
+<tr><td>Remove a city</td><td>Click "Add to Directory" &mdash; it&rsquo;s removed from the list instantly.</td></tr>
+<tr><td>Edit form text</td><td>Switch to the Form Settings tab. Change headline, description, button text, placeholders, and success messages.</td></tr>
+</tbody></table>
+<h3>Customizing the Form</h3>
+<p>The city request form is fully customizable from the admin settings. Use it for any niche:</p>
+<table><thead><tr><th>Scenario</th><th>Headline</th><th>Placeholder</th></tr></thead><tbody>
+<tr><td>City directory</td><td>"ZaarHub not in your city yet?"</td><td>"City or town"</td></tr>
+<tr><td>Product directory</td><td>"Don&rsquo;t see your product?"</td><td>"Product name"</td></tr>
+<tr><td>Service directory</td><td>"Need a service we don&rsquo;t have?"</td><td>"Service type"</td></tr>
+</tbody></table>
+<div class="al a1"><strong>Note:</strong> The city request system is <strong>network-wide</strong>. One database, one admin dashboard &mdash; even if you have multiple directories. New cities can be added to any directory in the network.</div>
 
 <h2 id="fq">FAQ</h2><div class="fi"><button class="fq" onclick="at(this)">How do I reset my password? <span>+</span></button><div class="fa">Go to Settings, click Change Password. Enter current password and new password (minimum 8 characters).</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I create a new lead? <span>+</span></button><div class="fa">Click Leads in sidebar, then Add Lead. Fill in name, email, phone, source, assign tags, and save.</div></div><div class="fi"><button class="fq" onclick="at(this)">What lead sources are supported? <span>+</span></button><div class="fa">Web Form, SMS, ADA Demo, AI Agent, Missed Call, and API integration.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I become an affiliate? <span>+</span></button><div class="fa">Contact the admin to create an affiliate profile. Once approved, you access the Affiliate Marketplace.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I generate an API key? <span>+</span></button><div class="fa">Go to API Keys in sidebar, click Create Key, name it, select permissions, and generate. Copy the key immediately.</div></div><div class="fi"><button class="fq" onclick="at(this)">Can I assign leads to team members? <span>+</span></button><div class="fa">Yes. When editing a lead, use the Assigned To field to select an agent.</div></div><div class="fi"><button class="fq" onclick="at(this)">What are tag groups? <span>+</span></button><div class="fa">Tag groups categorize tags by Source, Status, Events, Services, Engagement, and Custom. Helps organize lead classification.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do payouts work for affiliates? <span>+</span></button><div class="fa">Affiliates earn commissions per referral. Admin manages payouts at /admin/payouts: approve, track, and export.</div></div><div class="fi"><button class="fq" onclick="at(this)">What is the Live Feed? <span>+</span></button><div class="fa">A real-time activity panel on the right side showing lead creation events. Toggle with the panel button at top-right.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I assign tags to plans? <span>+</span></button><div class="fa">Use plan-to-tag mapping in the Plans admin section to link tags with subscription plans for feature access control.</div></div><script>function at(b){var a=b.nextElementSibling;a.classList.toggle("on");b.querySelector("span").textContent=a.classList.contains("on")?"-":"+"}</script></div></div></div></body></html>
