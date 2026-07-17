@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FunnelSwift</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{background:#f1f5f9;display:flex;min-height:100vh}
+.sn{width:200px;background:#1e1b4b;color:#fff;min-height:100vh;padding:0;position:fixed;left:0;top:0;bottom:0;z-index:100}
+.sn .logo{padding:20px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sn .logo h1{font-size:18px;font-weight:700;color:#fff}
+.sn .logo p{font-size:11px;color:#a5b4fc;margin-top:2px}
+.sn a{display:block;padding:12px 16px;color:#c7d2fe;text-decoration:none;font-size:13px;border-left:3px solid transparent}
+.sn a:hover{background:rgba(255,255,255,.05);color:#fff}
+.sn a.act{background:rgba(99,102,241,.15);color:#fff;border-left-color:#6366f1;font-weight:600}
+.sn-s{font-size:10px;text-transform:uppercase;color:#6366f1;padding:20px 16px 6px;letter-spacing:1px;font-weight:600}
+.sn-acc{}.sn-acc .sn-ac-h{font-size:10px;text-transform:uppercase;color:#6366f1;padding:20px 16px 6px;letter-spacing:1px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center}.sn-acc .sn-ac-h span{font-size:9px;transition:transform .2s}.sn-acc.open .sn-ac-h span{transform:rotate(180deg)}.sn-acc .sn-ac-c{display:none}.sn-acc.open .sn-ac-c{display:block}.sn-acc .sn-ac-c a{display:block;padding:10px 16px 10px 20px;color:#c7d2fe;text-decoration:none;font-size:13px;border-left:3px solid transparent}.sn-acc .sn-ac-c a:hover{background:rgba(255,255,255,.05);color:#fff}.sn-acc .sn-ac-c a.act{background:rgba(99,102,241,.15);color:#fff;border-left-color:#6366f1;font-weight:600}
+.mn{margin-left:200px;flex:1;padding:24px}
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.hdr h2{font-size:22px;color:#0f172a;font-weight:700}
+.hdr .usr{font-size:13px;color:#64748b}
+.pg{display:none}.pg.act{display:block}
+.card{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}
+.card h3{font-size:14px;color:#64748b;margin-bottom:4px}
+.card .val{font-size:28px;font-weight:700;color:#0f172a}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.btn{display:inline-block;padding:8px 18px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-outline{background:transparent;color:#6366f1;border:1px solid #6366f1}
+.btn-outline:hover{background:#eef2ff}
+.btn-del{background:#ef4444}
+.btn-del:hover{background:#dc2626}
+.btn-sec{background:#475569}
+.ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;justify-content:center;align-items:center}
+.ov.show{display:flex}
+.mdl{background:#fff;border-radius:12px;padding:28px;max-width:480px;width:90vw;max-height:85vh;overflow-y:auto}
+.mdl h3{font-size:17px;font-weight:700;color:#0f172a;margin-bottom:16px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;outline:none}
+.fld input:focus,.fld select:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.mdl-ft{margin-top:16px;display:flex;gap:8px;justify-content:flex-end}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{padding:10px 12px;background:#f8fafc;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0}
+.tbl td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#0f172a}
+.grd{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.it{background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.it h4{font-size:14px;font-weight:600;color:#0f172a;margin-bottom:4px}
+.it p{font-size:12px;color:#64748b;margin-bottom:4px}
+.it .act{display:flex;gap:4px;margin-top:8px}
+.msg{padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:12px;display:none}.msg.ok{background:#dcfce7;color:#166534;display:block}.msg.er{background:#fee2e2;color:#991b1b;display:block}.msg.lo{padding:20px;text-align:center;color:#6366f1;font-size:14px;display:block}
+.tg{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;margin:2px}
+.log{max-width:380px;margin:80px auto;text-align:center}
+.log .card{padding:40px}
+.log h1{font-size:24px;color:#1e1b4b;margin-bottom:4px}
+.log p{color:#64748b;font-size:13px;margin-bottom:24px}
+.log input{width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;outline:none}
+.log input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.wt-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:3000;justify-content:center;align-items:center}
+.wt-modal{background:#fff;border-radius:12px;padding:28px 32px;max-width:400px;width:90vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.wt-modal h3{font-size:18px;font-weight:700;color:#0f172a;margin-bottom:10px}
+.wt-modal p{font-size:14px;color:#475569;line-height:1.6;margin-bottom:20px}
+.wt-btn{display:inline-block;padding:10px 28px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-right:8px}
+.wt-btn:hover{background:#4f46e5}
+.wt-remind{display:inline-block;padding:10px 16px;background:none;color:#64748b;border:none;font-size:13px;cursor:pointer;text-decoration:underline}
+.wt-help{position:fixed;bottom:24px;right:24px;width:40px;height:40px;background:#6366f1;color:#fff;border-radius:50%;border:none;font-size:20px;font-weight:700;cursor:pointer;z-index:3001;box-shadow:0 4px 12px rgba(99,102,241,.35);display:none;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+<div id="log" class="pg act log">
+  <div class="card">
+    <h1>FunnelSwift</h1>
+    <p>Lead Generation &amp; Affiliate Marketing</p>
+    <input type="email" id="le" placeholder="Email" value="swiftsoftware143@yahoo.com">
+    <input type="password" id="lp" placeholder="Password" value="SwiftAdmin2026!">
+    <button class="btn" onclick="doLogin()" style="width:100%">Sign In</button>
+    <div id="lmsg" class="msg" style="margin-top:12px"></div>
+  </div>
+</div>
+<div id="app" style="display:none;width:100%">
+<div class="sn" id="sn">
+  <div class="logo"><h1>FunnelSwift</h1><p>Lead Gen &amp; Affiliates</p></div>
+  <div id="sn-menu"></div>
+  <a href="#" onclick="doLogout()" style="color:#ef4444;margin-top:20px;display:block;padding:12px 16px;font-size:13px;text-decoration:none">Sign Out</a>
+</div>
+<div class="mn">
+  <div class="hdr"><h2 id="pt">Dashboard</h2><div class="usr" id="ue">swiftsoftware143@yahoo.com</div></div>
+  <div id="pg-db" class="pg act"><div class="stats" id="db-st"></div><div class="card" id="db-ac"></div></div>
+  <div id="pg-ld" class="pg"><div id="ld-ct"></div></div>
+  <div id="pg-tn" class="pg"><div id="tn-ct"></div></div>
+  <div id="pg-af" class="pg"><div id="af-ct"></div></div>
+  <div id="pg-ap" class="pg"><div id="ap-ct"></div></div>
+  <div id="pg-pl" class="pg"><div id="pl-ct"></div></div>
+  <div id="pg-pm" class="pg"><div id="pm-ct"></div></div>
+  <div id="pg-ts" class="pg"><div id="ts-ct"></div></div>
+  <div id="pg-tg" class="pg"><div id="tg-ct"></div></div>
+  <div id="pg-ak" class="pg"><div id="ak-ct"></div></div>
+  <div id="pg-wh" class="pg"><div id="wh-ct"></div></div>
+  <div id="pg-st" class="pg"><div id="st-ct"></div></div>
+  <div id="pg-ic" class="pg"><div id="ic-ct"></div></div>
+</div>
+</div>
+<div class="ov" id="ov"><div class="mdl" id="mdl"><h3 id="mh"></h3><div id="mb"></div><div class="mdl-ft" id="mf"></div></div></div>
+<div class="wt-overlay" id="wt-overlay"><div class="wt-modal"><h3 id="wt-title">Welcome</h3><p id="wt-desc">Description</p><div><button class="wt-btn" onclick="wtDismiss(true)">Got it!</button> <button class="wt-remind" onclick="wtDismiss(false)">Remind later</button></div></div></div>
+<button class="wt-help" id="wt-help" onclick="wtOpenHelp()">?</button>
+<script>
+var T, U = {};
+
+
+var PAGES = {db:{t:"Dashboard"},ld:{t:"Leads"},tn:{t:"Tenants"},af:{t:"Affiliates"},pl:{t:"Plans"},tg:{t:"Tags"},ak:{t:"API Keys"},st:{t:"Settings"}};
+var WALKTHROUGHS = {
+  db:{t:"Welcome to FunnelSwift!",d:"Your lead generation hub. Track total leads, conversions, top sources, and affiliate performance. Click any stat to drill down."},
+  ld:{t:"Leads",d:"Manage your prospect leads. Add leads manually with name, email, phone, and source. Assign tags and route to affiliates or keep internal."},
+  af:{t:"Affiliates",d:"Manage affiliate partners. Each gets a unique auto-generated ID. Configure commission rates, track payouts, and route leads to their systems."},
+  pl:{t:"Plans",d:"Configure subscription plans and pricing. Plans define feature access, credit limits, and commission structures for affiliates."},
+  tg:{t:"Tags",d:"Organize leads with tag groups: Source, Status, Events, Services, Engagement, Custom. Tags auto-sync from plan mappings."},
+  ak:{t:"API Keys",d:"Generate API keys for programmatic lead ingestion. Keys can be revoked individually. Integrate via webhooks and HTTP API."},
+  ic:{t:"Integrations",d:"View your API key and connect FunnelSwift with other SwiftSoftware products. Promote affiliate products and generate referral links."},
+  wh:{t:"Webhooks",d:"Configure outbound webhooks for real-time event delivery. Supports lead.created, lead.converted, tenant.updated, and more. Automatic retry on failure."},
+  st:{t:"Settings",d:"Configure your account, change password, and manage tenant preferences."}
+};
+function showWalkthrough(p){var e=document.getElementById("wt-overlay");if(!e)return;var w=WALKTHROUGHS[p];if(!w)return;if(localStorage.getItem("ws_fs_"+p+"_dismissed")){document.getElementById("wt-help").style.display="flex";return}document.getElementById("wt-title").textContent=w.t;document.getElementById("wt-desc").textContent=w.d;e.style.display="flex";document.getElementById("wt-help").style.display="none"}
+function wtDismiss(p){if(p){var a=document.querySelector(".pg.act");if(a){var i=a.id.replace("pg-","");localStorage.setItem("ws_fs_"+i+"_dismissed","true")}}document.getElementById("wt-overlay").style.display="none";document.getElementById("wt-help").style.display="flex"}
+function wtOpenHelp(){document.getElementById("wt-help").style.display="none";var a=document.querySelector(".pg.act");if(a)showWalkthrough(a.id.replace("pg-",""))}
+function api(p,d){return fetch(p,{headers:{"Content-Type":"application/json",...T?{Authorization:"Bearer "+T}:{}},...d}).then(function(r){if(r.status===401){T=null;localStorage.removeItem("ws_fs_token");document.getElementById("log").style.display="block";document.getElementById("app").style.display="none";return}return r.json()})}
+function doLogin(){var e=document.getElementById("le").value,p=document.getElementById("lp").value;document.getElementById("lmsg").className="msg lo";document.getElementById("lmsg").textContent="Signing in...";fetch("/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:e,password:p})}).then(function(r){if(!r.ok)throw new Error("Login failed");return r.json()}).then(function(d){T=d.access_token||d.token;return fetch("/api/v1/auth/me",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(u){U=u;localStorage.setItem("ws_fs_token",T);renderSidebar();document.getElementById("log").style.display="none";document.getElementById("app").style.display="block";document.getElementById("ue").textContent=u.email;ld("db");setTimeout(function(){showWalkthrough("db")},500)})}).catch(function(){document.getElementById("lmsg").className="msg er";document.getElementById("lmsg").textContent="Login failed"})}
+function doLogout(){T=null;localStorage.removeItem("ws_fs_token");document.getElementById("log").style.display="block";document.getElementById("app").style.display="none";document.querySelectorAll(".pg").forEach(function(e){e.classList.remove("act")});document.getElementById("log").classList.add("act")}
+function nv(e,pv){var p=pv;if(!p){e&&e.preventDefault();var a=(e&&e.target)||document.querySelector(".sn a.act");if(!a){a=document.querySelector(".sn a");if(!a)return}if(!pv)a=e.target.closest("a");if(!a&&!pv)return;p=pv||(a?a.dataset.p:"db")}document.querySelectorAll(".pg").forEach(function(e){e.classList.remove("act")});var pg=document.getElementById("pg-"+p);if(pg)pg.classList.add("act");document.querySelectorAll(".sn a").forEach(function(e){e.classList.remove("act")});var na=document.querySelector('.sn a[data-p="'+p+'"]');if(na)na.classList.add("act");document.getElementById("pt").textContent=PAGES[p]?PAGES[p].t:p;window.location.hash=p;ld(p);setTimeout(function(){showWalkthrough(p)},400)}
+function renderSidebar(){var s=document.getElementById("sn-menu");var isAdmin=T&&T.is_admin;var html='';html+='<a href="#" data-p="db" onclick="nv(event)">Dashboard</a>';html+='<a href="#" data-p="ld" onclick="nv(event)">Leads</a>';html+='<a href="#" data-p="ic" onclick="nv(event)">Integrations</a>';if(isAdmin){html+='<div class="sn-acc" data-ac="adm"><div class="sn-ac-h" onclick="togAc(this)">Super Admin <span>\u25BC</span></div><div class="sn-ac-c">';html+='<a href="#" data-p="tn" onclick="nv(event)">Tenants</a>';html+='<a href="#" data-p="af" onclick="nv(event)">Affiliates</a>';html+='<a href="#" data-p="ap" onclick="nv(event)">Affiliate Products</a>';html+='<a href="#" data-p="pl" onclick="nv(event)">Plans</a>';html+='<a href="#" data-p="pm" onclick="nv(event)">Plan Tag Maps</a>';html+='<a href="#" data-p="ts" onclick="nv(event)">Target Software</a>';html+='<a href="#" data-p="tg" onclick="nv(event)">Tags</a>';html+='<a href="#" data-p="ak" onclick="nv(event)">API Keys</a>';html+='<a href="#" data-p="wh" onclick="nv(event)">Webhooks</a>';html+='<a href="#" data-p="st" onclick="nv(event)">Settings</a>';html+='</div></div>'}s.innerHTML=html;var saved=localStorage.getItem("fs_acc_adm")||"1";if(saved==="1"){var ac=s.querySelector(".sn-acc");if(ac)ac.classList.add("open")}document.querySelectorAll("#sn-menu a").forEach(function(a){a.classList.remove("act")});var first=s.querySelector("a");if(first)first.classList.add("act")}
+function togAc(el){var p=el.parentElement;var o=p.classList.contains("open");p.classList.toggle("open");localStorage.setItem("fs_acc_"+(p.dataset.ac||"x"),o?"0":"1")}
+
+function ld(p){if(!T)return;if(!document.getElementById("sn-menu").children.length)renderSidebar();switch(p){case"db":ldDb();break;case"ld":ldLeads();break;case"tn":ldTenants();break;case"af":ldAffiliates();break;case"ap":ldAffProducts();break;case"pl":ldPlans();break;case"pm":ldPlanMaps();break;case"ts":ldTargetSw();break;case"tg":ldTags();break;case"ak":ldKeys();break;case"wh":ldWebhooks();break;case"ic":ldIntegrations();break;case"st":ldSettings();break}}
+function ldDb(){api("/api/v1/dashboard/stats").then(function(d){var h="";if(d&&d.leads_total){h+='<div class="card"><h3>Total Leads</h3><div class="val">'+d.leads_total+"</div></div>"}if(d&&d.conversion_rate){h+='<div class="card"><h3>Conv. Rate</h3><div class="val">'+(d.conversion_rate*100).toFixed(1)+"%</div></div>"}if(d&&d.affiliates_active){h+='<div class="card"><h3>Active Affiliates</h3><div class="val">'+d.affiliates_active+"</div></div>"}if(d&&d.plans_total){h+='<div class="card"><h3>Plans</h3><div class="val">'+d.plans_total+"</div></div>"}document.getElementById("db-st").innerHTML=h||'<div class="card"><h3>Total Leads</h3><div class="val">0</div></div><div class="card"><h3>Conversion Rate</h3><div class="val">0%</div></div><div class="card"><h3>Active Affiliates</h3><div class="val">0</div></div><div class="card"><h3>Plans</h3><div class="val">0</div></div>'}).then(function(){return api("/api/v1/dashboard/activity")}).then(function(d){document.getElementById("db-ac").innerHTML=d&&d.length?'<h3 style="margin-bottom:12px;font-size:15px">Recent Activity</h3>'+d.slice(0,5).map(function(a){return'<div style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px"><span style="color:#6366f1;font-weight:600">'+a.action+"</span> <span style='color:#64748b'>"+a.description+"</span></div>"}).join(""):'<h3 style="margin-bottom:8px;font-size:15px">Dashboard</h3><p style="color:#64748b;font-size:13px">Welcome to FunnelSwift. Your lead data will appear as you add leads and affiliates.</p>'})}
+function ldLeads(){api("/api/v1/leads").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mLead()">+ Add Lead</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No leads yet.</p>';items.forEach(function(i){h+='<div class="it"><h4>'+(i.name||"Unnamed")+'</h4><p>'+(i.email||"")+(i.phone?" | "+i.phone:"")+"</p><p>Source: "+(i.source||"-")+" | Status: "+(i.status||"-")+"</p>"+'<div class="act"><button class="btn btn-sm" onclick="mLead('+i.id+')">Edit</button><button class="btn btn-sm btn-del" onclick="dItem('+"'"+'leads'+"'"+','+i.id+','+"'"+'ld'+"'"+')">Del</button></div></div>'});h+="</div>";document.getElementById("ld-ct").innerHTML=h})}
+function mLead(id){api(id?"/api/v1/leads/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="mf-name" value="'+esc(i.name||"")+'"></div>';h+='<div class="fld"><label>Email</label><input id="mf-email" value="'+esc(i.email||"")+'"></div>';h+='<div class="fld"><label>Phone</label><input id="mf-phone" value="'+esc(i.phone||"")+'"></div>';h+='<div class="fld"><label>Website</label><input id="mf-website" value="'+esc(i.website||"")+'" placeholder="https://example.com"></div>';h+='<div class="fld"><label>Source</label><input id="mf-source" value="'+esc(i.source||"")+'"></div>';h+='<div class="fld"><label>Status</label><select id="mf-status"><option'+(i.status==="new"?" selected":"")+'>new</option><option'+(i.status==="contacted"?" selected":"")+'>contacted</option><option'+(i.status==="qualified"?" selected":"")+'>qualified</option><option'+(i.status==="converted"?" selected":"")+'>converted</option><option'+(i.status==="lost"?" selected":"")+'>lost</option></select></div>';h+='<div class="fld"><label>Notes</label><textarea id="mf-notes" rows="3">'+esc(i.notes||"")+'</textarea></div>';h+='<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-top:12px"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:8px">Custom Fields</label><div id="ld-cf-list">'+(function(){var cf=i.custom_fields&&typeof i.custom_fields==="object"?i.custom_fields:{};if(Object.keys(cf).length===0)cf={website:i.website||""};var r='';Object.keys(cf).forEach(function(k){r+='<div class="cf-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input class="cf-key" placeholder="Field name" value="'+esc(k)+'" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><input class="cf-val" placeholder="Value" value="'+esc(String(cf[k]||""))+'" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><button class="btn btn-sm btn-del" onclick="this.parentElement.remove()">X</button></div>'});return r})()+'</div><button class="btn btn-sm btn-outline" onclick="addLdCField()" style="margin-top:4px">+ Add Field</button></div>';document.getElementById("mh").textContent=id?"Edit Lead":"Add Lead";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sLead('+(id||"null")+')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show")})}
+function sLead(id){var d={name:document.getElementById("mf-name").value,email:document.getElementById("mf-email").value,phone:document.getElementById("mf-phone").value,website:document.getElementById("mf-website")?document.getElementById("mf-website").value:"",source:document.getElementById("mf-source").value,status:document.getElementById("mf-status").value,notes:document.getElementById("mf-notes").value};var m=id?"PUT":"POST";var u=id?"/api/v1/leads/"+id:"/api/v1/leads";var cfs={};(document.getElementById("ld-cf-list")||document.createElement("div")).querySelectorAll(".cf-row").forEach(function(r){var k=r.querySelector(".cf-key");var v=r.querySelector(".cf-val");if(k&&v&&k.value.trim())cfs[k.value.trim()]=v.value});d.custom_fields=cfs;api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("ld")})}
+function ldAffiliates(){api("/api/v1/affiliates").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mAff()">+ Add Affiliate</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No affiliates yet.</p>';items.forEach(function(i){h+='<div class="it"><h4>'+(i.name||"Unnamed")+'</h4><p>'+(i.email||"")+"</p><p>ID: "+(i.affiliate_id||i.id||"-")+" | Rate: "+(i.commission_rate?i.commission_rate+"%":"-")+" | Industry: "+(i.industry||"-")+"</p>"+'<div class="act"><button class="btn btn-sm" onclick="mAff('+i.id+')">Edit</button><button class="btn btn-sm btn-del" onclick="dItem('+"'"+'affiliates'+"'"+','+i.id+','+"'"+'af'+"'"+')">Del</button></div></div>'});h+="</div>";document.getElementById("af-ct").innerHTML=h})}
+function mAff(id){api(id?"/api/v1/affiliates/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="mf-name" value="'+(i.name||"")+'"></div>';h+='<div class="fld"><label>Email</label><input id="mf-email" value="'+(i.email||"")+'"></div>';h+='<div class="fld"><label>Commission Rate (%)</label><input id="mf-rate" type="number" value="'+(i.commission_rate||"")+'"></div>';h+='<div class="fld"><label>Industry</label><input id="mf-industry" value="'+(i.industry||"")+'"></div>';document.getElementById("mh").textContent=id?"Edit Affiliate":"Add Affiliate";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sAff('+(id||"null")+')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show")})}
+function sAff(id){var d={name:document.getElementById("mf-name").value,email:document.getElementById("mf-email").value,commission_rate:parseFloat(document.getElementById("mf-rate").value)||0,industry:document.getElementById("mf-industry").value};var m=id?"PUT":"POST";var u=id?"/api/v1/affiliates/"+id:"/api/v1/affiliates";api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("af")})}
+function ldPlans(){api("/api/v1/plans").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mPlan()">+ Add Plan</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No plans found.</p>';items.forEach(function(i){var j=i.id;h+='<div class="it"><h4>'+(i.name||"Plan")+'</h4><p>$'+(i.price||"0")+'</p>'+(i.purchase_url?'<p><a href="'+esc(i.purchase_url)+'" target="_blank" style="color:#6366f1;font-size:12px">'+esc(i.purchase_url)+'</a></p>':'')+'<p style="font-size:11px;color:#64748b">'+(i.features?Object.values(i.features).join(", "):"")+'</p><div class="act"><button class="btn btn-sm" onclick="mPlan('+"'"+j+"'"+')">Edit</button><button class="btn btn-sm btn-del" onclick="dItem('+"'"+'plans'+"'"+','+"'"+j+"'"+','+"'"+'pl'+"'"+')">Del</button></div></div>'});h+="</div>";document.getElementById("pl-ct").innerHTML=h})}
+function mPlan(id){api(id?"/api/v1/plans/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="pl-name" value="'+esc(i.name||"")+'"></div>';h+='<div class="fld"><label>Slug</label><input id="pl-slug" value="'+esc(i.slug||"")+'"></div>';h+='<div class="fld"><label>Price</label><input id="pl-price" type="number" step="0.01" value="'+(i.price||"0")+'"></div>';h+='<div class="fld"><label>Purchase URL (Mintbird/GrooveSell etc)</label><input id="pl-url" value="'+esc(i.purchase_url||"")+'" placeholder="https://gumroad.com/l/pro"></div>';h+='<div class="fld"><label>Max Leads</label><input id="pl-leads" type="number" value="'+(i.max_leads||"")+'"></div>';h+='<div class="fld"><label>Max Tags</label><input id="pl-tags" type="number" value="'+(i.max_tags||"")+'"></div>';h+='<div class="fld"><label>Dual Routing</label><input id="pl-dual" type="checkbox" '+(i.has_dual_routing?"checked":"")+'></div>';h+='<div class="fld"><label>Multi Tenant</label><input id="pl-multi" type="checkbox" '+(i.has_multi_tenant?"checked":"")+'></div>';h+='<div class="fld"><label>White Label</label><input id="pl-white" type="checkbox" '+(i.has_white_label?"checked":"")+'></div>';document.getElementById("mh").textContent=id?"Edit Plan":"Add Plan";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sPlan(id||'')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show")})}
+function sPlan(id){var d={};d.name=document.getElementById("pl-name").value;d.slug=document.getElementById("pl-slug").value||d.name.toLowerCase().replace(/\s+/g,"-");d.price=parseFloat(document.getElementById("pl-price").value)||0;d.purchase_url=document.getElementById("pl-url").value||null;d.max_leads=parseInt(document.getElementById("pl-leads").value)||null;d.max_tags=parseInt(document.getElementById("pl-tags").value)||null;d.has_dual_routing=document.getElementById("pl-dual").checked;d.has_multi_tenant=document.getElementById("pl-multi").checked;d.has_white_label=document.getElementById("pl-white").checked;var m=id?"PUT":"POST";var u=id?"/api/v1/plans/"+id:"/api/v1/plans";api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("pl")})}
+
+function ldTags(){api("/api/v1/tags").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mTag()">+ Add Tag</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No tags yet.</p>';items.forEach(function(i){var sysBadge=i.is_system?'<span class="sys-badge">SYSTEM</span>':'';h+='<div class="it"><h4><span style="color:'+(i.color||"#6366f1")+'">'+(i.name||"Tag")+'</span>'+sysBadge+'</h4><p>Group: '+(i.group||"Custom")+'</p><div class="act">'+(i.is_system?'<span style="color:#94a3b8;font-size:11px;padding:5px 0">Read-only</span>':'<button class="btn btn-sm" onclick="mTag(\''+i.id+'\')">Edit</button><button class="btn btn-sm btn-del" onclick="dItem(\'tags\',\''+i.id+'\',\'tg\')">Del</button>')+'</div></div>'});h+="</div>";document.getElementById("tg-ct").innerHTML=h})}
+
+function mTag(id){api(id?"/api/v1/tags/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="mf-name" value="'+(i.name||"")+'"></div>';h+='<div class="fld"><label>Group</label><select id="mf-group"><option'+(i.group==="Source"?" selected":"")+'>Source</option><option'+(i.group==="Status"?" selected":"")+'>Status</option><option'+(i.group==="Events"?" selected":"")+'>Events</option><option'+(i.group==="Services"?" selected":"")+'>Services</option><option'+(i.group==="Engagement"?" selected":"")+'>Engagement</option><option'+(i.group==="Custom"?" selected":"")+'>Custom</option></select></div>';h+='<div class="fld"><label>Color</label><input id="mf-color" type="color" value="'+(i.color||"#6366f1")+'"></div>';document.getElementById("mh").textContent=id?"Edit Tag":"Add Tag";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sTag('+(id||"null")+')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show")})}
+function sTag(id){var d={name:document.getElementById("mf-name").value,group:document.getElementById("mf-group").value,color:document.getElementById("mf-color").value};var m=id?"PUT":"POST";var u=id?"/api/v1/tags/"+id:"/api/v1/tags";api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("tg")})}
+function ldKeys(){api("/api/v1/api-keys").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mKey()">+ Generate Key</button></div><table class="tbl"><tr><th>Name</th><th>Key</th><th>Created</th><th>Action</th></tr>';if(items.length===0)h+='<tr><td colspan="4" style="padding:20px;text-align:center;color:#64748b">No keys.</td></tr>';items.forEach(function(i){h+="<tr><td>"+(i.name||"")+"</td><td><code>"+(i.key||i.prefix||"-")+"</code></td><td>"+(i.created_at?i.created_at.slice(0,10):"-")+'</td><td><button class="btn btn-sm btn-del" onclick="dItem('+"'"+'api-keys'+"'"+','+i.id+','+"'"+'ak'+"'"+')">Revoke</button></td></tr>'});h+="</table>";document.getElementById("ak-ct").innerHTML=h})}
+function mKey(){document.getElementById("mh").textContent="Generate API Key";document.getElementById("mb").innerHTML='<div class="fld"><label>Name</label><input id="mf-name" placeholder="My API Key"></div>';document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sKey()">Generate</button>';document.getElementById("ov").classList.add("show")}
+function sKey(){var d={name:document.getElementById("mf-name").value};api("/api/v1/api-keys",{method:"POST",body:JSON.stringify(d)}).then(function(r){if(r&&r.key){alert("Key: "+r.key)}clsO();ld("ak")})}
+function ldSettings(){
+  Promise.all([
+    api("/api/v1/settings"),
+    api("/api/v1/provider-keys"),
+    api("/api/v1/available-providers")
+  ]).then(function(results){
+    var i={};
+    if(Array.isArray(results[0])&&results[0].length>0&&results[0][0].key){
+      results[0].forEach(function(s){i[s.key]=s.value});
+    }else{
+      i=results[0]||{};
+    }
+    var keys=Array.isArray(results[1])?results[1]:(results[1]&&results[1].data?results[1].data:(results[1]&&results[1].keys?results[1].keys:[]));
+    var avail=Array.isArray(results[2])?results[2]:(results[2]&&results[2].data?results[2].data:(results[2]&&results[2].providers?results[2].providers:[]));
+    var h="";
+    // Tenant section
+    h+='<div class="card"><h3 style="margin-bottom:16px;font-size:16px">Account Settings</h3>';
+    h+='<div class="fld"><label>Tenant Name</label><input id="mf-name" value="'+(i.tenant_name||"")+'"></div>';
+    h+='<div class="fld"><label>Slug</label><input id="mf-slug" value="'+(i.slug||"")+'"></div>';
+    h+='<div class="fld"><label>New Password</label><input id="mf-pw" type="password" placeholder="Leave blank"></div>';
+    h+='<button class="btn" onclick="sSettings()">Save</button><div id="st-msg" style="margin-top:8px"></div></div>';
+
+    // Footer section
+    h+='<div class="card" style="margin-top:16px"><h3 style="margin-bottom:16px;font-size:16px">Footer</h3>';
+    h+='<div class="fld"><label>Copyright Year</label><input id="mf-fyear" value="'+(i.footer_year||"2026")+'"></div>';
+    h+='<div class="fld"><label>Company Name</label><input id="mf-fcompany" value="'+(i.footer_company||"SwiftSoftware")+'"></div>';
+    h+='<button class="btn" onclick="saveFooter()">Save Footer</button></div>';
+
+    // Provider Keys section
+    h+='<div class="card" style="margin-top:16px"><h3 style="margin-bottom:16px;font-size:16px">API Provider Keys</h3>';
+    h+='<button class="btn" onclick="showAddProviderKey()" style="margin-bottom:12px">+ Add Key</button>';
+    h+='<table class="tbl"><thead><tr><th>Provider</th><th>Key</th><th>Base URL</th><th></th></tr></thead><tbody>';
+    if(keys.length===0){
+      h+='<tr><td colspan="4" style="text-align:center;padding:16px;color:#64748b">No API keys configured.</td></tr>';
+    }else{
+      keys.forEach(function(k){
+        var mk=k.api_key?k.api_key.substring(0,3)+"..."+k.api_key.substring(k.api_key.length-3):"********";
+        h+='<tr><td><strong>'+esc(k.provider)+'</strong></td><td>'+mk+'</td><td>'+(k.base_url||"-")+'</td>';
+        h+='<td><button class="btn btn-sm btn-del" onclick="dProviderKey(\''+k.provider+'\')">Delete</button></td></tr>';
+      });
+    }
+    h+='</tbody></table></div>';
+
+    document.getElementById("st-ct").innerHTML=h;
+  });
+}
+function sSettings(){var name=document.getElementById("mf-name").value;var slug=document.getElementById("mf-slug").value;var pw=document.getElementById("mf-pw").value;var promises=[];if(name)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"tenant_name",value:name})}));if(slug)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"slug",value:slug})}));if(pw)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"password",value:pw})}));Promise.all(promises).then(function(){alert("Saved");})}
+function dItem(t,i,r){if(!confirm("Delete?"))return;api("/api/v1/"+t+"/"+i,{method:"DELETE"}).then(function(){ld(r)})}
+function clsO(){document.getElementById("ov").classList.remove("show")}
+document.getElementById("ov").addEventListener("click",function(e){if(e.target===this)clsO()})
+window.addEventListener("hashchange",function(){var h=window.location.hash.replace("#","")||"db";nv(null,h)});(function(){var t=localStorage.getItem("ws_fs_token");if(t){T=t;fetch("/api/v1/auth/me",{headers:{"Authorization":"Bearer "+T}}).then(function(r){return r.json()}).then(function(u){U=u;renderSidebar();document.getElementById("log").style.display="none";document.getElementById("app").style.display="block";document.getElementById("ue").textContent=u.email;var h=window.location.hash.replace("#","")||"db";nv(null,h);setTimeout(function(){showWalkthrough(h)},500)}).catch(function(){localStorage.removeItem("ws_fs_token");document.getElementById("log").style.display="block";document.getElementById("app").style.display="none"})}})()
+
+// Provider Key management
+function showAddProviderKey(){
+  api("/api/v1/available-providers").then(function(d){
+    var provs=Array.isArray(d)?d:(d&&d.data?d.data:(d&&d.providers?d.providers:[]));
+    var opts='<option value="">-- Select Provider --</option>';
+    provs.forEach(function(p){
+      var n=p.provider||p.name||p;
+      opts+='<option value="'+esc(n)+'">'+esc(n)+'</option>';
+    });
+    opts+='<option value="__other__">Other...</option>';
+    document.getElementById("mh").textContent="Add API Key";
+    document.getElementById("mb").innerHTML=
+      '<div class="fld"><label>Provider</label><select id="pk-provider" onchange="pkToggleCustom(this)">'+opts+'</select></div>'+
+      '<div class="fld" id="pk-custom" style="display:none"><label>Provider Name</label><input id="pk-provider-custom"></div>'+
+      '<div class="fld"><label>API Key</label><input id="pk-key" type="password"></div>'+
+      '<div class="fld"><label>Base URL (optional)</label><input id="pk-baseurl"></div>';
+    document.getElementById("mf").innerHTML=
+      '<button class="btn btn-sec" onclick="clsO()">Cancel</button>'+
+      '<button class="btn" onclick="sProviderKey()">Save Key</button>';
+    document.getElementById("ov").classList.add("show");
+  });
+}
+function pkToggleCustom(el){var pk=document.getElementById('pk-custom');if(pk)pk.style.display=el.value==='__other__'?'':'none';}
+function sProviderKey(){
+  var sel=document.getElementById("pk-provider");
+  var provider=sel.value;
+  if(provider==="__other__")provider=document.getElementById("pk-provider-custom").value;
+  var api_key=document.getElementById("pk-key").value;
+  var base_url=document.getElementById("pk-baseurl").value;
+  if(!provider||!api_key){alert("Provider and API Key required");return;}
+  api("/api/v1/provider-keys",{method:"POST",body:JSON.stringify({provider:provider,api_key:api_key,base_url:base_url||undefined})}).then(function(){
+    clsO();ld("st");
+  });
+}
+function dProviderKey(provider){
+  if(!confirm("Delete API key for "+provider+"?"))return;
+  api("/api/v1/provider-keys/"+encodeURIComponent(provider),{method:"DELETE"}).then(function(){ld("st");});
+}
+function saveFooter(){
+  var year=document.getElementById("mf-fyear").value;
+  var company=document.getElementById("mf-fcompany").value;
+  Promise.all([
+    api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"footer_year",value:year})}),
+    api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"footer_company",value:company})})
+  ]).then(function(){
+    document.getElementById("st-msg").textContent="Footer saved!";
+    document.getElementById("st-msg").style.color="#166534";
+  });
+}
+function esc(s){if(!s)return'';return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+// TENANTS
+function addLdCField(){var el=document.getElementById("ld-cf-list");if(!el)return;var d=document.createElement("div");d.className="cf-row";d.style.cssText="display:flex;gap:8px;align-items:center;margin-bottom:8px";d.innerHTML='<input class="cf-key" placeholder="Field name" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><input class="cf-val" placeholder="Value" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><button class="btn btn-sm btn-del" onclick="this.parentElement.remove()">X</button>';el.appendChild(d)}
+function ldTenants(){var q=document.getElementById("tn-q")?document.getElementById("tn-q").value:"";var fp=document.getElementById("tn-fp")?document.getElementById("tn-fp").value:"";var u="/api/v1/tenants";var p=[];if(q)p.push("q="+encodeURIComponent(q));if(fp)p.push("plan="+encodeURIComponent(fp));if(p.length)u+="?"+p.join("&");api(u).then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mTenant()">+ Add Tenant</button><input id="tn-q" placeholder="Search..." style="margin-left:8px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" onkeyup="ldTenants()"><select id="tn-fp" onchange="ldTenants()" style="margin-left:4px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><option value="">All Plans</option><option value="none">No Plan</option></select></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No tenants yet.</p>';items.forEach(function(i){var cf=i.custom_fields&&typeof i.custom_fields==="object"?i.custom_fields:{};var cfe=Object.keys(cf).length>0?'<p>'+Object.entries(cf).slice(0,3).map(function(e){return esc(e[0])+": "+esc(String(e[1]||""))}).join(" | ")+"</p>":"";h+='<div class="it"><h4>'+(i.name||"Unnamed")+'</h4><p>'+(i.email||"")+" | Plan: "+(i.plan_name||"None")+'</p><p>Credits: '+(i.credit_balance||"0")+((i.credit_balance!==undefined)?' <span style="color:#64748b">| Used: '+(i.credits_used||"0")+"</span>":"")+"</p>"+cfe+'<div class="act"><button class="btn btn-sm" onclick="mTenant(\''+i.id+'\')">Edit</button><button class="btn btn-sm btn-outline" onclick="showCredits(\''+i.id+'\',\''+esc(i.name||"Tenant")+'\')">Credits</button><button class="btn btn-sm btn-del" onclick="dItem(\'tenants\',\''+i.id+'\',\'tn\')">Del</button></div></div>'});h+="</div>";document.getElementById("tn-ct").innerHTML=h;populatePlanFilter()})}
+function populatePlanFilter(){api("/api/v1/plans").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var sel=document.getElementById("tn-fp");if(!sel)return;var cv=sel.value;sel.innerHTML='<option value="">All Plans</option><option value="none">No Plan</option>';items.forEach(function(p){sel.innerHTML+='<option value="'+esc(p.slug||p.id)+'"'+(cv===p.slug||cv===p.id?' selected':'')+">"+esc(p.name)+"</option>"})})}
+function showCredits(id,name){api("/api/v1/tenants/"+id+"/credits").then(function(d){var tx=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div class="fld"><label>Add Credits</label><div style="display:flex;gap:8px"><input id="cr-add" type="number" placeholder="Amount" style="width:120px;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><select id="cr-type" style="padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><option value="admin_credit">Admin</option><option value="purchase">Purchase</option><option value="refund">Refund</option></select><button class="btn-sm" style="padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer" onclick="addCredits(\''+id+'\')">Add</button></div></div>';h+='<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-top:12px"><h4 style="font-size:14px;margin-bottom:8px">Transactions</h4>';if(tx.length===0)h+='<p style="color:#94a3b8;font-size:12px">None.</p>';tx.forEach(function(t){h+='<div style="padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px"><span style="font-weight:600;color:'+(t.amount>0?"#16a34a":"#ef4444")+'">'+(t.amount>0?"+":"")+t.amount+"</span> "+esc(t.transaction_type||"")+" - "+esc(t.description||"")+' <span style="color:#94a3b8">'+(t.created_at?t.created_at.slice(0,16).replace("T"," "):"")+"</span></div>"});h+="</div>";document.getElementById("mh").textContent=esc(name)+" - Credits";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Close</button>';document.getElementById("ov").classList.add("show")})}
+function addCredits(id){var amt=parseInt(document.getElementById("cr-add").value);if(!amt||amt===0)return;var type=document.getElementById("cr-type").value;api("/api/v1/tenants/"+id+"/credits",{method:"POST",body:JSON.stringify({amount:amt,transaction_type:type,description:"Admin"})}).then(function(){showCredits(id,document.getElementById("mh").textContent.replace(" - Credits",""))})}
+function mTenant(id){api(id?"/api/v1/tenants/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="tn-name" value="'+esc(i.name||"")+'"></div>';h+='<div class="fld"><label>Slug</label><input id="tn-slug" value="'+esc(i.slug||"")+'"></div>';h+='<div class="fld"><label>Email</label><input id="tn-email" value="'+esc(i.email||"")+'"></div>';h+='<div class="fld"><label>Plan Override</label><select id="tn-plan"><option value="">No Plan</option></select><p style="font-size:11px;color:#64748b;margin-top:2px">Change this to downgrade/upgrade tenants manually</p>';h+='<div class="fld"><label>Initial Credits</label><input id="tn-credits" type="number" value="0"></div>';h+='<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-top:12px"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">Custom Fields</label><div id="tn-cf-list">';var cf=i.custom_fields&&typeof i.custom_fields==="object"?i.custom_fields:{website:""};Object.keys(cf).forEach(function(k){h+='<div class="cf-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input class="cf-key" placeholder="Field name" value="'+esc(k)+'" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><input class="cf-val" placeholder="Value" value="'+esc(String(cf[k]||""))+'" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><button class="btn btn-sm btn-del" onclick="this.parentElement.remove()">X</button></div>'});h+='</div><button class="btn btn-sm btn-outline" onclick="addTnCField()" style="margin-top:4px">+ Add Field</button></div>';document.getElementById("mh").textContent=id?"Edit Tenant":"Add Tenant";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sTenant(\''+(id||"")+'\')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show");populatePlanDropdown()})}
+function addTnCField(){var el=document.getElementById("tn-cf-list");if(!el)return;var d=document.createElement("div");d.className="cf-row";d.style.cssText="display:flex;gap:8px;align-items:center;margin-bottom:8px";d.innerHTML='<input class="cf-key" placeholder="Field name" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><input class="cf-val" placeholder="Value" style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><button class="btn btn-sm btn-del" onclick="this.parentElement.remove()">X</button>';el.appendChild(d)}
+function populatePlanDropdown(){api("/api/v1/plans").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var sel=document.getElementById("tn-plan");if(!sel)return;var cv=sel.value;sel.innerHTML='<option value="">No Plan</option>';items.forEach(function(p){sel.innerHTML+='<option value="'+esc(p.id)+'"'+(cv===p.id?' selected':'')+">"+esc(p.name)+"</option>"})})}
+function sTenant(id){var d={};d.name=document.getElementById("tn-name")?document.getElementById("tn-name").value:"";d.slug=document.getElementById("tn-slug")?document.getElementById("tn-slug").value:"";d.email=document.getElementById("tn-email")?document.getElementById("tn-email").value:"";d.plan_id=document.getElementById("tn-plan")?document.getElementById("tn-plan").value:"";d.initial_credits=parseInt((document.getElementById("tn-credits")||{}).value)||0;var cfs={};(document.getElementById("tn-cf-list")||document.createElement("div")).querySelectorAll(".cf-row").forEach(function(r){var k=r.querySelector(".cf-key");var v=r.querySelector(".cf-val");if(k&&v&&k.value.trim())cfs[k.value.trim()]=v.value});d.custom_fields=cfs;var m=id?"PUT":"POST";var u=id?"/api/v1/tenants/"+id:"/api/v1/tenants";api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("tn")})}
+
+function ldAffProducts(){api("/api/v1/integration-targets").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mAffProd()">+ Add Product</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No affiliate products yet. These integrate with plans via Plan Tag Mappings.</p>';items.forEach(function(i){h+='<div class="it"><h4>'+(i.name||"Unnamed")+'</h4><p>Type: '+(i.type||"-")+' | Target: '+(i.target_software||"-")+'</p><div class="act"><button class="btn btn-sm" onclick="mAffProd(''+i.id+'')">Edit</button><button class="btn btn-sm btn-del" onclick="dItem('integration-targets',''+i.id+'','ap')">Del</button></div></div>'});h+="</div>";document.getElementById("ap-ct").innerHTML=h})}
+function mAffProd(id){api(id?"/api/v1/integration-targets/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="ap-name" value="'+esc(i.name||"")+'"></div>';h+='<div class="fld"><label>Type</label><select id="ap-type"><option'+(i.type==="software"?" selected":"")+'>software</option><option'+(i.type==="service"?" selected":"")+'>service</option></select></div>';h+='<div class="fld"><label>Target Software</label><input id="ap-ts" value="'+esc(i.target_software||"")+'"></div>';document.getElementById("mh").textContent=id?"Edit Product":"Add Product";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sAffProd(''+(id||"")+'')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show")})}
+function sAffProd(id){var d={name:document.getElementById("ap-name").value,type:document.getElementById("ap-type").value,target_software:document.getElementById("ap-ts").value};var m=id?"PUT":"POST";var u=id?"/api/v1/integration-targets/"+id:"/api/v1/integration-targets";api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("ap")})}
+function ldPlanMaps(){api("/api/v1/plan-tag-mappings").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="syncPlanMaps()">Sync from Plans</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No plan-tag mappings yet. Click Sync to auto-generate from your plans.</p>';items.forEach(function(i){h+='<div class="it"><h4>'+(i.plan_name||i.plan_id||"Plan")+'</h4><p>Tag: '+(i.tag_name||i.tag_id||"-")+'</p><p>Source: '+(i.source_software||"-")+' → Target: '+(i.target_software||"-")+'</p><p>Comm: '+(i.commission_rate?i.commission_rate+"%":"-")+' | Dual: '+(i.allow_dual_routing?"Yes":"No")+'</p></div>'});h+="</div>";document.getElementById("pm-ct").innerHTML=h})}
+function syncPlanMaps(){api("/api/v1/plan-tag-mappings/sync",{method:"POST"}).then(function(){ld("pm")})}
+function ldTargetSw(){api("/api/v1/target-software").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mTargetSw()">+ Add Target</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No target software configured. Add software that leads can be routed to.</p>';items.forEach(function(i){h+='<div class="it"><h4>'+(i.name||"Unnamed")+'</h4><p>Slug: '+(i.slug||"-")+'</p><div class="act"><button class="btn btn-sm" onclick="mTargetSw(''+i.id+'')">Edit</button><button class="btn btn-sm btn-del" onclick="dItem('target-software',''+i.id+'','ts')">Del</button></div></div>'});h+="</div>";document.getElementById("ts-ct").innerHTML=h})}
+function mTargetSw(id){api(id?"/api/v1/target-software/"+id:"").then(function(d){var i=id?d:{};var h="";h+='<div class="fld"><label>Name</label><input id="ts-name" value="'+esc(i.name||"")+'"></div>';h+='<div class="fld"><label>Slug</label><input id="ts-slug" value="'+esc(i.slug||"")+'"></div>';h+='<div class="fld"><label>Webhook URL</label><input id="ts-api" value="'+esc(i.api_endpoint||"")+'" placeholder="https://hooks.example.com/webhook"></div>';document.getElementById("mh").textContent=id?"Edit Target":"Add Target";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sTargetSw(''+(id||"")+'')">'+(id?"Save":"Create")+"</button>";document.getElementById("ov").classList.add("show")})}
+function sTargetSw(id){var d={name:document.getElementById("ts-name").value,slug:document.getElementById("ts-slug").value,webhook_url:document.getElementById("ts-api").value||null};var m=id?"PUT":"POST";var u=id?"/api/v1/target-software/"+id:"/api/v1/target-software";api(u,{method:m,body:JSON.stringify(d)}).then(function(){clsO();ld("ts")})}
+function ldWebhooks(){api("/api/v1/webhooks").then(function(d){var items=Array.isArray(d)?d:d&&d.data?d.data:[];var h='<div style="margin-bottom:12px"><button class="btn" onclick="mWebhook()">+ Add Webhook</button></div><div class="grd">';if(items.length===0)h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1;padding:20px">No webhooks configured.</p>';items.forEach(function(i){h+='<div class="it"><h4>'+(i.name||"Webhook")+'</h4><p>URL: '+(i.url||"-")+'</p><p>Events: '+(i.events?i.events.join(", "):"-")+'</p><div class="act"><button class="btn btn-sm" onclick="testWh(''+i.id+'')">Test</button><button class="btn btn-sm btn-del" onclick="dItem('webhooks',''+i.id+'','wh')">Del</button></div></div>'});h+="</div>";document.getElementById("wh-ct").innerHTML=h})}
+function mWebhook(){var h="";h+='<div class="fld"><label>Name</label><input id="wh-name" placeholder="My Webhook"></div>';h+='<div class="fld"><label>URL</label><input id="wh-url" placeholder="https://hooks.example.com/payload"></div>';h+='<div class="fld"><label>Events (comma separated)</label><input id="wh-ev" placeholder="lead.created, tenant.updated"></div>';document.getElementById("mh").textContent="Add Webhook";document.getElementById("mb").innerHTML=h;document.getElementById("mf").innerHTML='<button class="btn btn-sec" onclick="clsO()">Cancel</button><button class="btn" onclick="sWebhook()">Create</button>';document.getElementById("ov").classList.add("show")}
+function sWebhook(){var d={name:document.getElementById("wh-name").value,url:document.getElementById("wh-url").value,events:document.getElementById("wh-ev").value.split(",").map(function(s){return s.trim()}).filter(Boolean)};api("/api/v1/webhooks",{method:"POST",body:JSON.stringify(d)}).then(function(){clsO();ld("wh")})}
+function testWh(id){api("/api/v1/webhooks/"+id+"/test",{method:"POST"}).then(function(d){alert("Test sent! Status: "+(d.status||"check logs"))})}
+
+
+function ldIntegrations(){var keyInfo=U&&U.api_key?U.api_key.prefix||"":null;var products=U&&U.available_products?U.available_products:[];var h='<div class="card"><h3>Your API Key</h3><p style="color:#64748b;font-size:13px;margin:8px 0 12px">Use this key to connect FunnelSwift to other SwiftSoftware apps (ADASwift, WorkflowSwift, etc.) or third-party tools.</p>';if(keyInfo){h+='<div style="background:#f8fafc;padding:12px;border-radius:6px;font-family:monospace;font-size:14px;display:flex;align-items:center;gap:8px"><code id="api-key-display" style="flex:1">fs_********</code><button class="btn btn-sm" onclick="revealKey()">Show</button><button class="btn btn-sm" onclick="copyKey()">Copy</button></div>'}else{h+='<p style="color:#ef4444;font-size:13px">No auto-generated API key found. Contact admin.</p>'}h+='</div>';h+='<div class="card" style="margin-top:16px"><h3>Available SwiftSoftware Integrations</h3>';h+='<div class="grd" style="margin-top:12px">';var swiftApps=[{n:"ADASwift",d:"ADA compliance scanning & reporting",u:"https://adaswift.com"},{n:"WorkflowSwift",d:"Automation workflows & n8n integration",u:"https://workflowswift.com"},{n:"CoreSwiftCRM",d:"Customer relationship management",u:"https://coreswiftcrm.com"},{n:"IncentiveSwift",d:"Incentive & rewards management",u:"https://incentiveswift.com"},{n:"MissedCallRespondr",d:"Missed call response automation",u:"https://missedcallrespondr.com"}];swiftApps.forEach(function(a){h+='<div class="it"><h4>'+a.n+'</h4><p>'+a.d+'</p><a href="'+a.u+'" target="_blank" class="btn btn-sm" style="margin-top:8px;display:inline-block;text-decoration:none">Connect</a></div>'});h+="</div></div>";h+='<div class="card" style="margin-top:16px"><h3>Affiliate Products You Can Promote</h3>';h+='<div class="grd" style="margin-top:12px">';if(products.length===0){h+='<p style="color:#64748b;font-size:13px;grid-column:1/-1">No products available yet. Check back later.</p>'}else{products.forEach(function(p){h+='<div class="it"><h4>'+(p.name||"Product")+'</h4><p>'+(p.type||"")+'</p><button class="btn btn-sm" onclick="alert(\'Copy your affiliate link: '+window.location.origin+'/ref/'+(p.id||"")+'\')">Get Affiliate Link</button></div>'})}h+="</div></div>";document.getElementById("ic-ct").innerHTML=h}
+function revealKey(){var el=document.getElementById("api-key-display");if(el&&U.api_key&&U.api_key.key){el.textContent=U.api_key.key}}
+function copyKey(){var el=document.getElementById("api-key-display");if(el){navigator.clipboard.writeText(el.textContent).then(function(){el.textContent="Copied!";setTimeout(function(){revealKey()},2000)})}}
+
+</script>
+</body>
+</html>

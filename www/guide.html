@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FunnelSwift User Guide</title>
+<style>
+:root{--indigo:#4f46e5;--il:#6366f1;--ig:rgba(79,70,229,.15);--bd:#0E0F12;--bc:#16181D;--be:#1E2028;--br:#2A2D38;--tp:#F1F5F9;--ts:#94A3B8;--tm:#64748B;--ok:#22C55E;--warn:#F97316;--bad:#EF4444}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bd);color:var(--tp);line-height:1.6;min-height:100vh}
+.sidebar{width:260px;background:var(--bc);border-right:1px solid var(--br);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100;display:flex;flex-direction:column}
+.sl{display:flex;align-items:center;gap:12px;padding:24px;border-bottom:1px solid var(--br)}.sl .li{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--indigo),#8B5CF6);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-weight:700;font-size:20px}
+.sl h1{font-size:18px;font-weight:600;color:var(--tp)}.sl p{font-size:11px;color:var(--tm)}.sn{flex:1;padding:16px 12px;overflow-y:auto}
+.sn .st{padding:8px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--tm)}
+.ni{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--ts);text-decoration:none;transition:all .15s;cursor:pointer;border:none;background:none;width:100%;text-align:left;margin-bottom:2px}
+.ni:hover{background:var(--br);color:var(--tp)}.ni.on{background:var(--ig);color:var(--il);border-left:2px solid var(--il)}
+.sf{padding:16px 24px;border-top:1px solid var(--br);text-align:center;font-size:12px;color:var(--tm)}
+.mc{margin-left:260px;flex:1;display:flex;flex-direction:column}
+.tb{padding:16px 28px;border-bottom:1px solid var(--br);background:var(--bc);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.tb h2{font-size:16px;font-weight:600}.tbb{background:var(--ig);color:var(--il);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500}
+.ca{flex:1;padding:28px;overflow-y:auto;max-width:1100px}
+h1{font-size:32px;font-weight:700;margin-bottom:8px}
+h2{font-size:24px;font-weight:700;margin:48px 0 16px;padding-bottom:12px;border-bottom:1px solid var(--br)}
+h3{font-size:18px;font-weight:600;margin:28px 0 12px;color:var(--il)}h4{font-size:15px;font-weight:600;margin:20px 0 8px}
+p{margin-bottom:16px;color:var(--ts)}a{color:var(--il);text-decoration:none}a:hover{text-decoration:underline}
+.ld{font-size:18px;color:var(--ts);margin-bottom:32px;padding:16px 0;border-bottom:1px solid var(--br)}
+.cd{background:var(--bc);border:1px solid var(--br);border-radius:12px;padding:24px;margin-bottom:20px}
+.fg{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0}
+.fc{background:var(--be);border:1px solid var(--br);border-radius:10px;padding:20px;transition:border-color .2s}
+.fc:hover{border-color:var(--indigo)}.fc .fi{width:40px;height:40px;border-radius:10px;background:var(--ig);display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px;color:var(--il)}
+.fc h4{margin:0 0 8px;font-size:14px;color:var(--tp)}.fc p{margin:0;font-size:13px;color:var(--tm)}
+code{background:var(--be);color:var(--il);padding:2px 8px;border-radius:4px;font-size:13px;font-family:"SF Mono",monospace}
+pre{background:var(--be);border:1px solid var(--br);border-radius:8px;padding:16px;overflow-x:auto;margin:16px 0;font-size:13px;font-family:"SF Mono",monospace;color:var(--ts);line-height:1.5}
+pre code{background:none;padding:0;color:var(--ts)}table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+th,td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--br)}th{background:var(--be);font-weight:600;color:var(--tp);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+td{color:var(--ts)}tr:hover td{background:rgba(255,255,255,.02)}
+.bd{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
+.bi{background:var(--ig);color:var(--il)}.bg{background:rgba(34,197,94,.15);color:var(--ok)}
+.bo{background:rgba(249,115,22,.15);color:var(--warn)}.br{background:rgba(239,68,68,.15);color:var(--bad)}
+.bb{background:rgba(59,130,246,.15);color:#3B82F6}
+.sl{list-style:none;counter-reset:s}.sl li{counter-increment:s;padding:16px 16px 16px 52px;position:relative;margin-bottom:8px;background:var(--be);border-radius:8px;border:1px solid var(--br)}
+.sl li::before{content:counter(s);position:absolute;left:14px;top:14px;width:26px;height:26px;border-radius:50%;background:var(--indigo);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.sl li strong{color:var(--tp)}.sl li p{margin:4px 0 0;font-size:13px}
+.al{padding:14px 18px;border-radius:8px;margin:16px 0;border-left:3px solid;font-size:14px}
+.a1{background:rgba(59,130,246,.08);border-color:#3B82F6;color:#93C5FD}
+.a2{background:rgba(249,115,22,.08);border-color:var(--warn);color:#FDBA74}
+.a3{background:rgba(34,197,94,.08);border-color:var(--ok);color:#86EFAC}
+.sr{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0}
+.sc{background:var(--bc);border:1px solid var(--br);border-radius:10px;padding:16px}
+.sc .sv{font-size:28px;font-weight:700;color:var(--tp)}.sc .sl2{font-size:13px;color:var(--tm);margin-top:4px}
+.sc .sc2{font-size:12px;color:var(--ok);margin-top:4px}
+dl{display:grid;grid-template-columns:140px 1fr;gap:8px 16px;margin:12px 0}
+dt{font-weight:600;color:var(--tp);font-size:13px;padding:6px 0}
+dd{color:var(--ts);font-size:13px;padding:6px 0}
+.fi{border:1px solid var(--br);border-radius:8px;margin-bottom:8px;overflow:hidden}
+.fq{padding:14px 18px;background:var(--be);font-weight:600;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--tp);border:none;width:100%;text-align:left}
+.fq:hover{background:var(--bc)}.fa{padding:16px 18px;border-top:1px solid var(--br);font-size:14px;color:var(--ts);display:none}.fa.on{display:block}
+.kt{display:inline-flex;align-items:center;gap:6px;background:var(--be);border:1px solid var(--br);border-radius:6px;padding:4px 10px;font-size:13px;font-family:"SF Mono",monospace;color:var(--ts)}
+.kt .kk{color:var(--tm)}.kt .kv{color:var(--il)}
+ul{color:var(--ts);margin:8px 0 16px 24px}ul li{margin-bottom:4px}
+.mb{display:none;position:fixed;top:14px;left:14px;z-index:200;background:var(--bc);border:1px solid var(--br);color:var(--tp);width:40px;height:40px;border-radius:8px;cursor:pointer;font-size:20px;align-items:center;justify-content:center}
+@media(max-width:900px){.sidebar{transform:translateX(-100%);transition:transform .25s ease}.sidebar.on{transform:translateX(0)}.so{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}.so.on{display:block}.mc{margin-left:0}.mb{display:flex}.tb{padding:14px 16px 14px 64px}.ca{padding:16px}.fg{grid-template-columns:1fr}dl{grid-template-columns:1fr;gap:2px}dt{padding-bottom:0}}
+</style>
+</head>
+<body>
+<button class="mb" onclick="ts()">=</button>
+<div class="so" id="so" onclick="ts()"></div>
+<div class="app-layout">
+<aside class="sidebar" id="sb">
+<div class="sl"><div class="li">R</div><div><h1>FunnelSwift</h1><p>User Guide v2.0</p></div></div>
+<nav class="sn">
+<div class="st">Getting Started</div>
+<a href="#intro" class="ni" onclick="cm()">I Introduction</a>
+<a href="#gs" class="ni" onclick="cm()">K Getting Started</a>
+<div class="st">Core Features</div>
+<a href="#db" class="ni" onclick="cm()">D Dashboard</a>
+<a href="#lds" class="ni" onclick="cm()">L Leads</a>
+<a href="#af" class="ni" onclick="cm()">A Affiliates</a>
+<a href="#pl" class="ni" onclick="cm()">P Plans</a>
+<a href="#tg" class="ni" onclick="cm()">T Tags</a>
+<div class="st">New Features</div>
+<a href="#kc" class="ni" onclick="cm()">K Kinetic Cards</a>
+<a href="#cp" class="ni" onclick="cm()">C Campaigns</a>
+<a href="#wh" class="ni" onclick="cm()">W Webhooks</a>
+<a href="#is" class="ni" onclick="cm()">I Insights</a>
+<div class="st">Integrations</div>
+<a href="#ak" class="ni" onclick="cm()">K API Keys</a>
+<a href="#wl" class="ni" onclick="cm()">W Web-to-Lead</a>
+<a href="#st" class="ni" onclick="cm()">S Settings</a>
+<div class="st">Support</div>
+<a href="#fq" class="ni" onclick="cm()">Q FAQ</a>
+</nav>
+<div class="sf">&copy; 2026 FunnelSwift</div>
+</aside>
+<div class="mc">
+<header class="tb"><h2>FunnelSwift User Guide</h2><span class="tbb">v2.0</span></header>
+<div class="ca">
+<script>function ts(){var s=document.getElementById("sb"),o=document.getElementById("so");s.classList.toggle("on");o.classList.toggle("on")}function cm(){if(window.innerWidth<=900){document.getElementById("sb").classList.remove("on");document.getElementById("so").classList.remove("on")}}</script>
+<h1 id="intro">FunnelSwift User Guide</h1>
+<p class="ld">A comprehensive guide to using FunnelSwift the Lead Generation & Affiliate Marketing platform. Manage leads, affiliates, plans, tags, and API integrations from one dashboard.</p>
+<div class="fg">
+<div class="fc"><div class="fi">D</div><h4>Real-Time Dashboard</h4><p>Monitor lead stats, conversion rates, top sources, and recent activity.</p></div>
+<div class="fc"><div class="fi">L</div><h4>Lead Management</h4><p>Full CRUD with name, email, phone, source, status, tags, notes, and assigned agents.</p></div>
+<div class="fc"><div class="fi">A</div><h4>Affiliate Marketplace</h4><p>Auto-generated affiliate IDs, commission rates, payout tracking.</p></div>
+<div class="fc"><div class="fi">P</div><h4>Plan Management</h4><p>Pricing tiers, feature sets, commission rules, plan-to-tag mapping.</p></div>
+<div class="fc"><div class="fi">T</div><h4>Tag Groups</h4><p>Source, Status, Events, Services, Engagement, Custom groups.</p></div>
+<div class="fc"><div class="fi">K</div><h4>API Integration</h4><p>Generate and revoke API keys with granular permissions.</p></div>
+</div>
+<dl><dt>URL</dt><dd><a href="https://funnelswift.net">funnelswift.net</a></dd><dt>Port</dt><dd>8080</dd><dt>API</dt><dd><code>/api/v1/</code></dd><dt>Theme</dt><dd><span class="kt"><span class="kk">Primary</span><span class="kv">#4f46e5</span></span></dd></dl>
+<h2 id="gs">Getting Started</h2><h3>Login Credentials</h3><div class="cd"><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Email</td><td><code>swiftsoftware143@yahoo.com</code></td></tr><tr><td>Password</td><td><code>SwiftAdmin2026!</code></td></tr></tbody></table></div><h3>Logging In</h3><ol class="sl"><li><strong>Navigate to login</strong><p>Open funnelswift.net/login in your browser.</p></li><li><strong>Enter credentials</strong><p>Email and password from above.</p></li><li><strong>Click Sign In</strong><p>Redirected to Dashboard. Sidebar accesses all modules.</p></li></ol><h3>Interface</h3><p>Dark sidebar with card-based content area using indigo accents.</p><div class="fg"><div class="fc"><div class="fi" style="background:var(--br);color:var(--ts)">N</div><h4>Sidebar</h4><p>Links to Dashboard, Leads, Capture, Tags, API Keys, Settings, Affiliate Marketplace. Admin section at bottom.</p></div><div class="fc"><div class="fi" style="background:var(--br);color:var(--ts)">T</div><h4>Top Bar</h4><p>Page title and actions. Sticky at top of scroll area.</p></div><div class="fc"><div class="fi" style="background:var(--br);color:var(--ts)">F</div><h4>Live Feed</h4><p>Collapsible right panel. Toggle with button at top-right.</p></div></div><h2 id="db">Dashboard</h2><p>Command center for real-time lead generation performance.</p><h3>Stats Cards</h3><div class="sr"><div class="sc"><div class="sv">142</div><div class="sl2">Total Leads</div><div class="sc2">+12% this week</div></div><div class="sc"><div class="sv">8</div><div class="sl2">New Today</div><div class="sc2">+5 this week</div></div><div class="sc"><div class="sv">12</div><div class="sl2">Hot Leads</div><div class="sc2">+3 this week</div></div><div class="sc"><div class="sv">35</div><div class="sl2">Qualified</div><div class="sc2">+8% this week</div></div></div><h3>Charts</h3><div class="fg"><div class="fc"><div class="fi">C</div><h4>Leads by Source</h4><p>Bar chart by source: Form, SMS, ADA, AI, Missed Call. Each has a distinct icon.</p></div><div class="fc"><div class="fi">T</div><h4>Leads Over Time</h4><p>Line chart tracking daily/weekly trends. Hover for exact counts.</p></div><div class="fc"><div class="fi">F</div><h4>Conversion Funnel</h4><p>Visual: New to Contacted to Qualified to Converted.</p></div></div><h3>Live Feed</h3><p>Right panel shows real-time events with name, source badge, timestamp, and status.</p><div class="al a1"><strong>Tip:</strong> Toggle Live Feed with the panel toggle button at top-right.</div><h2 id="lds">Leads</h2><p>Full CRUD interface for managing prospects and contacts.</p><h3>Leads List</h3><p>Main leads page (<code>/leads</code>) with searchable/filterable table:</p><table><thead><tr><th>Column</th><th>Description</th></tr></thead><tbody><tr><td>Name</td><td>Full name</td></tr><tr><td>Email</td><td>Clickable mailto</td></tr><tr><td>Phone</td><td>Clickable tel</td></tr><tr><td>Source</td><td>Form, SMS, ADA, AI, Missed Call</td></tr><tr><td>Status</td><td>New, Contacted, Qualified, Converted, Lost</td></tr><tr><td>Score</td><td>0-100 with Cold/Warm/Hot badge</td></tr><tr><td>Tags</td><td>Colored tag badges</td></tr><tr><td>Assigned</td><td>Assigned agent</td></tr><tr><td>Created</td><td>Relative date</td></tr></tbody></table><h3>Create Lead</h3><ol class="sl"><li><strong>Click Add Lead</strong><p>Above the table.</p></li><li><strong>Fill form</strong><p>Name (required), email, phone, source, status, notes.</p></li><li><strong>Assign tags</strong><p>Multi-select categorization.</p></li><li><strong>Assign agent</strong><p>For follow-up.</p></li><li><strong>Save</strong><p>Triggers Live Feed event.</p></li></ol><h3>Lead Detail</h3><p><code>/leads/[id]</code> includes: Profile Card, Score with tier, Status/Pipeline, Tags, Notes, Activity Timeline, Assigned Agent.</p><h3>Scoring</h3><ul><li><span class="bd bb">Cold 0-40</span> New leads</li><li><span class="bd bo">Warm 41-75</span> Engaged</li><li><span class="bd br">Hot 76-100</span> High-intent</li></ul><div class="al a1"><strong>Tip:</strong> Use Capture module for quick entry from web forms and SMS.</div><h2 id="af">Affiliates</h2><p>Power the Affiliate Marketplace. Manage partners, commissions, and payouts.</p><div class="al a1"><strong>Note:</strong> Marketplace at <code>/affiliate/marketplace</code> visible only to approved affiliates.</div><h3>Affiliates List (Admin)</h3><p>Manage at <code>/admin/affiliates</code>:</p><table><thead><tr><th>Column</th><th>Description</th></tr></thead><tbody><tr><td>Affiliate ID</td><td>Auto-generated</td></tr><tr><td>Name</td><td>Partner name</td></tr><tr><td>Email</td><td>Contact email</td></tr><tr><td>Commission</td><td>% or flat-rate</td></tr><tr><td>Total Earned</td><td>Lifetime earnings</td></tr><tr><td>Total Paid</td><td>Payouts processed</td></tr><tr><td>Balance</td><td>Outstanding commissions</td></tr><tr><td>Status</td><td>Active, Pending, Suspended</td></tr><tr><td>Referrals</td><td>Successful count</td></tr><tr><td>Conversion</td><td>Referral-to-customer %</td></tr></tbody></table><h3>New Affiliate</h3><ol class="sl"><li><strong>Admin to Affiliates</strong></li><li><strong>Click Add</strong></li><li><strong>Fill details</strong><p>Name, email, commission.</p></li><li><strong>Set terms</strong></li><li><strong>Save</strong><p>ID auto-generated.</p></li></ol><h3>Marketplace</h3><p>Approved affiliates see: referral stats, tracking links, products/plans, commission breakdown, payout requests.</p><h3>Payouts</h3><p>Admin at <code>/admin/payouts</code> can view pending/completed, approve/reject, track balances, export history.</p><h2 id="pl">Plans</h2><p>Manage subscription tiers, pricing, features, and commission rules at <code>/admin/plans</code>.</p><h3>Plan Properties</h3><table><thead><tr><th>Field</th><th>Description</th></tr></thead><tbody><tr><td>Name</td><td>Starter, Pro, Enterprise</td></tr><tr><td>Description</td><td>Short plan description</td></tr><tr><td>Price Monthly</td><td>Monthly subscription</td></tr><tr><td>Price Yearly</td><td>Discounted yearly</td></tr><tr><td>Features</td><td>Bullet list of included items</td></tr><tr><td>Max Leads</td><td>Lead storage limit</td></tr><tr><td>Max Tags</td><td>Tag group limit</td></tr><tr><td>Dual Routing</td><td>Dual routing toggle</td></tr><tr><td>Multi-Tenant</td><td>Multi-tenant support</td></tr><tr><td>White Label</td><td>White-label branding</td></tr><tr><td>Is Active</td><td>Toggle visibility</td></tr><tr><td>Is Popular</td><td>Featured marker</td></tr><tr><td>Sort Order</td><td>Display ordering</td></tr></tbody></table><h3>Create/Edit</h3><ol class="sl"><li><strong>Open Plans</strong><p><code>/admin/plans</code>.</p></li><li><strong>Add or edit</strong></li><li><strong>Set pricing</strong></li><li><strong>Add features</strong><p>Type and press Enter.</p></li><li><strong>Set limits</strong></li><li><strong>Save</strong></li></ol><div class="al a1"><strong>Note:</strong> Plans map to tags for commission rules and feature access control.</div><h2 id="tg">Tags</h2><p>Organize leads using tag groups. Access at <code>/tags</code>.</p><h3>Tag Groups</h3><table><thead><tr><th>Group</th><th>Purpose</th></tr></thead><tbody><tr><td>Source</td><td>Lead origin (Form, SMS, Referral)</td></tr><tr><td>Status</td><td>Lifecycle stage (New, Contacted, Qualified)</td></tr><tr><td>Events</td><td>Triggers (Webinar, Demo)</td></tr><tr><td>Services</td><td>Interest (Consulting, Support)</td></tr><tr><td>Engagement</td><td>Level (High, Medium, Low)</td></tr><tr><td>Custom</td><td>User-defined</td></tr></tbody></table><h3>Managing Tags</h3><ol class="sl"><li><strong>Go to Tags</strong><p>Sidebar Tags link.</p></li><li><strong>View by group</strong><p>Colored badges under headings.</p></li><li><strong>Add tag</strong><p>Name, color, icon per group.</p></li><li><strong>Edit/delete</strong><p>Icons on each tag.</p></li><li><strong>Assign to leads</strong><p>Multi-select in lead form.</p></li></ol><h3>Colors</h3><p><span class="bd bb">Blue</span> <span class="bd bg">Green</span> <span class="bd bo">Orange</span> <span class="bd br">Red</span> <span class="bd bi">Purple</span> <span class="bd">Yellow</span> <span class="bd bb">Cyan</span></p><div class="al a1"><strong>Tip:</strong> Tags map to plans for feature access and commission rules.</div>
+
+<h2 id="kc">Kinetic Cards</h2>
+<p>Create bio-link pages and mini landing pages using the Kinetic Cards system. Each card gets a unique slug at <code>funnelswift.net/k/[slug]</code>.</p>
+<div class="al a1"><strong>New in v2.0:</strong> Kinetic Cards replace static link-in-bio pages with dynamic, SSR-rendered layouts. Choose between Bio-Link (Linktree-style) or Mini-Page (section-based landing page).</div>
+<h3>Card Types</h3>
+<table><thead><tr><th>Type</th><th>Use Case</th></tr></thead><tbody>
+<tr><td><strong>Bio-Link</strong></td><td>Avatar + bio + pill buttons + social icons. Like Linktree but self-hosted.</td></tr>
+<tr><td><strong>Mini-Page</strong></td><td>Section-based landing page with hero, features grid, lead capture form.</td></tr>
+</tbody></table>
+<h3>Layout Blocks (Mini-Page)</h3>
+<p>Mini-Pages render <code>layout_blocks</code> as a sequence of sections.</p>
+<table><thead><tr><th>Block</th><th>Description</th></tr></thead><tbody>
+<tr><td><strong>hero</strong></td><td>Headline, subheadline, CTA button. Custom background color and optional video.</td></tr>
+<tr><td><strong>features</strong></td><td>Grid of feature cards with icon, title, description.</td></tr>
+<tr><td><strong>content</strong></td><td>Rich text or image + text section.</td></tr>
+<tr><td><strong>cta</strong></td><td>Standalone call-to-action block with button and link.</td></tr>
+<tr><td><strong>gallery</strong></td><td>Image grid display.</td></tr>
+<tr><td><strong>video</strong></td><td>Embedded video (YouTube/Vimeo provider).</td></tr>
+<tr><td><strong>form</strong></td><td>Lead capture form that submits directly to FunnelSwift.</td></tr>
+</tbody></table>
+<h3>Pill Buttons (Bio-Link)</h3>
+<p>Each bio-link card supports up to 20 pill buttons with action types:</p>
+<ul>
+<li><strong>link</strong> &mdash; Navigate to a destination URL</li>
+<li><strong>form</strong> &mdash; Open an inline lead capture form</li>
+<li><strong>call</strong> &mdash; Initiate a phone call (tel:)</li>
+<li><strong>sms</strong> &mdash; Send an SMS (sms:)</li>
+</ul>
+<h3>Lead Source Tracking</h3>
+<p>Each Kinetic Card can define <strong>source parameters</strong> that map URL query params to tags. Example: <code>?utm_source=instagram</code> auto-tags leads with the matching tag from the card's source config.</p>
+<h3>QR Codes</h3>
+<p>Each Kinetic Card can generate a QR code linking to its slug URL. Use for print materials, business cards, or signage.</p>
+<div class="al a3"><strong>Pro tip:</strong> Combine Kinetic Cards with Campaigns (see below) to track which cards drive the most conversions.</div>
+
+<h2 id="cp">Campaigns</h2>
+<p>Campaigns bridge FunnelSwift leads with IncentiveSwift reward programs. Create targeted campaigns, assign them to Kinetic Cards, and track performance.</p>
+<div class="al a1"><strong>Requires:</strong> A valid IncentiveSwift API key linked to your FunnelSwift tenant.</div>
+<h3>How Campaigns Work</h3>
+<ol class="sl">
+<li><strong>Create in IncentiveSwift</strong><p>Set up the campaign with rewards, eligibility rules, and tracking parameters.</p></li>
+<li><strong>Link to FunnelSwift</strong><p>FunnelSwift proxies campaign data from IncentiveSwift using your tenant's API key. Campaigns appear in the admin dashboard automatically.</p></li>
+<li><strong>Assign to Kinetic Cards</strong><p>Tag campaign IDs on Kinetic Card buttons to associate leads with specific campaigns.</p></li>
+<li><strong>Track Performance</strong><p>Campaign analytics show lead attribution, conversion rates, and reward redemption stats.</p></li>
+</ol>
+<h3>Campaign Properties</h3>
+<table><thead><tr><th>Field</th><th>Description</th></tr></thead><tbody>
+<tr><td>Name</td><td>Campaign display name</td></tr>
+<tr><td>Type</td><td>Reward type (discount, cash, points, gift)</td></tr>
+<tr><td>Budget</td><td>Total campaign budget</td></tr>
+<tr><td>Redemption</td><td>Per-user redemption limits</td></tr>
+<tr><td>Active Period</td><td>Start and end dates</td></tr>
+<tr><td>Tracking Code</td><td>Unique code for attribution</td></tr>
+</tbody></table>
+
+<h2 id="wh">Webhooks</h2>
+<p>Configure outbound webhooks to push lead events and system notifications to external services in real time.</p>
+<div class="al a1"><strong>New in v2.0:</strong> Webhook dispatch with automatic retry and exponential backoff &mdash; no data loss on transient failures.</div>
+<h3>Event Types</h3>
+<table><thead><tr><th>Event</th><th>Triggered When</th></tr></thead><tbody>
+<tr><td><code>lead.created</code></td><td>A new lead is created via any channel (form, SMS, API).</td></tr>
+<tr><td><code>lead.updated</code></td><td>Lead record is modified (status change, tag assignment).</td></tr>
+<tr><td><code>lead.converted</code></td><td>Lead status changes to Converted.</td></tr>
+<tr><td><code>tenant.updated</code></td><td>Tenant settings or branding changes.</td></tr>
+<tr><td><code>affiliate.created</code></td><td>New affiliate partner added.</td></tr>
+<tr><td><code>plan.updated</code></td><td>Plan configuration modified.</td></tr>
+</tbody></table>
+<h3>Creating a Webhook</h3>
+<ol class="sl">
+<li><strong>Go to Admin &rarr; Webhooks</strong></li>
+<li><strong>Click + Add Webhook</strong></li>
+<li><strong>Name it</strong><p>e.g. "Slack Lead Notifications"</p></li>
+<li><strong>Enter URL</strong><p>The endpoint that will receive POST payloads.</p></li>
+<li><strong>Select events</strong><p>Comma-separated: <code>lead.created, lead.converted</code></p></li>
+<li><strong>Save</strong><p>Webhook is active immediately.</p></li>
+</ol>
+<h3>Payload Format</h3>
+<pre><code>{
+  "event": "lead.created",
+  "timestamp": "2026-07-17T07:00:00Z",
+  "data": {
+    "id": "uuid",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "source": "Web Form",
+    "status": "new"
+  }
+}</code></pre>
+<h3>Retry Behavior</h3>
+<p>Failed deliveries retry with exponential backoff: 10s, 30s, 90s, 270s, then final. If all retries fail, the event is logged for manual review.</p>
+<h3>Testing</h3>
+<p>Use the <strong>Test</strong> button on any webhook to send a sample payload. Check the target endpoint's logs to verify delivery.</p>
+
+<h2 id="is">Insights</h2>
+<p>The Insights dashboard gives you a real-time pulse on Kinetic Card performance and page-level analytics.</p>
+<div class="al a1"><strong>New in v2.0:</strong> Card-level analytics track views, clicks, and submissions per Kinetic Card.</div>
+<h3>Dashboard Metrics</h3>
+<div class="sr"><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Kinetic Cards</div><div class="sc2">Live card count</div></div><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Views</div><div class="sc2">All cards combined</div></div><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Clicks</div><div class="sc2">Button interactions</div></div><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Submissions</div><div class="sc2">Lead form completions</div></div></div>
+<h3>Top Cards</h3>
+<p>The Insights widget on the Dashboard lists your top-performing Kinetic Cards ranked by views. Each card shows:</p>
+<ul>
+<li><strong>Title</strong> &mdash; Card name</li>
+<li><strong>Views</strong> &mdash; Page load count</li>
+<li><strong>Clicks</strong> &mdash; Pill button clicks</li>
+<li><strong>Submissions</strong> &mdash; Form completions</li>
+</ul>
+<h3>Using Insights</h3>
+<ol class="sl">
+<li><strong>Open Dashboard</strong><p>Insights appear on the main Dashboard page.</p></li>
+<li><strong>Review top cards</strong><p>Cards sorted by engagement &mdash; identify what's working.</p></li>
+<li><strong>Optimize underperformers</strong><p>Low view count? Check your QR code placement or social promo. Low clicks? Review your CTA text and button placement.</p></li>
+</ol>
+<div class="al a1"><strong>Tip:</strong> Pair Insights with Campaigns to tie card performance to specific reward programs.</div>
+
+<h2 id="ak">API Keys</h2><p>Generate and manage API keys at <code>/api-keys</code>.</p><h3>Permissions</h3><table><thead><tr><th>Permission</th><th>Access</th></tr></thead><tbody><tr><td>leads:read</td><td>Read leads</td></tr><tr><td>leads:write</td><td>Create/update leads</td></tr><tr><td>events:read</td><td>Read events</td></tr><tr><td>events:write</td><td>Create events</td></tr><tr><td>tags:read</td><td>Read tags</td></tr><tr><td>tags:write</td><td>Create tags</td></tr></tbody></table><h3>Create Key</h3><ol class="sl"><li><strong>Go to API Keys</strong></li><li><strong>Click Create Key</strong></li><li><strong>Name it</strong><p>e.g. n8n Integration</p></li><li><strong>Select app</strong><p>ada_widget, ai_agent, command_center, mobile_app, n8n, other</p></li><li><strong>Set permissions</strong><p>Select at least one.</p></li><li><strong>Generate</strong><p>Key shown once, prefixed <code>sk_live_</code>.</p></li></ol><div class="al a2"><strong>Important:</strong> Copy the key immediately. It will not be shown again.</div><h3>Revoke</h3><p>Click the trash icon next to any key. Revoked keys stop working immediately.</p><h3>Usage</h3><p>Include in Authorization header:</p><pre><code>Authorization: Bearer sk_live_YOUR_KEY_HERE</code></pre><p>Base URL: <code>https://funnelswift.net/api/v1/</code></p><h2 id="st">Settings</h2><p>Configure account and tenant settings at <code>/settings</code>.</p><h3>Security</h3><div class="fg"><div class="fc"><div class="fi">S</div><h4>CSP</h4><p>Content Security Policy enforced.</p></div><div class="fc"><div class="fi">S</div><h4>RLS</h4><p>Row Level Security on all tables.</p></div><div class="fc"><div class="fi">P</div><h4>Password</h4><p>Change password with current + new fields.</p></div></div><h3>Account Settings</h3><ul><li><strong>Profile</strong> &mdash; Name, email, contact info</li><li><strong>Notifications</strong> &mdash; Alert preferences</li><li><strong>Tenant Info</strong> &mdash; Company name, domain, branding</li><li><strong>Integration Settings</strong> &mdash; API configs, webhooks</li></ul><h3>Super Admin Settings</h3><p>Additional settings available for super admins:</p><ul><li><strong>Branding</strong> &mdash; Logo, colors, custom CSS</li><li><strong>Plans</strong> &mdash; Manage all plans</li><li><strong>Team</strong> &mdash; Manage users and permissions</li><li><strong>Legal</strong> &mdash; Terms, privacy pages</li><li><strong>SEO</strong> &mdash; Meta tags, sitemap</li><li><strong>System</strong> &mdash; Advanced config</li></ul><h2 id="wl">Web-to-Lead</h2>
+<p>Capture leads from any external website by embedding a small JavaScript snippet. When a visitor submits a form on your site, the lead is automatically created in your FunnelSwift dashboard.</p>
+<div class="al a3"><strong>No API key needed!</strong> The embed snippet uses a built-in public key. Just copy and paste — no editing required.</div>
+<h3>Creating a Config</h3>
+<ol class="sl">
+<li><strong>Go to Web-to-Lead</strong><p>Click Web-to-Lead in the sidebar.</p></li>
+<li><strong>Click + New Config</strong></li>
+<li><strong>Name it</strong><p>e.g. "Website Contact Form"</p></li>
+<li><strong>Set default source</strong><p>e.g. "Web Form" — this labels where the lead came from.</p></li>
+<li><strong>Auto-tag leads</strong><p>Select tags to apply automatically when a lead is captured from this form.</p></li>
+<li><strong>Save</strong><p>Your config is created. Click the link icon to get the embed code.</p></li>
+</ol>
+<h3>Getting the Embed Code</h3>
+<p>Click the link icon (<strong>🔗</strong>) next to any config to open the embed modal. You get two options:</p>
+<div class="fg">
+<div class="fc"><div class="fi">H</div><h4>Option A: In the &lt;head&gt;</h4><p>Paste this code into the <code>&lt;head&gt;</code> section of your website. It uses the <code>defer</code> attribute so it loads in the background without slowing your page down.</p></div>
+<div class="fc"><div class="fi">B</div><h4>Option B: Before &lt;/body&gt;</h4><p>Paste this just before the closing <code>&lt;/body&gt;</code> tag. This guarantees all your form elements are fully loaded before the script starts watching for submissions.</p></div>
+</div>
+<h3>Where to Paste It</h3>
+<table><thead><tr><th>Platform</th><th>Instructions</th></tr></thead><tbody>
+<tr><td><strong>WordPress</strong></td><td>Install <strong>WPCode</strong> plugin &rarr; Add New &rarr; "Header &amp; Footer" &rarr; paste in Header or Footer.</td></tr>
+<tr><td><strong>Webflow</strong></td><td>Site Settings &rarr; Custom Code &rarr; paste in "Head Code" or "Footer Code".</td></tr>
+<tr><td><strong>Squarespace</strong></td><td>Settings &rarr; Advanced &rarr; Code Injection &rarr; paste in Header or Footer.</td></tr>
+<tr><td><strong>Wix</strong></td><td>Settings &rarr; Custom Code &rarr; + Add Custom Code &rarr; paste script &rarr; select "All Pages".</td></tr>
+<tr><td><strong>Custom HTML</strong></td><td>Paste Option A in the <code>&lt;head&gt;</code> or Option B just before <code>&lt;/body&gt;</code>. For a single-page form, paste below your <code>&lt;form&gt;</code> tag.</td></tr>
+<tr><td><strong>ClickFunnels</strong></td><td>Settings &rarr; Tracking Code &rarr; paste in Body section.</td></tr>
+</tbody></table>
+<h3>How It Works</h3>
+<div class="fg">
+<div class="fc"><div class="fi">1</div><h4>You Paste</h4><p>Copy the script from FunnelSwift and paste it onto your external website (WordPress, Webflow, Squarespace, etc.).</p></div>
+<div class="fc"><div class="fi">2</div><h4>Visitor Submits</h4><p>When someone fills out the form on your site and hits submit, the script intercepts the data (Name, Email, Phone).</p></div>
+<div class="fc"><div class="fi">3</div><h4>Lead Created</h4><p>The script sends the form data to FunnelSwift. A new lead appears instantly in your dashboard with the tag you selected.</p></div>
+</div>
+<div class="al a2"><strong>Note:</strong> The script does NOT prevent the normal form submission. Your existing form will still work as before — the lead capture happens in the background.</div>
+
+<h2 id="fq">FAQ</h2><div class="fi"><button class="fq" onclick="at(this)">How do I reset my password? <span>+</span></button><div class="fa">Go to Settings, click Change Password. Enter current password and new password (minimum 8 characters).</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I create a new lead? <span>+</span></button><div class="fa">Click Leads in sidebar, then Add Lead. Fill in name, email, phone, source, assign tags, and save.</div></div><div class="fi"><button class="fq" onclick="at(this)">What lead sources are supported? <span>+</span></button><div class="fa">Web Form, SMS, ADA Demo, AI Agent, Missed Call, and API integration.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I become an affiliate? <span>+</span></button><div class="fa">Contact the admin to create an affiliate profile. Once approved, you access the Affiliate Marketplace.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I generate an API key? <span>+</span></button><div class="fa">Go to API Keys in sidebar, click Create Key, name it, select permissions, and generate. Copy the key immediately.</div></div><div class="fi"><button class="fq" onclick="at(this)">Can I assign leads to team members? <span>+</span></button><div class="fa">Yes. When editing a lead, use the Assigned To field to select an agent.</div></div><div class="fi"><button class="fq" onclick="at(this)">What are tag groups? <span>+</span></button><div class="fa">Tag groups categorize tags by Source, Status, Events, Services, Engagement, and Custom. Helps organize lead classification.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do payouts work for affiliates? <span>+</span></button><div class="fa">Affiliates earn commissions per referral. Admin manages payouts at /admin/payouts: approve, track, and export.</div></div><div class="fi"><button class="fq" onclick="at(this)">What is the Live Feed? <span>+</span></button><div class="fa">A real-time activity panel on the right side showing lead creation events. Toggle with the panel button at top-right.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I assign tags to plans? <span>+</span></button><div class="fa">Use plan-to-tag mapping in the Plans admin section to link tags with subscription plans for feature access control.</div></div><script>function at(b){var a=b.nextElementSibling;a.classList.toggle("on");b.querySelector("span").textContent=a.classList.contains("on")?"-":"+"}</script></div></div></div></body></html>
