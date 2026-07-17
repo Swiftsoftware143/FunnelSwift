@@ -57,7 +57,7 @@ pub async fn sync_plan_tag(
     Json(req): Json<SyncPlanTagRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
     let valid_key = std::env::var("INTERNAL_SYNC_KEY")
-        .unwrap_or_else(|_| "aca264a01677fdf65e9daae8fa4a0e54bb338d02e7e1660daa3ae6077489aba7".to_string());
+        .map_err(|_| AppError::Internal("INTERNAL_SYNC_KEY not configured".into()))?;
     
     if req.api_key != valid_key {
         return Err(AppError::Unauthorized("Invalid API key".into()));
@@ -109,7 +109,7 @@ pub async fn sync_plan_tag(
 
     // Prepare CoreSwift sync params (resolve tenant target based on entity context)
     let cs_url = std::env::var("CORESWIFT_URL").unwrap_or_else(|_| "http://localhost:8084".to_string());
-    let cs_key = std::env::var("INTERNAL_SYNC_KEY").unwrap_or_default();
+    let cs_key = std::env::var("INTERNAL_SYNC_KEY").map_err(|_| AppError::Internal("INTERNAL_SYNC_KEY not configured".into()))?;
     let (cs_tenant_id, cs_company_slug) = resolve_coreswift_target(
         &req.source_entity,
         &req.entity_slug,

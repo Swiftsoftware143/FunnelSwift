@@ -106,6 +106,8 @@ pub async fn register(
         role: "user".into(),
         exp: now + 86400 * 30,
         iat: now,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
     };
 
     let token = encode(
@@ -157,6 +159,8 @@ pub async fn login(
         role: user.role.clone(),
         exp: now + 86400 * 30,
         iat: now,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
     };
 
     let token = encode(
@@ -250,16 +254,16 @@ pub async fn update_profile(
     state: State<AppState>,
     auth: AuthUser,
     Json(req): Json<UpdateProfileRequest>,
-) -> Json<serde_json::Value> {
+) -> AppResult<Json<serde_json::Value>> {
     sqlx::query("UPDATE users SET name = COALESCE($1, name), username = COALESCE($2, username) WHERE id::text = $3")
         .bind(&req.name)
         .bind(&req.username)
         .bind(&auth.user_id)
         .execute(&state.pool)
         .await
-        .unwrap_or_else(|_| panic!("Failed to update profile"));
+        .map_err(|e| AppError::Internal(format!("Failed to update profile: {e}")))?;
 
-    Json(json!({"status": "ok"}))
+    Ok(Json(json!({"status": "ok"})))
 }
 
 pub async fn change_password(

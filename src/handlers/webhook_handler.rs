@@ -44,7 +44,7 @@ pub async fn create_webhook(
     .bind(tenant_id)
     .bind(&req.name)
     .bind(&req.url)
-    .bind(serde_json::to_value(&req.events).unwrap())
+    .bind(serde_json::to_value(&req.events).map_err(|e| AppError::Internal(format!("Events serialize error: {e}")))?)
     .bind(&req.secret)
     .execute(&state.pool)
     .await?;

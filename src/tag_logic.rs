@@ -103,14 +103,14 @@ pub async fn apply_sold_to_tenant_leads(
     let sold_tag_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1::uuid)"
     )
-    .bind(Uuid::parse_str(SOLD_TAG_ID).unwrap())
+    .bind(Uuid::parse_str(SOLD_TAG_ID).expect(" SOLD_TAG_ID is a valid UUID constant"))
     .fetch_one(pool)
     .await
     .unwrap_or(false);
 
     if !sold_tag_exists {
         tracing::warn!(
-            "Sold system tag (id={}) not found — skipping auto-apply for tenant {}",
+            "Sold system tag (id={}) not found - skipping auto-apply for tenant {}",
             SOLD_TAG_ID, tenant_id
         );
         return Ok(0);
@@ -142,7 +142,7 @@ pub async fn apply_sold_to_tenant_leads(
         current_tags.push(sold_tag_name.clone());
 
         // Evaluate tag rules (this will auto-remove Qualified if the rule is active)
-        let newly_assigned_ids = vec![Uuid::parse_str(SOLD_TAG_ID).unwrap()];
+        let newly_assigned_ids = vec![Uuid::parse_str(SOLD_TAG_ID).expect(" SOLD_TAG_ID is a valid UUID constant")];
         let (to_remove, to_add) = evaluate_tag_rules(
             pool,
             tenant_id,

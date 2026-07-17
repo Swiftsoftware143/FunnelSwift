@@ -419,12 +419,15 @@ pub async fn get_qr_svg(
         svg_inner
     );
 
-    Response::builder()
+    match Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/svg+xml")
         .header(header::CACHE_CONTROL, "no-cache")
         .body(Body::from(svg_full))
-        .unwrap()
+    {
+        Ok(resp) => resp,
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Response build error: {}", e)).into_response(),
+    }
 }
 
 /// Download QR code as PNG file — increments download count
@@ -468,11 +471,14 @@ pub async fn get_qr_png(
     .await;
 
     let safe_name = qr.name.replace(' ', "_");
-    Response::builder()
+    match Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/png")
         .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}.png\"", safe_name))
         .header(header::CACHE_CONTROL, "no-cache")
         .body(Body::from(png_bytes))
-        .unwrap()
+    {
+        Ok(resp) => resp,
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Response build error: {}", e)).into_response(),
+    }
 }

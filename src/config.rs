@@ -4,12 +4,15 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_env() -> Self {
-        Self {
-            database_url: std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://swift:swift@127.0.0.1:5432/funnelswift".into()),
-            jwt_secret: std::env::var("JWT_SECRET")
-                .unwrap_or_else(|_| "funnelswift-jwt-secret-change-in-production-2026".into()),
-        }
+    /// Read configuration from environment variables.
+    /// Returns an error if JWT_SECRET is not set.
+    pub fn from_env() -> Result<Self, std::env::VarError> {
+        let jwt_secret = std::env::var("JWT_SECRET")?;
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://swift:swift@127.0.0.1:5432/funnelswift".into());
+        Ok(Self {
+            database_url,
+            jwt_secret,
+        })
     }
 }

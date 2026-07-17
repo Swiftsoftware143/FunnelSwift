@@ -188,6 +188,7 @@ pub struct PlanLimits {
     pub allow_source_tracking: bool,
     pub allow_minipage_layout: bool,
     pub show_branding: bool,  // false = "Powered by FunnelSwift Kinetic" always shown
+    pub allow_minifunnel: bool,
 }
 
 pub async fn get_user_limits(pool: &PgPool, tenant_id: Uuid) -> PlanLimits {
@@ -218,6 +219,7 @@ pub async fn get_user_limits(pool: &PgPool, tenant_id: Uuid) -> PlanLimits {
         allow_source_tracking: get_bool(&f, "kinetic_source_tracking", false),
         allow_minipage_layout: get_bool(&f, "kinetic_minipage", false),
         show_branding: get_bool(&f, "kinetic_branding", true),  // default: show branding
+        allow_minifunnel: get_bool(&f, "kinetic_minifunnel", true),
     }
 }
 
@@ -339,6 +341,18 @@ pub async fn render_card(
         blocks_from_legacy_card(&card)
     };
 
+    render_card_html(&state, &card, &blocks, &params, &src).await
+}
+
+
+
+async fn render_card_html(
+    state: &AppState,
+    card: &KineticCard,
+    blocks: &[LayoutBlock],
+    params: &HashMap<String, String>,
+    src: &Option<String>,
+) -> Result<Html<String>, AppError> {
     // Inject buttons into BioLink blocks
     let db_buttons = sqlx::query_as::<_, KineticButton>(
         "SELECT * FROM kinetic_buttons WHERE card_id = $1 ORDER BY sort_order ASC"
@@ -355,14 +369,14 @@ pub async fn render_card(
         }
     }).collect();
 
-    let blocks = blocks.into_iter().map(|block| match block {
+    let blocks: Vec<LayoutBlock> = blocks.iter().map(|block| match block {
         LayoutBlock::BioLink { avatar_url, video_url, bio, social_links, .. } => {
-            LayoutBlock::BioLink { avatar_url, video_url, bio, buttons: btn_list_for_card.clone(), social_links }
+            LayoutBlock::BioLink { avatar_url: avatar_url.clone(), video_url: video_url.clone(), bio: bio.clone(), buttons: btn_list_for_card.clone(), social_links: social_links.clone() }
         }
         LayoutBlock::BusinessCard { name, title, company, company_logo_url, avatar_url, catchphrase, phone, email, website, social_links, .. } => {
-            LayoutBlock::BusinessCard { name, title, company, company_logo_url, avatar_url, catchphrase, phone, email, website, buttons: btn_list_for_card.clone(), social_links }
+            LayoutBlock::BusinessCard { name: name.clone(), title: title.clone(), company: company.clone(), company_logo_url: company_logo_url.clone(), avatar_url: avatar_url.clone(), catchphrase: catchphrase.clone(), phone: phone.clone(), email: email.clone(), website: website.clone(), buttons: btn_list_for_card.clone(), social_links: social_links.clone() }
         }
-        other => other,
+        other => other.clone(),
     }).collect::<Vec<_>>();
 
     // Build template context — extract lead form fields for the modal
@@ -375,6 +389,14 @@ pub async fn render_card(
     }).unwrap_or_else(|| ("Get Started".into(), "Submit".into(), "your@email.com".into(), vec![]));
 
     // Fetch tenant affiliate code for branding footer
+    let page_password_hash_str: Option<String> = sqlx::query_scalar(
+        "SELECT password_hash FROM kinetic_cards WHERE id = $1"
+    )
+    .bind(card.id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
     let affiliate_code_str: Option<String> = sqlx::query_scalar(
         "SELECT affiliate_code FROM tenants WHERE id = $1"
     )
@@ -399,6 +421,8 @@ pub async fn render_card(
         modal_placeholder: &modal_placeholder,
         modal_fields,
         show_branding: get_user_limits(&state.pool, card.tenant_id).await.show_branding,
+ page_password_hash: page_password_hash_str.as_deref(),
+ page_consent_required: false,
         affiliate_code: affiliate_code_str.as_deref(),
     };
 
@@ -409,7 +433,6 @@ pub async fn render_card(
 
     Ok(Html(html))
 }
-
 /// GET /track/click — Track button click and redirect
 pub async fn track_click(
     State(state): State<AppState>,

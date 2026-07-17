@@ -50,11 +50,11 @@ async fn main() -> Result<()> {
 
     let pool = database.pool().clone();
     let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "default-secret-change-me-in-production".to_string());
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "JWT_SECRET must be set in environment"))?;
     let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY")
-        .unwrap_or_else(|_| "".to_string());
+        .expect("INTERNAL_SYNC_KEY must be set in environment");
     let workflowswift_url = std::env::var("WORKFLOWSWIFT_URL")
-        .unwrap_or_else(|_| "http://localhost:8084".to_string());
+        .unwrap_or_else(|_| "http://localhost:8085".to_string());
     let adaswift_url = std::env::var("ADASWIFT_URL")
         .unwrap_or_else(|_| "http://localhost:8087".to_string());
     let coreswift_url = std::env::var("CORESWIFT_URL")
@@ -86,7 +86,6 @@ fn create_router(state: AppState) -> Router {
         .allow_headers(Any)
         .max_age(std::time::Duration::from_secs(86400));
 
-    // All routes from api_router and handler-based modules
     Router::new()
         .merge(api_router::create_router(state))
         .layer(cors)

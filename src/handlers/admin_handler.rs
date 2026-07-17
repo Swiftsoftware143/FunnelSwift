@@ -9,13 +9,18 @@ use chrono::Utc;
 
 use crate::error::{AppError, AppResult};
 use crate::auth::models::Claims;
+use crate::auth::middleware::AuthUser;
 use crate::state::AppState;
 
 /// Admin-only sync endpoint called by CoreSwift to create portfolio company with user account
 pub async fn portfolio_sync(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<Value>,
 ) -> AppResult<impl IntoResponse> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let sync_id = req.get("id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_else(Uuid::new_v4);
     let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("Company").to_string();
     let email = req.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -30,7 +35,7 @@ pub async fn portfolio_sync(
         .bind(&email)
         .fetch_one(&state.pool)
         .await
-        .unwrap_or(0);
+        .unwrap_or(0_i64);
 
     if existing > 0 {
         return Err(AppError::Conflict(format!("A user with email {} already exists", email)));
@@ -154,9 +159,13 @@ pub async fn portfolio_sync(
 
 /// Admin impersonation — generates a FunnelSwift-compatible JWT for the target tenant
 pub async fn impersonate(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<Value>,
 ) -> AppResult<impl IntoResponse> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let target_tenant_id = req.get("tenant_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("tenant_id is required".into()))?;
@@ -169,6 +178,8 @@ pub async fn impersonate(
         role: "impersonated".to_string(),
         exp: now + 900,
         iat: now,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
     };
 
     let token = encode(
@@ -187,7 +198,12 @@ pub async fn impersonate(
 }
 
 /// Stop impersonation
-pub async fn stop_impersonation() -> AppResult<impl IntoResponse> {
+pub async fn stop_impersonation(
+    auth: AuthUser,
+) -> AppResult<impl IntoResponse> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     Ok(Json(json!({
         "status": "impersonation_stopped",
         "note": "Drop impersonation token. Restore your original admin token."

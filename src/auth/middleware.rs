@@ -10,12 +10,16 @@ use serde_json::json;
 use crate::auth::models::Claims;
 use crate::state::AppState;
 
+const JWT_ISSUER: &str = "funnelswift";
+const JWT_AUDIENCE: &str = "funnelswift-api";
+
 pub struct AuthUser {
     pub user_id: String,
     pub tenant_id: String,
     pub email: String,
     pub role: String,
     pub is_admin: bool,
+    pub token: String,
 }
 
 #[async_trait::async_trait]
@@ -51,10 +55,17 @@ where
                     .into_response()
             })?;
 
+        let mut validation = Validation::default();
+        validation.set_issuer(&[JWT_ISSUER]);
+        validation.set_audience(&[JWT_AUDIENCE]);
+        validation.validate_exp = true;
+        validation.required_spec_claims.clear();
+        validation.required_spec_claims.insert("exp".to_string());
+
         let token_data = decode::<Claims>(
             token,
             &DecodingKey::from_secret(app_state.jwt_secret.as_bytes()),
-            &Validation::default(),
+            &validation,
         )
         .map_err(|e| {
             tracing::debug!("JWT decode error: {e}");
@@ -65,12 +76,15 @@ where
                 .into_response()
         })?;
 
+        let token_str = token.to_string();
+
         Ok(AuthUser {
             user_id: token_data.claims.sub,
             tenant_id: token_data.claims.tenant_id,
             email: token_data.claims.email,
             is_admin: token_data.claims.role == "admin",
             role: token_data.claims.role,
+            token: token_str,
         })
     }
 }

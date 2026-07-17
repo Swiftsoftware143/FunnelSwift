@@ -17,48 +17,43 @@ pub enum LayoutBlock {
         social_links: Vec<SocialLink>,
     },
     /// Hero section for mini-page — full-width hero with optional portrait image
-    /// The image fills the section with a gradient overlay that blends into the page
     Hero {
         title: String,
         subtitle: String,
         cta_text: String,
         cta_url: String,
-        /// Full portrait/hero image URL — displayed as a large background image with overlay
         hero_image_url: Option<String>,
         video_url: Option<String>,
-        /// Gradient direction: "to-b", "to-r", "to-br", "to-tr", "135deg", etc.
         gradient_angle: Option<String>,
-        /// Gradient colors (comma-separated hex values for multi-stop)
         gradient_colors: Option<String>,
     },
     /// Features grid (3-col desktop, 1-col mobile)
     Features {
         items: Vec<FeatureItem>,
     },
-    /// Digital business card look — name, title, company, phone, email, website, catchphrase, avatar, logo
+    /// Digital business card
     BusinessCard {
-        /// Card owner's full name
         name: String,
-        /// Job title (optional)
         title: Option<String>,
-        /// Company name (optional)
         company: Option<String>,
-        /// Company logo URL (optional)
         company_logo_url: Option<String>,
-        /// Owner avatar/photo URL (optional) — circular, prominent
         avatar_url: Option<String>,
-        /// Catchphrase / tagline / short bio under name
         catchphrase: Option<String>,
-        /// Phone number (optional)
         phone: Option<String>,
-        /// Email (optional)
         email: Option<String>,
-        /// Website URL (optional)
         website: Option<String>,
-        /// Additional action buttons (same as BioLink buttons)
         buttons: Vec<BioButton>,
-        /// Social links (same as BioLink)
         social_links: Vec<SocialLink>,
+    },
+    /// Mini funnel — centered card with product image/video, title, big CTA
+    MiniFunnel {
+        title: String,
+        subtitle: Option<String>,
+        product_image_url: Option<String>,
+        video_embed_url: Option<String>,
+        cta_text: String,
+        cta_url: String,
+        theme_style: Option<String>,
     },
     /// Lead capture form
     LeadForm {
@@ -67,6 +62,104 @@ pub enum LayoutBlock {
         button_text: String,
         fields: Vec<FormField>,
     },
+    /// --- NEW BLOCK TYPES ---
+
+    /// Single image block — full-width or card-style
+    ImageBlock {
+        image_url: String,
+        caption: Option<String>,
+        alt_text: Option<String>,
+        link_url: Option<String>,
+        /// "full" | "card" | "rounded"
+        style: Option<String>,
+        /// Optional password gate — content hidden until password entered
+        password_hash: Option<String>,
+    },
+    /// Single video block (embed or direct mp4)
+    VideoBlock {
+        /// "youtube" | "vimeo" | "mp4"
+        provider: String,
+        video_id: String,
+        caption: Option<String>,
+        autoplay: Option<bool>,
+        muted: Option<bool>,
+        loop_play: Option<bool>,
+        /// Optional password gate
+        password_hash: Option<String>,
+    },
+    /// Gallery / carousel of images and/or videos
+    GalleryBlock {
+        title: Option<String>,
+        items: Vec<GalleryItem>,
+        /// "grid" | "carousel" | "masonry"
+        layout: Option<String>,
+        /// Optional password gate for whole gallery
+        password_hash: Option<String>,
+    },
+    /// Standalone link button (for multi-link layouts)
+    LinkBlock {
+        label: String,
+        url: String,
+        /// "primary" | "secondary" | "outline" | "ghost"
+        style: Option<String>,
+        icon: Option<String>,
+        /// Whether this link requires unlock
+        require_unlock: Option<bool>,
+    },
+    /// Rich text / HTML content block
+    RichText {
+        content: String, // HTML allowed
+        align: Option<String>, // "left" | "center" | "right"
+    },
+    /// Divider / spacer
+    Divider {
+        style: Option<String>, // "solid" | "dashed" | "dotted"
+        thickness: Option<i32>,
+        color: Option<String>,
+        margin: Option<i32>,
+    },
+    /// Cookie consent banner (always visible, dismissible)
+    CookieConsent {
+        message: Option<String>,
+        button_text: Option<String>,
+        policy_url: Option<String>,
+        /// "banner" | "modal" | "floating"
+        position: Option<String>,
+        ga_tracking_id: Option<String>,
+    },
+    /// Consent / age gate — appears on load, must accept to view content
+    ConsentGate {
+        title: String,
+        message: String,
+        button_text: String,
+        decline_text: Option<String>,
+        /// "overlay" | "fullscreen" | "modal"
+        style: Option<String>,
+        /// "age_18" | "age_21" | "custom"
+        gate_type: Option<String>,
+        /// Redirect URL on decline
+        redirect_url: Option<String>,
+    },
+    /// Password gate — protects a section or the whole page
+    PasswordGate {
+        title: Option<String>,
+        message: Option<String>,
+        password_hash: String, // bcrypt hash
+        placeholder: Option<String>,
+        button_text: Option<String>,
+        /// "section" | "page" — section = gate protects sections below, page = gates entire page
+        scope: Option<String>,
+        /// Tag to apply when unlocked (for tracking)
+        unlock_tag_id: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GalleryItem {
+    pub media_type: String, // "image" | "video" | "youtube" | "vimeo"
+    pub url: String,
+    pub thumbnail_url: Option<String>,
+    pub caption: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -108,7 +201,7 @@ pub struct PageTemplate<'a> {
     pub slug: &'a str,
     pub logo_url: Option<&'a str>,
     pub blocks: Vec<LayoutBlock>,
-    /// Extracted from blocks — straight into template for the modal
+    /// Extracted from blocks for the modal
     pub modal_form_title: &'a str,
     pub modal_button_text: &'a str,
     pub modal_placeholder: &'a str,
@@ -116,6 +209,10 @@ pub struct PageTemplate<'a> {
     /// Plan controls
     pub show_branding: bool,
     pub affiliate_code: Option<&'a str>,
+    /// Page-level password gate
+    pub page_password_hash: Option<&'a str>,
+    /// Page-level consent requirement
+    pub page_consent_required: bool,
 }
 
 impl Default for PageTemplate<'_> {
@@ -136,6 +233,8 @@ impl Default for PageTemplate<'_> {
             modal_fields: Vec::new(),
             show_branding: true,
             affiliate_code: None,
+            page_password_hash: None,
+            page_consent_required: false,
         }
     }
 }

@@ -34,3 +34,7 @@ pub mod site_settings_handler;
 pub mod kinetic_handler;
 pub mod coreswift_push;
 pub mod qr_handler;
+pub mod campaigns_handler;
+pub mod incentiveswift_handler;
+pub mod insight_handler;
+pub mod webhook_dispatch;

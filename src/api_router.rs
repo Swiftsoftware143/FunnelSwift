@@ -2,7 +2,6 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
 use axum::routing::any;
@@ -18,7 +17,9 @@ use crate::handlers::{
     webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
     product_category_handler,
     affiliate_lead_handler,
-    provider_keys_handler, tenant_handler, kinetic_handler, qr_handler,
+    provider_keys_handler, tenant_handler, kinetic_handler, qr_handler, insight_handler,
+    campaigns_handler,
+    incentiveswift_handler,
 };
 use crate::state::AppState;
 
@@ -31,14 +32,10 @@ async fn health() -> axum::Json<serde_json::Value> {
 }
 
 pub fn create_router(state: AppState) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     Router::new()
         // Public kinetic routes (no auth — SSR bio-link pages + tracking)
         .route("/k/:slug", get(kinetic_handler::render_card))
+
         .route("/k/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
         // Default
@@ -161,9 +158,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/kinetic/qr/:id", put(qr_handler::update_qr_code).delete(qr_handler::delete_qr_code))
         .route("/api/v1/kinetic/qr/:id/svg", get(qr_handler::get_qr_svg))
         .route("/api/v1/kinetic/qr/:id/png", get(qr_handler::get_qr_png))
+        // Insights / analytics
+        .route("/api/v1/insights", get(insight_handler::get_dashboard_insights))
+        .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns))
+        .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
         .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
-        .nest("/downloads", axum::Router::new().fallback_service(ServeDir::new("/tmp")))
         .with_state(state)
-        .layer(cors)
         .layer(TraceLayer::new_for_http())
 }

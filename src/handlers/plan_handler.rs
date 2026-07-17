@@ -7,6 +7,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
+use crate::auth::middleware::AuthUser;
 use crate::models::plan::*;
 use crate::state::AppState;
 use crate::tag_logic;
@@ -23,9 +24,13 @@ pub async fn list_plans(
 }
 
 pub async fn create_plan(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreatePlanRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let plan_id = Uuid::new_v4();
 
     sqlx::query(
@@ -63,10 +68,14 @@ pub async fn get_plan(
 }
 
 pub async fn update_plan(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdatePlanRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let existing = sqlx::query_as::<_, Plan>("SELECT * FROM plans WHERE id = $1")
         .bind(id)
         .fetch_optional(&state.pool)
@@ -96,9 +105,13 @@ pub async fn update_plan(
 }
 
 pub async fn delete_plan_admin(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let result = sqlx::query("DELETE FROM plans WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
@@ -115,8 +128,12 @@ pub async fn delete_plan_admin(
 // ── Admin endpoints (follow funnelswift pattern - no auth extractor) ──
 
 pub async fn admin_list_all_plans(
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features, created_at, updated_at FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
@@ -140,9 +157,13 @@ pub async fn admin_list_all_plans(
 }
 
 pub async fn admin_create_plan_json(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let plan_id = Uuid::new_v4();
     let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let slug = req.get("slug").and_then(|v| v.as_str()).unwrap_or(&name.to_lowercase().replace(" ", "-")).to_string();
@@ -181,10 +202,14 @@ pub async fn admin_create_plan_json(
 }
 
 pub async fn admin_update_plan_features(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(req): Json<serde_json::Value>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let features = req.get("features")
         .ok_or_else(|| AppError::BadRequest("features object is required".to_string()))?;
     let features_str = features.to_string();
@@ -201,9 +226,13 @@ pub async fn admin_update_plan_features(
 }
 
 pub async fn admin_assign_plan(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let tenant_id = req.get("tenant_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("Valid tenant_id is required".into()))?;
     let plan_id = req.get("plan_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok())

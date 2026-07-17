@@ -206,7 +206,7 @@ pub async fn affiliate_portal_dashboard(
     .map_err(|_| AppError::Unauthorized("Invalid token".into()))?;
     
     let claims = token_data.claims;
-    let tenant_id: Uuid = claims.tenant_id.parse().unwrap();
+    let tenant_id: Uuid = claims.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant_id in token".into()))?;
     
     let clicks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM affiliate_clicks WHERE affiliate_id = $1"

@@ -140,7 +140,7 @@ pub async fn public_signup(
 
     // Auto-apply "Qualified" tag: create an initial lead with the Qualified tag
     // The Qualified system tag ID is deterministic (namespace-based UUID)
-    let qualified_tag_id = uuid::Uuid::parse_str("15698a9a-67fe-5bf1-9aac-1dcd7a1ccd9e").unwrap();
+    let qualified_tag_id = uuid::Uuid::parse_str("15698a9a-67fe-5bf1-9aac-1dcd7a1ccd9e").expect(" Qualified tag UUID constant is valid");
     let qualified_tag_name = "Qualified";
     
     // Check if the tag exists in the System tenant and create an initial lead
@@ -188,7 +188,7 @@ pub async fn public_signup(
         );
     } else {
         tracing::warn!(
-            "Qualified system tag (id={}) not found — skipping auto-apply on signup for tenant {}",
+            "Qualified system tag (id={}) not found - skipping auto-apply on signup for tenant {}",
             qualified_tag_id, tenant_id
         );
     }
@@ -237,6 +237,8 @@ pub async fn public_signup(
         role: "user".into(),
         exp: now + 86400 * 30,
         iat: now,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
     };
 
     let token = encode(
