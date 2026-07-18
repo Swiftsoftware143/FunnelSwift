@@ -23,6 +23,7 @@ use crate::handlers::{
     provider_keys_handler, tenant_handler, kinetic_handler, qr_handler, insight_handler,
     campaigns_handler,
     incentiveswift_handler,
+    checkout_handler,
 };
 use crate::state::AppState;
 
@@ -138,6 +139,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
         .route("/api/v1/provider-keys/:provider", delete(provider_keys_handler::delete_provider_key))
         .route("/api/v1/available-providers", get(provider_keys_handler::list_available_providers))
+        // Payment provider & checkout management
+        .route("/api/v1/payment-providers", get(checkout_handler::list_payment_providers).post(checkout_handler::upsert_payment_provider))
+        .route("/api/v1/payment-providers/{provider_type}", delete(checkout_handler::delete_payment_provider))
+        .route("/api/v1/checkout/create", post(checkout_handler::create_checkout_session))
+        .route("/api/v1/checkout/sessions", get(checkout_handler::list_checkout_sessions))
+        // Webhook receivers (no auth — signature-verified)
+        .route("/api/v1/webhooks/stripe", post(checkout_handler::stripe_webhook))
+        .route("/api/v1/webhooks/paypal", post(checkout_handler::paypal_webhook))
         // Tenant management
         .route("/api/v1/tenants", get(tenant_handler::list_tenants).post(tenant_handler::create_tenant))
         .route("/api/v1/tenants/:id", get(tenant_handler::get_tenant).put(tenant_handler::update_tenant).delete(tenant_handler::delete_tenant))

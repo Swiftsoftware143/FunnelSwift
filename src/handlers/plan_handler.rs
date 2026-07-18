@@ -34,8 +34,8 @@ pub async fn create_plan(
     let plan_id = Uuid::new_v4();
 
     sqlx::query(
-        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
+        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
     )
     .bind(plan_id)
     .bind(&req.name)
@@ -47,6 +47,7 @@ pub async fn create_plan(
     .bind(req.has_dual_routing.unwrap_or(false))
     .bind(req.has_multi_tenant.unwrap_or(false))
     .bind(req.has_white_label.unwrap_or(false))
+    .bind(&req.payment_provider)
     .bind(&req.features)
     .execute(&state.pool)
     .await?;
@@ -83,9 +84,9 @@ pub async fn update_plan(
         .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
     sqlx::query(
-        r#"UPDATE plans SET name=$1, slug=$2, price=$3, max_leads=$4, max_tags=$5,
-           has_dual_routing=$6, has_multi_tenant=$7, has_white_label=$8, features=$9, updated_at=NOW()
-           WHERE id=$10"#,
+        r#"UPDATE plans SET name=$1, slug=$2, price=$3, purchase_url=$4, max_leads=$5, max_tags=$6,
+           has_dual_routing=$7, has_multi_tenant=$8, has_white_label=$9, payment_provider=$10, features=$11, updated_at=NOW()
+           WHERE id=$12"#,
     )
     .bind(req.name.unwrap_or(existing.name))
     .bind(req.slug.unwrap_or(existing.slug))
@@ -96,6 +97,7 @@ pub async fn update_plan(
     .bind(req.has_dual_routing.unwrap_or(existing.has_dual_routing))
     .bind(req.has_multi_tenant.unwrap_or(existing.has_multi_tenant))
     .bind(req.has_white_label.unwrap_or(existing.has_white_label))
+    .bind(&req.payment_provider.or(existing.payment_provider))
     .bind(req.features.or(existing.features))
     .bind(id)
     .execute(&state.pool)
@@ -134,7 +136,7 @@ pub async fn admin_list_all_plans(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features, created_at, updated_at FROM plans ORDER BY price")
+    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features, created_at, updated_at FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
 
@@ -146,6 +148,7 @@ pub async fn admin_list_all_plans(
             "price": row.try_get::<f64, _>("price").unwrap_or(0.0),
             "max_leads": row.try_get::<Option<i32>, _>("max_leads").unwrap_or(None),
             "max_tags": row.try_get::<Option<i32>, _>("max_tags").unwrap_or(None),
+            "payment_provider": row.try_get::<Option<String>, _>("payment_provider").unwrap_or(None),
             "has_dual_routing": row.try_get::<bool, _>("has_dual_routing").unwrap_or(false),
             "has_multi_tenant": row.try_get::<bool, _>("has_multi_tenant").unwrap_or(false),
             "has_white_label": row.try_get::<bool, _>("has_white_label").unwrap_or(false),
@@ -174,6 +177,7 @@ pub async fn admin_create_plan_json(
     let has_multi_tenant = req.get("has_multi_tenant").and_then(|v| v.as_bool()).unwrap_or(false);
     let has_white_label = req.get("has_white_label").and_then(|v| v.as_bool()).unwrap_or(false);
     let purchase_url = req.get("purchase_url").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let payment_provider = req.get("payment_provider").and_then(|v| v.as_str()).map(|s| s.to_string());
     let features = req.get("features").cloned();
 
     if name.is_empty() {
@@ -181,8 +185,8 @@ pub async fn admin_create_plan_json(
     }
 
     sqlx::query(
-        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, features)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
+        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
     )
     .bind(plan_id)
     .bind(&name)
@@ -194,6 +198,7 @@ pub async fn admin_create_plan_json(
     .bind(has_dual_routing)
     .bind(has_multi_tenant)
     .bind(has_white_label)
+    .bind(&payment_provider)
     .bind(&features)
     .execute(&state.pool)
     .await?;
