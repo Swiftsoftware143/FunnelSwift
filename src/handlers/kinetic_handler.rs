@@ -249,6 +249,24 @@ pub async fn enforce_minipage_access(pool: &PgPool, tenant_id: Uuid) -> AppResul
     Ok(())
 }
 
+/// Check if the tenant is allowed to create/update cards with MiniFunnel blocks
+pub async fn enforce_minifunnel_access(pool: &PgPool, tenant_id: Uuid, blocks: &serde_json::Value) -> AppResult<()> {
+    let limits = get_user_limits(pool, tenant_id).await;
+    if !limits.allow_minifunnel {
+        let has_minifunnel = blocks.as_array().map_or(false, |arr| {
+            arr.iter().any(|b| {
+                b.get("type").and_then(|t| t.as_str()) == Some("minifunnel")
+            })
+        });
+        if has_minifunnel {
+            return Err(AppError::Forbidden(
+                "Mini Funnels require at least a Growth plan.".into()
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ──────────────────────────────────────────────
 // EVENT TRACKING
 // ──────────────────────────────────────────────
@@ -602,9 +620,10 @@ pub async fn create_card(
         return Err(AppError::Forbidden("Video requires Pro or Enterprise plan".into()));
     }
 
-    // If layout_blocks are provided, enforce mini-page access
-    if body.layout_blocks.is_some() {
+    // If layout_blocks are provided, enforce plan limits
+    if let Some(ref blocks) = body.layout_blocks {
         enforce_minipage_access(&state.pool, tenant_id).await?;
+        enforce_minifunnel_access(&state.pool, tenant_id, blocks).await?;
     }
 
     let id = Uuid::new_v4();
@@ -652,8 +671,9 @@ pub async fn update_card(
         return Err(AppError::Forbidden("Video requires Pro or Enterprise plan".into()));
     }
 
-    if body.layout_blocks.is_some() {
+    if let Some(ref blocks) = body.layout_blocks {
         enforce_minipage_access(&state.pool, tenant_id).await?;
+        enforce_minifunnel_access(&state.pool, tenant_id, blocks).await?;
     }
 
     let existing = sqlx::query("SELECT * FROM kinetic_cards WHERE id = $1 AND tenant_id = $2")
