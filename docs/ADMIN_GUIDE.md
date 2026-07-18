@@ -97,6 +97,14 @@ Access at: **https://funnelswift.net/admin/plans** (must be logged in as an admi
 | CTA Buttons | `kinetic_cta_buttons_max` | number | Max CTA buttons per card (0=disabled, -1=unlimited) |
 | Social Links | `kinetic_social_links_max` | number | Max social link buttons (0=disabled, -1=unlimited) |
 | Theme Templates | `kinetic_theme_templates` | number | Number of theme presets (1=default only, -1=all) |
+| Footer CTA Text | `kinetic_cta_text` | text | Custom footer CTA (use `{type}` as placeholder, e.g. "Get Your Free {type}") |
+
+### Permission Model
+| Feature | Admin | Paid User | Free User |
+|---------|-------|-----------|-----------|
+| Edit CTA text | ✅ Plan editor | ❌ | ❌ |
+| Toggle tenant name in footer | ✅ Per plan | ✅ (if plan allows) | ❌ |
+| Change card colors/styling | ✅ | ✅ | ✅ |
 
 ### Defaults (Free Plan)
 ```json
@@ -112,7 +120,8 @@ Access at: **https://funnelswift.net/admin/plans** (must be logged in as an admi
   "kinetic_analytics": false,
   "kinetic_cta_buttons_max": 0,
   "kinetic_social_links_max": 0,
-  "kinetic_theme_templates": 1
+  "kinetic_theme_templates": 1,
+  "kinetic_cta_text": "Claim Your {type}"
 }
 ```
 
