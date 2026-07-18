@@ -213,6 +213,8 @@ pub struct PageTemplate<'a> {
     pub page_password_hash: Option<&'a str>,
     /// Page-level consent requirement
     pub page_consent_required: bool,
+    /// Branding CTA label — "Free Bio Link", "Free Mini Page", etc.
+    pub cta_label: &'a str,
 }
 
 /// Template for the admin plans feature-management page
@@ -240,6 +242,7 @@ impl Default for PageTemplate<'_> {
             affiliate_code: None,
             page_password_hash: None,
             page_consent_required: false,
+            cta_label: "Free Kinetic Card",
         }
     }
 }

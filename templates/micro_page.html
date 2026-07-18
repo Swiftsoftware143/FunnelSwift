@@ -561,9 +561,9 @@
     <footer class="bg-gray-900 text-gray-400 py-6 border-t border-gray-800 mt-auto">
         <div class="max-w-6xl mx-auto px-6 text-center text-xs">
             {% if show_branding %}
-            <p>&copy; 2026 {{ tenant_name }}. Powered by <a href="https://funnelswift.net/kinetic" class="text-accent/70 hover:text-accent transition">FunnelSwift</a>.</p>
+            <p>&copy; 2026 {{ tenant_name }}. <a href="https://funnelswift.net/kinetic{% if affiliate_code.is_some() %}?ref={{ affiliate_code.unwrap() }}{% endif %}" class="text-accent/80 hover:text-accent transition font-semibold">Claim Your {{ cta_label }} &rarr;</a></p>
             {% else %}
-            <p class="text-gray-500">Powered by <a href="https://funnelswift.net/kinetic{% if affiliate_code.is_some() %}?ref={{ affiliate_code.unwrap() }}{% endif %}" class="text-accent/80 hover:text-accent transition font-medium">FunnelSwift Kinetic</a> &mdash; <a href="https://funnelswift.net/kinetic{% if affiliate_code.is_some() %}?ref={{ affiliate_code.unwrap() }}{% endif %}" class="text-gray-500 hover:text-gray-300 transition">Get your link</a></p>
+            <p><a href="https://funnelswift.net/kinetic{% if affiliate_code.is_some() %}?ref={{ affiliate_code.unwrap() }}{% endif %}" class="text-accent/80 hover:text-accent transition font-semibold">Claim Your {{ cta_label }} &rarr;</a></p>
             {% endif %}
         </div>
     </footer>

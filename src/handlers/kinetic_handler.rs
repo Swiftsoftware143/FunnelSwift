@@ -22,6 +22,7 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::templates::{self, LayoutBlock, PageTemplate};
+use std::borrow::Cow;
 
 // ──────────────────────────────────────────────
 // STRUCTS
@@ -406,6 +407,15 @@ async fn render_card_html(
     .ok()
     .flatten();
 
+    // Detect card type from blocks for CTA label
+    let cta_label: Cow<'_, str> = blocks.iter().find_map(|b| match b {
+        LayoutBlock::BioLink { .. } | LayoutBlock::BusinessCard { .. } => Some(Cow::Borrowed("Free Bio Link")),
+        LayoutBlock::Hero { .. } | LayoutBlock::Features { .. } => Some(Cow::Borrowed("Free Mini Page")),
+        LayoutBlock::MiniFunnel { .. } => Some(Cow::Borrowed("Free Mini Funnel")),
+        // Catch-all for remaining block types — fall through to default
+        _ => None,
+    }).unwrap_or(Cow::Borrowed("Free Kinetic Card"));
+
     let tmpl = PageTemplate {
         tenant_name: &card.title,
         page_title: &card.title,
@@ -424,6 +434,7 @@ async fn render_card_html(
  page_password_hash: page_password_hash_str.as_deref(),
  page_consent_required: false,
         affiliate_code: affiliate_code_str.as_deref(),
+        cta_label: &cta_label,
     };
 
     let html = askama::Template::render(&tmpl).map_err(|e| {
