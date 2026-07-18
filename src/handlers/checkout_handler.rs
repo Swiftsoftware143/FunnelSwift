@@ -284,6 +284,25 @@ pub async fn create_checkout_session(
 
     let currency = req.currency.unwrap_or_else(|| "usd".to_string());
 
+    // Resolve return_url: explicit > plan's thank_you_url > /thank-you.html
+    let return_url = req.return_url.clone().or_else(|| {
+        req.plan_id.and_then(|pid| {
+            let pool = state.pool.clone();
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async move {
+                sqlx::query_scalar::<_, Option<String>>(
+                    "SELECT thank_you_url FROM plans WHERE id = $1"
+                )
+                .bind(pid)
+                .fetch_optional(&pool)
+                .ok()
+                .flatten()
+            })
+        })
+    }).unwrap_or_else(|| "/thank-you.html".to_string());
+
+    let cancel_url = req.cancel_url.clone().unwrap_or_else(|| "/".to_string());
+
     // Insert a checkout session row with a placeholder provider_session_id.
     // Real implementations would call the Stripe/PayPal API here.
     let row = sqlx::query(
@@ -297,8 +316,8 @@ pub async fn create_checkout_session(
     .bind(resolved_amount)
     .bind(&currency)
     .bind(&req.metadata)
-    .bind(&req.return_url)
-    .bind(&req.cancel_url)
+    .bind(&return_url)
+    .bind(&cancel_url)
     .fetch_one(&state.pool)
     .await?;
 
