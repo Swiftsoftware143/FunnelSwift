@@ -1,10 +1,13 @@
 use axum::{
+    response::Html,
     routing::{delete, get, post, put},
     Router,
 };
 use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
 use axum::routing::any;
+
+use askama::Template;
 
 use crate::auth::handlers::{login, me, register, change_password, forgot_password, reset_password, update_profile};
 use crate::handlers::{
@@ -28,6 +31,12 @@ async fn health() -> axum::Json<serde_json::Value> {
         "status": "ok",
         "service": "funnelswift",
         "version": "0.1.0"
+    }))
+}
+
+async fn admin_plans_page() -> impl axum::response::IntoResponse {
+    Html(crate::templates::AdminPlansTemplate.render().unwrap_or_else(|e| {
+        format!("<h1>Template error: {}</h1>", e)
     }))
 }
 
@@ -120,7 +129,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
         .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
         // Admin plan management
-        .route("/api/v1/admin/plans", get(crate::handlers::plan_handler::admin_list_all_plans).post(crate::handlers::plan_handler::admin_create_plan_json))
+        .route("/admin/plans", get(admin_plans_page))
+.route("/api/v1/admin/plans", get(crate::handlers::plan_handler::admin_list_all_plans).post(crate::handlers::plan_handler::admin_create_plan_json))
         .route("/api/v1/admin/plans/assign", post(crate::handlers::plan_handler::admin_assign_plan))
         .route("/api/v1/admin/plans/:id/features", put(crate::handlers::plan_handler::admin_update_plan_features))
         .route("/api/v1/admin/plans/:id", get(crate::handlers::plan_handler::get_plan).put(crate::handlers::plan_handler::update_plan).delete(crate::handlers::plan_handler::delete_plan_admin))

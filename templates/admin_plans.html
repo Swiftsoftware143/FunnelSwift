@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Plan Features | FunnelSwift</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#6366f1",
+                        accent: "#8B5CF6",
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #6366f1; }
+        .toggle-checkbox:checked + .toggle-label::after { transform: translateX(100%); }
+        .toggle-label::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-card { animation: fadeIn 0.4s ease-out forwards; }
+        .plan-card { animation: fadeIn 0.4s ease-out forwards; }
+        .plan-card:nth-child(2) { animation-delay: 0.1s; }
+        .plan-card:nth-child(3) { animation-delay: 0.2s; }
+        .plan-card:nth-child(4) { animation-delay: 0.3s; }
+        .save-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 20px;
+            background: #059669;
+            color: white;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+        .save-toast.show { transform: translateY(0); opacity: 1; }
+        .save-toast.error { background: #dc2626; }
+        .number-input {
+            width: 72px;
+            padding: 4px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .number-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+    </style>
+</head>
+<body class="bg-slate-50 font-inter antialiased min-h-screen">
+    <!-- Sidebar Navigation -->
+    <aside class="fixed left-0 top-0 bottom-0 w-56 bg-[#1e1b4b] z-50 overflow-y-auto">
+        <div class="p-4 border-b border-white/10">
+            <h1 class="text-white font-bold text-lg">FunnelSwift</h1>
+            <p class="text-indigo-300 text-xs mt-0.5">Admin Panel</p>
+        </div>
+        <nav class="p-2 space-y-0.5">
+            <a href="/" class="block px-3 py-2.5 rounded-lg text-sm text-indigo-200 hover:text-white hover:bg-white/5 transition">Dashboard</a>
+            <a href="#" class="block px-3 py-2.5 rounded-lg text-sm text-white bg-indigo-500/20 border-l-2 border-indigo-400 font-semibold">Plan Features</a>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="ml-56 min-h-screen">
+        <!-- Header -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+            <div class="px-8 py-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">Plan Features</h2>
+                    <p class="text-sm text-slate-500 mt-0.5">Manage kinetic card feature toggles per plan</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="userEmail" class="text-sm text-slate-500"></span>
+                    <button onclick="doLogout()" class="text-xs text-red-500 hover:text-red-700 font-medium transition">Sign Out</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="p-8">
+            <!-- Loading state -->
+            <div id="loadingState" class="flex items-center justify-center py-20">
+                <div class="text-center">
+                    <svg class="animate-spin h-8 w-8 text-indigo-500 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="text-slate-500 text-sm">Loading plans...</p>
+                </div>
+            </div>
+
+            <!-- Error state -->
+            <div id="errorState" class="hidden text-center py-20">
+                <svg class="h-12 w-12 text-red-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+                <p class="text-red-600 font-semibold mb-2">Failed to load plans</p>
+                <p id="errorMsg" class="text-slate-500 text-sm mb-4"></p>
+                <button onclick="initPage()" class="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm font-medium hover:bg-indigo-600 transition">Retry</button>
+            </div>
+
+            <!-- Plans grid -->
+            <div id="plansContainer" class="hidden space-y-6"></div>
+
+            <!-- Save notification -->
+            <div id="saveToast" class="save-toast"></div>
+        </div>
+    </main>
+
+    <script>
+        // Feature definitions
+        const FEATURES = [
+            { key: "max_kinetic_cards", label: "Max Kinetic Cards", type: "number" },
+            { key: "kinetic_custom_colors", label: "Custom Colors", type: "checkbox" },
+            { key: "kinetic_video", label: "Video Embeds", type: "checkbox" },
+            { key: "kinetic_source_tracking", label: "Source Tracking", type: "checkbox" },
+            { key: "kinetic_minipage", label: "Mini-Page Layout", type: "checkbox" },
+            { key: "kinetic_branding", label: "Hide Branding (checked = hidden)", type: "checkbox" },
+            { key: "kinetic_minifunnel", label: "Mini Funnels", type: "checkbox" },
+            { key: "kinetic_custom_domain", label: "Custom Domain", type: "checkbox" },
+            { key: "kinetic_analytics", label: "Analytics / Insights", type: "checkbox" },
+            { key: "kinetic_cta_buttons_max", label: "CTA Buttons (0=disabled, -1=unlimited)", type: "number" },
+            { key: "kinetic_social_links_max", label: "Social Links (0=disabled, -1=unlimited)", type: "number" },
+            { key: "kinetic_theme_templates", label: "Theme Templates (1=default, -1=all)", type: "number" },
+        ];
+
+        // Feature defaults
+        const FEATURE_DEFAULTS = {
+            max_kinetic_cards: 1,
+            kinetic_custom_colors: false,
+            kinetic_video: false,
+            kinetic_source_tracking: false,
+            kinetic_minipage: false,
+            kinetic_branding: true,
+            kinetic_minifunnel: true,
+            kinetic_custom_domain: false,
+            kinetic_analytics: false,
+            kinetic_cta_buttons_max: 0,
+            kinetic_social_links_max: 0,
+            kinetic_theme_templates: 1,
+        };
+
+        let token = null;
+        let plans = [];
+
+        function getToken() {
+            return localStorage.getItem("ws_fs_token");
+        }
+
+        async function apiFetch(url, opts) {
+            const headers = { "Content-Type": "application/json" };
+            const t = getToken();
+            if (t) headers["Authorization"] = "Bearer " + t;
+            const res = await fetch(url, { headers, ...opts });
+            if (res.status === 401) {
+                localStorage.removeItem("ws_fs_token");
+                window.location.reload();
+                return null;
+            }
+            return res.json();
+        }
+
+        function showToast(msg, isError) {
+            const el = document.getElementById("saveToast");
+            el.textContent = msg;
+            el.className = "save-toast" + (isError ? " error" : "") + " show";
+            clearTimeout(el._hide);
+            el._hide = setTimeout(() => el.classList.remove("show"), 2500);
+        }
+
+        async function initPage() {
+            const t = getToken();
+            if (!t) {
+                document.getElementById("loadingState").classList.add("hidden");
+                document.getElementById("errorState").classList.remove("hidden");
+                document.getElementById("errorMsg").textContent = "Not authenticated. Please log in.";
+                return;
+            }
+
+            // Show loading
+            document.getElementById("loadingState").classList.remove("hidden");
+            document.getElementById("errorState").classList.add("hidden");
+            document.getElementById("plansContainer").classList.add("hidden");
+
+            try {
+                const data = await apiFetch("/api/v1/admin/plans");
+                if (!data) return;
+
+                if (data && (data.plans || data.data)) {
+                    plans = data.plans || data.data || [];
+                } else if (Array.isArray(data)) {
+                    plans = data;
+                } else {
+                    plans = [];
+                }
+
+                // Check user info
+                const userData = await apiFetch("/api/v1/auth/me");
+                if (userData && userData.email) {
+                    document.getElementById("userEmail").textContent = userData.email;
+                }
+
+                renderPlans();
+            } catch (err) {
+                document.getElementById("loadingState").classList.add("hidden");
+                document.getElementById("errorState").classList.remove("hidden");
+                document.getElementById("errorMsg").textContent = err.message || "Network error";
+            }
+        }
+
+        function getFeatures(plan) {
+            let f = {};
+            if (plan.features && typeof plan.features === 'object' && !Array.isArray(plan.features)) {
+                f = { ...FEATURE_DEFAULTS, ...plan.features };
+            } else {
+                f = { ...FEATURE_DEFAULTS };
+            }
+            // Ensure all feature keys exist
+            FEATURES.forEach(feat => {
+                if (!(feat.key in f)) {
+                    f[feat.key] = FEATURE_DEFAULTS[feat.key];
+                }
+            });
+            return f;
+        }
+
+        function formatPrice(price) {
+            const p = parseFloat(price);
+            if (isNaN(p)) return "$0";
+            if (p === Math.floor(p)) return "$" + p;
+            return "$" + p.toFixed(2);
+        }
+
+        function renderPlans() {
+            document.getElementById("loadingState").classList.add("hidden");
+            document.getElementById("errorState").classList.add("hidden");
+
+            if (plans.length === 0) {
+                document.getElementById("plansContainer").innerHTML = `
+                    <div class="text-center py-20 bg-white rounded-xl border border-slate-200">
+                        <svg class="h-12 w-12 text-slate-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <p class="text-slate-500 font-medium">No plans found</p>
+                        <p class="text-slate-400 text-sm mt-1">Create plans via the API to get started.</p>
+                    </div>
+                `;
+                document.getElementById("plansContainer").classList.remove("hidden");
+                return;
+            }
+
+            let html = "";
+            plans.forEach((plan, idx) => {
+                const features = getFeatures(plan);
+                const pid = plan.id;
+                const priceFormatted = formatPrice(plan.price);
+                const maxLeads = plan.max_leads !== null && plan.max_leads !== undefined ? plan.max_leads : "Unlimited";
+
+                html += `<div class="plan-card bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <!-- Plan header -->
+                    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                <span class="text-indigo-600 font-bold text-sm">${(plan.name || "Plan").charAt(0)}</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-900">${escHtml(plan.name || "Unnamed Plan")}</h3>
+                                <div class="flex items-center gap-2 text-xs text-slate-500">
+                                    <span class="font-semibold text-indigo-600">${priceFormatted}</span>
+                                    <span class="text-slate-300">|</span>
+                                    <span>${escHtml(plan.slug || "")}</span>
+                                    <span class="text-slate-300">|</span>
+                                    <span>Max Leads: ${maxLeads}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="savePlanFeatures('${pid}')" id="saveBtn-${pid}"
+                            class="px-4 py-2 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-600 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            Save
+                        </button>
+                    </div>
+
+                    <!-- Features grid -->
+                    <div class="p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-3">
+                `;
+
+                FEATURES.forEach((feat) => {
+                    const val = features[feat.key];
+                    const inputId = `feat-${pid}-${feat.key}`;
+
+                    if (feat.type === "checkbox") {
+                        const checked = val === true || val === 1 || val === "true" || val === "1";
+                        html += `
+                            <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition">
+                                <label for="${inputId}" class="text-sm text-slate-700 cursor-pointer select-none flex-1">${feat.label}</label>
+                                <label class="relative inline-block w-9 h-5 cursor-pointer flex-shrink-0">
+                                    <input type="checkbox" id="${inputId}" ${checked ? "checked" : ""}
+                                        onchange="markDirty('${pid}')" class="sr-only toggle-checkbox peer">
+                                    <div class="toggle-label absolute inset-0 bg-slate-300 rounded-full transition peer-checked:bg-indigo-500"></div>
+                                </label>
+                            </div>
+                        `;
+                    } else {
+                        const numVal = typeof val === 'number' ? val : parseInt(val) || 0;
+                        html += `
+                            <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition">
+                                <label for="${inputId}" class="text-sm text-slate-700 cursor-pointer select-none flex-1">${feat.label}</label>
+                                <input type="number" id="${inputId}" value="${numVal}"
+                                    onchange="markDirty('${pid}')" onfocus="this.select()"
+                                    class="number-input" min="-1" step="1">
+                            </div>
+                        `;
+                    }
+                });
+
+                html += `
+                        </div>
+                    </div>
+                </div>`;
+            });
+
+            document.getElementById("plansContainer").innerHTML = html;
+            document.getElementById("plansContainer").classList.remove("hidden");
+        }
+
+        function markDirty(planId) {
+            const btn = document.getElementById("saveBtn-" + planId);
+            if (btn) {
+                btn.classList.remove("bg-indigo-500");
+                btn.classList.add("bg-amber-500", "hover:bg-amber-600");
+                btn.textContent = "Save Changes";
+            }
+        }
+
+        function collectFeatures(planId) {
+            const features = {};
+            FEATURES.forEach((feat) => {
+                const inputId = `feat-${planId}-${feat.key}`;
+                const el = document.getElementById(inputId);
+                if (!el) return;
+                if (feat.type === "checkbox") {
+                    features[feat.key] = el.checked;
+                } else {
+                    const v = parseInt(el.value);
+                    features[feat.key] = isNaN(v) ? 0 : v;
+                }
+            });
+            return features;
+        }
+
+        async function savePlanFeatures(planId) {
+            const btn = document.getElementById("saveBtn-" + planId);
+            if (!btn) return;
+            btn.disabled = true;
+            btn.textContent = "Saving...";
+
+            const features = collectFeatures(planId);
+
+            try {
+                const data = await apiFetch("/api/v1/admin/plans/" + planId + "/features", {
+                    method: "PUT",
+                    body: JSON.stringify({ features })
+                });
+                if (data === null) return;
+                showToast("✅ Features saved for " + (plans.find(p => p.id === planId)?.name || "plan"));
+                btn.classList.remove("bg-amber-500", "hover:bg-amber-600");
+                btn.classList.add("bg-indigo-500");
+                btn.textContent = "Save";
+            } catch (err) {
+                showToast("❌ Error saving: " + (err.message || "Unknown error"), true);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function doLogout() {
+            localStorage.removeItem("ws_fs_token");
+            window.location.href = "/";
+        }
+
+        function escHtml(s) {
+            if (!s) return "";
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        // Auto-init on page load
+        document.addEventListener("DOMContentLoaded", initPage);
+    </script>
+</body>
+</html>

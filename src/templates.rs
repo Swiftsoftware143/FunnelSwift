@@ -215,6 +215,11 @@ pub struct PageTemplate<'a> {
     pub page_consent_required: bool,
 }
 
+/// Template for the admin plans feature-management page
+#[derive(Template)]
+#[template(path = "admin_plans.html")]
+pub struct AdminPlansTemplate;
+
 impl Default for PageTemplate<'_> {
     fn default() -> Self {
         Self {
