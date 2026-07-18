@@ -2,283 +2,522 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FunnelSwift User Guide</title>
 <style>
-:root{--indigo:#4f46e5;--il:#6366f1;--ig:rgba(79,70,229,.15);--bd:#0E0F12;--bc:#16181D;--be:#1E2028;--br:#2A2D38;--tp:#F1F5F9;--ts:#94A3B8;--tm:#64748B;--ok:#22C55E;--warn:#F97316;--bad:#EF4444}
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bd);color:var(--tp);line-height:1.6;min-height:100vh}
-.sidebar{width:260px;background:var(--bc);border-right:1px solid var(--br);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:100;display:flex;flex-direction:column}
-.sl{display:flex;align-items:center;gap:12px;padding:24px;border-bottom:1px solid var(--br)}.sl .li{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--indigo),#8B5CF6);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-weight:700;font-size:20px}
-.sl h1{font-size:18px;font-weight:600;color:var(--tp)}.sl p{font-size:11px;color:var(--tm)}.sn{flex:1;padding:16px 12px;overflow-y:auto}
-.sn .st{padding:8px 12px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--tm)}
-.ni{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--ts);text-decoration:none;transition:all .15s;cursor:pointer;border:none;background:none;width:100%;text-align:left;margin-bottom:2px}
-.ni:hover{background:var(--br);color:var(--tp)}.ni.on{background:var(--ig);color:var(--il);border-left:2px solid var(--il)}
-.sf{padding:16px 24px;border-top:1px solid var(--br);text-align:center;font-size:12px;color:var(--tm)}
-.mc{margin-left:260px;flex:1;display:flex;flex-direction:column}
-.tb{padding:16px 28px;border-bottom:1px solid var(--br);background:var(--bc);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
-.tb h2{font-size:16px;font-weight:600}.tbb{background:var(--ig);color:var(--il);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500}
-.ca{flex:1;padding:28px;overflow-y:auto;max-width:1100px}
-h1{font-size:32px;font-weight:700;margin-bottom:8px}
-h2{font-size:24px;font-weight:700;margin:48px 0 16px;padding-bottom:12px;border-bottom:1px solid var(--br)}
-h3{font-size:18px;font-weight:600;margin:28px 0 12px;color:var(--il)}h4{font-size:15px;font-weight:600;margin:20px 0 8px}
-p{margin-bottom:16px;color:var(--ts)}a{color:var(--il);text-decoration:none}a:hover{text-decoration:underline}
-.ld{font-size:18px;color:var(--ts);margin-bottom:32px;padding:16px 0;border-bottom:1px solid var(--br)}
-.cd{background:var(--bc);border:1px solid var(--br);border-radius:12px;padding:24px;margin-bottom:20px}
-.fg{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:20px 0}
-.fc{background:var(--be);border:1px solid var(--br);border-radius:10px;padding:20px;transition:border-color .2s}
-.fc:hover{border-color:var(--indigo)}.fc .fi{width:40px;height:40px;border-radius:10px;background:var(--ig);display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px;color:var(--il)}
-.fc h4{margin:0 0 8px;font-size:14px;color:var(--tp)}.fc p{margin:0;font-size:13px;color:var(--tm)}
-code{background:var(--be);color:var(--il);padding:2px 8px;border-radius:4px;font-size:13px;font-family:"SF Mono",monospace}
-pre{background:var(--be);border:1px solid var(--br);border-radius:8px;padding:16px;overflow-x:auto;margin:16px 0;font-size:13px;font-family:"SF Mono",monospace;color:var(--ts);line-height:1.5}
-pre code{background:none;padding:0;color:var(--ts)}table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
-th,td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--br)}th{background:var(--be);font-weight:600;color:var(--tp);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
-td{color:var(--ts)}tr:hover td{background:rgba(255,255,255,.02)}
-.bd{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
-.bi{background:var(--ig);color:var(--il)}.bg{background:rgba(34,197,94,.15);color:var(--ok)}
-.bo{background:rgba(249,115,22,.15);color:var(--warn)}.br{background:rgba(239,68,68,.15);color:var(--bad)}
-.bb{background:rgba(59,130,246,.15);color:#3B82F6}
-.sl{list-style:none;counter-reset:s}.sl li{counter-increment:s;padding:16px 16px 16px 52px;position:relative;margin-bottom:8px;background:var(--be);border-radius:8px;border:1px solid var(--br)}
-.sl li::before{content:counter(s);position:absolute;left:14px;top:14px;width:26px;height:26px;border-radius:50%;background:var(--indigo);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
-.sl li strong{color:var(--tp)}.sl li p{margin:4px 0 0;font-size:13px}
-.al{padding:14px 18px;border-radius:8px;margin:16px 0;border-left:3px solid;font-size:14px}
-.a1{background:rgba(59,130,246,.08);border-color:#3B82F6;color:#93C5FD}
-.a2{background:rgba(249,115,22,.08);border-color:var(--warn);color:#FDBA74}
-.a3{background:rgba(34,197,94,.08);border-color:var(--ok);color:#86EFAC}
-.sr{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0}
-.sc{background:var(--bc);border:1px solid var(--br);border-radius:10px;padding:16px}
-.sc .sv{font-size:28px;font-weight:700;color:var(--tp)}.sc .sl2{font-size:13px;color:var(--tm);margin-top:4px}
-.sc .sc2{font-size:12px;color:var(--ok);margin-top:4px}
-dl{display:grid;grid-template-columns:140px 1fr;gap:8px 16px;margin:12px 0}
-dt{font-weight:600;color:var(--tp);font-size:13px;padding:6px 0}
-dd{color:var(--ts);font-size:13px;padding:6px 0}
-.fi{border:1px solid var(--br);border-radius:8px;margin-bottom:8px;overflow:hidden}
-.fq{padding:14px 18px;background:var(--be);font-weight:600;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--tp);border:none;width:100%;text-align:left}
-.fq:hover{background:var(--bc)}.fa{padding:16px 18px;border-top:1px solid var(--br);font-size:14px;color:var(--ts);display:none}.fa.on{display:block}
-.kt{display:inline-flex;align-items:center;gap:6px;background:var(--be);border:1px solid var(--br);border-radius:6px;padding:4px 10px;font-size:13px;font-family:"SF Mono",monospace;color:var(--ts)}
-.kt .kk{color:var(--tm)}.kt .kv{color:var(--il)}
-ul{color:var(--ts);margin:8px 0 16px 24px}ul li{margin-bottom:4px}
-.mb{display:none;position:fixed;top:14px;left:14px;z-index:200;background:var(--bc);border:1px solid var(--br);color:var(--tp);width:40px;height:40px;border-radius:8px;cursor:pointer;font-size:20px;align-items:center;justify-content:center}
-@media(max-width:900px){.sidebar{transform:translateX(-100%);transition:transform .25s ease}.sidebar.on{transform:translateX(0)}.so{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}.so.on{display:block}.mc{margin-left:0}.mb{display:flex}.tb{padding:14px 16px 14px 64px}.ca{padding:16px}.fg{grid-template-columns:1fr}dl{grid-template-columns:1fr;gap:2px}dt{padding-bottom:0}}
+  :root {
+    --indigo: #4f46e5; --indigo-light: #6366f1; --indigo-dark: #3730a3; --indigo-glow: rgba(79, 70, 229, 0.15);
+    --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
+    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: var(--bg-dark); color: var(--text-primary); line-height: 1.6; min-height: 100vh; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-dark); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .app-layout { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 260px; background: var(--bg-card); border-right: 1px solid var(--border); position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 100; display: flex; flex-direction: column; }
+  .sidebar-logo { display: flex; align-items: center; gap: 12px; padding: 24px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo .logo-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--indigo), #8B5CF6); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .sidebar-logo h1 { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+  .sidebar-logo p { font-size: 11px; color: var(--text-muted); }
+  .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+  .sidebar-nav .section-title { padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; cursor: pointer; border: none; background: none; width: 100%; text-align: left; margin-bottom: 2px; }
+  .nav-item:hover { background: var(--border); color: var(--text-primary); }
+  .nav-item.active { background: var(--indigo-glow); color: var(--indigo-light); border-left: 2px solid var(--indigo-light); }
+  .nav-item .nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+  .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--text-muted); }
+
+  .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; }
+  .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar h2 { font-size: 16px; font-weight: 600; }
+  .topbar-badge { background: var(--indigo-glow); color: var(--indigo-light); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .content-area { flex: 1; padding: 28px; overflow-y: auto; max-width: 1100px; }
+
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 24px; font-weight: 700; margin: 48px 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 18px; font-weight: 600; margin: 28px 0 12px; color: var(--indigo-light); }
+  h4 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin-bottom: 16px; color: var(--text-secondary); }
+  a { color: var(--indigo-light); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .lead { font-size: 18px; color: var(--text-secondary); margin-bottom: 32px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .card-header .card-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--indigo), #7C3AED); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .card-header h3 { margin: 0; padding: 0; border: none; color: var(--text-primary); font-size: 16px; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+  .feature-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+  .feature-card:hover { border-color: var(--indigo); }
+  .feature-card .fc-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--indigo-glow); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 12px; }
+  .feature-card h4 { margin: 0 0 8px; font-size: 14px; }
+  .feature-card p { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+  code { background: var(--bg-elevated); color: var(--indigo-light); padding: 2px 8px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+  pre { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 16px 0; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-secondary); line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-elevated); font-weight: 600; color: var(--text-primary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { color: var(--text-secondary); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .badge-indigo { background: var(--indigo-glow); color: var(--indigo-light); }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--success); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--warning); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--info); }
+
+  .step-list { list-style: none; counter-reset: step; }
+  .step-list li { counter-increment: step; padding: 16px 16px 16px 52px; position: relative; margin-bottom: 8px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border); }
+  .step-list li::before { content: counter(step); position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--indigo); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .step-list li strong { color: var(--text-primary); }
+  .step-list li p { margin: 4px 0 0; font-size: 13px; }
+
+  .alert { padding: 14px 18px; border-radius: 8px; margin: 16px 0; border-left: 3px solid; font-size: 14px; }
+  .alert-info { background: rgba(59,130,246,0.08); border-color: var(--info); color: #93C5FD; }
+  .alert-warning { background: rgba(249,115,22,0.08); border-color: var(--warning); color: #FDBA74; }
+  .alert-success { background: rgba(34,197,94,0.08); border-color: var(--success); color: #86EFAC; }
+  .alert-danger { background: rgba(239,68,68,0.08); border-color: var(--danger); color: #FCA5A5; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
+  .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
+  .stat-card .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+  .stat-card .stat-change { font-size: 12px; color: var(--success); margin-top: 4px; }
+
+  dl { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0; }
+  dt { font-weight: 600; color: var(--text-primary); font-size: 13px; padding: 6px 0; }
+  dd { color: var(--text-secondary); font-size: 13px; padding: 6px 0; }
+  dd code { font-size: 12px; }
+
+  .faq-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .faq-q { padding: 14px 18px; background: var(--bg-elevated); font-weight: 600; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-primary); border: none; width: 100%; text-align: left; }
+  .faq-q:hover { background: var(--bg-card); }
+  .faq-a { padding: 16px 18px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-secondary); display: none; }
+  .faq-a.open { display: block; }
+
+  .kv-tag { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 13px; font-family: 'SF Mono', monospace; color: var(--text-secondary); }
+  .kv-tag .kv-key { color: var(--text-muted); }
+  .kv-tag .kv-val { color: var(--indigo-light); }
+
+  .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+  .tmpl-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; transition: border-color 0.2s; }
+  .tmpl-card:hover { border-color: var(--indigo); }
+  .tmpl-card .tmpl-icon { font-size: 36px; margin-bottom: 8px; display: block; }
+  .tmpl-card h4 { margin: 0 0 4px; }
+  .tmpl-card p { margin: 0; font-size: 12px; color: var(--text-muted); }
+  .tmpl-card .tmpl-badge { display: inline-block; margin-top: 8px; }
+
+  ul { color: var(--text-secondary); margin: 8px 0 16px 24px; }
+  ul li { margin-bottom: 4px; }
+
+  .mobile-menu-btn { display: none; position: fixed; top: 14px; left: 14px; z-index: 200; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 20px; align-items: center; justify-content: center; }
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+    .main-content { margin-left: 0; }
+    .mobile-menu-btn { display: flex; }
+    .topbar { padding: 14px 16px 14px 64px; }
+    .content-area { padding: 16px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .template-grid { grid-template-columns: 1fr; }
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dt { padding-bottom: 0; }
+  }
 </style>
 </head>
 <body>
-<button class="mb" onclick="ts()">=</button>
-<div class="so" id="so" onclick="ts()"></div>
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()">=</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
 <div class="app-layout">
-<aside class="sidebar" id="sb">
-<div class="sl"><div class="li">R</div><div><h1>FunnelSwift</h1><p>User Guide v2.0</p></div></div>
-<nav class="sn">
-<div class="st">Getting Started</div>
-<a href="#intro" class="ni" onclick="cm()">I Introduction</a>
-<a href="#gs" class="ni" onclick="cm()">K Getting Started</a>
-<div class="st">Core Features</div>
-<a href="#db" class="ni" onclick="cm()">D Dashboard</a>
-<a href="#lds" class="ni" onclick="cm()">L Leads</a>
-<a href="#af" class="ni" onclick="cm()">A Affiliates</a>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🔁</div>
+      <div>
+        <h1>FunnelSwift</h1>
+        <p>User Guide v2.1</p>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="section-title">Getting Started</div>
+      <a href="#introduction" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📖</span> Introduction</a>
+      <a href="#getting-started" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🚀</span> Getting Started</a>
+      <div class="section-title">Lead Management</div>
+      <a href="#dashboard" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="#leads" class="nav-item" onclick="closeMobile()"><span class="nav-icon">👤</span> Leads</a>
+      <a href="#tags" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Tags</a>
+      <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🤝</span> Affiliates</a>
+      <div class="section-title">Kinetic Cards</div>
+      <a href="#kinetic-overview" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🃏</span> Overview</a>
+      <a href="#kinetic-templates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📐</span> Templates</a>
+      <a href="#kinetic-minifunnel" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎯</span> Mini Funnel</a>
+      <a href="#kinetic-analytics" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📈</span> Insights</a>
+      <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
+      <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
+      <div class="section-title">Web-to-Lead &amp; API</div>
+      <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
+      <a href="#api-keys" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔑</span> API Keys</a>
+      <div class="section-title">Administration</div>
+      <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
+      <a href="#settings" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⚙️</span> Settings</a>
+      <div class="section-title">Support</div>
+      <a href="#faq" class="nav-item" onclick="closeMobile()"><span class="nav-icon">❓</span> FAQ</a>
+    </nav>
+    <div class="sidebar-footer">&copy; 2026 FunnelSwift &mdash; Lead Generation Platform</div>
+  </aside>
+  <div class="main-content">
+    <header class="topbar">
+      <h2>FunnelSwift User Guide</h2>
+      <span class="topbar-badge">v2.1 &middot; Lead Gen, Kinetic Cards &amp; Affiliates</span>
+    </header>
+    <div class="content-area">
+      <h1 id="introduction">FunnelSwift User Guide</h1>
+      <p class="lead">A comprehensive guide to using FunnelSwift — the complete lead generation, affiliate management, and digital business card platform. Manage leads, create Kinetic landing cards, track with QR codes, and integrate with your website, mobile app, and CoreSwift CRM.</p>
 
-<a href="#tg" class="ni" onclick="cm()">T Tags</a>
-<div class="st">New Features</div>
-<a href="#kc" class="ni" onclick="cm()">K Kinetic Cards</a>
-<a href="#cp" class="ni" onclick="cm()">C Campaigns</a>
-<a href="#wh" class="ni" onclick="cm()">W Webhooks</a>
-<a href="#is" class="ni" onclick="cm()">I Insights</a>
-<div class="st">Integrations</div>
-<a href="#ak" class="ni" onclick="cm()">K API Keys</a>
-<a href="#wl" class="ni" onclick="cm()">W Web-to-Lead</a>
-<a href="#cr" class="ni" onclick="cm()">City Requests</a>
-<a href="#st" class="ni" onclick="cm()">S Settings</a>
-<div class="st">Support</div>
-<a href="#fq" class="ni" onclick="cm()">Q FAQ</a>
-</nav>
-<div class="sf">&copy; 2026 FunnelSwift</div>
-</aside>
-<div class="mc">
-<header class="tb"><h2>FunnelSwift User Guide</h2><span class="tbb">v2.0</span></header>
-<div class="ca">
-<script>function ts(){var s=document.getElementById("sb"),o=document.getElementById("so");s.classList.toggle("on");o.classList.toggle("on")}function cm(){if(window.innerWidth<=900){document.getElementById("sb").classList.remove("on");document.getElementById("so").classList.remove("on")}}</script>
-<h1 id="intro">FunnelSwift User Guide</h1>
-<p class="ld">A comprehensive guide to using FunnelSwift the Lead Generation & Affiliate Marketing platform. Manage leads, affiliates, plans, tags, and API integrations from one dashboard.</p>
-<div class="fg">
-<div class="fc"><div class="fi">D</div><h4>Real-Time Dashboard</h4><p>Monitor lead stats, conversion rates, top sources, and recent activity.</p></div>
-<div class="fc"><div class="fi">L</div><h4>Lead Management</h4><p>Full CRUD with name, email, phone, source, status, tags, notes, and assigned agents.</p></div>
-<div class="fc"><div class="fi">A</div><h4>Affiliate Marketplace</h4><p>Auto-generated affiliate IDs, commission rates, payout tracking.</p></div>
-<div class="fc"><div class="fi">P</div><h4>Plan Management</h4><p>Pricing tiers, feature sets, commission rules, plan-to-tag mapping.</p></div>
-<div class="fc"><div class="fi">T</div><h4>Tag Groups</h4><p>Source, Status, Events, Services, Engagement, Custom groups.</p></div>
-<div class="fc"><div class="fi">K</div><h4>API Integration</h4><p>Generate and revoke API keys with granular permissions.</p></div>
-</div>
-<dl><dt>URL</dt><dd><a href="https://funnelswift.net">funnelswift.net</a></dd><dt>Port</dt><dd>8080</dd><dt>API</dt><dd><code>/api/v1/</code></dd><dt>Theme</dt><dd><span class="kt"><span class="kk">Primary</span><span class="kv">#4f46e5</span></span></dd></dl>
-<h2 id="gs">Getting Started</h2><h3>Login Credentials</h3><div class="cd"><table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody><tr><td>Email</td><td><code>swiftsoftware143@yahoo.com</code></td></tr><tr><td>Password</td><td><code>SwiftAdmin2026!</code></td></tr></tbody></table></div><h3>Logging In</h3><ol class="sl"><li><strong>Navigate to login</strong><p>Open funnelswift.net/login in your browser.</p></li><li><strong>Enter credentials</strong><p>Email and password from above.</p></li><li><strong>Click Sign In</strong><p>Redirected to Dashboard. Sidebar accesses all modules.</p></li></ol><h3>Interface</h3><p>Dark sidebar with card-based content area using indigo accents.</p><div class="fg"><div class="fc"><div class="fi" style="background:var(--br);color:var(--ts)">N</div><h4>Sidebar</h4><p>Links to Dashboard, Leads, Capture, Tags, API Keys, Settings, Affiliate Marketplace. Admin section at bottom.</p></div><div class="fc"><div class="fi" style="background:var(--br);color:var(--ts)">T</div><h4>Top Bar</h4><p>Page title and actions. Sticky at top of scroll area.</p></div><div class="fc"><div class="fi" style="background:var(--br);color:var(--ts)">F</div><h4>Live Feed</h4><p>Collapsible right panel. Toggle with button at top-right.</p></div></div><h2 id="db">Dashboard</h2><p>Command center for real-time lead generation performance.</p><h3>Stats Cards</h3><div class="sr"><div class="sc"><div class="sv">142</div><div class="sl2">Total Leads</div><div class="sc2">+12% this week</div></div><div class="sc"><div class="sv">8</div><div class="sl2">New Today</div><div class="sc2">+5 this week</div></div><div class="sc"><div class="sv">12</div><div class="sl2">Hot Leads</div><div class="sc2">+3 this week</div></div><div class="sc"><div class="sv">35</div><div class="sl2">Qualified</div><div class="sc2">+8% this week</div></div></div><h3>Charts</h3><div class="fg"><div class="fc"><div class="fi">C</div><h4>Leads by Source</h4><p>Bar chart by source: Form, SMS, ADA, AI, Missed Call. Each has a distinct icon.</p></div><div class="fc"><div class="fi">T</div><h4>Leads Over Time</h4><p>Line chart tracking daily/weekly trends. Hover for exact counts.</p></div><div class="fc"><div class="fi">F</div><h4>Conversion Funnel</h4><p>Visual: New to Contacted to Qualified to Converted.</p></div></div><h3>Live Feed</h3><p>Right panel shows real-time events with name, source badge, timestamp, and status.</p><div class="al a1"><strong>Tip:</strong> Toggle Live Feed with the panel toggle button at top-right.</div><h2 id="lds">Leads</h2><p>Full CRUD interface for managing prospects and contacts.</p><h3>Leads List</h3><p>Main leads page (<code>/leads</code>) with searchable/filterable table:</p><table><thead><tr><th>Column</th><th>Description</th></tr></thead><tbody><tr><td>Name</td><td>Full name</td></tr><tr><td>Email</td><td>Clickable mailto</td></tr><tr><td>Phone</td><td>Clickable tel</td></tr><tr><td>Source</td><td>Form, SMS, ADA, AI, Missed Call</td></tr><tr><td>Status</td><td>New, Contacted, Qualified, Converted, Lost</td></tr><tr><td>Score</td><td>0-100 with Cold/Warm/Hot badge</td></tr><tr><td>Tags</td><td>Colored tag badges</td></tr><tr><td>Assigned</td><td>Assigned agent</td></tr><tr><td>Created</td><td>Relative date</td></tr></tbody></table><h3>Create Lead</h3><ol class="sl"><li><strong>Click Add Lead</strong><p>Above the table.</p></li><li><strong>Fill form</strong><p>Name (required), email, phone, source, status, notes.</p></li><li><strong>Assign tags</strong><p>Multi-select categorization.</p></li><li><strong>Assign agent</strong><p>For follow-up.</p></li><li><strong>Save</strong><p>Triggers Live Feed event.</p></li></ol><h3>Lead Detail</h3><p><code>/leads/[id]</code> includes: Profile Card, Score with tier, Status/Pipeline, Tags, Notes, Activity Timeline, Assigned Agent.</p><h3>Scoring</h3><ul><li><span class="bd bb">Cold 0-40</span> New leads</li><li><span class="bd bo">Warm 41-75</span> Engaged</li><li><span class="bd br">Hot 76-100</span> High-intent</li></ul><div class="al a1"><strong>Tip:</strong> Use Capture module for quick entry from web forms and SMS.</div><h2 id="af">Affiliates</h2><p>Power the Affiliate Marketplace. Manage partners, commissions, and payouts.</p><div class="al a1"><strong>Note:</strong> Marketplace at <code>/affiliate/marketplace</code> visible only to approved affiliates.</div><h3>Affiliates List (Admin)</h3><p>Manage at <code>/admin/affiliates</code>:</p><table><thead><tr><th>Column</th><th>Description</th></tr></thead><tbody><tr><td>Affiliate ID</td><td>Auto-generated</td></tr><tr><td>Name</td><td>Partner name</td></tr><tr><td>Email</td><td>Contact email</td></tr><tr><td>Commission</td><td>% or flat-rate</td></tr><tr><td>Total Earned</td><td>Lifetime earnings</td></tr><tr><td>Total Paid</td><td>Payouts processed</td></tr><tr><td>Balance</td><td>Outstanding commissions</td></tr><tr><td>Status</td><td>Active, Pending, Suspended</td></tr><tr><td>Referrals</td><td>Successful count</td></tr><tr><td>Conversion</td><td>Referral-to-customer %</td></tr></tbody></table><h3>New Affiliate</h3><ol class="sl"><li><strong>Admin to Affiliates</strong></li><li><strong>Click Add</strong></li><li><strong>Fill details</strong><p>Name, email, commission.</p></li><li><strong>Set terms</strong></li><li><strong>Save</strong><p>ID auto-generated.</p></li></ol><h3>Marketplace</h3><p>Approved affiliates see: referral stats, tracking links, products/plans, commission breakdown, payout requests.</p><h3>Payouts</h3><p>Admin at <code>/admin/payouts</code> can view pending/completed, approve/reject, track balances, export history.</p><h2 id="tg">Tags</h2><p>Organize leads using tag groups. Access at <code>/tags</code>.</p><h3>Tag Groups</h3><table><thead><tr><th>Group</th><th>Purpose</th></tr></thead><tbody><tr><td>Source</td><td>Lead origin (Form, SMS, Referral)</td></tr><tr><td>Status</td><td>Lifecycle stage (New, Contacted, Qualified)</td></tr><tr><td>Events</td><td>Triggers (Webinar, Demo)</td></tr><tr><td>Services</td><td>Interest (Consulting, Support)</td></tr><tr><td>Engagement</td><td>Level (High, Medium, Low)</td></tr><tr><td>Custom</td><td>User-defined</td></tr></tbody></table><h3>Managing Tags</h3><ol class="sl"><li><strong>Go to Tags</strong><p>Sidebar Tags link.</p></li><li><strong>View by group</strong><p>Colored badges under headings.</p></li><li><strong>Add tag</strong><p>Name, color, icon per group.</p></li><li><strong>Edit/delete</strong><p>Icons on each tag.</p></li><li><strong>Assign to leads</strong><p>Multi-select in lead form.</p></li></ol><h3>Colors</h3><p><span class="bd bb">Blue</span> <span class="bd bg">Green</span> <span class="bd bo">Orange</span> <span class="bd br">Red</span> <span class="bd bi">Purple</span> <span class="bd">Yellow</span> <span class="bd bb">Cyan</span></p><div class="al a1"><strong>Tip:</strong> Tags map to plans for feature access and commission rules.</div>
+      <h2 id="getting-started">Getting Started</h2>
+      <p>FunnelSwift is a multi-purpose platform that combines lead capture, affiliate routing, digital landing cards (Kinetic), and cross-app sync with IncentiveSwift and CoreSwift CRM. This guide covers every feature.</p>
 
-<h2 id="kc">Kinetic Cards</h2>
-<p>Create bio-link pages and mini landing pages using the Kinetic Cards system. Each card gets a unique slug at <code>funnelswift.net/k/[slug]</code>.</p>
-<div class="al a1"><strong>New in v2.0:</strong> Kinetic Cards replace static link-in-bio pages with dynamic, SSR-rendered layouts. Choose between Bio-Link (Linktree-style) or Mini-Page (section-based landing page).</div>
-<h3>Card Types</h3>
-<table><thead><tr><th>Type</th><th>Use Case</th></tr></thead><tbody>
-<tr><td><strong>Bio-Link</strong></td><td>Avatar + bio + pill buttons + social icons. Like Linktree but self-hosted.</td></tr>
-<tr><td><strong>Mini-Page</strong></td><td>Section-based landing page with hero, features grid, lead capture form.</td></tr>
-</tbody></table>
-<h3>Layout Blocks (Mini-Page)</h3>
-<p>Mini-Pages render <code>layout_blocks</code> as a sequence of sections.</p>
-<table><thead><tr><th>Block</th><th>Description</th></tr></thead><tbody>
-<tr><td><strong>hero</strong></td><td>Headline, subheadline, CTA button. Custom background color and optional video.</td></tr>
-<tr><td><strong>features</strong></td><td>Grid of feature cards with icon, title, description.</td></tr>
-<tr><td><strong>content</strong></td><td>Rich text or image + text section.</td></tr>
-<tr><td><strong>cta</strong></td><td>Standalone call-to-action block with button and link.</td></tr>
-<tr><td><strong>gallery</strong></td><td>Image grid display.</td></tr>
-<tr><td><strong>video</strong></td><td>Embedded video (YouTube/Vimeo provider).</td></tr>
-<tr><td><strong>form</strong></td><td>Lead capture form that submits directly to FunnelSwift.</td></tr>
-</tbody></table>
-<h3>Pill Buttons (Bio-Link)</h3>
-<p>Each bio-link card supports up to 20 pill buttons with action types:</p>
-<ul>
-<li><strong>link</strong> &mdash; Navigate to a destination URL</li>
-<li><strong>form</strong> &mdash; Open an inline lead capture form</li>
-<li><strong>call</strong> &mdash; Initiate a phone call (tel:)</li>
-<li><strong>sms</strong> &mdash; Send an SMS (sms:)</li>
-</ul>
-<h3>Lead Source Tracking</h3>
-<p>Each Kinetic Card can define <strong>source parameters</strong> that map URL query params to tags. Example: <code>?utm_source=instagram</code> auto-tags leads with the matching tag from the card's source config.</p>
-<h3>QR Codes</h3>
-<p>Each Kinetic Card can generate a QR code linking to its slug URL. Use for print materials, business cards, or signage.</p><h3>Footer Branding</h3><p>Every Kinetic Card shows a footer with a call-to-action based on the card type (Bio Link, Mini Page, etc.).</p><ul><li><strong>Paid plans</strong> — You can toggle your business name on/off in the footer from Settings. The CTA always stays.</li><li><strong>Free plan</strong> — Footer always shows the CTA with no business name. Cannot be removed.</li></ul>
-<div class="al a3"><strong>Pro tip:</strong> Combine Kinetic Cards with Campaigns (see below) to track which cards drive the most conversions.</div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">👤</div>
+          <h4>Lead Capture</h4>
+          <p>Manual entry, mobile app scanning, web form ingestion, and API integration &mdash; all in one place</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🃏</div>
+          <h4>Kinetic Cards</h4>
+          <p>Create bio-links, digital business cards, landing pages, and affiliate bridge funnels — all server-side rendered at your custom URL</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🌐</div>
+          <h4>Web-to-Lead</h4>
+          <p>Embed a JavaScript snippet on any website to auto-capture form submissions</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🤝</div>
+          <h4>Affiliates</h4>
+          <p>Route leads to partners with commission tracking and payout management</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📱</div>
+          <h4>Mobile App</h4>
+          <p>Scan business cards via camera, import contacts, and manage leads on the go — Android APK available</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🔗</div>
+          <h4>CoreSync</h4>
+          <p>Leads automatically sync to CoreSwift CRM with tags, source data, and stage mapping</p>
+        </div>
+      </div>
 
-<h2 id="cp">Campaigns</h2>
-<p>Campaigns bridge FunnelSwift leads with IncentiveSwift reward programs. Create targeted campaigns, assign them to Kinetic Cards, and track performance.</p>
-<div class="al a1"><strong>Requires:</strong> A valid IncentiveSwift API key linked to your FunnelSwift tenant.</div>
-<h3>How Campaigns Work</h3>
-<ol class="sl">
-<li><strong>Create in IncentiveSwift</strong><p>Set up the campaign with rewards, eligibility rules, and tracking parameters.</p></li>
-<li><strong>Link to FunnelSwift</strong><p>FunnelSwift proxies campaign data from IncentiveSwift using your tenant's API key. Campaigns appear in the admin dashboard automatically.</p></li>
-<li><strong>Assign to Kinetic Cards</strong><p>Tag campaign IDs on Kinetic Card buttons to associate leads with specific campaigns.</p></li>
-<li><strong>Track Performance</strong><p>Campaign analytics show lead attribution, conversion rates, and reward redemption stats.</p></li>
-</ol>
-<h3>Campaign Properties</h3>
-<table><thead><tr><th>Field</th><th>Description</th></tr></thead><tbody>
-<tr><td>Name</td><td>Campaign display name</td></tr>
-<tr><td>Type</td><td>Reward type (discount, cash, points, gift)</td></tr>
-<tr><td>Budget</td><td>Total campaign budget</td></tr>
-<tr><td>Redemption</td><td>Per-user redemption limits</td></tr>
-<tr><td>Active Period</td><td>Start and end dates</td></tr>
-<tr><td>Tracking Code</td><td>Unique code for attribution</td></tr>
-</tbody></table>
+      <h2 id="dashboard">📊 Dashboard</h2>
+      <p>The dashboard shows your key metrics at a glance: total leads, new leads today, top sources, conversion rates, affiliate performance, Kinetic card views, and revenue. Click any stat card to drill into the data.</p>
 
-<h2 id="wh">Webhooks</h2>
-<p>Configure outbound webhooks to push lead events and system notifications to external services in real time.</p>
-<div class="al a1"><strong>New in v2.0:</strong> Webhook dispatch with automatic retry and exponential backoff &mdash; no data loss on transient failures.</div>
-<h3>Event Types</h3>
-<table><thead><tr><th>Event</th><th>Triggered When</th></tr></thead><tbody>
-<tr><td><code>lead.created</code></td><td>A new lead is created via any channel (form, SMS, API).</td></tr>
-<tr><td><code>lead.updated</code></td><td>Lead record is modified (status change, tag assignment).</td></tr>
-<tr><td><code>lead.converted</code></td><td>Lead status changes to Converted.</td></tr>
-<tr><td><code>tenant.updated</code></td><td>Tenant settings or branding changes.</td></tr>
-<tr><td><code>affiliate.created</code></td><td>New affiliate partner added.</td></tr>
-<tr><td><code>plan.updated</code></td><td>Plan configuration modified.</td></tr>
-</tbody></table>
-<h3>Creating a Webhook</h3>
-<ol class="sl">
-<li><strong>Go to Admin &rarr; Webhooks</strong></li>
-<li><strong>Click + Add Webhook</strong></li>
-<li><strong>Name it</strong><p>e.g. "Slack Lead Notifications"</p></li>
-<li><strong>Enter URL</strong><p>The endpoint that will receive POST payloads.</p></li>
-<li><strong>Select events</strong><p>Comma-separated: <code>lead.created, lead.converted</code></p></li>
-<li><strong>Save</strong><p>Webhook is active immediately.</p></li>
-</ol>
-<h3>Payload Format</h3>
-<pre><code>{
-  "event": "lead.created",
-  "timestamp": "2026-07-17T07:00:00Z",
-  "data": {
-    "id": "uuid",
-    "name": "John Doe",
-    "email": "john@example.com",
-    "source": "Web Form",
-    "status": "new"
-  }
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-value" style="color:var(--indigo-light)">{{total}}</div><div class="stat-label">Total Leads</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--success)">{{today}}</div><div class="stat-label">New Today</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--info)">{{conversion}}</div><div class="stat-label">Conversion Rate</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--warning)">{{cards}}</div><div class="stat-label">Active Cards</div></div>
+      </div>
+
+      <h2 id="leads">👤 Leads</h2>
+      <p>Manage your prospect leads in the Leads section. Each lead stores name, email, phone, company, source, tags, and custom fields. Leads are auto-synced to CoreSwift CRM.</p>
+
+      <h3>Adding Leads</h3>
+      <ol class="step-list">
+        <li><strong>Manual Entry</strong><p>Click "Add Lead" and fill in the form fields. Required: Name or Email. Optional: phone, company, source, tags, notes, custom fields (First Name, Last Name, Website, Address, Title, Social).</p></li>
+        <li><strong>Mobile App Scan</strong><p>Use the FunnelSwift Android app to scan business cards via camera. OCR parses the card and creates a lead automatically.</p></li>
+        <li><strong>Bulk Import</strong><p>From the mobile app, import phone contacts in bulk. Search, select, and upload multiple contacts at once.</p></li>
+        <li><strong>Web-to-Lead Forms</strong><p>Embed a JS snippet on your website. Any form submission auto-creates a lead in your workspace. (See Web-to-Lead section.)</p></li>
+        <li><strong>Kinetic Card Forms</strong><p>Add a lead capture form block to any Kinetic landing card. Visitors submit their info directly through the card.</p></li>
+        <li><strong>API Ingestion</strong><p>Use the REST API to create leads programmatically. Requires an API key with appropriate permissions.</p></li>
+      </ol>
+
+      <h3>Editing Leads</h3>
+      <p>Click any lead to view details. In edit mode, you can change any field, add custom fields, change tags, and update notes. Stage progression: <span class="badge badge-blue">New</span> → <span class="badge badge-indigo">Contacted</span> → <span class="badge badge-orange">Qualified</span> → <span class="badge badge-green">Converted</span> → <span class="badge badge-red">Lost</span>.</p>
+
+      <h2 id="tags">🏷️ Tags &amp; Tag Groups</h2>
+      <p>Tags help organize leads by categories: Source, Status, Events, Services, Engagement, and Custom. Tags are grouped into tag groups for structured organization. Tags auto-sync from plan mappings and are workspace-specific.</p>
+
+      <h3>Creating Tags</h3>
+      <p>From the Tags section, you can create new tags, assign colors, and organize them into groups. Tags applied to leads in FunnelSwift are automatically pushed to CoreSwift CRM as well.</p>
+
+      <h2 id="affiliates">🤝 Affiliates</h2>
+      <p>Manage affiliate partners. Each affiliate gets a unique auto-generated ID. Configure commission rates, track payouts, and route leads to their external systems via webhooks. Affiliate performance is visible on the dashboard.</p>
+
+      <!-- ==================== KINETIC CARDS SECTION ==================== -->
+      <h2 id="kinetic-overview">🃏 Kinetic Cards</h2>
+      <p>Kinetic Cards are server-side rendered landing pages served at <code>/k/YOUR-SLUG</code>. Think of them as shareable mini-sites — bio-links, digital business cards, lead capture pages, and affiliate bridge funnels — all built from editable layout blocks.</p>
+
+      <div class="alert alert-info">
+        <strong>How it works:</strong> Each card is assembled from layout blocks (hero, bio, buttons, lead forms, social links, product showcase) and rendered instantly as a clean, fast HTML page. No page builder overhead. Cards are fully responsive and work great on mobile.
+      </div>
+
+      <h3>Creating a Kinetic Card</h3>
+      <ol class="step-list">
+        <li><strong>Navigate to Kinetic Cards</strong><p>From the sidebar, click <strong>Cards</strong> under the main navigation.</p></li>
+        <li><strong>Choose a Template</strong><p>Click "+ New Card". Select from 4 templates: Bio-Link, Digital Business Card, Mini Funnel, or Mini Page. You can also start from scratch.</p></li>
+        <li><strong>Configure Content</strong><p>Fill in your content fields — name, description, image/logo URL, buttons, social links, lead form fields — depending on the template.</p></li>
+        <li><strong>Choose a Theme</strong><p>Select a color theme (Clean, Bold, Dark, Minimal) or use your brand colors. The card renders instantly with the chosen theme.</p></li>
+        <li><strong>Set Your Slug</strong><p>Give your card a unique slug (e.g. "my-link"). It will be available at <code>https://funnelswift.net/k/my-link</code>.</p></li>
+        <li><strong>Save &amp; Share</strong><p>Save the card. Share the URL, print a QR code, or embed it anywhere. The card is live immediately.</p></li>
+      </ol>
+
+      <h3>Layout Blocks</h3>
+      <p>Each Kinetic card is composed of layout blocks that you can arrange:</p>
+      <table>
+        <thead><tr><th>Block Type</th><th>What It Does</th></tr></thead>
+        <tbody>
+          <tr><td>Hero</td><td>Large header with title, subtitle, and background image/video</td></tr>
+          <tr><td>Bio</td><td>Avatar, name, title, short bio text</td></tr>
+          <tr><td>Buttons</td><td>List of CTA buttons with labels, URLs, and optional icons</td></tr>
+          <tr><td>Lead Form</td><td>Inline lead capture form with configurable fields (name, email, phone, message)</td></tr>
+          <tr><td>Social Icons</td><td>Social media profile links with platform icons</td></tr>
+          <tr><td>Mini Funnel</td><td>Product image + CTA — the affiliate bridge block</td></tr>
+          <tr><td>QR Code</td><td>Embed a QR code that links to the card or any URL</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="kinetic-templates">📐 Card Templates</h2>
+
+      <div class="template-grid">
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🔗</span>
+          <h4>Bio-Link</h4>
+          <p>Linktree-style page with avatar, buttons, and social links</p>
+          <span class="badge badge-indigo tmpl-badge">Popular</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">💳</span>
+          <h4>Digital Business Card</h4>
+          <p>Virtual contact card with name, title, company, phone, email</p>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🎯</span>
+          <h4>Mini Funnel</h4>
+          <p>Affiliate bridge page — product image/video with CTA button</p>
+          <span class="badge badge-green tmpl-badge">New 🆕</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">📄</span>
+          <h4>Mini Page</h4>
+          <p>Hero + features + lead form for simple landing pages</p>
+        </div>
+      </div>
+
+      <h3>🔗 Bio-Link Template</h3>
+      <p>The most popular Kinetic template. Create a Linktree-style page with your avatar, name, bio, a list of CTA buttons, and social icons. Perfect for Instagram bios, email signatures, and podcast show notes.</p>
+
+      <h3>💳 Digital Business Card Template</h3>
+      <p>Replace paper business cards with a digital version. Displays name, title, company, phone number, email, website, and socials. Share via QR code or NFC. The card updates instantly if your info changes.</p>
+
+      <h2 id="kinetic-minifunnel">🎯 Mini Funnel Template</h2>
+      <p>The Mini Funnel template is designed specifically for affiliate marketing and product promotions. Create a focused bridge page between a traffic source (social media, ad, QR code) and your offer.</p>
+
+      <h3>Features</h3>
+      <ul>
+        <li><strong>Product Showcase</strong> — Display a product image (or video embed) with title and subtitle</li>
+        <li><strong>Strong CTA</strong> — Large call-to-action button with custom text and URL</li>
+        <li><strong>4 Themes</strong> — Clean (light, professional), Bold (vibrant, high-contrast), Dark (sleek), Minimal (ultra-clean)</li>
+        <li><strong>Mobile-First</strong> — Optimized for mobile traffic from social media and ads</li>
+        <li><strong>Lead Capture</strong> — Optional embedded form before the CTA</li>
+      </ul>
+
+      <div class="alert alert-warning">
+        <strong>Use case:</strong> Mini Funnels are ideal for Facebook/Instagram ads, influencer shoutouts, and QR code campaigns. Instead of sending traffic to a generic landing page, create a branded bridge page that leads to your offer. The 4 themes help match your ad creative.
+      </div>
+
+      <h3>Setting Up a Mini Funnel</h3>
+      <ol class="step-list">
+        <li><strong>Create Card</strong><p>Click "+ New Card" and select the "Mini Funnel" template.</p></li>
+        <li><strong>Product Image or Video</strong><p>Upload a product image URL or paste a video embed URL (YouTube/Vimeo). One or the other — pick what converts best.</p></li>
+        <li><strong>Write Copy</strong><p>Add a compelling title and subtitle that drives the visitor to click the CTA.</p></li>
+        <li><strong>Set CTA</strong><p>Enter the button text (e.g. "Get My Free Trial", "Claim Discount") and the destination URL.</p></li>
+        <li><strong>Pick Theme</strong><p>Choose from Clean, Bold, Dark, or Minimal — whichever matches your brand or ad creative.</p></li>
+        <li><strong>Enable Lead Form</strong><p>Optionally add a name + email form before the CTA to capture leads before the click.</p></li>
+        <li><strong>Publish</strong><p>Save and share. Your Mini Funnel is live at <code>/k/YOUR-SLUG</code>.</p></li>
+      </ol>
+
+      <div class="alert alert-success">
+        <strong>Pro tip:</strong> Use different slugs for different traffic sources (e.g. /k/insta-offer, /k/email-blast, /k/qr-poster) so you can track which source converts best via Insights.
+      </div>
+
+      <h2 id="kinetic-analytics">📈 Insights</h2>
+      <p>The Insights section gives you analytics on your Kinetic cards. Track views, lead captures, click-through rates, and conversion performance over time.</p>
+
+      <h3>Available Metrics</h3>
+      <ul>
+        <li><strong>Card Views</strong> — Total visits to each card, unique vs returning</li>
+        <li><strong>Lead Conversions</strong> — How many visitors submitted the lead form</li>
+        <li><strong>CTA Clicks</strong> — Button click tracking for each CTA on the card</li>
+        <li><strong>Top Cards</strong> — Your best-performing cards by views and conversions</li>
+        <li><strong>Traffic Sources</strong> — Where visitors are coming from (direct, social, QR, referral)</li>
+      </ul>
+
+      <h3>Viewing Insights</h3>
+      <p>From the sidebar, click <strong>Insights</strong>. Select a card from the dropdown or view all cards aggregated. Data is updated in near real-time and can be filtered by date range.</p>
+
+      <h2 id="sharing-app">📲 Sharing the App</h2><p>Share FunnelSwift with someone without asking for their phone number:</p><ul><li><strong>Install as App (PWA)</strong> — Visit <code>funnelswift.net</code> on their phone. An Install bar appears at the bottom — tap it to add FunnelSwift to the home screen. No app store needed.</li><li><strong>Short link</strong> — <code>kntcrd.com/app</code> redirects straight to the download page. Easy to say out loud.</li><li><strong>AirDrop / Nearby Share</strong> — Share the URL directly with someone nearby.</li><li><strong>NFC stickers</strong> — Buy blank programmable NFC tags, write <code>funnelswift.net</code> to them, and tap the tag to their phone.</li></ul><h2 id="kinetic-qr">📱 QR Codes</h2>
+      <p>Each Kinetic card can be paired with a QR code for print and physical-world use. QR codes are generated server-side as SVG (for print) or PNG (for digital).</p>
+
+      <h3>Generating QR Codes</h3>
+      <ol class="step-list">
+        <li><strong>Open a Card</strong><p>From the Cards list, click the QR icon on any card.</p></li>
+        <li><strong>Configure</strong><p>Choose size (small/medium/large) and format (SVG for print, PNG for digital).</p></li>
+        <li><strong>Download</strong><p>Download the QR code image. It links to your card's URL by default.</p></li>
+        <li><strong>Print or Share</strong><p>Use on flyers, posters, business cards, packaging, or in-store displays.</p></li>
+      </ol>
+
+      <div class="alert alert-info">
+        <strong>Plan limits:</strong> QR code generation limits depend on your plan. Free plans have a monthly limit. Enterprise plans include unlimited QR code generation.
+      </div>
+
+      <h3>QR Code API</h3>
+      <p>For programmatic generation, use the QR code API endpoint:</p>
+      <pre><code>GET /api/v1/kinetic/qr/{slug}?format=svg&size=300
+GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
+
+      <!-- ==================== WEB-TO-LEAD SECTION ==================== -->
+      <h2 id="web-to-lead">🌐 Web-to-Lead</h2>
+      <p>Web-to-Lead lets you capture leads from any external website form. Embed a small JavaScript snippet on your site, and FunnelSwift will automatically ingest form submissions as leads.</p>
+
+      <div class="alert alert-info">
+        <strong>How it works:</strong> Your user copies a snippet, pastes it on their website, and every form submission is captured and routed to their FunnelSwift workspace — tagged, deduplicated, and ready to use.
+      </div>
+
+      <h3>Setting Up a Web-to-Lead Config</h3>
+      <ol class="step-list">
+        <li><strong>Navigate to Web-to-Lead</strong><p>From the sidebar, click <strong>Web-to-Lead</strong>.</p></li>
+        <li><strong>Create a Config</strong><p>Click "+ New Config". Give it a name (e.g. "Website Contact Form"), set a default source label, optionally assign one or more tags for auto-labeling, and set a rate limit (default 100/hr).</p></li>
+        <li><strong>Get the Embed Code</strong><p>Click the link icon (🔗) on your config. A modal shows the embed code and instructions.</p></li>
+        <li><strong>Create an API Key</strong><p>Go to <strong>API Keys</strong> and create a new key. Copy the full key.</p></li>
+        <li><strong>Paste on Your Website</strong><p>Copy the embed code, replace <code>YOUR_FULL_API_KEY_HERE</code> with your actual key, and paste it just before <code>&lt;/body&gt;</code> on your website.</p></li>
+      </ol>
+
+      <h3>The Embed Snippet</h3>
+      <pre><code>&lt;!-- FunnelSwift Web-to-Lead --&gt;
+&lt;script&gt;
+window.FunnelSwiftConfig = {
+  apiKey: "fs_live_xxxxxxxxxxxxxxxx",
+  configId: "00000000-0000-0000-0000-000000000000"
+};
+&lt;/script&gt;
+&lt;script src="https://funnelswift.net/funnelswift-capture.js" async&gt;&lt;/script&gt;</code></pre>
+
+      <h3>Smart Field Mapping</h3>
+      <p>The JavaScript snippet automatically detects form fields by name and label. It maps common patterns like <code>email</code>, <code>name</code>, <code>phone</code>, <code>company</code>, <code>message</code>, and more. Unrecognized fields pass through as custom data.</p>
+
+      <h3>Duplicate Detection</h3>
+      <p>If a submission has an email that already exists, the system returns success but does not create a duplicate lead. Duplicates are logged for your reference.</p>
+
+      <h3>Rate Limiting</h3>
+      <p>Default 100 submissions per hour per workspace. Configure per config under Web-to-Lead settings.</p>
+
+      <h3>Direct API Endpoint</h3>
+      <pre><code>POST https://funnelswift.net/api/v1/web-to-lead
+Content-Type: application/json
+
+{
+  "api_key": "fs_live_xxxxxxxxxxxxxxxx",
+  "config_id": "00000000-0000-0000-0000-000000000000",
+  "name": "John Smith",
+  "email": "john@example.com",
+  "company": "Acme Inc",
+  "phone": "+1-555-0123"
 }</code></pre>
-<h3>Retry Behavior</h3>
-<p>Failed deliveries retry with exponential backoff: 10s, 30s, 90s, 270s, then final. If all retries fail, the event is logged for manual review.</p>
-<h3>Testing</h3>
-<p>Use the <strong>Test</strong> button on any webhook to send a sample payload. Check the target endpoint's logs to verify delivery.</p>
 
-<h2 id="is">Insights</h2>
-<p>The Insights dashboard gives you a real-time pulse on Kinetic Card performance and page-level analytics.</p>
-<div class="al a1"><strong>New in v2.0:</strong> Card-level analytics track views, clicks, and submissions per Kinetic Card.</div>
-<h3>Dashboard Metrics</h3>
-<div class="sr"><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Kinetic Cards</div><div class="sc2">Live card count</div></div><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Views</div><div class="sc2">All cards combined</div></div><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Clicks</div><div class="sc2">Button interactions</div></div><div class="sc"><div class="sv">&mdash;</div><div class="sl2">Total Submissions</div><div class="sc2">Lead form completions</div></div></div>
-<h3>Top Cards</h3>
-<p>The Insights widget on the Dashboard lists your top-performing Kinetic Cards ranked by views. Each card shows:</p>
-<ul>
-<li><strong>Title</strong> &mdash; Card name</li>
-<li><strong>Views</strong> &mdash; Page load count</li>
-<li><strong>Clicks</strong> &mdash; Pill button clicks</li>
-<li><strong>Submissions</strong> &mdash; Form completions</li>
-</ul>
-<h3>Using Insights</h3>
-<ol class="sl">
-<li><strong>Open Dashboard</strong><p>Insights appear on the main Dashboard page.</p></li>
-<li><strong>Review top cards</strong><p>Cards sorted by engagement &mdash; identify what's working.</p></li>
-<li><strong>Optimize underperformers</strong><p>Low view count? Check your QR code placement or social promo. Low clicks? Review your CTA text and button placement.</p></li>
-</ol>
-<div class="al a1"><strong>Tip:</strong> Pair Insights with Campaigns to tie card performance to specific reward programs.</div>
+      <h2 id="api-keys">🔑 API Keys</h2>
+      <p>Generate API keys for programmatic access to FunnelSwift. Keys are hashed with Argon2 for security. Permissions control what each key can do, including web-to-lead access.</p>
 
-<h2 id="ak">API Keys</h2><p>Generate and manage API keys at <code>/api-keys</code>.</p><h3>Permissions</h3><table><thead><tr><th>Permission</th><th>Access</th></tr></thead><tbody><tr><td>leads:read</td><td>Read leads</td></tr><tr><td>leads:write</td><td>Create/update leads</td></tr><tr><td>events:read</td><td>Read events</td></tr><tr><td>events:write</td><td>Create events</td></tr><tr><td>tags:read</td><td>Read tags</td></tr><tr><td>tags:write</td><td>Create tags</td></tr></tbody></table><h3>Create Key</h3><ol class="sl"><li><strong>Go to API Keys</strong></li><li><strong>Click Create Key</strong></li><li><strong>Name it</strong><p>e.g. n8n Integration</p></li><li><strong>Select app</strong><p>ada_widget, ai_agent, command_center, mobile_app, n8n, other</p></li><li><strong>Set permissions</strong><p>Select at least one.</p></li><li><strong>Generate</strong><p>Key shown once, prefixed <code>sk_live_</code>.</p></li></ol><div class="al a2"><strong>Important:</strong> Copy the key immediately. It will not be shown again.</div><h3>Revoke</h3><p>Click the trash icon next to any key. Revoked keys stop working immediately.</p><h3>Usage</h3><p>Include in Authorization header:</p><pre><code>Authorization: Bearer sk_live_YOUR_KEY_HERE</code></pre><p>Base URL: <code>https://funnelswift.net/api/v1/</code></p><h2 id="st">Settings</h2><p>Configure account and tenant settings at <code>/settings</code>.</p><h3>Security</h3><div class="fg"><div class="fc"><div class="fi">S</div><h4>CSP</h4><p>Content Security Policy enforced.</p></div><div class="fc"><div class="fi">S</div><h4>RLS</h4><p>Row Level Security on all tables.</p></div><div class="fc"><div class="fi">P</div><h4>Password</h4><p>Change password with current + new fields.</p></div></div><h3>Account Settings</h3><ul><li><strong>Profile</strong> &mdash; Name, email, contact info</li><li><strong>Notifications</strong> &mdash; Alert preferences</li><li><strong>Tenant Info</strong> &mdash; Company name, domain, branding</li><li><strong>Integration Settings</strong> &mdash; API configs, webhooks</li></ul><h3>Super Admin Settings</h3><p>Additional settings available for super admins:</p><ul><li><strong>Branding</strong> &mdash; Logo, colors, custom CSS</li><li><strong>Plans</strong> &mdash; Manage all plans</li><li><strong>Team</strong> &mdash; Manage users and permissions</li><li><strong>Legal</strong> &mdash; Terms, privacy pages</li><li><strong>SEO</strong> &mdash; Meta tags, sitemap</li><li><strong>System</strong> &mdash; Advanced config</li></ul><h2 id="wl">Web-to-Lead</h2>
-<p>Capture leads from any external website by embedding a small JavaScript snippet. When a visitor submits a form on your site, the lead is automatically created in your FunnelSwift dashboard.</p>
-<div class="al a3"><strong>No API key needed!</strong> The embed snippet uses a built-in public key. Just copy and paste — no editing required.</div>
-<h3>Creating a Config</h3>
-<ol class="sl">
-<li><strong>Go to Web-to-Lead</strong><p>Click Web-to-Lead in the sidebar.</p></li>
-<li><strong>Click + New Config</strong></li>
-<li><strong>Name it</strong><p>e.g. "Website Contact Form"</p></li>
-<li><strong>Set default source</strong><p>e.g. "Web Form" — this labels where the lead came from.</p></li>
-<li><strong>Auto-tag leads</strong><p>Select tags to apply automatically when a lead is captured from this form.</p></li>
-<li><strong>Save</strong><p>Your config is created. Click the link icon to get the embed code.</p></li>
-</ol>
-<h3>Getting the Embed Code</h3>
-<p>Click the link icon (<strong>🔗</strong>) next to any config to open the embed modal. You get two options:</p>
-<div class="fg">
-<div class="fc"><div class="fi">H</div><h4>Option A: In the &lt;head&gt;</h4><p>Paste this code into the <code>&lt;head&gt;</code> section of your website. It uses the <code>defer</code> attribute so it loads in the background without slowing your page down.</p></div>
-<div class="fc"><div class="fi">B</div><h4>Option B: Before &lt;/body&gt;</h4><p>Paste this just before the closing <code>&lt;/body&gt;</code> tag. This guarantees all your form elements are fully loaded before the script starts watching for submissions.</p></div>
+      <h3>Creating an API Key</h3>
+      <ol class="step-list">
+        <li>Go to <strong>API Keys</strong> from the sidebar.</li>
+        <li>Click <strong>"+ New Key"</strong> and give it a descriptive name.</li>
+        <li>Copy the key immediately — it's shown once.</li>
+        <li>Use with Web-to-Lead by pasting it into your embed snippet's <code>apiKey</code> field.</li>
+      </ol>
+
+      <h2 id="plans">💳 Plans</h2>
+      <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, API access, Kinetic card limits, QR code limits, etc.).</p>
+
+      <h3>Plan Features</h3>
+      <p>Manage feature flags for each plan in the admin panel. Available features include:</p>
+      <ul>
+        <li><strong>Lead Capacity</strong> — Maximum leads per workspace</li>
+        <li><strong>Kinetic Cards</strong> — Number of active cards allowed</li>
+        <li><strong>QR Generation</strong> — Monthly QR code generation limit</li>
+        <li><strong>Web-to-Lead</strong> — Hourly submission rate limit</li>
+        <li><strong>API Access</strong> — API rate limits and endpoint access</li>
+        <li><strong>Analytics</strong> — Data retention and export options</li>
+        <li><strong>Mobile App</strong> — Business card scan and import limits</li>
+        <li><strong>Cross-App Sync</strong> — CoreSwift CRM integration access</li>
+      </ul>
+
+      <h2 id="settings">⚙️ Settings</h2>
+      <p>Configure your account profile, change password, and manage workspace preferences including SEO settings and legal pages.</p>
+
+      <h3>Mobile App</h3>
+      <p>Download the FunnelSwift Android app from the Settings page. The mobile app lets you:</p>
+      <ul>
+        <li>Scan business cards via camera with automatic OCR</li>
+        <li>Import phone contacts in bulk</li>
+        <li>View and manage leads on the go</li>
+        <li>Share your Kinetic cards via QR code scanner</li>
+        <li>Syncs with your workspace in real-time</li>
+      </ul>
+
+      <h2 id="faq">❓ Frequently Asked Questions</h2>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What's the difference between a Kinetic Card and a regular landing page?</button>
+        <div class="faq-a">Kinetic Cards are SSR (server-side rendered) pages with pre-built layout blocks — no page builder overhead, no loading spinners, instant load. They're optimized for mobile and designed for specific use cases: bio-links, business cards, funnels, and lead capture.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How do I get the web-to-lead embed code for my website?</button>
+        <div class="faq-a">Go to Web-to-Lead in the sidebar, create a config, then click the link icon (🔗). The modal shows your embed HTML. You'll need an active API key.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What happens if someone submits a duplicate email?</button>
+        <div class="faq-a">The web-to-lead endpoint returns success but does not create a duplicate lead. The duplicate is logged in web_to_lead_logs with status 'duplicate' for your review.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Can I use my own domain for Kinetic Cards?</button>
+        <div class="faq-a">Yes — on paid plans, you can configure a custom domain. Cards are served from your domain instead of funnelswift.net/k/your-slug.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What's the Mini Funnel template for?</button>
+        <div class="faq-a">Mini Funnels are designed for affiliate marketing and product promotions. Display a product image or video with a strong CTA button. Choose from 4 themes to match your ad creative. Great for Facebook/Instagram ads, influencer campaigns, and QR code bridge pages.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Does FunnelSwift sync with CoreSwift CRM?</button>
+        <div class="faq-a">Yes. Leads captured in FunnelSwift (via web-to-lead, Kinetic forms, manual entry, or mobile app) are automatically synced to CoreSwift CRM with their tags, source, and stage data. No separate configuration needed.</div>
+      </div>
+
+    </div>
+  </div>
 </div>
-<h3>Where to Paste It</h3>
-<table><thead><tr><th>Platform</th><th>Instructions</th></tr></thead><tbody>
-<tr><td><strong>WordPress</strong></td><td>Install <strong>WPCode</strong> plugin &rarr; Add New &rarr; "Header &amp; Footer" &rarr; paste in Header or Footer.</td></tr>
-<tr><td><strong>Webflow</strong></td><td>Site Settings &rarr; Custom Code &rarr; paste in "Head Code" or "Footer Code".</td></tr>
-<tr><td><strong>Squarespace</strong></td><td>Settings &rarr; Advanced &rarr; Code Injection &rarr; paste in Header or Footer.</td></tr>
-<tr><td><strong>Wix</strong></td><td>Settings &rarr; Custom Code &rarr; + Add Custom Code &rarr; paste script &rarr; select "All Pages".</td></tr>
-<tr><td><strong>Custom HTML</strong></td><td>Paste Option A in the <code>&lt;head&gt;</code> or Option B just before <code>&lt;/body&gt;</code>. For a single-page form, paste below your <code>&lt;form&gt;</code> tag.</td></tr>
-<tr><td><strong>ClickFunnels</strong></td><td>Settings &rarr; Tracking Code &rarr; paste in Body section.</td></tr>
-</tbody></table>
-<h3>How It Works</h3>
-<div class="fg">
-<div class="fc"><div class="fi">1</div><h4>You Paste</h4><p>Copy the script from FunnelSwift and paste it onto your external website (WordPress, Webflow, Squarespace, etc.).</p></div>
-<div class="fc"><div class="fi">2</div><h4>Visitor Submits</h4><p>When someone fills out the form on your site and hits submit, the script intercepts the data (Name, Email, Phone).</p></div>
-<div class="fc"><div class="fi">3</div><h4>Lead Created</h4><p>The script sends the form data to FunnelSwift. A new lead appears instantly in your dashboard with the tag you selected.</p></div>
-</div>
-<div class="al a2"><strong>Note:</strong> The script does NOT prevent the normal form submission. Your existing form will still work as before — the lead capture happens in the background.</div>
-
-<h2 id="cr">City Requests</h2>
-<p>The City Request system lets visitors suggest new cities (or products/niches) directly from the directory homepage. Manage all requests from one network-wide admin dashboard.</p>
-<h3>How It Works</h3>
-<ol class="sl">
-<li><strong>Visitor submits</strong><p>At the bottom of the homepage, visitors enter a city and state. Submissions are stored in a central database.</p></li>
-<li><strong>Deduplication</strong><p>If 3 people request "Queens, New York", the count goes to 3. No duplicate entries.</p></li>
-<li><strong>Admin reviews</strong><p>Open the admin dashboard to see all requests sorted by popularity.</p></li>
-<li><strong>Add to directory</strong><p>When you add a requested city, click "Add to Directory" and it disappears from the request list.</p></li>
-</ol>
-<h3>Admin Dashboard</h3>
-<p>Accessible at <code>https://zaarhub.com/admin/requests</code> (or your directory&rsquo;s <code>/admin/requests</code> path).</p>
-<table><thead><tr><th>Feature</th><th>How To</th></tr></thead><tbody>
-<tr><td>View requests</td><td>Dashboard opens to the Requests tab. Cities sorted by request count (highest first).</td></tr>
-<tr><td>Remove a city</td><td>Click "Add to Directory" &mdash; it&rsquo;s removed from the list instantly.</td></tr>
-<tr><td>Edit form text</td><td>Switch to the Form Settings tab. Change headline, description, button text, placeholders, and success messages.</td></tr>
-</tbody></table>
-<h3>Customizing the Form</h3>
-<p>The city request form is fully customizable from the admin settings. Use it for any niche:</p>
-<table><thead><tr><th>Scenario</th><th>Headline</th><th>Placeholder</th></tr></thead><tbody>
-<tr><td>City directory</td><td>"ZaarHub not in your city yet?"</td><td>"City or town"</td></tr>
-<tr><td>Product directory</td><td>"Don&rsquo;t see your product?"</td><td>"Product name"</td></tr>
-<tr><td>Service directory</td><td>"Need a service we don&rsquo;t have?"</td><td>"Service type"</td></tr>
-</tbody></table>
-<div class="al a1"><strong>Note:</strong> The city request system is <strong>network-wide</strong>. One database, one admin dashboard &mdash; even if you have multiple directories. New cities can be added to any directory in the network.</div>
-
-<h2 id="fq">FAQ</h2><div class="fi"><button class="fq" onclick="at(this)">How do I reset my password? <span>+</span></button><div class="fa">Go to Settings, click Change Password. Enter current password and new password (minimum 8 characters).</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I create a new lead? <span>+</span></button><div class="fa">Click Leads in sidebar, then Add Lead. Fill in name, email, phone, source, assign tags, and save.</div></div><div class="fi"><button class="fq" onclick="at(this)">What lead sources are supported? <span>+</span></button><div class="fa">Web Form, SMS, ADA Demo, AI Agent, Missed Call, and API integration.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I become an affiliate? <span>+</span></button><div class="fa">Contact the admin to create an affiliate profile. Once approved, you access the Affiliate Marketplace.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I generate an API key? <span>+</span></button><div class="fa">Go to API Keys in sidebar, click Create Key, name it, select permissions, and generate. Copy the key immediately.</div></div><div class="fi"><button class="fq" onclick="at(this)">Can I assign leads to team members? <span>+</span></button><div class="fa">Yes. When editing a lead, use the Assigned To field to select an agent.</div></div><div class="fi"><button class="fq" onclick="at(this)">What are tag groups? <span>+</span></button><div class="fa">Tag groups categorize tags by Source, Status, Events, Services, Engagement, and Custom. Helps organize lead classification.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do payouts work for affiliates? <span>+</span></button><div class="fa">Affiliates earn commissions per referral. Admin manages payouts at /admin/payouts: approve, track, and export.</div></div><div class="fi"><button class="fq" onclick="at(this)">What is the Live Feed? <span>+</span></button><div class="fa">A real-time activity panel on the right side showing lead creation events. Toggle with the panel button at top-right.</div></div><div class="fi"><button class="fq" onclick="at(this)">How do I assign tags to plans? <span>+</span></button><div class="fa">Use plan-to-tag mapping in the Plans admin section to link tags with subscription plans for feature access control.</div></div><script>function at(b){var a=b.nextElementSibling;a.classList.toggle("on");b.querySelector("span").textContent=a.classList.contains("on")?"-":"+"}</script></div></div></div></body></html>
+<script>
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+function closeMobile() {
+  if (window.innerWidth <= 900) {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+  }
+}
+</script>
+</body>
+</html>
