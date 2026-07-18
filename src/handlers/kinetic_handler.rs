@@ -190,6 +190,7 @@ pub struct PlanLimits {
     pub allow_minipage_layout: bool,
     pub show_branding: bool,  // false = "Powered by FunnelSwift Kinetic" always shown
     pub allow_minifunnel: bool,
+    pub cta_text: String,
 }
 
 pub async fn get_user_limits(pool: &PgPool, tenant_id: Uuid) -> PlanLimits {
@@ -212,6 +213,11 @@ pub async fn get_user_limits(pool: &PgPool, tenant_id: Uuid) -> PlanLimits {
     fn get_bool(f: &serde_json::Value, key: &str, default: bool) -> bool {
         f.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
     }
+    fn get_str(f: &serde_json::Value, key: &str, default: &str) -> String {
+        f.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or(default.to_string())
+    }
+
+    let cta_text = get_str(&f, "kinetic_cta_text", "Claim Your {{type}}");
 
     PlanLimits {
         max_kinetic_cards: get_int(&f, "max_kinetic_cards", 1),
@@ -221,6 +227,7 @@ pub async fn get_user_limits(pool: &PgPool, tenant_id: Uuid) -> PlanLimits {
         allow_minipage_layout: get_bool(&f, "kinetic_minipage", false),
         show_branding: get_bool(&f, "kinetic_branding", true),  // default: show branding
         allow_minifunnel: get_bool(&f, "kinetic_minifunnel", true),
+        cta_text,
     }
 }
 
@@ -426,13 +433,14 @@ async fn render_card_html(
     .flatten();
 
     // Detect card type from blocks for CTA label
-    let cta_label: Cow<'_, str> = blocks.iter().find_map(|b| match b {
-        LayoutBlock::BioLink { .. } | LayoutBlock::BusinessCard { .. } => Some(Cow::Borrowed("Free Bio Link")),
-        LayoutBlock::Hero { .. } | LayoutBlock::Features { .. } => Some(Cow::Borrowed("Free Mini Page")),
-        LayoutBlock::MiniFunnel { .. } => Some(Cow::Borrowed("Free Mini Funnel")),
-        // Catch-all for remaining block types — fall through to default
+    let limits = get_user_limits(&state.pool, card.tenant_id).await;
+    let card_type_label = blocks.iter().find_map(|b| match b {
+        LayoutBlock::BioLink { .. } | LayoutBlock::BusinessCard { .. } => Some("Bio Link"),
+        LayoutBlock::Hero { .. } | LayoutBlock::Features { .. } => Some("Mini Page"),
+        LayoutBlock::MiniFunnel { .. } => Some("Mini Funnel"),
         _ => None,
-    }).unwrap_or(Cow::Borrowed("Free Kinetic Card"));
+    }).unwrap_or("Kinetic Card");
+    let cta_label = limits.cta_text.replace("{{type}}", card_type_label).replace("{type}", card_type_label);
 
     let tmpl = PageTemplate {
         tenant_name: &card.title,
@@ -448,7 +456,7 @@ async fn render_card_html(
         modal_button_text: &modal_button_text,
         modal_placeholder: &modal_placeholder,
         modal_fields,
-        show_branding: get_user_limits(&state.pool, card.tenant_id).await.show_branding,
+        show_branding: limits.show_branding,
  page_password_hash: page_password_hash_str.as_deref(),
  page_consent_required: false,
         affiliate_code: affiliate_code_str.as_deref(),

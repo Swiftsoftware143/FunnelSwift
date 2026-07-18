@@ -72,6 +72,8 @@
             transition: border-color 0.15s;
         }
         .number-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+        .text-input { width: 220px; padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; background: #f8fafc; color: #334155; outline: none; transition: all 0.15s; }
+        .text-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); background: #fff; }
     </style>
 </head>
 <body class="bg-slate-50 font-inter antialiased min-h-screen">
@@ -148,6 +150,7 @@
             { key: "kinetic_cta_buttons_max", label: "CTA Buttons (0=disabled, -1=unlimited)", type: "number" },
             { key: "kinetic_social_links_max", label: "Social Links (0=disabled, -1=unlimited)", type: "number" },
             { key: "kinetic_theme_templates", label: "Theme Templates (1=default, -1=all)", type: "number" },
+            { key: "kinetic_cta_text", label: "Footer CTA Text", type: "text", placeholder: "Claim Your {type}" },
         ];
 
         // Feature defaults
@@ -164,6 +167,7 @@
             kinetic_cta_buttons_max: 0,
             kinetic_social_links_max: 0,
             kinetic_theme_templates: 1,
+            kinetic_cta_text: "Claim Your [card-type]",
         };
 
         let token = null;
@@ -325,6 +329,16 @@
                                         onchange="markDirty('${pid}')" class="sr-only toggle-checkbox peer">
                                     <div class="toggle-label absolute inset-0 bg-slate-300 rounded-full transition peer-checked:bg-indigo-500"></div>
                                 </label>
+                            </div>
+                        `;
+                    } else if (feat.type === "text") {
+                        const txtVal = val || FEATURE_DEFAULTS[feat.key] || "";
+                        html += `
+                            <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition">
+                                <label for="${inputId}" class="text-sm text-slate-700 cursor-pointer select-none flex-1">${feat.label}</label>
+                                <input type="text" id="${inputId}" value="${txtVal}"
+                                    onchange="markDirty('${pid}')" onfocus="this.select()"
+                                    class="text-input" placeholder="${feat.placeholder || 'Enter text'}">
                             </div>
                         `;
                     } else {
