@@ -51,6 +51,10 @@ rand = "0.8"
 # Base64 encoding/decoding
 base64 = "0.21"
 
+# HMAC & signing for webhook verification
+ring = "0.17"
+hex = "0.4"
+
 # Regex
 regex-lite = "0.1"
 

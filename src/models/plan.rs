@@ -15,6 +15,7 @@ pub struct Plan {
     pub has_dual_routing: bool,
     pub has_multi_tenant: bool,
     pub has_white_label: bool,
+    pub payment_provider: Option<String>,
     pub features: Option<serde_json::Value>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
@@ -31,6 +32,7 @@ pub struct CreatePlanRequest {
     pub has_dual_routing: Option<bool>,
     pub has_multi_tenant: Option<bool>,
     pub has_white_label: Option<bool>,
+    pub payment_provider: Option<String>,
     pub features: Option<serde_json::Value>,
 }
 
@@ -45,6 +47,7 @@ pub struct UpdatePlanRequest {
     pub has_dual_routing: Option<bool>,
     pub has_multi_tenant: Option<bool>,
     pub has_white_label: Option<bool>,
+    pub payment_provider: Option<String>,
     pub features: Option<serde_json::Value>,
 }
 
