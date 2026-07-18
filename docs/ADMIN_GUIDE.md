@@ -90,7 +90,7 @@ Access at: **https://funnelswift.net/admin/plans** (must be logged in as an admi
 | Video Embeds | `kinetic_video` | checkbox | Allow video embeds on cards |
 | Source Tracking | `kinetic_source_tracking` | checkbox | Track click sources via UTM params |
 | Mini-Page Layout | `kinetic_minipage` | checkbox | Enable mini-page (extended layout) |
-| Hide Branding | `kinetic_branding` | checkbox | Hide "Powered by FunnelSwift" (checked = hidden) |
+| Show Tenant Name in Footer | `kinetic_branding` | checkbox | Show tenant name above CTA (free plan locked off) |
 | Mini Funnels | `kinetic_minifunnel` | checkbox | Allow mini-funnel multi-page sequences |
 | Custom Domain | `kinetic_custom_domain` | checkbox | Attach a custom domain to kinetic cards |
 | Analytics / Insights | `kinetic_analytics` | checkbox | Show card analytics dashboard |
@@ -105,9 +105,9 @@ Access at: **https://funnelswift.net/admin/plans** (must be logged in as an admi
   "kinetic_custom_colors": false,
   "kinetic_video": false,
   "kinetic_source_tracking": false,
-  "kinetic_minipage": false,
-  "kinetic_branding": true,
-  "kinetic_minifunnel": true,
+  "kinetic_minipage": true,          // free can create 1 mini page
+  "kinetic_branding": false,         // no tenant name in footer (CTA only)
+  "kinetic_minifunnel": false,       // no mini funnels on free
   "kinetic_custom_domain": false,
   "kinetic_analytics": false,
   "kinetic_cta_buttons_max": 0,
