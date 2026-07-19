@@ -461,6 +461,7 @@ async fn render_card_html(
  page_consent_required: false,
         affiliate_code: affiliate_code_str.as_deref(),
         cta_label: &cta_label,
+        is_dark: is_dark_color(&card.bg_color),
     };
 
     let html = askama::Template::render(&tmpl).map_err(|e| {
@@ -908,4 +909,16 @@ pub async fn get_metrics(
         leads_by_source, top_tags, views_today, clicks_today,
         views_over_time, clicks_over_time,
     }))
+}
+
+/// Determine if a hex color string is dark (luminance < 128).
+fn is_dark_color(hex: &str) -> bool {
+    let hex = hex.trim_start_matches('#');
+    // Parse RGB from 3 or 6 digit hex
+    let r: u32 = u32::from_str_radix(&hex[..=1], 16).unwrap_or(0);
+    let g: u32 = u32::from_str_radix(&hex[2..=3], 16).unwrap_or(0);
+    let b: u32 = u32::from_str_radix(&hex[4..=5], 16).unwrap_or(0);
+    // Standard luminance formula
+    let luminance = 0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64;
+    luminance < 128.0
 }
