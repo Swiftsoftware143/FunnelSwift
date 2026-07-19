@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
+use crate::email;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -441,6 +442,43 @@ pub async fn stripe_webhook(
                     "Checkout completed: session={:?}, payment_status={:?}, amount={:?} {}",
                     provider_session_id, payment_status, amount_total, currency.unwrap_or("usd")
                 );
+
+                // ── Credential delivery ──
+                if let Some(sid) = provider_session_id {
+                    let session_row = sqlx::query(
+                        r#"SELECT cs.tenant_id, cs.user_id, cs.metadata,
+                                  u.email, u.name, u.password_hash
+                           FROM checkout_sessions cs
+                           LEFT JOIN users u ON u.id = cs.user_id
+                           WHERE cs.provider_session_id = $1"#
+                    )
+                    .bind(sid)
+                    .fetch_optional(&state.pool)
+                    .await?;
+
+                    if let Some(row) = session_row {
+                        let metadata: Value = row.get("metadata");
+                        let customer_email = metadata.get("customer_email")
+                            .or_else(|| {
+                                // Fall back to Stripe's customer_details.email
+                                let obj = payload.get("data")?.get("object")?;
+                                let details = obj.get("customer_details")?;
+                                details.get("email")
+                            })
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let customer_name = metadata.get("customer_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Valued Customer");
+                        let tenant_id: Uuid = row.get("tenant_id");
+
+                        if let Some(ref email) = customer_email {
+                            if let Err(e) = deliver_credentials(&state.pool, email, customer_name, tenant_id).await {
+                                tracing::error!("Failed to deliver credentials: {}", e);
+                            }
+                        }
+                    }
+                }
             }
         }
         "checkout.session.expired" => {
@@ -488,6 +526,37 @@ pub async fn paypal_webhook(
                 .await?;
 
                 tracing::info!("PayPal order completed: id={:?}, status={:?}", provider_session_id, status);
+
+                // ── Credential delivery ──
+                if let Some(sid) = provider_session_id {
+                    let session_row = sqlx::query(
+                        r#"SELECT cs.tenant_id, cs.user_id, cs.metadata,
+                                  u.email, u.name, u.password_hash
+                           FROM checkout_sessions cs
+                           LEFT JOIN users u ON u.id = cs.user_id
+                           WHERE cs.provider_session_id = $1"#
+                    )
+                    .bind(sid)
+                    .fetch_optional(&state.pool)
+                    .await?;
+
+                    if let Some(row) = session_row {
+                        let metadata: Value = row.get("metadata");
+                        let customer_email = metadata.get("customer_email")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let customer_name = metadata.get("customer_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Valued Customer");
+                        let tenant_id: Uuid = row.get("tenant_id");
+
+                        if let Some(ref email) = customer_email {
+                            if let Err(e) = deliver_credentials(&state.pool, email, customer_name, tenant_id).await {
+                                tracing::error!("Failed to deliver credentials: {}", e);
+                            }
+                        }
+                    }
+                }
             }
         }
         _ => {
@@ -496,4 +565,91 @@ pub async fn paypal_webhook(
     }
 
     Ok(Json(json!({"received": true})))
+}
+
+// ── Credential delivery ──
+
+use rand::Rng;
+
+async fn deliver_credentials(
+    pool: &sqlx::PgPool,
+    email: &str,
+    name: &str,
+    tenant_id: Uuid,
+) -> Result<(), String> {
+    let existing_user = sqlx::query_as::<_, UserRow>(
+        "SELECT id, password_hash, name FROM users WHERE email = $1"
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("DB error looking up user: {}", e))?;
+
+    if let Some(user) = existing_user {
+        let has_password = !user.password_hash.is_empty()
+            && user.password_hash != " "
+            && user.password_hash != "";
+
+        if has_password {
+            email::send_purchase_confirmed_email(email, &user.name, "Premium Plan").await
+        } else {
+            let temp_password = generate_temp_password();
+            let hash = hash_password(&temp_password);
+            sqlx::query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
+                .bind(&hash)
+                .bind(user.id)
+                .execute(pool)
+                .await
+                .map_err(|e| format!("Failed to update password: {}", e))?;
+            email::send_welcome_email(email, &user.name, &temp_password).await
+        }
+    } else {
+        let user_id = Uuid::new_v4();
+        let temp_password = generate_temp_password();
+        let hash = hash_password(&temp_password);
+
+        sqlx::query(
+            "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'admin', true, NOW(), NOW())"
+        )
+        .bind(user_id)
+        .bind(tenant_id)
+        .bind(email)
+        .bind(&hash)
+        .bind(name)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to create user: {}", e))?;
+
+        email::send_welcome_email(email, name, &temp_password).await
+    }
+}
+
+fn generate_temp_password() -> String {
+    let chars: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&";
+    let mut rng = rand::thread_rng();
+    (0..14)
+        .map(|_| {
+            let idx = rng.gen_range(0..chars.len());
+            chars[idx] as char
+        })
+        .collect()
+}
+
+fn hash_password(password: &str) -> String {
+    use argon2::{Argon2, PasswordHasher};
+    use password_hash::SaltString;
+    let salt = SaltString::generate(&mut rand::thread_rng());
+    let hash = Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .expect("argon2 hashing failed")
+        .to_string();
+    hash
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct UserRow {
+    id: Uuid,
+    password_hash: String,
+    name: String,
 }
