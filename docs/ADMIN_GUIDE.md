@@ -125,6 +125,56 @@ Access at: **https://funnelswift.net/admin/plans** (must be logged in as an admi
 }
 ```
 
+## Email Templates (New)
+
+Transactional emails use database-stored templates in the `email_templates` table. Templates support `{{variable}}` placeholders for dynamic content in both subject and body fields.
+
+### Template Types
+
+| Type | When Sent | Merge Fields |
+|---|---|---|
+| `welcome` | New account created | `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}` |
+| `purchase_confirmed` | Successful payment | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
+
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/email-templates` | List all templates (paginated) |
+| POST | `/api/email-templates` | Create template |
+| GET | `/api/email-templates/:id` | Get single template |
+| PUT | `/api/email-templates/:id` | Update template |
+| DELETE | `/api/email-templates/:id` | Delete template |
+| GET | `/api/email-templates/merge-fields` | List merge fields by type |
+
+### Template Fields
+
+- **name** — display label
+- **template_type** — `welcome` or `purchase_confirmed`
+- **subject** — subject line with `{{variable}}` insertion
+- **body** — plain text fallback
+- **html_body** — rich HTML content
+- **is_html** — if true, sends HTML; otherwise plain text
+- **is_default** — serves as fallback for this type
+
+### Merge Fields Available
+
+All templates: `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}`, `{{plan_name}}`
+
+### Purchase Flow
+
+1. User completes checkout via Stripe/PayPal
+2. Webhook fires `POST /api/checkout/webhook`
+3. System creates account, seeds tenant settings, applies plan
+4. `send_purchase_confirmed_email()` queues email via `email_templates`
+5. If template exists with `template_type = 'purchase_confirmed'`, it's rendered and sent; otherwise hardcoded fallback
+6. `send_welcome_email()` sends credential details
+
+### Default Seeds
+
+- **Welcome Email** — credentials + login URL + next steps
+- **Purchase Confirmation** — plan name + thank-you + login link
+
 ## Pending Items
 - iOS mobile app (blocked on Apple Developer account renewal)
 - Field mapping UI (manual override for web-to-lead)

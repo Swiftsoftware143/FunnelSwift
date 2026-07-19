@@ -62,5 +62,22 @@ Download the APK from: https://funnelswift.net/download-app
 - Import phone contacts in bulk
 - Search, select, and batch upload
 
+## Account & Purchases
+
+### Plans & Checkout
+- **Plans** are managed by admins with configurable features and limits
+- Checkout is handled via Stripe or PayPal — payment provider selectable per plan
+- After successful payment, an account is auto-created with credential delivery via email
+
+### Email Templates
+Transactional emails (welcome, purchase confirmation) use database-stored templates with `{{variable}}` placeholders:
+
+| Template Type | When Sent | Merge Fields |
+|---|---|---|
+| `welcome` | Account created | `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}` |
+| `purchase_confirmed` | Payment confirmed | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
+
+Admins can edit these templates in the admin panel — modify subject lines, HTML body, or plain text fallback. Merge field buttons insert placeholders automatically.
+
 ## Tags & Tag Groups
 Organize leads by categories. Tags can be grouped into: Source, Status, Events, Services, Engagement, Custom.
