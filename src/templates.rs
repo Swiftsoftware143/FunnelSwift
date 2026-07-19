@@ -215,6 +215,8 @@ pub struct PageTemplate<'a> {
     pub page_consent_required: bool,
     /// Branding CTA label — "Free Bio Link", "Free Mini Page", etc.
     pub cta_label: &'a str,
+    /// True if bg_color is a dark color (auto-detected)
+    pub is_dark: bool,
 }
 
 /// Template for the admin plans feature-management page
@@ -232,6 +234,7 @@ impl Default for PageTemplate<'_> {
             accent_color: "#8B5CF6",
             custom_css: "",
             slug: "",
+            is_dark: false,
             logo_url: None,
             blocks: Vec::new(),
             modal_form_title: "",
