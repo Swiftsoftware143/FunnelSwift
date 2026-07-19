@@ -590,8 +590,9 @@ async fn deliver_credentials(
             && user.password_hash != " "
             && user.password_hash != "";
 
+        let email_aid = user.tenant_id.unwrap_or(uuid::Uuid::default());
         if has_password {
-            email::send_purchase_confirmed_email(email, &user.name, "Premium Plan").await
+            email::send_purchase_confirmed_email(pool, email_aid, email, &user.name, "Premium Plan").await
         } else {
             let temp_password = generate_temp_password();
             let hash = hash_password(&temp_password);
@@ -601,7 +602,7 @@ async fn deliver_credentials(
                 .execute(pool)
                 .await
                 .map_err(|e| format!("Failed to update password: {}", e))?;
-            email::send_welcome_email(email, &user.name, &temp_password).await
+            email::send_welcome_email(pool, email_aid, email, &user.name, &temp_password).await
         }
     } else {
         let user_id = Uuid::new_v4();
@@ -621,7 +622,7 @@ async fn deliver_credentials(
         .await
         .map_err(|e| format!("Failed to create user: {}", e))?;
 
-        email::send_welcome_email(email, name, &temp_password).await
+        email::send_welcome_email(pool, tenant_id, email, name, &temp_password).await
     }
 }
 
@@ -652,4 +653,5 @@ struct UserRow {
     id: Uuid,
     password_hash: String,
     name: String,
+    tenant_id: Option<Uuid>,
 }

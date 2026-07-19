@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use crate::email::send_reset_email;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -8,7 +9,6 @@ use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize};
 use serde_json::json;
-use uuid::Uuid;
 use std::env;
 use crate::error::AppResult;
 use crate::error::AppError;
@@ -340,7 +340,8 @@ pub async fn forgot_password(
         .execute(&state.pool)
         .await?;
 
-        match send_reset_email(&user.email, &token).await {
+        let email_aid = user.tenant_id;
+        match send_reset_email(&state.pool, email_aid, &user.email, &token, &user.name).await {
             Ok(_) => tracing::info!("Password reset email sent to {}", user.email),
             Err(e) => tracing::error!("Failed to send password reset email to {}: {}", user.email, e),
         }
