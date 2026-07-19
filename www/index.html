@@ -76,6 +76,9 @@ body{background:#f1f5f9;display:flex;min-height:100vh}
     <input type="email" id="le" placeholder="Email" value="swiftsoftware143@yahoo.com">
     <input type="password" id="lp" placeholder="Password" value="SwiftAdmin2026!">
     <button class="btn" onclick="doLogin()" style="width:100%">Sign In</button>
+    <div style="text-align:center;margin-top:8px">
+      <a href="#" onclick="showForgotPw();return false" style="color:#6366f1;font-size:13px;text-decoration:none">Forgot Password?</a>
+    </div>
     <div id="lmsg" class="msg" style="margin-top:12px"></div>
   </div>
 </div>
@@ -197,7 +200,7 @@ function ldSettings(){
     document.getElementById("st-ct").innerHTML=h;
   });
 }
-function sSettings(){var name=document.getElementById("mf-name").value;var slug=document.getElementById("mf-slug").value;var pw=document.getElementById("mf-pw").value;var promises=[];if(name)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"tenant_name",value:name})}));if(slug)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"slug",value:slug})}));if(pw)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"password",value:pw})}));Promise.all(promises).then(function(){alert("Saved");})}
+function sSettings(){var name=document.getElementById("mf-name").value;var slug=document.getElementById("mf-slug").value;var pw=document.getElementById("mf-pw").value;var promises=[];if(name)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"tenant_name",value:name})}));if(slug)promises.push(api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"slug",value:slug})}));if(pw)promises.push(api("/api/v1/auth/change-password",{method:"POST",body:JSON.stringify({new_password:pw})}));Promise.all(promises).then(function(){alert("Saved");})}
 function dItem(t,i,r){if(!confirm("Delete?"))return;api("/api/v1/"+t+"/"+i,{method:"DELETE"}).then(function(){ld(r)})}
 function clsO(){document.getElementById("ov").classList.remove("show")}
 document.getElementById("ov").addEventListener("click",function(e){if(e.target===this)clsO()})
@@ -284,5 +287,87 @@ function revealKey(){var el=document.getElementById("api-key-display");if(el&&U.
 function copyKey(){var el=document.getElementById("api-key-display");if(el){navigator.clipboard.writeText(el.textContent).then(function(){el.textContent="Copied!";setTimeout(function(){revealKey()},2000)})}}
 
 </script>
+
+<!-- Forgot Password Modal -->
+<div class="ov" id="forgot-modal" style="display:none">
+  <div class="mdl" style="max-width:400px">
+    <div id="forgot-step-email">
+      <h3>Reset Password</h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px">Enter your email and we'll send you a reset code.</p>
+      <div class="fld"><label>Email</label><input id="forgot-email" type="email" placeholder="you@example.com"></div>
+      <div id="forgot-msg" class="msg"></div>
+      <div class="mdl-ft">
+        <button class="btn btn-sec" onclick="clsForgot()">Cancel</button>
+        <button class="btn" id="forgot-btn" onclick="submitForgot()">Send Reset Code</button>
+      </div>
+    </div>
+    <div id="forgot-step-reset" style="display:none">
+      <h3>Set New Password</h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px">Enter the code from your email and your new password.</p>
+      <div class="fld"><label>Reset Code</label><input id="reset-token" type="text" placeholder="Paste the code"></div>
+      <div class="fld"><label>New Password</label><input id="reset-pw" type="password" placeholder="Minimum 8 characters"></div>
+      <div id="reset-msg" class="msg"></div>
+      <div class="mdl-ft">
+        <button class="btn btn-sec" onclick="clsForgot()">Cancel</button>
+        <button class="btn" id="reset-btn" onclick="submitReset()">Reset Password</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Forgot & Reset Password */
+function showForgotPw(){
+  document.getElementById('forgot-modal').style.display='flex';
+  document.getElementById('forgot-step-email').style.display='';
+  document.getElementById('forgot-step-reset').style.display='none';
+  document.getElementById('forgot-msg').className='msg';
+  document.getElementById('forgot-msg').style.display='none';
+  document.getElementById('reset-msg').className='msg';
+  document.getElementById('reset-msg').style.display='none';
+}
+function clsForgot(){document.getElementById('forgot-modal').style.display='none'}
+document.getElementById('forgot-modal').addEventListener('click',function(e){if(e.target===this)clsForgot()});
+
+function submitForgot(){
+  var email=document.getElementById('forgot-email').value.trim();
+  var msg=document.getElementById('forgot-msg');
+  var btn=document.getElementById('forgot-btn');
+  if(!email||!email.includes('@')){msg.className='msg er';msg.textContent='Please enter a valid email';return}
+  msg.className='msg lo';msg.textContent='Sending...';
+  btn.textContent='Sending...';btn.disabled=true;
+  fetch('/api/v1/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})}).then(function(r){return r.json()}).then(function(){
+    msg.className='msg ok';msg.textContent='If that email is registered, a reset code has been sent.';
+    btn.textContent='Sent ✓';btn.disabled=false;
+    setTimeout(function(){
+      document.getElementById('forgot-step-email').style.display='none';
+      document.getElementById('forgot-step-reset').style.display='';
+    },1500);
+  }).catch(function(e){
+    msg.className='msg er';msg.textContent='Error sending reset code';
+    btn.textContent='Send Reset Code';btn.disabled=false;
+  });
+}
+
+function submitReset(){
+  var token=document.getElementById('reset-token').value.trim();
+  var password=document.getElementById('reset-pw').value;
+  var msg=document.getElementById('reset-msg');
+  var btn=document.getElementById('reset-btn');
+  if(!token){msg.className='msg er';msg.textContent='Please enter the reset code';return}
+  if(password.length<8){msg.className='msg er';msg.textContent='Password must be at least 8 characters';return}
+  msg.className='msg lo';msg.textContent='Resetting...';
+  btn.textContent='Please wait...';btn.disabled=true;
+  fetch('/api/v1/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,password:password})}).then(function(r){if(!r.ok)throw new Error('Reset failed');return r.json()}).then(function(){
+    msg.className='msg ok';msg.textContent='Password reset successfully! You can now sign in.';
+    btn.textContent='Done';btn.disabled=true;
+    setTimeout(function(){clsForgot()},2000);
+  }).catch(function(){
+    msg.className='msg er';msg.textContent='Invalid or expired reset code';
+    btn.textContent='Reset Password';btn.disabled=false;
+  });
+}
+</script>
+
 </body>
 </html>
