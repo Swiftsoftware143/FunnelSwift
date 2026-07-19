@@ -285,21 +285,20 @@ pub async fn create_checkout_session(
     let currency = req.currency.unwrap_or_else(|| "usd".to_string());
 
     // Resolve return_url: explicit > plan's thank_you_url > /thank-you.html
-    let return_url = req.return_url.clone().or_else(|| {
-        req.plan_id.and_then(|pid| {
-            let pool = state.pool.clone();
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async move {
-                sqlx::query_scalar::<_, Option<String>>(
-                    "SELECT thank_you_url FROM plans WHERE id = $1"
-                )
-                .bind(pid)
-                .fetch_optional(&pool)
-                .ok()
-                .flatten()
-            })
-        })
-    }).unwrap_or_else(|| "/thank-you.html".to_string());
+    let return_url = if let Some(ref url) = req.return_url {
+        url.clone()
+    } else if let Some(pid) = req.plan_id {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT thank_you_url FROM plans WHERE id = $1"
+        )
+        .bind(pid)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten()
+        .unwrap_or_else(|| "/thank-you.html".to_string())
+    } else {
+        "/thank-you.html".to_string()
+    };
 
     let cancel_url = req.cancel_url.clone().unwrap_or_else(|| "/".to_string());
 
