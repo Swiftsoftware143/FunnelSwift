@@ -1,4 +1,4 @@
-use axum::{extract::{State, Json}, response::IntoResponse};
+use axum::{extract::{Path, State, Json}, response::IntoResponse};
 use serde_json::{json, Value};
 use uuid::Uuid;
 use jsonwebtoken::{encode, Header, EncodingKey};
@@ -208,4 +208,38 @@ pub async fn stop_impersonation(
         "status": "impersonation_stopped",
         "note": "Drop impersonation token. Restore your original admin token."
     })))
+}
+
+/// List users for a specific tenant (admin only)
+pub async fn list_tenant_users(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(tenant_id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let tid = tenant_id;
+
+    let users = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, String, bool)>( 
+        r#"SELECT id, email, first_name, last_name, role, is_active
+           FROM users WHERE tenant_id = $1
+           ORDER BY created_at DESC"#
+    )
+    .bind(tid)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let result: Vec<Value> = users.into_iter().map(|(id, email, first_name, last_name, role, is_active)| {
+        json!({
+            "id": id.to_string(),
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "role": role,
+            "is_active": is_active,
+        })
+    }).collect();
+
+    Ok(Json(json!(result)))
 }

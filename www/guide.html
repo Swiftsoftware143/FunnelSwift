@@ -88,6 +88,9 @@
   .alert-success { background: rgba(34,197,94,0.08); border-color: var(--success); color: #86EFAC; }
   .alert-danger { background: rgba(239,68,68,0.08); border-color: var(--danger); color: #FCA5A5; }
 
+  a.section-title { display: block; padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); text-decoration: none; cursor: pointer; }
+  a.section-title:hover { color: var(--indigo-light); background: rgba(255,255,255,0.03); border-radius: 6px; }
+
   .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
   .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
   .stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
@@ -150,28 +153,28 @@
       </div>
     </div>
     <nav class="sidebar-nav">
-      <div class="section-title">Getting Started</div>
+      <a href="#getting-started" class="section-title" onclick="closeMobile()">Getting Started</a>
       <a href="#introduction" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📖</span> Introduction</a>
       <a href="#getting-started" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🚀</span> Getting Started</a>
-      <div class="section-title">Lead Management</div>
+      <a href="#leads" class="section-title" onclick="closeMobile()">Lead Management</a>
       <a href="#dashboard" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📊</span> Dashboard</a>
       <a href="#leads" class="nav-item" onclick="closeMobile()"><span class="nav-icon">👤</span> Leads</a>
       <a href="#tags" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Tags</a>
       <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🤝</span> Affiliates</a>
-      <div class="section-title">Kinetic Cards</div>
+      <a href="#kinetic-overview" class="section-title" onclick="closeMobile()">Kinetic Cards</a>
       <a href="#kinetic-overview" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🃏</span> Overview</a>
       <a href="#kinetic-templates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📐</span> Templates</a>
       <a href="#kinetic-minifunnel" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎯</span> Mini Funnel</a>
       <a href="#kinetic-analytics" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📈</span> Insights</a>
       <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
-      <div class="section-title">Web-to-Lead &amp; API</div>
+      <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
       <a href="#api-keys" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔑</span> API Keys</a>
-      <div class="section-title">Administration</div>
+      <a href="#plans" class="section-title" onclick="closeMobile()">Administration</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
       <a href="#settings" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⚙️</span> Settings</a>
-      <div class="section-title">Support</div>
+      <a href="#faq" class="section-title" onclick="closeMobile()">Support</a>
       <a href="#faq" class="nav-item" onclick="closeMobile()"><span class="nav-icon">❓</span> FAQ</a>
     </nav>
     <div class="sidebar-footer">&copy; 2026 FunnelSwift &mdash; Lead Generation Platform</div>
@@ -267,7 +270,7 @@
       <h3>Creating a Kinetic Card</h3>
       <ol class="step-list">
         <li><strong>Navigate to Kinetic Cards</strong><p>From the sidebar, click <strong>Cards</strong> under the main navigation.</p></li>
-        <li><strong>Choose a Template</strong><p>Click "+ New Card". Select from 4 templates: Bio-Link, Digital Business Card, Mini Funnel, or Mini Page. You can also start from scratch.</p></li>
+        <li><strong>Choose a Template</strong><p>Click "+ New Card". Select from templates: biolink, Digital Business Card, Mini Funnel, Hero Page, or Mini Page. You can also start from scratch.</p></li>
         <li><strong>Configure Content</strong><p>Fill in your content fields — name, description, image/logo URL, buttons, social links, lead form fields — depending on the template.</p></li>
         <li><strong>Choose a Theme</strong><p>Select a color theme (Clean, Bold, Dark, Minimal) or use your brand colors. The card renders instantly with the chosen theme.</p></li>
         <li><strong>Set Your Slug</strong><p>Give your card a unique slug (e.g. "my-link"). It will be available at <code>https://funnelswift.net/k/my-link</code>.</p></li>
@@ -294,33 +297,66 @@
       <div class="template-grid">
         <div class="tmpl-card">
           <span class="tmpl-icon">🔗</span>
-          <h4>Bio-Link</h4>
-          <p>Linktree-style page with avatar, buttons, and social links</p>
+          <h4>Biolink</h4>
+          <p>Avatar + bio + CTA buttons + social links — link-in-bio classic</p>
           <span class="badge badge-indigo tmpl-badge">Popular</span>
         </div>
         <div class="tmpl-card">
           <span class="tmpl-icon">💳</span>
           <h4>Digital Business Card</h4>
-          <p>Virtual contact card with name, title, company, phone, email</p>
+          <p>Virtual contact card — name, title, company, phone, email</p>
         </div>
         <div class="tmpl-card">
           <span class="tmpl-icon">🎯</span>
           <h4>Mini Funnel</h4>
-          <p>Affiliate bridge page — product image/video with CTA button</p>
+          <p>Affiliate bridge — product image/video + CTA button</p>
           <span class="badge badge-green tmpl-badge">New 🆕</span>
         </div>
         <div class="tmpl-card">
           <span class="tmpl-icon">📄</span>
           <h4>Mini Page</h4>
-          <p>Hero + features + lead form for simple landing pages</p>
+          <p>Compact landing with hero + feature grid + lead form</p>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🎨</span>
+          <h4>Hero Page</h4>
+          <p>Full-screen hero for product launches & influencer storefronts</p>
+          <span class="badge badge-blue tmpl-badge">New</span>
         </div>
       </div>
 
-      <h3>🔗 Bio-Link Template</h3>
-      <p>The most popular Kinetic template. Create a Linktree-style page with your avatar, name, bio, a list of CTA buttons, and social icons. Perfect for Instagram bios, email signatures, and podcast show notes.</p>
+      <h3>🔗 Biolink Template</h3>
+      <p>The most popular Kinetic template. Create a biolink page with your avatar, name, bio, a list of CTA buttons, and social icons. Perfect for Instagram bios, email signatures, and podcast show notes.</p>
 
       <h3>💳 Digital Business Card Template</h3>
       <p>Replace paper business cards with a digital version. Displays name, title, company, phone number, email, website, and socials. Share via QR code or NFC. The card updates instantly if your info changes.</p>
+
+      <h3>📄 Mini Page Template</h3>
+      <p>A compact, section-based landing page with a hero backdrop, feature grid, and native lead capture form. Think of it as a single-page micro-site — lightweight, fast-loading, and focused on one goal.</p>
+      <ul>
+        <li><strong>Hero backdrop</strong> — Full-bleed image or gradient background with headline + subtitle</li>
+        <li><strong>Feature grid</strong> — Multi-column grid of feature blocks with icons, titles, and descriptions</li>
+        <li><strong>Lead capture form</strong> — Native inline form collects name + email before the CTA</li>
+        <li><strong>Modular blocks</strong> — Drag-and-drop layout: hero, features, lead form, buttons</li>
+        <li><strong>Mobile-first</strong> — Optimized for mobile traffic from social and ads</li>
+      </ul>
+      <p><strong>Best for:</strong> Campaign landing pages, event registration, simple product promos, lead gen offers. Use when you need more than a link-in-bio but less than a full Hero Page.</p>
+      <div class="alert alert-info">
+        <strong>Mini Page vs Biolink:</strong> A Biolink is just avatar + bio + buttons + socials. A Mini Page adds a full hero section, feature grid, and lead form — giving you a real landing page experience in a micro footprint.
+      </div>
+
+      <h3>🎨 Hero Page Template</h3>
+      <p>Full-screen blended background landing page designed for product launches, influencer storefronts, and brand showcases. Rivals platforms like Big Cartel and Shopify for creators — but lighter, faster, and free to start.</p>
+      <ul>
+        <li><strong>Background image or video</strong> — Full-width hero with image, MP4 video, or gradient overlay</li>
+        <li><strong>Gradient overlay</strong> — Custom multi-stop blend colors with angle control</li>
+        <li><strong>Product carousel</strong> — Swipeable CSS scroll-snap carousel for showcasing multiple products</li>
+        <li><strong>Embedded video</strong> — YouTube/Vimeo embeds or MP4 background for product demos</li>
+        <li><strong>Direct "Buy Now" product links</strong> — Stack CTA buttons with custom labels going to any checkout or affiliate URL</li>
+        <li><strong>Lead capture form</strong> — Native form + modal for collecting emails before/after purchase</li>
+        <li><strong>Below hero sections</strong> — Add features grid, testimonial, pricing, or more content blocks</li>
+      </ul>
+      <p><strong>Best for:</strong> Influencers selling merchandise, music/album launches, product drops, brand landing pages, portfolio showcases. The Hero Page is designed to compete with Big Cartel — influencers get a full storefront experience with zero monthly fees, instant SSR-cached load times, and built-in lead capture that auto-syncs to FunnelSwift CRM.</p>
 
       <h2 id="kinetic-minifunnel">🎯 Mini Funnel Template</h2>
       <p>The Mini Funnel template is designed specifically for affiliate marketing and product promotions. Create a focused bridge page between a traffic source (social media, ad, QR code) and your offer.</p>
@@ -502,6 +538,14 @@ Content-Type: application/json
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Does FunnelSwift sync with CoreSwift CRM?</button>
         <div class="faq-a">Yes. Leads captured in FunnelSwift (via web-to-lead, Kinetic forms, manual entry, or mobile app) are automatically synced to CoreSwift CRM with their tags, source, and stage data. No separate configuration needed.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Where is the inline guide / help?</button>
+        <div class="faq-a">This page (guide.html) is the full user guide. The FunnelSwift dashboard has walkthrough tooltips that appear when you first visit each section. Click the "?" help button in the bottom-right of the dashboard to re-open them. An inline help panel embedded in the dashboard is coming soon.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How do I make a Hero Page with a blended background?</button>
+        <div class="faq-a">The Hero template creates a full-screen hero section with an optional background image/video and gradient overlay. When you create a Kinetic Card, select the Hero Page template settings. Set the background image URL, choose gradient colors, and adjust the blend angle. The hero takes up the full screen with your headline, subtitle, and CTA button overlaid on the blended background.</div>
       </div>
 
     </div>
