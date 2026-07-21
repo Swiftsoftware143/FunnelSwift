@@ -42,12 +42,12 @@ pub async fn register(
 
     // Create tenant
     let tenant_id = Uuid::new_v4();
-    let tenant_slug = req.tenant_name.to_lowercase().replace(' ', "-");
+    let tenant_slug = format!("{}-{}", req.tenant_name.as_deref().unwrap_or("default").to_lowercase().replace(' ', "-"), Uuid::new_v4().to_string().get(..8).unwrap_or("x"));
     sqlx::query(
         "INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)",
     )
     .bind(tenant_id)
-    .bind(&req.tenant_name)
+    .bind(req.tenant_name.clone().unwrap_or_else(|| "My Workspace".to_string()))
     .bind(&tenant_slug)
     .execute(&state.pool)
     .await?;

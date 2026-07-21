@@ -126,6 +126,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/portfolio-sync", post(crate::handlers::admin_handler::portfolio_sync))
         .route("/api/v1/admin/impersonate", post(crate::handlers::admin_handler::impersonate))
         .route("/api/v1/admin/stop-impersonation", post(crate::handlers::admin_handler::stop_impersonation))
+        .route("/api/v1/admin/tenants/:id/users", post(crate::handlers::admin_handler::list_tenant_users))
         // Site settings management (admin only)
         .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
         .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
