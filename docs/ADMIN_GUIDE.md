@@ -65,6 +65,17 @@ systemctl restart funnelswift
 ### JS Snippet
 Update `/var/www/funnelswift/funnelswift-capture.js` and reference from HTTPS.
 
+## MultiDirectory Integration (CTA Slots)
+
+FunnelSwift's SMS/email funnels can appear as **CTA buttons** on MultiDirectory business listing pages.
+
+**Configuration (Business → Integrations tab in MultiDirectory):**
+- Toggle "SMS Funnel" integration on
+- Select a CTA: "Text Us", "Get Started", "Send a Message"
+- Assign a FunnelSwift funnel to trigger when the CTA is clicked
+- The button renders on the business listing; clicking opens FunnelSwift's modal for SMS/funnel capture
+- **Controlled vocabulary only** — business owners pick from pre-approved CTAs
+
 ## Monitoring
 - Check logs: `journalctl -u funnelswift --no-pager -n 50`
 - Health endpoint: `GET /api/health`
