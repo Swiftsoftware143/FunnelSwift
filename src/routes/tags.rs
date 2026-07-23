@@ -209,6 +209,8 @@ async fn trigger_webhook(contact: &Lead, system_tag: &SystemTag) -> WebhookResul
 
     let webhook_url = match system_tag.target_software.as_str() {
         "crm-swift" => std::env::var("CRM_SWIFT_WEBHOOK_URL").ok(),
+        "coreswift" => std::env::var("CORESWIFT_WEBHOOK_URL").ok(),
+        "incentiveswift" => std::env::var("INCENTIVESWIFT_WEBHOOK_URL").ok(),
         "workflowswift" => std::env::var("WORKFLOWSWIFT_WEBHOOK_URL").ok(),
         "adaswift" => std::env::var("ADASWIFT_WEBHOOK_URL").ok(),
         "missedcall" => std::env::var("MISSEDCALL_WEBHOOK_URL").ok(),
@@ -230,6 +232,7 @@ async fn trigger_webhook(contact: &Lead, system_tag: &SystemTag) -> WebhookResul
         .post(&url)
         .header("Content-Type", "application/json")
         .header("X-Event-Source", "funnelswift")
+        .header("X-Internal-Key", &std::env::var("INTERNAL_SYNC_KEY").unwrap_or_default())
         .json(&payload)
         .send()
         .await

@@ -79,6 +79,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/affiliates/:id/commissions", get(affiliate_handler::get_affiliate_commissions))
         .route("/api/v1/affiliate-products", get(affiliate_product_handler::list_affiliate_products).post(affiliate_product_handler::create_affiliate_product))        .route("/api/v1/affiliate-products/admin", get(affiliate_product_handler::list_all_affiliate_products_admin))
         .route("/api/v1/affiliate-products/:id", put(affiliate_product_handler::update_affiliate_product).delete(affiliate_product_handler::delete_affiliate_product))
+        // Admin affiliate product endpoints
+        .route("/api/v1/admin/affiliate-products/sync", post(affiliate_product_handler::admin_sync_affiliate_products))
+        .route("/api/v1/admin/affiliate-products/:id", put(affiliate_product_handler::admin_update_affiliate_product))
         .route("/api/v1/product-categories", get(product_category_handler::list_categories).post(product_category_handler::create_category))
         .route("/api/v1/product-categories/:id", put(product_category_handler::update_category).delete(product_category_handler::delete_category))
         .route("/api/v1/affiliate-links", get(affiliate_tracking_handler::list_affiliate_links).post(affiliate_tracking_handler::create_affiliate_link))
@@ -154,6 +157,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/tenants/:id/credits", get(tenant_handler::get_tenant_credits).post(tenant_handler::assign_credits))
         .route("/api/v1/tenants/:id/plan", post(tenant_handler::assign_plan))
         .route("/api/v1/internal/sync-plan-tag", post(sync_plan_tag_handler::sync_plan_tag))
+        .route("/api/v1/internal/sync-affiliate-plan", post(affiliate_product_handler::handle_cross_app_plan_sync))
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
         // LinkedIn - profile lookup
@@ -183,6 +187,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns))
         .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
         .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
+        // Serve static files (SPA admin pages)
+        .nest_service("/affiliate-admin.html", ServeDir::new("/var/www/funnelswift/affiliate-admin.html"))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }

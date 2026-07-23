@@ -65,6 +65,68 @@ systemctl restart funnelswift
 ### JS Snippet
 Update `/var/www/funnelswift/funnelswift-capture.js` and reference from HTTPS.
 
+## Affiliate Product Auto-Sync
+
+FunnelSwift is the central hub for affiliate product management. Plans from all Swift apps are automatically synced into `affiliate_products` so they appear as commissionable products.
+
+### Product Categories
+
+Each source app maps to a product category:
+
+| Source App | Category Slug | Category Name |
+|---|---|---|
+| FunnelSwift | `funnelswift-plans` | FunnelSwift Plans |
+| Kinetic Cards | `kinetic-cards` | Kinetic Cards |
+| IncentiveSwift | `incentiveswift-plans` | IncentiveSwift Plans |
+| MultiDirectory | `multidirectory-plans` | MultiDirectory Plans |
+| CoreSwift | `coreswift-plans` | CoreSwift Plans |
+| WorkflowSwift | `workflowswift-plans` | WorkflowSwift Plans |
+| AdaSwift | `adaswift-plans` | AdaSwift Plans |
+
+Categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
+
+### Cross-App Sync Endpoint
+
+`POST /api/v1/internal/sync-affiliate-plan`
+
+Internal endpoint called by other Swift apps to sync plan changes. Protected by `api_key` field matching `INTERNAL_SYNC_KEY`.
+
+**Payload:**
+```json
+{
+  "action": "create|update|deactivate",
+  "plan_name": "Pro Plan",
+  "plan_price": 29.99,
+  "source_app": "coreswift",
+  "is_active": true,
+  "owner_name": "SwiftSoftware",
+  "product_type": "software",
+  "api_key": "..."
+}
+```
+
+**Behavior:**
+- `create`/`update` — upserts an `affiliate_products` record by `source_app` + `plan_name`
+- `deactivate` — sets `is_active = false` on the matching affiliate product
+
+### Admin Sync Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/admin/affiliate-products/sync` | POST | Manually syncs all FunnelSwift plans to affiliate_products |
+| `/api/v1/admin/affiliate-products/:id` | PUT | Super admin only — update owner_name and product_type |
+
+### Which Apps Sync Automatically
+
+All 5 apps now fire async sync events on plan create/update/delete:
+- FunnelSwift (own plans)
+- CoreSwift (`source_app: coreswift`)
+- WorkflowSwift (`source_app: workflowswift`)
+- AdaSwift (`source_app: adaswift`)
+- IncentiveSwift (`source_app: incentiveswift`)
+
+Each app needs `FUNNELSWIFT_URL` set in its environment (default `http://localhost:8080`).
+
 ## MultiDirectory Integration (CTA Slots)
 
 FunnelSwift's SMS/email funnels can appear as **CTA buttons** on MultiDirectory business listing pages.
