@@ -5,12 +5,12 @@
 //! downloadable SVG/PNG QR code images.
 
 use axum::{
-    extract::{Path, Query, State},
-    response::{Html, IntoResponse, Response},
+    extract::{Path, State},
+    response::{IntoResponse, Response},
     Json,
 };
 use axum::body::Body;
-use axum::http::{header, StatusCode, Uri};
+use axum::http::{header, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool};

@@ -1,5 +1,4 @@
 use axum::{extract::{Path, State}, http::StatusCode, Json};
-use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use ring::hmac;
 use serde::{Deserialize, Serialize};
@@ -588,7 +587,7 @@ async fn deliver_credentials(
     if let Some(user) = existing_user {
         let has_password = !user.password_hash.is_empty()
             && user.password_hash != " "
-            && user.password_hash != "";
+            && !user.password_hash.is_empty();
 
         let email_aid = user.tenant_id.unwrap_or(uuid::Uuid::default());
         if has_password {

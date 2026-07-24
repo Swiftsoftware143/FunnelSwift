@@ -136,7 +136,7 @@ pub async fn affiliate_signup(
                 .bind(&ref_affiliate_id)
                 .bind(tenant_id)
                 .bind(5.00)
-                .bind(&format!("Affiliate portal signup, email: {}", req.email))
+                .bind(format!("Affiliate portal signup, email: {}", req.email))
                 .execute(&state.pool)
                 .await;
             }

@@ -9,7 +9,6 @@
 //!
 //! Max 5 attempts by default. Configurable per webhook.
 
-use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -63,7 +62,7 @@ pub async fn dispatch_webhook(
             let status = resp.status().as_u16();
             let body = resp.text().await.unwrap_or_default();
 
-            if status >= 200 && status < 300 {
+            if (200..300).contains(&status) {
                 // Success
                 let _ = sqlx::query(
                     r#"UPDATE webhook_delivery_log SET status = 'success', status_code = $1, response_body = $2, delivered_at = NOW()
@@ -166,12 +165,12 @@ pub async fn retry_failed_deliveries(state: &AppState) -> i32 {
         .execute(&state.pool)
         .await;
 
-        let mut req = client.post(&url).json(&payload);
+        let req = client.post(&url).json(&payload);
         match req.send().await {
             Ok(resp) => {
                 let status = resp.status().as_u16();
                 let body = resp.text().await.unwrap_or_default();
-                if status >= 200 && status < 300 {
+                if (200..300).contains(&status) {
                     let _ = sqlx::query(
                         r#"UPDATE webhook_delivery_log SET status = 'success', status_code = $1, response_body = $2, delivered_at = NOW()
                            WHERE id = $3"#

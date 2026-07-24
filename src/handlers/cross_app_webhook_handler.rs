@@ -2,7 +2,7 @@ use axum::{extract::State, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]

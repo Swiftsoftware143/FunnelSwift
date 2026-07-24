@@ -307,16 +307,12 @@ pub async fn update_tenant(
     // Update plan if provided
     if let Some(plan_id) = req.plan_id {
         // Get the new plan slug
-        let new_plan_slug: Option<String> = match sqlx::query_scalar::<_, String>(
+        let new_plan_slug: Option<String> = sqlx::query_scalar::<_, String>(
             "SELECT slug FROM plans WHERE id = $1"
         )
         .bind(plan_id)
         .fetch_optional(&state.pool)
-        .await?
-        {
-            Some(slug) => Some(slug),
-            None => None,
-        };
+        .await?;
 
         // Deactivate existing
         sqlx::query(

@@ -48,7 +48,7 @@ pub async fn list_campaigns(
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
-        .map_err(|e| AppError::Reqwest(e))?;
+        .map_err(AppError::Reqwest)?;
 
     if !resp.status().is_success() {
         return Ok(Json(json!({ "campaigns": [] })));

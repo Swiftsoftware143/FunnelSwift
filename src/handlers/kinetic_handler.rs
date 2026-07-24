@@ -9,7 +9,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, Redirect},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,6 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::templates::{self, LayoutBlock, PageTemplate};
-use std::borrow::Cow;
 
 // ──────────────────────────────────────────────
 // STRUCTS
@@ -260,7 +259,7 @@ pub async fn enforce_minipage_access(pool: &PgPool, tenant_id: Uuid) -> AppResul
 pub async fn enforce_minifunnel_access(pool: &PgPool, tenant_id: Uuid, blocks: &serde_json::Value) -> AppResult<()> {
     let limits = get_user_limits(pool, tenant_id).await;
     if !limits.allow_minifunnel {
-        let has_minifunnel = blocks.as_array().map_or(false, |arr| {
+        let has_minifunnel = blocks.as_array().is_some_and(|arr| {
             arr.iter().any(|b| {
                 b.get("type").and_then(|t| t.as_str()) == Some("minifunnel")
             })
@@ -299,7 +298,7 @@ pub async fn resolve_source_tag(pool: &PgPool, card_id: Uuid, source_param: &str
 
 /// Build a default LayoutBlock::BioLink from legacy kinetic_cards columns
 fn blocks_from_legacy_card(card: &KineticCard) -> Vec<LayoutBlock> {
-    let mut buttons: Vec<templates::BioButton> = Vec::new();
+    let buttons: Vec<templates::BioButton> = Vec::new();
     let mut social_links = Vec::new();
     if let Some(ref u) = card.instagram_url { social_links.push(templates::SocialLink { icon: "📸".into(), url: u.clone() }); }
     if let Some(ref u) = card.facebook_url { social_links.push(templates::SocialLink { icon: "👍".into(), url: u.clone() }); }
@@ -575,7 +574,7 @@ pub async fn submit_lead(
     )
     .bind(card.tenant_id)
     .bind(&body.name).bind(&body.email).bind(&body.phone)
-    .bind(&format!("kinetic:{}", slug))
+    .bind(format!("kinetic:{}", slug))
     .bind(&tags_json)
     .execute(&state.pool)
     .await?;
@@ -759,7 +758,7 @@ pub async fn create_button(
          VALUES ($1,$2,$3,$4,$5,$6,$7)"
     ).bind(id).bind(body.card_id).bind(&body.label)
      .bind(body.sort_order.unwrap_or(0)).bind(&body.action_type)
-     .bind(&body.destination_url).bind(&body.target_tag_id)
+     .bind(&body.destination_url).bind(body.target_tag_id)
      .execute(&state.pool).await?;
 
     let btn = sqlx::query_as::<_, KineticButton>("SELECT * FROM kinetic_buttons WHERE id = $1")

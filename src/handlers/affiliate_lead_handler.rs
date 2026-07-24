@@ -76,7 +76,7 @@ pub async fn submit_affiliate_lead(
     // Build tags: combine passed tags with auto-tags
     let mut all_tags: Vec<String> = req.tags.unwrap_or_default();
     all_tags.push(format!("affiliate:{}", aff_id));
-    all_tags.push(format!("source:affiliate_submission"));
+    all_tags.push("source:affiliate_submission".to_string());
     if let Some(ref email) = req.email {
         all_tags.push(format!("email:{}", email));
     }
@@ -97,7 +97,7 @@ pub async fn submit_affiliate_lead(
     .bind(&req.email)
     .bind(&req.phone)
     .bind(&req.company)
-    .bind(&req.source.as_deref().unwrap_or("affiliate_submission"))
+    .bind(req.source.as_deref().unwrap_or("affiliate_submission"))
     .bind(&req.target_app_slug)
     .bind(&tags_json)
     .bind("pending")
@@ -141,7 +141,7 @@ pub async fn submit_affiliate_lead(
                     ELSE (tags::jsonb || $1::jsonb)::jsonb
                 END, updated_at = NOW() WHERE id = $2"
             )
-            .bind(&json!([format!("affiliate:{}", aff_id), format!("target:{}", req.target_app_slug)]))
+            .bind(json!([format!("affiliate:{}", aff_id), format!("target:{}", req.target_app_slug)]))
             .bind(lead_id)
             .execute(&state.pool)
             .await?;
@@ -166,7 +166,7 @@ pub async fn submit_affiliate_lead(
             .bind(&req.company)
             .bind(format!("affiliate_submission:{}", aff_id))
             .bind("new")
-            .bind(&json!([format!("affiliate:{}", aff_id), format!("target:{}", req.target_app_slug)]))
+            .bind(json!([format!("affiliate:{}", aff_id), format!("target:{}", req.target_app_slug)]))
             .bind(&req.notes)
             .execute(&state.pool)
             .await?;
@@ -200,7 +200,7 @@ pub async fn bulk_submit_affiliate_leads(
         
         let mut all_tags: Vec<String> = lead.tags.clone().unwrap_or_default();
         all_tags.push(format!("affiliate:{}", aff_id));
-        all_tags.push(format!("source:affiliate_submission"));
+        all_tags.push("source:affiliate_submission".to_string());
         if let Some(ref email) = lead.email {
             all_tags.push(format!("email:{}", email));
         }
