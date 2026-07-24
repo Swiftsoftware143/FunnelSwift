@@ -7,7 +7,6 @@ use crate::error::AppResult;
 use crate::AppState;
 use serde_json::json;
 use serde::Deserialize;
-use axum::http::StatusCode;
 
 pub async fn list_affiliate_products(
     auth: AuthUser,

@@ -1,5 +1,4 @@
-use axum::{extract::{Path, Query, State}, Json};
-use serde::Deserialize;
+use axum::{extract::{Query, State}, Json};
 use uuid::Uuid;
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};

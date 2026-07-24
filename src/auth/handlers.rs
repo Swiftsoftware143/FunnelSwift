@@ -81,7 +81,7 @@ pub async fn register(
     .bind(user_id)
     .bind("Auto-generated")
     .bind(&api_key_hash)
-    .bind(&api_key_raw.chars().take(8).collect::<String>())
+    .bind(api_key_raw.chars().take(8).collect::<String>())
     .bind(serde_json::json!(["read", "write"]))
     .bind(&api_key_raw)
     .execute(&state.pool)
@@ -235,7 +235,7 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "tenant_id": auth.tenant_id,
         "email": auth.email,
         "name": user_info.as_ref().map(|(n,_)| n.clone()).unwrap_or_default(),
-        "username": user_info.as_ref().map(|(_,u)| u.clone()).flatten().unwrap_or_default(),
+        "username": user_info.as_ref().and_then(|(_,u)| u.clone()).unwrap_or_default(),
         "role": auth.role,
         "is_admin": auth.is_admin,
         "api_key": api_key_row.map(|(p, n, fk)| json!({"prefix": p, "name": n, "key": fk.unwrap_or_default()})),

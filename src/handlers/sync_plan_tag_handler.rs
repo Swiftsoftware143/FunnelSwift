@@ -141,7 +141,7 @@ pub async fn sync_plan_tag(
             .bind(system_tenant)
             .bind(group_id)
             .bind(&tag_name)
-            .bind(&tag_color)
+            .bind(tag_color)
             .bind(true)
             .execute(&state.pool)
             .await?;

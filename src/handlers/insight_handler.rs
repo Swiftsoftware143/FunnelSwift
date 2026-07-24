@@ -3,7 +3,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
@@ -65,19 +64,19 @@ pub async fn get_dashboard_insights(
     let total_views: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM lead_events WHERE tenant_id = $1 AND event_type = 'page_view' AND created_at >= NOW() - ($2 || ' days')::INTERVAL"
     )
-    .bind(tenant_id).bind(&days.to_string())
+    .bind(tenant_id).bind(days.to_string())
     .fetch_one(&state.pool).await.unwrap_or(0);
 
     let total_clicks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM lead_events WHERE tenant_id = $1 AND event_type = 'button_click' AND created_at >= NOW() - ($2 || ' days')::INTERVAL"
     )
-    .bind(tenant_id).bind(&days.to_string())
+    .bind(tenant_id).bind(days.to_string())
     .fetch_one(&state.pool).await.unwrap_or(0);
 
     let total_submits: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM lead_events WHERE tenant_id = $1 AND event_type = 'form_submit' AND created_at >= NOW() - ($2 || ' days')::INTERVAL"
     )
-    .bind(tenant_id).bind(&days.to_string())
+    .bind(tenant_id).bind(days.to_string())
     .fetch_one(&state.pool).await.unwrap_or(0);
 
     // Today's counts
@@ -116,7 +115,7 @@ pub async fn get_dashboard_insights(
          FROM kinetic_cards kc WHERE kc.tenant_id = $1
          ORDER BY views DESC LIMIT 10"
     )
-    .bind(tenant_id).bind(&days.to_string())
+    .bind(tenant_id).bind(days.to_string())
     .fetch_all(&state.pool).await.unwrap_or_default()
     .into_iter().map(|(id, title, views, clicks, submits)| CardInsight { card_id: id, title, views, clicks, submits })
     .collect();
@@ -140,7 +139,7 @@ pub async fn get_dashboard_insights(
          FROM lead_events WHERE tenant_id = $1 AND event_type = 'page_view' AND created_at >= NOW() - ($2 || ' days')::INTERVAL
          GROUP BY source ORDER BY count DESC LIMIT 10"
     )
-    .bind(tenant_id).bind(&days.to_string())
+    .bind(tenant_id).bind(days.to_string())
     .fetch_all(&state.pool).await.unwrap_or_default()
     .into_iter().map(|(source, count)| SourceBreakdown { source, count })
     .collect();

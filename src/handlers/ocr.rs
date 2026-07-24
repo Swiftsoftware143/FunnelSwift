@@ -1,6 +1,5 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use std::io::Write;
 
 use crate::auth::middleware::AuthUser;

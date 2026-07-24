@@ -46,7 +46,7 @@ async fn sync_plan_to_affiliate_product(
             sqlx::query_scalar("SELECT id FROM tenants ORDER BY created_at LIMIT 1")
                 .fetch_optional(pool)
                 .await?
-                .unwrap_or_else(|| uuid::Uuid::nil())
+                .unwrap_or_else(uuid::Uuid::nil)
         }
     };
 
@@ -213,7 +213,7 @@ pub async fn update_plan(
     .bind(req.has_dual_routing.unwrap_or(existing.has_dual_routing))
     .bind(req.has_multi_tenant.unwrap_or(existing.has_multi_tenant))
     .bind(req.has_white_label.unwrap_or(existing.has_white_label))
-    .bind(&req.payment_provider.or(existing.payment_provider))
+    .bind(req.payment_provider.or(existing.payment_provider))
     .bind(req.features.or(existing.features))
     .bind(id)
     .execute(&state.pool)

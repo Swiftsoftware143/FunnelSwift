@@ -5,7 +5,6 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
-use axum::routing::any;
 
 use askama::Template;
 

@@ -117,7 +117,7 @@ pub async fn create_web_to_lead_config(
     .bind(&req.tag_ids)
     .bind(&req.default_source)
     .bind(&req.field_mapping)
-    .bind(&req.allowed_domains.unwrap_or_default())
+    .bind(req.allowed_domains.unwrap_or_default())
     .bind(req.rate_limit_per_hour.unwrap_or(100))
     .execute(&state.pool)
     .await?;

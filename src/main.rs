@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
 
     let pool = database.pool().clone();
     let jwt_secret = std::env::var("JWT_SECRET")
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "JWT_SECRET must be set in environment"))?;
+        .map_err(|_| std::io::Error::other("JWT_SECRET must be set in environment"))?;
     let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY")
         .expect("INTERNAL_SYNC_KEY must be set in environment");
     let workflowswift_url = std::env::var("WORKFLOWSWIFT_URL")

@@ -1,14 +1,13 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
-use std::env;
 use crate::auth::models::Claims;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -221,7 +220,7 @@ pub async fn public_signup(
                 .bind(&ref_affiliate_id)
                 .bind(tenant_id)
                 .bind(5.00)
-                .bind(&format!("Signup from kinetic landing page, email: {}", req.email))
+                .bind(format!("Signup from kinetic landing page, email: {}", req.email))
                 .execute(&state.pool)
                 .await?;
             }
