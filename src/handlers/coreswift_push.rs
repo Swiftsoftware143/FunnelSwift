@@ -3,6 +3,83 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+/// CoreSwift tenant UUIDs
+const SWIFTSOFTWARE_TENANT: &str = "abd8ad22-aa01-4642-9a9f-6bef6a03d85b";
+
+/// Push new affiliate signup to CoreSwift — add to Affiliates list, tag as "Affiliate"
+pub async fn push_affiliate_to_coreswift(
+    coreswift_url: &str,
+    internal_sync_key: &str,
+    affiliate_id: &str,
+    email: &str,
+    first_name: &str,
+    last_name: &str,
+    commission_rate: f64,
+    selected_apps: &[String],
+) {
+    if coreswift_url.is_empty() || internal_sync_key.is_empty() {
+        tracing::debug!("coreswift=push: skipping affiliate sync (no URL or key)");
+        return;
+    }
+
+    let client = Client::new();
+    let base = coreswift_url.trim_end_matches('/');
+    let key = internal_sync_key;
+
+    // Determine tier based on commission rate
+    let tier_tag = if commission_rate >= 20.0 { "Affiliate Tier: Platinum" }
+        else if commission_rate >= 15.0 { "Affiliate Tier: Gold" }
+        else if commission_rate >= 10.0 { "Affiliate Tier: Silver" }
+        else { "Affiliate Tier: Standard" };
+
+    // Use the cross-app tag-sync webhook format that CoreSwift natively understands
+    let tags: Vec<&str> = vec!["Affiliate", tier_tag, "Source: FunnelSwift"];
+    let added_tags: Vec<&str> = vec!["Affiliates"];
+    let removed_tags: Vec<&str> = vec![];
+    let payload = json!({
+        "source_app": "funnelswift",
+        "tenant_id": SWIFTSOFTWARE_TENANT,
+        "lead": {
+            "id": affiliate_id,
+            "name": format!("{} {}", first_name, last_name),
+            "email": email,
+            "company": format!("SwiftSoftware Affiliate — {}% commission — Apps: {}",
+                commission_rate, selected_apps.join(", "))
+        },
+        "tags": tags,
+        "added_tags": added_tags,
+        "removed_tags": removed_tags,
+        "triggered_by": "affiliate_signup"
+    });
+
+    let url = format!("{}/api/v1/webhooks/cross-app/tag-sync", base);
+
+    match client
+        .post(&url)
+        .header("x-internal-key", key)
+        .json(&payload)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                tracing::info!(
+                    affiliate_id = %affiliate_id,
+                    email = %email,
+                    tier = %tier_tag,
+                    "affiliate pushed to CoreSwift: Affiliates list + Affiliate tag"
+                );
+            } else {
+                tracing::warn!("affiliate coreswift push returned {}: {:?}", resp.status(), resp.text().await);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("affiliate coreswift push failed: {e}");
+        }
+    }
+}
+
 /// Push lead to CoreSwift on a best-effort basis (fire-and-forget).
 /// Used for lead creation, pipeline stage changes, and tag updates.
 pub async fn push_to_coreswift(
@@ -56,7 +133,7 @@ pub async fn push_to_coreswift(
 
     let payload = json!({
         "source_app": "funnelswift",
-        "tenant_id": tenant_id,
+        "tenant_id": "abd8ad22-aa01-4642-9a9f-6bef6a03d85b",   // SwiftSoftware tenant
         "lead": {
             "id": lead_id,
             "name": name,
