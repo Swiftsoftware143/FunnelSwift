@@ -413,10 +413,19 @@ async fn render_card_html(
         }
     }).unwrap_or_else(|| ("Get Started".into(), "Submit".into(), "your@email.com".into(), vec![]));
 
+    // Fetch tenant affiliate code for branding footer
     let page_password_hash_str: Option<String> = sqlx::query_scalar(
         "SELECT password_hash FROM kinetic_cards WHERE id = $1"
     )
     .bind(card.id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    let affiliate_code_str: Option<String> = sqlx::query_scalar(
+        "SELECT affiliate_code FROM tenants WHERE id = $1"
+    )
+    .bind(card.tenant_id)
     .fetch_optional(&state.pool)
     .await
     .ok()
@@ -447,8 +456,9 @@ async fn render_card_html(
         modal_placeholder: &modal_placeholder,
         modal_fields,
         show_branding: limits.show_branding,
-        page_password_hash: page_password_hash_str.as_deref(),
-        page_consent_required: false,
+ page_password_hash: page_password_hash_str.as_deref(),
+ page_consent_required: false,
+        affiliate_code: affiliate_code_str.as_deref(),
         cta_label: &cta_label,
         is_dark: is_dark_color(&card.bg_color),
     };
