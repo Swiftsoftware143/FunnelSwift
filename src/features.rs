@@ -52,7 +52,6 @@ pub async fn check_feature_limit(
     let usage: i64 = match feature_key {
         "max_leads" => sqlx::query_scalar("SELECT COUNT(*) FROM leads WHERE tenant_id = $1").bind(tenant_id).fetch_one(&state.pool).await?,
         "max_tags" => sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE tenant_id = $1").bind(tenant_id).fetch_one(&state.pool).await?,
-        "max_affiliates" => sqlx::query_scalar("SELECT COUNT(*) FROM affiliates WHERE tenant_id = $1").bind(tenant_id).fetch_one(&state.pool).await?,
         "team_members" => sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true").bind(tenant_id).fetch_one(&state.pool).await?,
         _ => 0i64,
     };

@@ -208,7 +208,6 @@ pub struct PageTemplate<'a> {
     pub modal_fields: Vec<FormField>,
     /// Plan controls
     pub show_branding: bool,
-    pub affiliate_code: Option<&'a str>,
     /// Page-level password gate
     pub page_password_hash: Option<&'a str>,
     /// Page-level consent requirement
@@ -242,7 +241,6 @@ impl Default for PageTemplate<'_> {
             modal_placeholder: "",
             modal_fields: Vec::new(),
             show_branding: true,
-            affiliate_code: None,
             page_password_hash: None,
             page_consent_required: false,
             cta_label: "Free Kinetic Card",

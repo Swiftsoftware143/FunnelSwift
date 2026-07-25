@@ -21,8 +21,6 @@ pub struct PublicSignupRequest {
     pub source: String,
     #[serde(default)]
     pub plan: String,
-    #[serde(default)]
-    pub affiliate_code: Option<String>,
 }
 
 fn default_source() -> String {
@@ -190,41 +188,6 @@ pub async fn public_signup(
             "Qualified system tag (id={}) not found - skipping auto-apply on signup for tenant {}",
             qualified_tag_id, tenant_id
         );
-    }
-
-    // If referred by an affiliate, set referred_by and create a pending commission
-    if let Some(ref code) = req.affiliate_code {
-        if !code.trim().is_empty() {
-            let ref_code = code.trim();
-            sqlx::query("UPDATE tenants SET referred_by = $1 WHERE id = $2")
-                .bind(ref_code)
-                .bind(tenant_id)
-                .execute(&state.pool)
-                .await?;
-
-            // Find which affiliate owns this code
-            let ref_affiliate: Option<String> = sqlx::query_scalar(
-                "SELECT au.affiliate_id FROM affiliate_users au JOIN tenants t ON t.id = au.tenant_id WHERE t.affiliate_code = $1"
-            )
-            .bind(ref_code)
-            .fetch_optional(&state.pool)
-            .await
-            .ok()
-            .flatten();
-
-            if let Some(ref_affiliate_id) = ref_affiliate {
-                sqlx::query(
-                    "INSERT INTO affiliate_conversions (id, affiliate_id, tenant_id, commission_amount, status, notes) VALUES ($1, $2, $3, $4, 'pending', $5)"
-                )
-                .bind(Uuid::new_v4())
-                .bind(&ref_affiliate_id)
-                .bind(tenant_id)
-                .bind(5.00)
-                .bind(format!("Signup from kinetic landing page, email: {}", req.email))
-                .execute(&state.pool)
-                .await?;
-            }
-        }
     }
 
     // Generate JWT
