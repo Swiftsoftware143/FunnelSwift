@@ -4,18 +4,21 @@ use axum::{
     Router,
 };
 use tower_http::trace::TraceLayer;
+use tower_http::services::ServeDir;
+
 use askama::Template;
 
 use crate::auth::handlers::{login, me, register, change_password, forgot_password, reset_password, update_profile};
 use crate::handlers::{
     site_settings_handler,
     public_signup_handler,
-    api_key_handler, dashboard_handler, lead_handler, linkedin,
+    affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
     ocr, plan_handler,
     plan_tag_handler, tag_rule_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
     sync_plan_tag_handler, linkedin_auth_handler, web_to_lead_handler,
-    webhook_handler, portfolio_handler, integration_target_handler,
+    webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
     product_category_handler,
+    affiliate_lead_handler,
     provider_keys_handler, tenant_handler, kinetic_handler, qr_handler, insight_handler,
     campaigns_handler,
     incentiveswift_handler,
@@ -70,8 +73,36 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/tag-groups/:id", put(tag_group_handler::update_tag_group).delete(tag_group_handler::delete_tag_group))
         .route("/api/v1/plan-tag-mappings", get(plan_tag_handler::list_plan_tag_mappings))
         .route("/api/v1/plan-tag-mappings/sync", post(plan_tag_handler::sync_plan_tag_mappings))
+        .route("/api/v1/affiliates", get(affiliate_handler::list_affiliates).post(affiliate_handler::create_affiliate))
+        .route("/api/v1/affiliates/:id", get(affiliate_handler::get_affiliate).put(affiliate_handler::update_affiliate).delete(affiliate_handler::delete_affiliate))
+        .route("/api/v1/affiliates/:id/commissions", get(affiliate_handler::get_affiliate_commissions))
+        .route("/api/v1/affiliate-products", get(affiliate_product_handler::list_affiliate_products).post(affiliate_product_handler::create_affiliate_product))        .route("/api/v1/affiliate-products/admin", get(affiliate_product_handler::list_all_affiliate_products_admin))
+        .route("/api/v1/affiliate-products/:id", put(affiliate_product_handler::update_affiliate_product).delete(affiliate_product_handler::delete_affiliate_product))
+        // Admin affiliate product endpoints
+        .route("/api/v1/admin/affiliate-products/sync", post(affiliate_product_handler::admin_sync_affiliate_products))
+        .route("/api/v1/admin/affiliate-products/:id", put(affiliate_product_handler::admin_update_affiliate_product))
         .route("/api/v1/product-categories", get(product_category_handler::list_categories).post(product_category_handler::create_category))
         .route("/api/v1/product-categories/:id", put(product_category_handler::update_category).delete(product_category_handler::delete_category))
+        .route("/api/v1/affiliate-links", get(affiliate_tracking_handler::list_affiliate_links).post(affiliate_tracking_handler::create_affiliate_link))
+        .route("/api/v1/affiliate-stats", get(affiliate_tracking_handler::get_affiliate_stats))
+        .route("/api/v1/affiliate-conversions", get(affiliate_tracking_handler::list_conversions).post(affiliate_tracking_handler::track_conversion))
+        .route("/api/v1/track-click", get(affiliate_tracking_handler::track_click))
+        .route("/api/v1/affiliate/signup", post(affiliate_portal_handler::affiliate_signup))
+        .route("/api/v1/affiliate/login", post(affiliate_portal_handler::affiliate_login))
+        .route("/api/v1/affiliate/dashboard", post(affiliate_portal_handler::affiliate_portal_dashboard))
+        .route("/api/v1/affiliate/submit-lead", post(affiliate_lead_handler::submit_affiliate_lead))
+        .route("/api/v1/affiliate/leads", post(affiliate_lead_handler::list_affiliate_prospects))
+        .route("/api/v1/affiliate/leads-stats", post(affiliate_lead_handler::get_affiliate_leads_stats))
+        .route("/api/v1/check-affiliate-email", post(affiliate_lead_handler::check_affiliate_for_email))
+        .route("/api/v1/log-lead-movement", post(affiliate_lead_handler::log_lead_movement))
+        .route("/api/v1/webhooks/conversion", post(cross_app_webhook_handler::handle_conversion_webhook))
+        .route("/api/v1/track/lead", post(cross_app_webhook_handler::track_lead_conversion))
+        .route("/api/v1/affiliate-tiers", get(affiliate_payout_handler::list_tiers).post(affiliate_payout_handler::create_tier))
+        .route("/api/v1/affiliate-tiers/:id", put(affiliate_payout_handler::update_tier).delete(affiliate_payout_handler::delete_tier))
+        .route("/api/v1/affiliates/:id/calculate-tier", post(affiliate_payout_handler::calculate_affiliate_tier))
+        .route("/api/v1/affiliate-payouts", get(affiliate_payout_handler::list_payouts).post(affiliate_payout_handler::create_payout))
+        .route("/api/v1/affiliate-payouts/:id/pay", post(affiliate_payout_handler::mark_payout_paid))
+        .route("/api/v1/affiliates/:id/pending-conversions", get(affiliate_payout_handler::get_affiliate_pending_conversions))
         .route("/api/v1/plans", get(plan_handler::list_plans).post(plan_handler::create_plan))
         .route("/api/v1/plans/:id", get(plan_handler::get_plan).put(plan_handler::update_plan))
         .route("/api/v1/dashboard/stats", get(dashboard_handler::get_dashboard_stats))
@@ -125,6 +156,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/tenants/:id/credits", get(tenant_handler::get_tenant_credits).post(tenant_handler::assign_credits))
         .route("/api/v1/tenants/:id/plan", post(tenant_handler::assign_plan))
         .route("/api/v1/internal/sync-plan-tag", post(sync_plan_tag_handler::sync_plan_tag))
+        .route("/api/v1/internal/sync-affiliate-plan", post(affiliate_product_handler::handle_cross_app_plan_sync))
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
         // LinkedIn - profile lookup
@@ -154,6 +186,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns))
         .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
         .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
+        // Serve static files (SPA admin pages)
+        .nest_service("/affiliate-admin.html", ServeDir::new("/var/www/funnelswift/affiliate-admin.html"))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }
