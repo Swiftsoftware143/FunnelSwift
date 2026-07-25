@@ -143,7 +143,28 @@ pub async fn affiliate_signup(
         }
     }
 
-    Ok(Json(json!({"success": true, "affiliate_id": aff_id})))
+    // Push affiliate to CoreSwift: Affiliates list + Affiliate tag + tier tag
+    let coreswift_url = std::env::var("CORESWIFT_URL").unwrap_or_default();
+    let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY").unwrap_or_default();
+    let apps: Vec<String> = req.selected_apps.clone();
+    let return_aff_id = aff_id.clone();
+    let first_name = req.first_name.clone().unwrap_or_default();
+    let last_name = req.last_name.clone().unwrap_or_default();
+    let email = req.email.clone();
+    tokio::spawn(async move {
+        crate::handlers::coreswift_push::push_affiliate_to_coreswift(
+            &coreswift_url,
+            &internal_sync_key,
+            &aff_id,
+            &email,
+            &first_name,
+            &last_name,
+            default_commission,
+            &apps,
+        ).await;
+    });
+
+    Ok(Json(json!({"success": true, "affiliate_id": return_aff_id})))
 }
 
 pub async fn affiliate_login(

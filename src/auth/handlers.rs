@@ -170,6 +170,17 @@ pub async fn login(
     )
     .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))?;
 
+    let cs_pool = state.db.clone();
+    let cs_url = state.config.coreswift_url.clone();
+    let cs_key = state.config.internal_sync_key.clone();
+    let cs_lead_id = user.id;
+    let cs_tenant_id = user.tenant_id;
+    tokio::spawn(async move {
+        crate::handlers::coreswift_push::push_to_coreswift(
+            &cs_pool, &cs_url, &cs_key, cs_lead_id, cs_tenant_id,
+        ).await;
+    });
+
     Ok(Json(json!({
         "token": token,
         "user": {
