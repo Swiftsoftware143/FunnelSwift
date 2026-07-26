@@ -13,7 +13,9 @@ pub enum LayoutBlock {
         avatar_url: Option<String>,
         video_url: Option<String>,
         bio: String,
+        #[serde(default)]
         buttons: Vec<BioButton>,
+        #[serde(default)]
         social_links: Vec<SocialLink>,
     },
     /// Hero section for mini-page — full-width hero with optional portrait image
@@ -42,7 +44,9 @@ pub enum LayoutBlock {
         phone: Option<String>,
         email: Option<String>,
         website: Option<String>,
+        #[serde(default)]
         buttons: Vec<BioButton>,
+        #[serde(default)]
         social_links: Vec<SocialLink>,
     },
     /// Mini funnel — centered card with product image/video, title, big CTA
@@ -217,6 +221,24 @@ pub struct PageTemplate<'a> {
     pub cta_label: &'a str,
     /// True if bg_color is a dark color (auto-detected)
     pub is_dark: bool,
+    /// Theme pattern: "gradient" | "bubbles" | "mesh" | "dots" | "circuit" | "brick" | "gradient_dots"
+    pub theme: Option<&'a str>,
+}
+
+impl<'a> PageTemplate<'a> {
+    /// Returns the CSS class for the body's background theme pattern.
+    pub fn theme_class(&self) -> &str {
+        match self.theme {
+            Some("bubbles") => "bg-bubbles",
+            Some("mesh") => "bg-mesh",
+            Some("dots") => "bg-dots",
+            Some("circuit") => "bg-circuit",
+            Some("brick") => "bg-brick",
+            Some("gradient_dots") => "bg-gradient-dots",
+            Some("gradient") | None => "bg-gradient-accent",
+            _ => "bg-gradient-accent",
+        }
+    }
 }
 
 /// Template for the admin plans feature-management page
@@ -246,6 +268,7 @@ impl Default for PageTemplate<'_> {
             page_password_hash: None,
             page_consent_required: false,
             cta_label: "Free Kinetic Card",
+            theme: None,
         }
     }
 }

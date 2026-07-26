@@ -359,11 +359,12 @@ pub async fn render_card(
 
     // Resolve layout blocks from JSONB or build from legacy columns
     let blocks: Vec<LayoutBlock> = if let Some(ref blocks_json) = card.layout_blocks {
-        if let Ok(b) = serde_json::from_value(blocks_json.clone()) {
-            b
-        } else {
-            // Fallback to legacy
-            blocks_from_legacy_card(&card)
+        match serde_json::from_value(blocks_json.clone()) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("LayoutBlock deserialization failed for card {}: {e}", card.slug);
+                blocks_from_legacy_card(&card)
+            }
         }
     } else {
         blocks_from_legacy_card(&card)
@@ -459,11 +460,12 @@ async fn render_card_html(
         modal_placeholder: &modal_placeholder,
         modal_fields,
         show_branding: limits.show_branding,
- page_password_hash: page_password_hash_str.as_deref(),
- page_consent_required: false,
+        page_password_hash: page_password_hash_str.as_deref(),
+        page_consent_required: false,
         affiliate_code: affiliate_code_str.as_deref(),
         cta_label: &cta_label,
         is_dark: is_dark_color(&card.bg_color),
+        theme: card.theme.as_deref(),
     };
 
     let html = askama::Template::render(&tmpl).map_err(|e| {
