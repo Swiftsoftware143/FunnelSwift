@@ -9,7 +9,10 @@
 - New routes must register in axum Router and include JWT middleware.
 - `cargo clippy -- -D warnings` must pass before any task is declared done.
 - All SQL queries use sqlx compile-time checking where possible.
-- Build exclusively through `/usr/local/bin/swift-build.sh funnelswift`.
+- Build exclusively through `/opt/swift/funnelswift/deploy-from-vps.sh`.
+- **Build Mutex:** ALL builds MUST acquire `/tmp/rust-build.lock` before spawning `cargo build`.
+  Use `/opt/swift/scripts/swift-build-guard.sh <project>` to gate. One build at a time on this 2GB VPS — no exceptions.
+  If lock is held, wait (poll every 2s) or fail gracefully. Never spawn a second parallel build.
 
 ## Verification Before Deploy
 1. `cargo check`
