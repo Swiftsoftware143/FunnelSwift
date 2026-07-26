@@ -210,6 +210,73 @@ pub async fn stop_impersonation(
     })))
 }
 
+/// Set a tenant-level feature override (admin only).
+/// POST /api/v1/admin/tenants/:id/feature-override
+/// Body: { "feature_key": "kinetic_themes", "limit_value": 10 }
+/// Set limit_value to -1 for unlimited, 0 to use plan default.
+pub async fn set_tenant_feature_override(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(tenant_id): Path<Uuid>,
+    Json(req): Json<Value>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    let feature_key = req.get("feature_key")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("feature_key is required".into()))?;
+
+    let limit_value = req.get("limit_value")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| AppError::BadRequest("limit_value is required".into()))?;
+
+    sqlx::query(
+        r#"INSERT INTO tenant_settings (tenant_id, key, value)
+           VALUES ($1, 'feature_override', $2::jsonb)
+           ON CONFLICT (tenant_id, key) DO UPDATE SET value = $2::jsonb, updated_at = NOW()"#,
+    )
+    .bind(tenant_id)
+    .bind(json!({
+        "feature_key": feature_key,
+        "limit_value": limit_value
+    }))
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(json!({
+        "message": "Feature override set",
+        "tenant_id": tenant_id.to_string(),
+        "feature_key": feature_key,
+        "limit_value": limit_value
+    })))
+}
+
+/// Get tenant-level feature overrides (admin only).
+/// GET /api/v1/admin/tenants/:id/feature-overrides
+pub async fn get_tenant_feature_overrides(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(tenant_id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    let overrides = sqlx::query_as::<_, (String, Value)>(
+        "SELECT 'feature_override' as key, value FROM tenant_settings WHERE tenant_id = $1 AND key = 'feature_override'"
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(json!({
+        "tenant_id": tenant_id.to_string(),
+        "overrides": overrides.iter().map(|(_, v)| v).collect::<Vec<_>>()
+    })))
+}
+
 /// List users for a specific tenant (admin only)
 pub async fn list_tenant_users(
     auth: AuthUser,
