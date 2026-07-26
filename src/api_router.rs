@@ -23,6 +23,7 @@ use crate::handlers::{
     campaigns_handler,
     incentiveswift_handler,
     checkout_handler,
+    theme_endpoint,
 };
 use crate::state::AppState;
 
@@ -129,6 +130,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/impersonate", post(crate::handlers::admin_handler::impersonate))
         .route("/api/v1/admin/stop-impersonation", post(crate::handlers::admin_handler::stop_impersonation))
         .route("/api/v1/admin/tenants/:id/users", post(crate::handlers::admin_handler::list_tenant_users))
+        .route("/api/v1/admin/tenants/:id/feature-overrides", get(crate::handlers::admin_handler::get_tenant_feature_overrides))
+        .route("/api/v1/admin/tenants/:id/feature-override", post(crate::handlers::admin_handler::set_tenant_feature_override))
         // Site settings management (admin only)
         .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
         .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
@@ -176,6 +179,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/kinetic/buttons/:id", delete(kinetic_handler::delete_button))
         .route("/api/v1/kinetic/sources/:id", delete(kinetic_handler::delete_source))
         .route("/api/v1/kinetic/metrics", get(kinetic_handler::get_metrics))
+        .route("/api/v1/kinetic/themes", get(theme_endpoint::list_themes))
         // QR codes for kinetic cards
         .route("/api/v1/kinetic/qr", get(qr_handler::list_qr_codes).post(qr_handler::create_qr_code))
         .route("/api/v1/kinetic/qr/:id", put(qr_handler::update_qr_code).delete(qr_handler::delete_qr_code))
