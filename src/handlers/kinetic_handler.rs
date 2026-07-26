@@ -54,6 +54,7 @@ pub struct KineticCard {
     pub linkedin_url: Option<String>,
     pub tiktok_url: Option<String>,
     pub layout_blocks: Option<serde_json::Value>,
+    pub theme: Option<String>,
     pub is_active: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -109,6 +110,7 @@ pub struct CreateCardInput {
     pub tiktok_url: Option<String>,
     /// Optional pre-built layout blocks (JSON array). If omitted, a default BioLink block is auto-generated.
     pub layout_blocks: Option<serde_json::Value>,
+    pub theme: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +137,7 @@ pub struct UpdateCardInput {
     pub linkedin_url: Option<String>,
     pub tiktok_url: Option<String>,
     pub layout_blocks: Option<serde_json::Value>,
+    pub theme: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -643,8 +646,8 @@ pub async fn create_card(
             video_provider, video_id, bg_color, text_color, accent_color,
             button_bg_color, button_text_color,
             instagram_url, facebook_url, twitter_url, youtube_url, linkedin_url, tiktok_url,
-            layout_blocks)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)"#
+            layout_blocks, theme)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)"#
     )
     .bind(id).bind(user_id).bind(tenant_id)
     .bind(&body.slug).bind(&body.title).bind(&body.tagline).bind(&body.bio).bind(&body.meta_description)
@@ -659,6 +662,7 @@ pub async fn create_card(
     .bind(&body.instagram_url).bind(&body.facebook_url).bind(&body.twitter_url)
     .bind(&body.youtube_url).bind(&body.linkedin_url).bind(&body.tiktok_url)
     .bind(&default_blocks)
+    .bind(&body.theme)
     .execute(&state.pool).await?;
 
     let card = sqlx::query_as::<_, KineticCard>("SELECT * FROM kinetic_cards WHERE id = $1")
@@ -698,8 +702,8 @@ pub async fn update_card(
            video_provider=$9,video_id=$10,bg_color=$11,text_color=$12,accent_color=$13,
            button_bg_color=$14,button_text_color=$15,instagram_url=$16,facebook_url=$17,
            twitter_url=$18,youtube_url=$19,linkedin_url=$20,tiktok_url=$21,layout_blocks=$22,
-           updated_at=NOW()
-           WHERE id=$23 AND tenant_id=$24"#
+           theme=$23, updated_at=NOW()
+           WHERE id=$24 AND tenant_id=$25"#
     )
     .bind(&slug).bind(&title).bind(&body.tagline).bind(&body.bio).bind(&body.meta_description)
     .bind(&body.logo_url).bind(&body.avatar_url)
@@ -713,6 +717,7 @@ pub async fn update_card(
     .bind(&body.instagram_url).bind(&body.facebook_url).bind(&body.twitter_url)
     .bind(&body.youtube_url).bind(&body.linkedin_url).bind(&body.tiktok_url)
     .bind(&body.layout_blocks)
+    .bind(&body.theme)
     .bind(id).bind(tenant_id)
     .execute(&state.pool).await?;
 

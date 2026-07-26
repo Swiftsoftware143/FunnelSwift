@@ -1,0 +1,302 @@
+[
+  {
+    "slug": "clean-beauty",
+    "name": "Clean Beauty",
+    "niche": "Fashion/Beauty",
+    "description": "Soft, elegant palette for beauty brands, skincare, and lifestyle creators. Warm pinks and creams that feel premium and approachable.",
+    "recommended_layout": "bio_link",
+    "colors": {
+      "primary": "#E8A0BF",
+      "secondary": "#FDF4F5",
+      "accent": "#C68E9E",
+      "background": "#FFFFFF",
+      "text": "#2D2D2D",
+      "button_bg": "#E8A0BF",
+      "button_text": "#FFFFFF"
+    },
+    "gradient": {
+      "colors": ["#E8A0BF", "#C68E9E"],
+      "angle": 145
+    },
+    "typography": {
+      "font_family": "Georgia, serif",
+      "heading_size": "24px",
+      "body_size": "15px"
+    },
+    "sample_content": {
+      "title": "Glow & Grace",
+      "bio": "Clean beauty advocate. Helping you find products that love your skin back. ✨",
+      "tagline": "Beauty meets integrity"
+    }
+  },
+  {
+    "slug": "iron-grind",
+    "name": "Iron Grind",
+    "niche": "Fitness",
+    "description": "Dark, high-energy palette for gyms, personal trainers, and fitness brands. Neon green accents pop against deep black — built for intensity.",
+    "recommended_layout": "mini_funnel",
+    "colors": {
+      "primary": "#1A1A1A",
+      "secondary": "#00FF88",
+      "accent": "#FF4D4D",
+      "background": "#0D0D0D",
+      "text": "#FFFFFF",
+      "button_bg": "#00FF88",
+      "button_text": "#0D0D0D"
+    },
+    "gradient": {
+      "colors": ["#1A1A1A", "#0D0D0D", "#00FF88"],
+      "angle": 180
+    },
+    "typography": {
+      "font_family": "Inter, system-ui, sans-serif",
+      "heading_size": "28px",
+      "body_size": "14px"
+    },
+    "sample_content": {
+      "title": "IRON GRIND",
+      "bio": "No excuses. Just results. Training programs built for those who show up.",
+      "tagline": "Built different"
+    }
+  },
+  {
+    "slug": "pixel-rush",
+    "name": "Pixel Rush",
+    "niche": "Gaming",
+    "description": "Cyberpunk-inspired neon palette for streamers, esports teams, and gaming communities. Deep purple with electric cyan — unmistakably gamer.",
+    "recommended_layout": "hero",
+    "colors": {
+      "primary": "#2B0F4C",
+      "secondary": "#00D4FF",
+      "accent": "#7B2FBE",
+      "background": "#0F0A1A",
+      "text": "#E8E8E8",
+      "button_bg": "#7B2FBE",
+      "button_text": "#E8E8E8"
+    },
+    "gradient": {
+      "colors": ["#2B0F4C", "#7B2FBE", "#00D4FF"],
+      "angle": 135
+    },
+    "typography": {
+      "font_family": "Rajdhani, sans-serif",
+      "heading_size": "30px",
+      "body_size": "14px"
+    },
+    "sample_content": {
+      "title": "PIXEL RUSH",
+      "bio": "Streaming daily. Clips, highlights, and gaming content. Drop a follow. 🎮",
+      "tagline": "Game on. Lights out."
+    }
+  },
+  {
+    "slug": "golden-hour",
+    "name": "Golden Hour",
+    "niche": "Travel",
+    "description": "Warm, earthy palette inspired by sunset travel photography. Rich amber with teal contrast — wanderlust in every pixel.",
+    "recommended_layout": "mini_page",
+    "colors": {
+      "primary": "#E88D2A",
+      "secondary": "#008080",
+      "accent": "#F5E6CC",
+      "background": "#FFFDF7",
+      "text": "#2C2416",
+      "button_bg": "#E88D2A",
+      "button_text": "#FFFFFF"
+    },
+    "gradient": {
+      "colors": ["#E88D2A", "#F5A623"],
+      "angle": 120
+    },
+    "typography": {
+      "font_family": "Georgia, serif",
+      "heading_size": "26px",
+      "body_size": "15px"
+    },
+    "sample_content": {
+      "title": "Golden Hour Explorer",
+      "bio": "Chasing sunsets across 47 countries. Travel guides, photo journals, and hidden gems.",
+      "tagline": "The world is waiting"
+    }
+  },
+  {
+    "slug": "dark-money",
+    "name": "Dark Money",
+    "niche": "Finance",
+    "description": "Sophisticated, premium palette for financial advisors, fintech, and wealth management. Black, gold, and crisp white — signals trust and authority.",
+    "recommended_layout": "business_card",
+    "colors": {
+      "primary": "#1C1C1C",
+      "secondary": "#D4AF37",
+      "accent": "#2B2B2B",
+      "background": "#F8F8F8",
+      "text": "#111111",
+      "button_bg": "#D4AF37",
+      "button_text": "#111111"
+    },
+    "gradient": {
+      "colors": ["#1C1C1C", "#2B2B2B", "#D4AF37"],
+      "angle": 160
+    },
+    "typography": {
+      "font_family": "Playfair Display, Georgia, serif",
+      "heading_size": "22px",
+      "body_size": "14px"
+    },
+    "sample_content": {
+      "title": "Morgan & Stone Capital",
+      "bio": "Wealth management for high-net-worth families. Discretion, strategy, results.",
+      "tagline": "Built to last"
+    }
+  },
+  {
+    "slug": "neon-kitchen",
+    "name": "Neon Kitchen",
+    "niche": "Food",
+    "description": "Bold, appetizing palette for restaurants, food bloggers, and recipe creators. Rich red, warm orange, and fresh green — makes you hungry.",
+    "recommended_layout": "bio_link",
+    "colors": {
+      "primary": "#C41E3A",
+      "secondary": "#FFB347",
+      "accent": "#2E8B57",
+      "background": "#FFF8F0",
+      "text": "#3D1C02",
+      "button_bg": "#C41E3A",
+      "button_text": "#FFFFFF"
+    },
+    "gradient": {
+      "colors": ["#C41E3A", "#FFB347"],
+      "angle": 90
+    },
+    "typography": {
+      "font_family": "Lora, Georgia, serif",
+      "heading_size": "24px",
+      "body_size": "15px"
+    },
+    "sample_content": {
+      "title": "Neon Kitchen",
+      "bio": "Chef. Recipe developer. Making bold flavors you can cook at home. New recipes every week. 🍳",
+      "tagline": "Eat with your eyes first"
+    }
+  },
+  {
+    "slug": "circuit-board",
+    "name": "Circuit Board",
+    "niche": "Tech",
+    "description": "Clean, technical palette for SaaS companies, dev tools, and tech startups. Deep navy with electric cyan — modern and developer-friendly.",
+    "recommended_layout": "mini_funnel",
+    "colors": {
+      "primary": "#0A1628",
+      "secondary": "#00E5FF",
+      "accent": "#1E3A5F",
+      "background": "#F5F7FA",
+      "text": "#0A1628",
+      "button_bg": "#0A1628",
+      "button_text": "#FFFFFF"
+    },
+    "gradient": {
+      "colors": ["#0A1628", "#1E3A5F"],
+      "angle": 135
+    },
+    "typography": {
+      "font_family": "JetBrains Mono, SF Mono, monospace",
+      "heading_size": "24px",
+      "body_size": "14px"
+    },
+    "sample_content": {
+      "title": "Circuit Board",
+      "bio": "Building developer tools that don't suck. Open source, performance-first, beautifully documented.",
+      "tagline": "Ship faster"
+    }
+  },
+  {
+    "slug": "backstage-pass",
+    "name": "Backstage Pass",
+    "niche": "Music",
+    "description": "Dark, loud palette for musicians, bands, and music producers. Black with hot pink — stage-ready and unforgettable.",
+    "recommended_layout": "hero",
+    "colors": {
+      "primary": "#111111",
+      "secondary": "#E91E63",
+      "accent": "#333333",
+      "background": "#0A0A0A",
+      "text": "#FFFFFF",
+      "button_bg": "#E91E63",
+      "button_text": "#FFFFFF"
+    },
+    "gradient": {
+      "colors": ["#111111", "#333333", "#E91E63"],
+      "angle": 180
+    },
+    "typography": {
+      "font_family": "Oswald, Impact, sans-serif",
+      "heading_size": "32px",
+      "body_size": "14px"
+    },
+    "sample_content": {
+      "title": "BACKSTAGE PASS",
+      "bio": "New album 'VOLTAGE' out now. Tour dates, merch, and exclusive content below. 🎸",
+      "tagline": "Turn it up"
+    }
+  },
+  {
+    "slug": "soft-nest",
+    "name": "Soft Nest",
+    "niche": "Parenting",
+    "description": "Gentle, calming palette for parenting blogs, family brands, and childcare. Soft blues and pinks — warm, safe, and nurturing.",
+    "recommended_layout": "bio_link",
+    "colors": {
+      "primary": "#87CEEB",
+      "secondary": "#FFD1DC",
+      "accent": "#98D8C8",
+      "background": "#FFFDF9",
+      "text": "#4A4A4A",
+      "button_bg": "#87CEEB",
+      "button_text": "#4A4A4A"
+    },
+    "gradient": {
+      "colors": ["#87CEEB", "#FFD1DC"],
+      "angle": 135
+    },
+    "typography": {
+      "font_family": "Nunito, system-ui, sans-serif",
+      "heading_size": "24px",
+      "body_size": "15px"
+    },
+    "sample_content": {
+      "title": "Soft Nest",
+      "bio": "Parenting with intention. Tips, routines, and real talk from a mom of three. You've got this. 💛",
+      "tagline": "Gentle parenting, real results"
+    }
+  },
+  {
+    "slug": "makers-bench",
+    "name": "Maker's Bench",
+    "niche": "DIY/Crafts",
+    "description": "Earthy, warm palette for makers, crafters, and woodworkers. Rich browns and amber tones — honest, handmade, and grounded.",
+    "recommended_layout": "mini_funnel",
+    "colors": {
+      "primary": "#8B5E3C",
+      "secondary": "#F4A460",
+      "accent": "#D2691E",
+      "background": "#FFF8F0",
+      "text": "#3E2723",
+      "button_bg": "#8B5E3C",
+      "button_text": "#FFFFFF"
+    },
+    "gradient": {
+      "colors": ["#8B5E3C", "#F4A460"],
+      "angle": 135
+    },
+    "typography": {
+      "font_family": "Merriweather, Georgia, serif",
+      "heading_size": "24px",
+      "body_size": "15px"
+    },
+    "sample_content": {
+      "title": "Maker's Bench",
+      "bio": "Handcrafted furniture, woodworking plans, and tool reviews. From my bench to your shop. 🪚",
+      "tagline": "Built by hand"
+    }
+  }
+]

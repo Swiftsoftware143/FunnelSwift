@@ -39,3 +39,4 @@ pub mod incentiveswift_handler;
 pub mod insight_handler;
 pub mod webhook_dispatch;
 pub mod checkout_handler;
+pub mod theme_endpoint;
