@@ -33,17 +33,38 @@ pub enum LayoutBlock {
     Features {
         items: Vec<FeatureItem>,
     },
-    /// Digital business card
+    /// Digital business card — rich schema: multi-contact, actions, geo, QR
     BusinessCard {
         name: String,
         title: Option<String>,
         company: Option<String>,
         company_logo_url: Option<String>,
         avatar_url: Option<String>,
+        banner_url: Option<String>,
         catchphrase: Option<String>,
+        headline: Option<String>,
+        biography: Option<String>,
+        /// Legacy flat fields (backward compat)
+        #[serde(default)]
         phone: Option<String>,
+        #[serde(default)]
         email: Option<String>,
         website: Option<String>,
+        /// Rich multi-contact lists
+        #[serde(default)]
+        phones: Vec<BizContact>,
+        #[serde(default)]
+        emails: Vec<BizContact>,
+        /// Location
+        location: Option<String>,
+        geo: Option<BizGeo>,
+        /// Generic action buttons
+        #[serde(default)]
+        actions: Vec<BizAction>,
+        /// QR code
+        qr_code_url: Option<String>,
+        /// Lead capture endpoint
+        lead_capture_url: Option<String>,
         #[serde(default)]
         buttons: Vec<BioButton>,
         #[serde(default)]
@@ -176,6 +197,30 @@ pub struct BioButton {
 pub struct SocialLink {
     pub icon: String,
     pub url: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct BizContact {
+    pub label: String,
+    pub value: String,
+    #[serde(default)]
+    pub is_primary: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct BizGeo {
+    pub lat: f64,
+    pub lng: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct BizAction {
+    pub label: String,
+    pub url: String,
+    #[serde(rename = "type", default)]
+    pub action_type: Option<String>,
+    #[serde(default)]
+    pub is_featured: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
