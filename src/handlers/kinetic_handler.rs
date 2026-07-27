@@ -192,6 +192,7 @@ pub struct PlanLimits {
     pub allow_minipage_layout: bool,
     pub show_branding: bool,  // false = "Powered by FunnelSwift Kinetic" always shown
     pub allow_minifunnel: bool,
+    pub allow_custom_domain: bool,
     pub cta_text: String,
 }
 
@@ -229,6 +230,7 @@ pub async fn get_user_limits(pool: &PgPool, tenant_id: Uuid) -> PlanLimits {
         allow_minipage_layout: get_bool(&f, "kinetic_minipage", false),
         show_branding: get_bool(&f, "kinetic_branding", true),  // default: show branding
         allow_minifunnel: get_bool(&f, "kinetic_minifunnel", true),
+        allow_custom_domain: get_bool(&f, "kinetic_custom_domain", false),
         cta_text,
     }
 }
@@ -300,7 +302,7 @@ pub async fn resolve_source_tag(pool: &PgPool, card_id: Uuid, source_param: &str
 }
 
 /// Build a default LayoutBlock::BioLink from legacy kinetic_cards columns
-fn blocks_from_legacy_card(card: &KineticCard) -> Vec<LayoutBlock> {
+pub fn blocks_from_legacy_card(card: &KineticCard) -> Vec<LayoutBlock> {
     let buttons: Vec<templates::BioButton> = Vec::new();
     let mut social_links = Vec::new();
     if let Some(ref u) = card.instagram_url { social_links.push(templates::SocialLink { icon: "📸".into(), url: u.clone() }); }
@@ -403,7 +405,7 @@ async fn render_card_html(
             LayoutBlock::BioLink { avatar_url: avatar_url.clone(), video_url: video_url.clone(), bio: bio.clone(), buttons: btn_list_for_card.clone(), social_links: social_links.clone() }
         }
         LayoutBlock::BusinessCard { name, title, company, company_logo_url, avatar_url, catchphrase, phone, email, website, social_links, .. } => {
-            LayoutBlock::BusinessCard { name: name.clone(), title: title.clone(), company: company.clone(), company_logo_url: company_logo_url.clone(), avatar_url: avatar_url.clone(), catchphrase: catchphrase.clone(), phone: phone.clone(), email: email.clone(), website: website.clone(), buttons: btn_list_for_card.clone(), social_links: social_links.clone() }
+            LayoutBlock::BusinessCard { name: name.clone(), title: title.clone(), company: company.clone(), company_logo_url: company_logo_url.clone(), avatar_url: avatar_url.clone(), banner_url: None, catchphrase: catchphrase.clone(), headline: None, biography: None, phone: phone.clone(), email: email.clone(), website: website.clone(), phones: vec![], emails: vec![], location: None, geo: None, actions: vec![], qr_code_url: None, lead_capture_url: None, buttons: btn_list_for_card.clone(), social_links: social_links.clone() }
         }
         other => other.clone(),
     }).collect::<Vec<_>>();
@@ -438,7 +440,8 @@ async fn render_card_html(
     // Detect card type from blocks for CTA label
     let limits = get_user_limits(&state.pool, card.tenant_id).await;
     let card_type_label = blocks.iter().find_map(|b| match b {
-        LayoutBlock::BioLink { .. } | LayoutBlock::BusinessCard { .. } => Some("Bio Link"),
+        LayoutBlock::BioLink { .. } => Some("Bio Link"),
+        LayoutBlock::BusinessCard { .. } => Some("Digital Business Card"),
         LayoutBlock::Hero { .. } | LayoutBlock::Features { .. } => Some("Mini Page"),
         LayoutBlock::MiniFunnel { .. } => Some("Mini Funnel"),
         _ => None,
@@ -918,7 +921,7 @@ pub async fn get_metrics(
 }
 
 /// Determine if a hex color string is dark (luminance < 128).
-fn is_dark_color(hex: &str) -> bool {
+pub fn is_dark_color(hex: &str) -> bool {
     let hex = hex.trim_start_matches('#');
     // Parse RGB from 3 or 6 digit hex
     let r: u32 = u32::from_str_radix(&hex[..=1], 16).unwrap_or(0);
@@ -928,3 +931,52 @@ fn is_dark_color(hex: &str) -> bool {
     let luminance = 0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64;
     luminance < 128.0
 }
+
+// ── Subdomain Management ──
+
+#[derive(Debug, Deserialize)]
+pub struct SubdomainRequest { pub subdomain: String, }
+
+pub async fn get_subdomain(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let current: Option<String> = sqlx::query_scalar("SELECT subdomain FROM tenants WHERE id = $1")
+        .bind(tenant_id).fetch_optional(&state.pool).await.ok().flatten();
+    Ok(Json(json!({"subdomain": current, "public_url": current.as_ref().map(|s| format!("https://{}.kntcrd.com", s))})))
+}
+
+pub async fn set_subdomain(auth: AuthUser, State(state): State<AppState>, Json(req): Json<SubdomainRequest>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let subdomain = req.subdomain.trim().to_lowercase();
+    if subdomain.len() < 2 || subdomain.len() > 30 { return Err(AppError::BadRequest("Subdomain must be 2-30 characters".into())); }
+    if !subdomain.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') { return Err(AppError::BadRequest("Only letters, numbers, and hyphens allowed".into())); }
+    if subdomain.starts_with('-') || subdomain.ends_with('-') { return Err(AppError::BadRequest("Cannot start or end with a hyphen".into())); }
+    let reserved = ["www","app","admin","api","mail","ftp","smtp","dns","ns1","ns2"];
+    if reserved.contains(&subdomain.as_str()) { return Err(AppError::BadRequest("This subdomain is reserved".into())); }
+    let taken: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenants WHERE subdomain = $1 AND id != $2)").bind(&subdomain).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(true);
+    if taken { return Err(AppError::Conflict("Subdomain already taken".into())); }
+    sqlx::query("UPDATE tenants SET subdomain = $1, updated_at = NOW() WHERE id = $2").bind(&subdomain).bind(tenant_id).execute(&state.pool).await?;
+    Ok(Json(json!({"subdomain": subdomain, "public_url": format!("https://{}.kntcrd.com", subdomain), "message": "Subdomain updated"})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CustomDomainRequest { pub domain: String, }
+
+pub async fn get_custom_domain(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let current: Option<String> = sqlx::query_scalar("SELECT custom_domain FROM tenants WHERE id = $1").bind(tenant_id).fetch_optional(&state.pool).await.ok().flatten();
+    Ok(Json(json!({"custom_domain": current, "public_url": current.as_ref().map(|d| format!("https://{}", d))})))
+}
+
+pub async fn set_custom_domain(auth: AuthUser, State(state): State<AppState>, Json(req): Json<CustomDomainRequest>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let domain = req.domain.trim().to_lowercase();
+    let domain = domain.strip_prefix("https://").unwrap_or(&domain).strip_prefix("http://").unwrap_or(&domain).trim_end_matches('/');
+    let limits = get_user_limits(&state.pool, tenant_id).await;
+    if !limits.allow_custom_domain { return Err(AppError::Forbidden("Custom domain requires Pro or Enterprise plan".into())); }
+    if domain.is_empty() { sqlx::query("UPDATE tenants SET custom_domain = NULL WHERE id = $1").bind(tenant_id).execute(&state.pool).await?; return Ok(Json(json!({"custom_domain": null, "message": "Custom domain removed"}))); }
+    let taken: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenants WHERE custom_domain = $1 AND id != $2)").bind(domain).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(true);
+    if taken { return Err(AppError::Conflict("Domain already in use".into())); }
+    sqlx::query("UPDATE tenants SET custom_domain = $1 WHERE id = $2").bind(domain).bind(tenant_id).execute(&state.pool).await?;
+    Ok(Json(json!({"custom_domain": domain, "public_url": format!("https://{}", domain), "message": "Custom domain set"})))
+}
+
