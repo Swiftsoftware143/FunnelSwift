@@ -116,3 +116,28 @@ pub async fn list_themes(
     let themes: Vec<Theme> = all_themes.into_iter().take(max_themes).collect();
     Ok(Json(themes))
 }
+
+// ── TEMPLATES ──
+
+pub fn load_templates() -> Vec<serde_json::Value> {
+    let templates_json = include_str!("../../templates.json");
+    serde_json::from_str(templates_json).unwrap_or_default()
+}
+
+pub async fn list_templates() -> AppResult<Json<serde_json::Value>> {
+    let templates = load_templates();
+    let grouped = serde_json::json!({
+        "templates": templates,
+        "types": {
+            "business_card": templates.iter().filter(|t| t["type"] == "business_card").count(),
+            "bio_link": templates.iter().filter(|t| t["type"] == "bio_link").count(),
+            "mini_page": templates.iter().filter(|t| t["type"] == "mini_page").count(),
+            "mini_funnel": templates.iter().filter(|t| t["type"] == "mini_funnel").count(),
+            "hero": templates.iter().filter(|t| t["type"] == "hero").count(),
+            "thank_you": templates.iter().filter(|t| t["type"] == "thank_you").count(),
+        },
+        "total": templates.len()
+    });
+    Ok(Json(grouped))
+}
+

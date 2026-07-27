@@ -24,6 +24,7 @@ use crate::handlers::{
     incentiveswift_handler,
     checkout_handler,
     theme_endpoint,
+    funnel_handler,
 };
 use crate::state::AppState;
 
@@ -45,8 +46,16 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         // Public kinetic routes (no auth — SSR bio-link pages + tracking)
         .route("/k/:slug", get(kinetic_handler::render_card))
-
+        .route("/b/:slug", get(kinetic_handler::render_card))
+        .route("/c/:slug", get(kinetic_handler::render_card))
+        .route("/m/:slug", get(kinetic_handler::render_card))
+        .route("/f/:slug", get(kinetic_handler::render_card))
+        .route("/h/:slug", get(kinetic_handler::render_card))
+        .route("/thank/:slug", get(kinetic_handler::render_card))
+        .route("/funnel/:slug", get(funnel_handler::render_funnel))
         .route("/k/:slug/lead", post(kinetic_handler::submit_lead))
+        .route("/b/:slug/lead", post(kinetic_handler::submit_lead))
+        .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
         // Default
         .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
@@ -179,7 +188,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/kinetic/buttons/:id", delete(kinetic_handler::delete_button))
         .route("/api/v1/kinetic/sources/:id", delete(kinetic_handler::delete_source))
         .route("/api/v1/kinetic/metrics", get(kinetic_handler::get_metrics))
+        .route("/api/v1/kinetic/subdomain", get(kinetic_handler::get_subdomain).put(kinetic_handler::set_subdomain))
+        .route("/api/v1/kinetic/custom-domain", get(kinetic_handler::get_custom_domain).put(kinetic_handler::set_custom_domain))
         .route("/api/v1/kinetic/themes", get(theme_endpoint::list_themes))
+        .route("/api/v1/kinetic/templates", get(theme_endpoint::list_templates))
+        // Funnel routes
+        .route("/api/v1/funnels", get(funnel_handler::list_funnels).post(funnel_handler::create_funnel))
+        .route("/api/v1/funnels/:id", get(funnel_handler::get_funnel).put(funnel_handler::update_funnel).delete(funnel_handler::delete_funnel))
         // QR codes for kinetic cards
         .route("/api/v1/kinetic/qr", get(qr_handler::list_qr_codes).post(qr_handler::create_qr_code))
         .route("/api/v1/kinetic/qr/:id", put(qr_handler::update_qr_code).delete(qr_handler::delete_qr_code))

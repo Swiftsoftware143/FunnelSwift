@@ -1,0 +1,1165 @@
+[
+  {
+    "slug": "executive-card-dark",
+    "name": "Executive Dark",
+    "type": "business_card",
+    "niche": "Business/Corporate",
+    "description": "Premium dark business card for executives, lawyers, and consultants. Professional, authoritative.",
+    "icon": "briefcase",
+    "preview_colors": [
+      "#1a1a2e",
+      "#e94560",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "business_card",
+        "name": "Alex Chen",
+        "title": "Managing Partner",
+        "company": "Chen Strategic Group",
+        "phone": "+1 (415) 555-0189",
+        "email": "alex@chenstrategic.com",
+        "website": "chenstrategic.com",
+        "catchphrase": "Strategy that moves markets",
+        "_theme": {
+          "variant": "minimal_modern",
+          "layout": "centered",
+          "border_radius": "12px"
+        },
+        "phones": [
+          {
+            "label": "Office",
+            "value": "+1 (415) 555-0189",
+            "is_primary": true
+          }
+        ],
+        "emails": [
+          {
+            "label": "Work",
+            "value": "alex@chenstrategic.com",
+            "is_primary": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "cal_1",
+            "type": "calendar",
+            "label": "Book a Call",
+            "url": "chenstrategic.com",
+            "is_featured": true
+          },
+          {
+            "id": "web_1",
+            "type": "website",
+            "label": "Visit Website",
+            "url": "chenstrategic.com",
+            "is_featured": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "creative-card-neon",
+    "name": "Creative Neon",
+    "type": "business_card",
+    "niche": "Creative/Design",
+    "description": "Bold neon business card for designers, photographers, and creatives. Unforgettable.",
+    "icon": "color-palette",
+    "preview_colors": [
+      "#0f0f23",
+      "#00ff88",
+      "#ff00ff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "business_card",
+        "name": "Jordan Miles",
+        "title": "Creative Director",
+        "company": "Studio Voltage",
+        "phone": "+1 (310) 555-0247",
+        "email": "jordan@studiovoltage.co",
+        "website": "studiovoltage.co",
+        "catchphrase": "Ideas that demand attention",
+        "_theme": {
+          "variant": "minimal_modern",
+          "layout": "centered",
+          "border_radius": "12px"
+        },
+        "phones": [
+          {
+            "label": "Office",
+            "value": "+1 (310) 555-0247",
+            "is_primary": true
+          }
+        ],
+        "emails": [
+          {
+            "label": "Work",
+            "value": "jordan@studiovoltage.co",
+            "is_primary": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "cal_1",
+            "type": "calendar",
+            "label": "Book a Call",
+            "url": "studiovoltage.co",
+            "is_featured": true
+          },
+          {
+            "id": "web_1",
+            "type": "website",
+            "label": "Visit Website",
+            "url": "studiovoltage.co",
+            "is_featured": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "realtor-card-warm",
+    "name": "Realtor Warm",
+    "type": "business_card",
+    "niche": "Real Estate",
+    "description": "Warm, trustworthy business card for real estate agents. Gold accents on cream.",
+    "icon": "home",
+    "preview_colors": [
+      "#fff8f0",
+      "#d4a574",
+      "#2d2d2d"
+    ],
+    "layout_blocks": [
+      {
+        "type": "business_card",
+        "name": "Sarah Bennett",
+        "title": "Luxury Real Estate Advisor",
+        "company": "Coastal Properties Group",
+        "phone": "+1 (858) 555-0321",
+        "email": "sarah@coastalprop.com",
+        "website": "sarahbennettrealestate.com",
+        "catchphrase": "Finding your place in paradise",
+        "_theme": {
+          "variant": "minimal_modern",
+          "layout": "centered",
+          "border_radius": "12px"
+        },
+        "phones": [
+          {
+            "label": "Office",
+            "value": "+1 (858) 555-0321",
+            "is_primary": true
+          }
+        ],
+        "emails": [
+          {
+            "label": "Work",
+            "value": "sarah@coastalprop.com",
+            "is_primary": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "cal_1",
+            "type": "calendar",
+            "label": "Book a Call",
+            "url": "sarahbennettrealestate.com",
+            "is_featured": true
+          },
+          {
+            "id": "web_1",
+            "type": "website",
+            "label": "Visit Website",
+            "url": "sarahbennettrealestate.com",
+            "is_featured": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "fitness-card-iron",
+    "name": "Iron Trainer",
+    "type": "business_card",
+    "niche": "Fitness/Health",
+    "description": "High-energy business card for personal trainers and fitness coaches.",
+    "icon": "fitness",
+    "preview_colors": [
+      "#0d0d0d",
+      "#00ff88",
+      "#ff4d4d"
+    ],
+    "layout_blocks": [
+      {
+        "type": "business_card",
+        "name": "Marcus Stone",
+        "title": "Certified Personal Trainer",
+        "company": "StoneFit Training",
+        "phone": "+1 (702) 555-0942",
+        "email": "marcus@stonefit.com",
+        "website": "stonefit.com",
+        "catchphrase": "Your only limit is you",
+        "_theme": {
+          "variant": "minimal_modern",
+          "layout": "centered",
+          "border_radius": "12px"
+        },
+        "phones": [
+          {
+            "label": "Office",
+            "value": "+1 (702) 555-0942",
+            "is_primary": true
+          }
+        ],
+        "emails": [
+          {
+            "label": "Work",
+            "value": "marcus@stonefit.com",
+            "is_primary": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "cal_1",
+            "type": "calendar",
+            "label": "Book a Call",
+            "url": "stonefit.com",
+            "is_featured": true
+          },
+          {
+            "id": "web_1",
+            "type": "website",
+            "label": "Visit Website",
+            "url": "stonefit.com",
+            "is_featured": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "med-card-clean",
+    "name": "Medical Clean",
+    "type": "business_card",
+    "niche": "Medical/Healthcare",
+    "description": "Clean, trustworthy business card for doctors, dentists, and healthcare professionals.",
+    "icon": "medkit",
+    "preview_colors": [
+      "#ffffff",
+      "#2563eb",
+      "#1e3a5f"
+    ],
+    "layout_blocks": [
+      {
+        "type": "business_card",
+        "name": "Dr. Priya Kapoor",
+        "title": "Board-Certified Dermatologist",
+        "company": "ClearSkin Medical Group",
+        "phone": "+1 (212) 555-0765",
+        "email": "drkapoor@clearskinmed.com",
+        "website": "clearskinmed.com",
+        "catchphrase": "Science-backed skincare",
+        "_theme": {
+          "variant": "minimal_modern",
+          "layout": "centered",
+          "border_radius": "12px"
+        },
+        "phones": [
+          {
+            "label": "Office",
+            "value": "+1 (212) 555-0765",
+            "is_primary": true
+          }
+        ],
+        "emails": [
+          {
+            "label": "Work",
+            "value": "drkapoor@clearskinmed.com",
+            "is_primary": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "cal_1",
+            "type": "calendar",
+            "label": "Book a Call",
+            "url": "clearskinmed.com",
+            "is_featured": true
+          },
+          {
+            "id": "web_1",
+            "type": "website",
+            "label": "Visit Website",
+            "url": "clearskinmed.com",
+            "is_featured": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "linktree-ceo",
+    "name": "CEO Bio-Link",
+    "type": "bio_link",
+    "niche": "Business/Executive",
+    "description": "Complete bio-link page for CEOs, founders, and thought leaders. Links, social, bio.",
+    "icon": "people",
+    "preview_colors": [
+      "#0f172a",
+      "#3b82f6",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "bio_link",
+        "bio": "Founder & CEO. Building the future of work. Keynote speaker. Author of 'The Async Advantage'.",
+        "social_links": [
+          {
+            "platform": "twitter",
+            "url": "https://twitter.com/founder"
+          },
+          {
+            "platform": "linkedin",
+            "url": "https://linkedin.com/in/founder"
+          },
+          {
+            "platform": "instagram",
+            "url": "https://instagram.com/founder"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "linktree-creator",
+    "name": "Creator Bio-Link",
+    "type": "bio_link",
+    "niche": "Content Creator",
+    "description": "Vibrant bio-link for content creators, YouTubers, and streamers. All your links in one place.",
+    "icon": "videocam",
+    "preview_colors": [
+      "#1a1a2e",
+      "#e94560",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "bio_link",
+        "bio": "Content Creator | 500K+ on YouTube. Tech reviews, tutorials, and behind the scenes. New video every Wednesday! \ud83c\udfac",
+        "social_links": [
+          {
+            "platform": "youtube",
+            "url": "https://youtube.com/@creator"
+          },
+          {
+            "platform": "instagram",
+            "url": "https://instagram.com/creator"
+          },
+          {
+            "platform": "tiktok",
+            "url": "https://tiktok.com/@creator"
+          },
+          {
+            "platform": "twitter",
+            "url": "https://twitter.com/creator"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "linktree-artist",
+    "name": "Artist Bio-Link",
+    "type": "bio_link",
+    "niche": "Music/Art",
+    "description": "Dark, moody bio-link for musicians and artists. Spotify, tour dates, merch \u2014 all connected.",
+    "icon": "musical-notes",
+    "preview_colors": [
+      "#0a0a0a",
+      "#e91e63",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "bio_link",
+        "bio": "Producer & Artist. New album 'VOLTAGE' out now. Tour dates and merch below. \ud83c\udfb8",
+        "social_links": [
+          {
+            "platform": "instagram",
+            "url": "https://instagram.com/artist"
+          },
+          {
+            "platform": "youtube",
+            "url": "https://youtube.com/@artist"
+          },
+          {
+            "platform": "tiktok",
+            "url": "https://tiktok.com/@artist"
+          },
+          {
+            "platform": "spotify",
+            "url": "https://open.spotify.com/artist/123"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "linktree-food",
+    "name": "Foodie Bio-Link",
+    "type": "bio_link",
+    "niche": "Food/Restaurant",
+    "description": "Appetizing bio-link for restaurants, chefs, and food bloggers. Menu, reservations, delivery.",
+    "icon": "restaurant",
+    "preview_colors": [
+      "#c41e3a",
+      "#ffb347",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "bio_link",
+        "bio": "Chef & Recipe Developer. Bold flavors you can make at home. New recipes every Friday. \ud83c\udf73",
+        "social_links": [
+          {
+            "platform": "instagram",
+            "url": "https://instagram.com/chef"
+          },
+          {
+            "platform": "youtube",
+            "url": "https://youtube.com/@chef"
+          },
+          {
+            "platform": "tiktok",
+            "url": "https://tiktok.com/@chef"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "linktree-coach",
+    "name": "Coach Bio-Link",
+    "type": "bio_link",
+    "niche": "Coaching/Education",
+    "description": "Clean bio-link for coaches, consultants, and educators. Booking, content, community.",
+    "icon": "school",
+    "preview_colors": [
+      "#1e3a5f",
+      "#3b82f6",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "bio_link",
+        "bio": "Business Coach | Helping entrepreneurs scale past 7 figures. Free strategy call below. Let's build. \ud83d\udcc8",
+        "social_links": [
+          {
+            "platform": "linkedin",
+            "url": "https://linkedin.com/in/coach"
+          },
+          {
+            "platform": "instagram",
+            "url": "https://instagram.com/coach"
+          },
+          {
+            "platform": "youtube",
+            "url": "https://youtube.com/@coach"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "mini-page-saas",
+    "name": "SaaS Product Page",
+    "type": "mini_page",
+    "niche": "Tech/SaaS",
+    "description": "Clean SaaS product landing page. Hero, features grid, CTA \u2014 optimized for conversions.",
+    "icon": "code-slash",
+    "preview_colors": [
+      "#0a1628",
+      "#00e5ff",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "Ship Faster. Scale Smarter.",
+        "subtitle": "The all-in-one developer platform that eliminates DevOps overhead. Deploy in minutes, not days.",
+        "cta_text": "Start Free Trial",
+        "cta_url": "#"
+      },
+      {
+        "type": "features",
+        "items": [
+          {
+            "title": "One-Click Deploy",
+            "description": "Push to GitHub and we handle the rest. Zero config, instant previews.",
+            "icon": "rocket"
+          },
+          {
+            "title": "Auto-Scaling",
+            "description": "Traffic spikes? We scale automatically. You never pay for idle servers.",
+            "icon": "trending-up"
+          },
+          {
+            "title": "Built-in Analytics",
+            "description": "Real-time dashboards. User behavior, performance, errors \u2014 all in one place.",
+            "icon": "analytics"
+          }
+        ]
+      },
+      {
+        "type": "lead_form",
+        "form_title": "Get Early Access",
+        "placeholder": "Enter your work email",
+        "button_text": "Join the Waitlist",
+        "fields": [
+          {
+            "name": "email",
+            "type": "email",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "mini-page-realestate",
+    "name": "Property Showcase",
+    "type": "mini_page",
+    "niche": "Real Estate",
+    "description": "Elegant property listing page. Hero gallery, feature highlights, inquiry form.",
+    "icon": "home",
+    "preview_colors": [
+      "#1a1a2e",
+      "#d4a574",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "127 Ocean View Drive",
+        "subtitle": "A stunning 5-bedroom coastal estate with panoramic ocean views. Private beach access, infinity pool, gourmet kitchen.",
+        "cta_text": "Schedule a Tour",
+        "cta_url": "#"
+      },
+      {
+        "type": "features",
+        "items": [
+          {
+            "title": "5 Bedrooms / 6 Baths",
+            "description": "4,800 sq ft of luxury living space with floor-to-ceiling windows.",
+            "icon": "bed"
+          },
+          {
+            "title": "Infinity Pool",
+            "description": "Heated saltwater pool with ocean views and integrated spa.",
+            "icon": "water"
+          },
+          {
+            "title": "Private Beach Access",
+            "description": "Direct access to 200ft of pristine coastline.",
+            "icon": "umbrella"
+          },
+          {
+            "title": "Smart Home Ready",
+            "description": "Fully integrated home automation \u2014 lighting, security, climate.",
+            "icon": "bulb"
+          }
+        ]
+      },
+      {
+        "type": "lead_form",
+        "form_title": "Request a Private Showing",
+        "placeholder": "Your email address",
+        "button_text": "Request Showing",
+        "fields": [
+          {
+            "name": "email",
+            "type": "email",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "type": "tel",
+            "required": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "mini-page-fitness",
+    "name": "Fitness Program",
+    "type": "mini_page",
+    "niche": "Fitness",
+    "description": "High-energy fitness program page. Hero video, program features, signup form.",
+    "icon": "fitness",
+    "preview_colors": [
+      "#0d0d0d",
+      "#00ff88",
+      "#ff4d4d"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "TRANSFORM IN 90 DAYS",
+        "subtitle": "Science-backed training programs with nutrition coaching. Join 10,000+ members who've rebuilt their bodies.",
+        "cta_text": "Start Your Transformation",
+        "cta_url": "#"
+      },
+      {
+        "type": "features",
+        "items": [
+          {
+            "title": "Custom Workout Plans",
+            "description": "Personalized programming based on your goals, equipment, and experience level.",
+            "icon": "barbell"
+          },
+          {
+            "title": "Meal Plans Included",
+            "description": "Macro-calculated meal plans with grocery lists. Never guess what to eat again.",
+            "icon": "nutrition"
+          },
+          {
+            "title": "Daily Check-ins",
+            "description": "Accountability coaching via our app. Form checks, motivation, progress tracking.",
+            "icon": "chatbubbles"
+          }
+        ]
+      },
+      {
+        "type": "lead_form",
+        "form_title": "Free Consultation Call",
+        "placeholder": "Your best email",
+        "button_text": "Book Free Call",
+        "fields": [
+          {
+            "name": "email",
+            "type": "email",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "mini-page-restaurant",
+    "name": "Restaurant Page",
+    "type": "mini_page",
+    "niche": "Food/Restaurant",
+    "description": "Mouth-watering restaurant landing page. Hero image, menu highlights, reservation form.",
+    "icon": "restaurant",
+    "preview_colors": [
+      "#c41e3a",
+      "#1a1a1a",
+      "#fff8f0"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "LA BRASA",
+        "subtitle": "Wood-fired Mexican cuisine in the heart of Austin. Handmade tortillas, craft cocktails, unforgettable nights.",
+        "cta_text": "Reserve a Table",
+        "cta_url": "#"
+      },
+      {
+        "type": "features",
+        "items": [
+          {
+            "title": "Wood-Fired Everything",
+            "description": "Our custom grill burns mesquite and oak \u2014 every dish carries the smoke.",
+            "icon": "flame"
+          },
+          {
+            "title": "Craft Cocktails",
+            "description": "40+ tequilas and mezcals. Award-winning margarita program.",
+            "icon": "wine"
+          },
+          {
+            "title": "Private Dining",
+            "description": "Host your next event in our candlelit private room. Up to 40 guests.",
+            "icon": "people"
+          }
+        ]
+      },
+      {
+        "type": "lead_form",
+        "form_title": "Join Our VIP List",
+        "placeholder": "Your email",
+        "button_text": "Get Exclusive Offers",
+        "fields": [
+          {
+            "name": "email",
+            "type": "email",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "mini-page-coaching",
+    "name": "Business Coaching",
+    "type": "mini_page",
+    "niche": "Coaching/Consulting",
+    "description": "Professional coaching landing page. Testimonials, services, booking \u2014 build your client pipeline.",
+    "icon": "school",
+    "preview_colors": [
+      "#1e3a5f",
+      "#3b82f6",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "Scale Past 7 Figures",
+        "subtitle": "I help founders break through growth plateaus. 200+ clients. $500M+ in collective revenue growth.",
+        "cta_text": "Book a Strategy Call",
+        "cta_url": "#"
+      },
+      {
+        "type": "features",
+        "items": [
+          {
+            "title": "1:1 Coaching",
+            "description": "Weekly strategy sessions tailored to your business stage and challenges.",
+            "icon": "person"
+          },
+          {
+            "title": "Growth Framework",
+            "description": "Proven playbooks for customer acquisition, retention, and pricing.",
+            "icon": "document"
+          },
+          {
+            "title": "Accountability",
+            "description": "Weekly check-ins, KPI tracking, and course correction.",
+            "icon": "checkbox"
+          }
+        ]
+      },
+      {
+        "type": "lead_form",
+        "form_title": "Free Growth Assessment",
+        "placeholder": "Work email",
+        "button_text": "Get Assessment",
+        "fields": [
+          {
+            "name": "email",
+            "type": "email",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "funnel-ebook",
+    "name": "eBook Funnel",
+    "type": "mini_funnel",
+    "niche": "Digital Products",
+    "description": "Single-product funnel optimized for selling ebooks, guides, and digital downloads.",
+    "icon": "book",
+    "preview_colors": [
+      "#0f172a",
+      "#8b5cf6",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "mini_funnel",
+        "title": "The Ultimate Growth Playbook",
+        "subtitle": "47 proven strategies that took my startup from $0 to $10M ARR in 18 months.",
+        "cta_text": "Get the Playbook \u2014 $29",
+        "cta_url": "#",
+        "theme_style": "dark"
+      }
+    ]
+  },
+  {
+    "slug": "funnel-course",
+    "name": "Course Launch Funnel",
+    "type": "mini_funnel",
+    "niche": "Education",
+    "description": "Course sales funnel with preview content, testimonials, and enrollment CTA.",
+    "icon": "play",
+    "preview_colors": [
+      "#1a1a2e",
+      "#e94560",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "mini_funnel",
+        "title": "Master Product Design in 6 Weeks",
+        "subtitle": "From wireframes to high-fidelity prototypes. Join 3,000+ students who've landed design roles at top tech companies.",
+        "cta_text": "Enroll Now \u2014 $499",
+        "cta_url": "#",
+        "theme_style": "vibrant"
+      }
+    ]
+  },
+  {
+    "slug": "funnel-webinar",
+    "name": "Webinar Registration",
+    "type": "mini_funnel",
+    "niche": "Marketing",
+    "description": "Webinar registration funnel \u2014 capture leads with a compelling value proposition.",
+    "icon": "videocam",
+    "preview_colors": [
+      "#0a1628",
+      "#00e5ff",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "mini_funnel",
+        "title": "Free Live Training: 3 Pricing Strategies That 10x Revenue",
+        "subtitle": "Tuesday, August 15th at 2PM EST. Learn the pricing psychology used by the top 1% of SaaS companies.",
+        "cta_text": "Save Your Spot \u2014 Free",
+        "cta_url": "#",
+        "theme_style": "tech"
+      }
+    ]
+  },
+  {
+    "slug": "funnel-consult",
+    "name": "Consultation Booking",
+    "type": "mini_funnel",
+    "niche": "Professional Services",
+    "description": "Consultation booking funnel \u2014 qualify leads and book calls automatically.",
+    "icon": "calendar",
+    "preview_colors": [
+      "#1c1c1c",
+      "#d4af37",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "mini_funnel",
+        "title": "Get a Custom Growth Strategy",
+        "subtitle": "30-minute deep dive into your business. Walk away with 3 actionable growth plays \u2014 no pitch, just value.",
+        "cta_text": "Book Your Free Strategy Call",
+        "cta_url": "#",
+        "theme_style": "premium"
+      }
+    ]
+  },
+  {
+    "slug": "funnel-product",
+    "name": "Physical Product Launch",
+    "type": "mini_funnel",
+    "niche": "E-Commerce",
+    "description": "Product launch funnel \u2014 showcase features, build hype, drive pre-orders.",
+    "icon": "cart",
+    "preview_colors": [
+      "#0d0d0d",
+      "#00ff88",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "mini_funnel",
+        "title": "BoltPack Pro \u2014 The Last Backpack You'll Ever Need",
+        "subtitle": "Waterproof. Anti-theft. USB-C charging. 5-year warranty. Pre-order at 40% off retail.",
+        "cta_text": "Pre-Order Now \u2014 $89",
+        "cta_url": "#",
+        "theme_style": "bold"
+      }
+    ]
+  },
+  {
+    "slug": "hero-startup",
+    "name": "Startup Hero Page",
+    "type": "hero",
+    "niche": "Tech/Startup",
+    "description": "Bold startup hero page. Full-screen gradient, big CTA, built for investor presentations.",
+    "icon": "rocket",
+    "preview_colors": [
+      "#0a1628",
+      "#00e5ff",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "We're Building the Future of Remote Work",
+        "subtitle": "Async collaboration tools that make your team 3x more productive. Backed by a16z, Sequoia, and YC.",
+        "cta_text": "Request Early Access",
+        "cta_url": "#",
+        "gradient_angle": "135",
+        "gradient_colors": "#0a1628,#1e3a5f,#00e5ff"
+      }
+    ]
+  },
+  {
+    "slug": "hero-event",
+    "name": "Event Hero Page",
+    "type": "hero",
+    "niche": "Events",
+    "description": "High-energy event hero page. Countdown, speaker lineup teaser, registration CTA.",
+    "icon": "calendar",
+    "preview_colors": [
+      "#1a1a2e",
+      "#e94560",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "CREATOR SUMMIT 2026",
+        "subtitle": "The largest gathering of content creators in the world. 3 days. 50 speakers. 5,000 creators. Miami, FL \u2014 October 12-14.",
+        "cta_text": "Get Tickets \u2014 From $299",
+        "cta_url": "#",
+        "gradient_angle": "180",
+        "gradient_colors": "#1a1a2e,#e94560"
+      }
+    ]
+  },
+  {
+    "slug": "hero-portfolio",
+    "name": "Portfolio Hero",
+    "type": "hero",
+    "niche": "Creative/Design",
+    "description": "Stunning portfolio hero for designers, photographers, and artists. Let your work speak.",
+    "icon": "images",
+    "preview_colors": [
+      "#0f0f23",
+      "#ffffff",
+      "#8b5cf6"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "I Design Products People Love",
+        "subtitle": "Product designer at Stripe. Previously Airbnb, Figma. 15+ years crafting interfaces used by millions.",
+        "cta_text": "View My Work",
+        "cta_url": "#",
+        "gradient_angle": "120",
+        "gradient_colors": "#0f0f23,#8b5cf6"
+      }
+    ]
+  },
+  {
+    "slug": "hero-podcast",
+    "name": "Podcast Hero",
+    "type": "hero",
+    "niche": "Media/Podcasting",
+    "description": "Podcast landing hero. Episode player, subscribe buttons, newsletter signup.",
+    "icon": "mic",
+    "preview_colors": [
+      "#0d0d0d",
+      "#00ff88",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "The Deep Dive Podcast",
+        "subtitle": "Weekly conversations with the world's most interesting founders, scientists, and creators. 2M+ downloads.",
+        "cta_text": "Listen & Subscribe",
+        "cta_url": "#",
+        "gradient_angle": "135",
+        "gradient_colors": "#0d0d0d,#1a1a2e"
+      }
+    ]
+  },
+  {
+    "slug": "hero-fitness",
+    "name": "Fitness Hero",
+    "type": "hero",
+    "niche": "Fitness",
+    "description": "Motivational fitness hero. Full-bleed imagery style, bold typography, clear CTA.",
+    "icon": "fitness",
+    "preview_colors": [
+      "#0d0d0d",
+      "#00ff88",
+      "#ff4d4d"
+    ],
+    "layout_blocks": [
+      {
+        "type": "hero",
+        "title": "YOUR TRANSFORMATION STARTS NOW",
+        "subtitle": "8-week program. Zero equipment needed. Results guaranteed or your money back. 10,000+ success stories.",
+        "cta_text": "Start Free Week",
+        "cta_url": "#",
+        "gradient_angle": "180",
+        "gradient_colors": "#0d0d0d,#00ff88"
+      }
+    ]
+  },
+  {
+    "slug": "thanks-ebook",
+    "name": "Thank You \u2014 Digital Download",
+    "type": "thank_you",
+    "niche": "Digital Products",
+    "description": "Clean thank you page for digital downloads, ebooks, and courses. Check email, next steps, social follow.",
+    "icon": "checkmark-circle",
+    "preview_colors": [
+      "#0f172a",
+      "#8b5cf6",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "thank_you",
+        "headline": "You're In! \ud83c\udf89",
+        "message": "Check your inbox for your download link. It should arrive within 2 minutes. If you don't see it, check your spam folder.",
+        "next_step_text": "While You Wait...",
+        "next_step_body": "Follow us on social for tips, updates, and exclusive content.",
+        "secondary_cta_text": "Join Our Community",
+        "secondary_cta_url": "#",
+        "social_links": [
+          {
+            "platform": "instagram",
+            "url": "#"
+          },
+          {
+            "platform": "twitter",
+            "url": "#"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "thanks-consult",
+    "name": "Thank You \u2014 Consultation Booked",
+    "type": "thank_you",
+    "niche": "Professional Services",
+    "description": "Professional thank you page for booked consultations. Calendar confirmation, prep instructions, contact info.",
+    "icon": "calendar",
+    "preview_colors": [
+      "#1c1c1c",
+      "#d4af37",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "thank_you",
+        "headline": "Your Call Is Booked \u2705",
+        "message": "You'll receive a calendar invite and Zoom link shortly. Please add it to your calendar \u2014 I block this time exclusively for you.",
+        "next_step_text": "Before Our Call",
+        "next_step_body": "Have your biggest challenge ready. I'll spend the first 10 minutes understanding your situation, then we'll build a custom plan together.",
+        "secondary_cta_text": "Add to Calendar",
+        "secondary_cta_url": "#",
+        "social_links": [
+          {
+            "platform": "linkedin",
+            "url": "#"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "thanks-purchase",
+    "name": "Thank You \u2014 Purchase Confirmed",
+    "type": "thank_you",
+    "niche": "E-Commerce",
+    "description": "Order confirmation thank you page. Order details, shipping info, support contact, upsell CTA.",
+    "icon": "cart",
+    "preview_colors": [
+      "#0d0d0d",
+      "#00ff88",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "thank_you",
+        "headline": "Order Confirmed! \ud83c\udf89",
+        "message": "Your order #12345 is being processed. You'll receive a confirmation email with your receipt and tracking info once it ships.",
+        "next_step_text": "Expected Delivery",
+        "next_step_body": "3-5 business days. You'll get an email with tracking as soon as it ships.",
+        "secondary_cta_text": "Continue Shopping",
+        "secondary_cta_url": "#",
+        "social_links": [
+          {
+            "platform": "instagram",
+            "url": "#"
+          },
+          {
+            "platform": "tiktok",
+            "url": "#"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "thanks-webinar",
+    "name": "Thank You \u2014 Webinar Registered",
+    "type": "thank_you",
+    "niche": "Education/Events",
+    "description": "Event registration confirmation page. Countdown, add to calendar, share with friends, prep download.",
+    "icon": "videocam",
+    "preview_colors": [
+      "#1a1a2e",
+      "#e94560",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "thank_you",
+        "headline": "You're Registered! \ud83c\udf93",
+        "message": "Tuesday, August 15th at 2PM EST. We'll send you the link 1 hour before. Add it to your calendar now so you don't miss it.",
+        "next_step_text": "Share This Event",
+        "next_step_body": "Know someone who'd benefit? Invite them \u2014 the more, the better.",
+        "secondary_cta_text": "Add to Calendar",
+        "secondary_cta_url": "#",
+        "social_links": [
+          {
+            "platform": "facebook",
+            "url": "#"
+          },
+          {
+            "platform": "linkedin",
+            "url": "#"
+          },
+          {
+            "platform": "twitter",
+            "url": "#"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "thanks-newsletter",
+    "name": "Thank You \u2014 Newsletter Signup",
+    "type": "thank_you",
+    "niche": "Content/Media",
+    "description": "Friendly newsletter confirmation page. What to expect, frequency, past issues, social follow.",
+    "icon": "mail",
+    "preview_colors": [
+      "#1e3a5f",
+      "#3b82f6",
+      "#ffffff"
+    ],
+    "layout_blocks": [
+      {
+        "type": "thank_you",
+        "headline": "Welcome to the Crew! \ud83d\udcec",
+        "message": "You'll get our best content every Tuesday morning. No spam, no fluff \u2014 just actionable insights you can use.",
+        "next_step_text": "What's Coming Next",
+        "next_step_body": "Your first newsletter hits your inbox this Tuesday. In the meantime, check out our most popular past issues.",
+        "secondary_cta_text": "Read Past Issues",
+        "secondary_cta_url": "#",
+        "social_links": [
+          {
+            "platform": "twitter",
+            "url": "#"
+          },
+          {
+            "platform": "linkedin",
+            "url": "#"
+          }
+        ]
+      }
+    ]
+  }
+]
