@@ -271,7 +271,12 @@ pub async fn render_funnel(
     );
 
     // Inject nav bar before the card content
-    let full_html = card_html.replace("<body", &format!("<body style="padding-top:48px"{0}", if nav_html.is_empty() { "" } else { "" }));
+    let body_tag = if nav_html.is_empty() { 
+        r#"<body style="padding-top:48px">"#.to_string()
+    } else {
+        r#"<body style="padding-top:48px">"#.to_string()
+    };
+    let full_html = card_html.replace("<body", &body_tag);
     let full_html = full_html.replace("</body>", &format!("{}</body>", nav_html));
 
     // Replace the page footer CTA with the step's button URL
