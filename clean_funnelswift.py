@@ -9,13 +9,20 @@ originals = [
     'tag_group_handler.rs', 'tag_handler.rs', 'webhook_handler.rs'
 ]
 
+handler_real = os.path.realpath(handler_dir)
 to_remove = [f for f in os.listdir(handler_dir) if f.endswith('.rs') and f not in originals and f != 'mod.rs']
 print(f'Removing {len(to_remove)} ADASwift handlers: {to_remove}')
 
 for f in to_remove:
-    os.remove(os.path.join(handler_dir, f))
+    target = os.path.realpath(os.path.join(handler_dir, f))
+    if not target.startswith(handler_real + os.sep):
+        raise ValueError(f"path traversal blocked: {f}")
+    os.remove(target)
 
-with open(os.path.join(handler_dir, 'mod.rs'), 'w') as f:
+mod_path = os.path.realpath(os.path.join(handler_dir, 'mod.rs'))
+if not mod_path.startswith(handler_real + os.sep):
+    raise ValueError("path traversal blocked")
+with open(mod_path, 'w') as f:
     for h in originals:
         mod_name = h.replace('.rs', '')
         f.write(f'pub mod {mod_name};\n')
