@@ -102,7 +102,7 @@ fn get_inline(template_type: &str, vars: &std::collections::HashMap<&str, &str>)
     let password = vars.get("password").unwrap_or(&"");
     let token = vars.get("token").unwrap_or(&"");
     let plan_name = vars.get("plan_name").unwrap_or(&"a plan");
-    let app_url = vars.get("app_url").unwrap_or(&"https://app.funnelswift.com");
+    let app_url = vars.get("app_url").unwrap_or(&"https://app.funnelswift.net");
 
     match template_type {
         "welcome" => {
@@ -142,7 +142,7 @@ pub async fn send_welcome_email(pool: &PgPool, aid: Uuid, to: &str, name: &str, 
     vars.insert("name", name);
     vars.insert("email", to);
     vars.insert("password", password);
-    vars.insert("app_url", "https://app.funnelswift.com");
+    vars.insert("app_url", "https://app.funnelswift.net");
     send_template_email(pool, aid, to, "welcome", &vars).await
 }
 
@@ -150,7 +150,7 @@ pub async fn send_purchase_confirmed_email(pool: &PgPool, aid: Uuid, to: &str, n
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
-    vars.insert("app_url", "https://app.funnelswift.com");
+    vars.insert("app_url", "https://app.funnelswift.net");
     send_template_email(pool, aid, to, "purchase_confirmed", &vars).await
 }
 
@@ -158,6 +158,6 @@ pub async fn send_reset_email(pool: &PgPool, aid: Uuid, to: &str, token: &str, n
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("token", token);
-    vars.insert("app_url", "https://app.funnelswift.com");
+    vars.insert("app_url", "https://app.funnelswift.net");
     send_template_email(pool, aid, to, "password_reset", &vars).await
 }
