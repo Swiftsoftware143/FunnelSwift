@@ -1,0 +1,1 @@
+// Affiliate portal handler stub

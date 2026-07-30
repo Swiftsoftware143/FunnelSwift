@@ -95,24 +95,38 @@ pub async fn update_tag(
     if tag.is_system && !auth.is_admin {
         return Err(AppError::Forbidden("Only admins can modify system tags".into()));
     }
-    if tag.is_system {
-        return Err(AppError::BadRequest("Cannot modify system tags".into()));
-    }
+    // Admin CAN modify system tags — but only on system tags, not tenant-scoped
+    let update_query = if tag.is_system && auth.is_admin {
+        "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4 WHERE id=$5"
+    } else {
+        "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4 WHERE id=$5 AND tenant_id=$6"
+    };
 
     let name = req.name.unwrap_or(tag.name);
     let color = req.color.or(tag.color);
     let group_id = req.group_id.or(tag.group_id);
     let metadata = req.metadata.or(tag.metadata);
 
-    sqlx::query("UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4 WHERE id=$5 AND tenant_id=$6")
-        .bind(&name)
-        .bind(&color)
-        .bind(group_id)
-        .bind(&metadata)
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+    if tag.is_system && auth.is_admin {
+        sqlx::query(update_query)
+            .bind(&name)
+            .bind(&color)
+            .bind(group_id)
+            .bind(&metadata)
+            .bind(id)
+            .execute(&state.pool)
+            .await?;
+    } else {
+        sqlx::query(update_query)
+            .bind(&name)
+            .bind(&color)
+            .bind(group_id)
+            .bind(&metadata)
+            .bind(id)
+            .bind(tenant_id)
+            .execute(&state.pool)
+            .await?;
+    }
 
     Ok(Json(json!({"message": "Tag updated"})))
 }
