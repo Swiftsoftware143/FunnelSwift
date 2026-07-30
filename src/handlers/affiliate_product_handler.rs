@@ -1,0 +1,1 @@
+// Affiliate product handler stub

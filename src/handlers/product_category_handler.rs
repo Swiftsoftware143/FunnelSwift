@@ -1,0 +1,1 @@
+// Product category handler stub
