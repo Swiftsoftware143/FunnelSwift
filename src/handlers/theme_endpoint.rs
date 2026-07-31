@@ -1297,6 +1297,159 @@ pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Va
                 {"type":"client_logos","style":"scrolling","clients":["WeWork","Regus","Kaiser","CBRE"]},
                 {"type":"social_strip","platforms":["linkedin","facebook"]}
             ]
+        },
+
+        // ═══ FREE PLAN STARTERS (General) ═══
+        {
+            "id": "starter_biz_card",
+            "name": "Starter Business Card",
+            "type": "business_card",
+            "category": "starter",
+            "niche": "General",
+            "icon": "✦",
+            "description": "Clean white business card. Industry-neutral. Add your own photo, colors, and content.",
+            "preview_colors": ["#ffffff", "#6366f1", "#1e293b"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f8fafc 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle","size":"medium"},
+                {"type":"title_block","headline":"Your Name","subtitle":"Your Title or Company"},
+                {"type":"rich_text","content":"A short bio about what you do and who you help."},
+                {"type":"cta_button","label":"Get in Touch","icon":"💬","action":"link:","style":"solid"},
+                {"type":"social_strip","platforms":["instagram","facebook","linkedin","twitter"]}
+            ]
+        },
+        {
+            "id": "starter_bio_link",
+            "name": "Starter Bio Link",
+            "type": "bio_link",
+            "category": "starter",
+            "niche": "General",
+            "icon": "✦",
+            "description": "Minimal link-tree. Perfect as a fallback for any bio link user.",
+            "preview_colors": ["#fafafa", "#8b5cf6", "#18181b"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #fafafa 0%, #f5f3ff 50%, #fafafa 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"medium"},
+                {"type":"title_block","headline":"Your Name","subtitle":"@yourhandle"},
+                {"type":"rich_text","content":"Welcome! Links to everything I am working on:"},
+                {"type":"link_list","items":[{"label":"My Website","url":"https://"},{"label":"Instagram","url":"https://instagram.com/"},{"label":"Email Me","url":"mailto:"}]},
+                {"type":"social_strip","platforms":["instagram","tiktok","youtube","twitter"]}
+            ]
+        },
+        {
+            "id": "starter_mini_page",
+            "name": "Starter Mini Page",
+            "type": "mini_page",
+            "category": "starter",
+            "niche": "General",
+            "icon": "✦",
+            "description": "Simple landing page that works for any business. Add your own branding.",
+            "preview_colors": ["#ffffff", "#3b82f6", "#0f172a"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #eff6ff 0%, #dbeafe 50%, #f8fafc 100%)",
+            "theme_key": "ocean",
+            "layout_blocks": [
+                {"type":"logo_mark","shape":"rounded_square","initial":"Y","catchphrase":"Your tagline here"},
+                {"type":"title_block","headline":"Your Business Name","subtitle":"What you do"},
+                {"type":"rich_text","content":"Tell visitors what makes you different."},
+                {"type":"action_row_3","items":[{"icon":"📞","label":"Call","action":"tel:"},{"icon":"📧","label":"Email","action":"mailto:"},{"icon":"📍","label":"Directions","action":"link:"}]},
+                {"type":"service_cards","items":[{"title":"Service One","desc":"What you offer","price":""},{"title":"Service Two","desc":"Another service","price":""},{"title":"Service Three","desc":"Third offering","price":""}]},
+                {"type":"cta_button_large","label":"Book a Consultation","icon":"📅","action":"link:","style":"pulse"},
+                {"type":"social_strip","platforms":["instagram","facebook","linkedin","twitter"]}
+            ]
+        },
+        {
+            "id": "starter_mini_funnel",
+            "name": "Starter Mini Funnel",
+            "type": "mini_funnel",
+            "category": "starter",
+            "niche": "General",
+            "icon": "✦",
+            "description": "Simple opt-in funnel for lead magnets, freebies, or waitlists.",
+            "preview_colors": ["#f8fafc", "#f97316", "#1e293b"],
+            "card_type": "mini-funnel",
+            "gradient": "linear-gradient(135deg, #fff7ed 0%, #ffedd5 50%, #f8fafc 100%)",
+            "theme_key": "sunset",
+            "layout_blocks": [
+                {"type":"hero_badge","text":"Free Resource","style":"pill"},
+                {"type":"title_block","headline":"Your Free Lead Magnet","subtitle":"Delivered instantly."},
+                {"type":"bullet_list","items":["Key benefit one","Key benefit two","Key benefit three","Bonus hook"]},
+                {"type":"cta_button_large","label":"Get Instant Access","icon":"🚀","action":"link:","style":"pulse"},
+                {"type":"trust_badges","items":["No spam. Unsubscribe anytime.","Instant delivery."]},
+                {"type":"social_strip","platforms":["instagram","tiktok","youtube"]}
+            ]
+        },
+
+        // ═══ BLANK CANVASES (Build from Scratch) ═══
+        {
+            "id": "blank_biz_card",
+            "name": "Blank Canvas - Business Card",
+            "type": "business_card",
+            "category": "blank",
+            "niche": "Build from Scratch",
+            "icon": "🖌️",
+            "description": "Blank business card. Start from zero and add blocks one at a time.",
+            "preview_colors": ["#ffffff", "#000000", "#64748b"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_dashed","size":"medium","catchphrase":"Add your photo"},
+                {"type":"title_block","headline":"Add your name","subtitle":"Add your tagline"}
+            ]
+        },
+        {
+            "id": "blank_bio_link",
+            "name": "Blank Canvas - Bio Link",
+            "type": "bio_link",
+            "category": "blank",
+            "niche": "Build from Scratch",
+            "icon": "🖌️",
+            "description": "Blank bio link. Add links, text, and embeds one at a time.",
+            "preview_colors": ["#fafafa", "#000000", "#64748b"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #fafafa 0%, #f1f5f9 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_dashed","size":"medium","catchphrase":"Add your photo"},
+                {"type":"title_block","headline":"Add your name","subtitle":"@yourhandle"}
+            ]
+        },
+        {
+            "id": "blank_mini_page",
+            "name": "Blank Canvas - Mini Page",
+            "type": "mini_page",
+            "category": "blank",
+            "niche": "Build from Scratch",
+            "icon": "🖌️",
+            "description": "Blank landing page. Build sections piece by piece.",
+            "preview_colors": ["#ffffff", "#3b82f6", "#1e293b"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"title_block","headline":"Your Page Title","subtitle":"Your subtitle"}
+            ]
+        },
+        {
+            "id": "blank_mini_funnel",
+            "name": "Blank Canvas - Mini Funnel",
+            "type": "mini_funnel",
+            "category": "blank",
+            "niche": "Build from Scratch",
+            "icon": "🖌️",
+            "description": "Blank funnel. Add headlines, bullets, forms, timers piece by piece.",
+            "preview_colors": ["#f8fafc", "#f97316", "#1e293b"],
+            "card_type": "mini-funnel",
+            "gradient": "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"title_block","headline":"Your Headline","subtitle":"A compelling sub-headline."}
+            ]
         }
     ])))
 }
