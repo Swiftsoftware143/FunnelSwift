@@ -5,76 +5,222 @@ use crate::state::AppState;
 
 pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value>> {
     Ok(Json(json!([
-        {"id":"midnight","name":"Midnight","primary":"#6366f1","gradient":"linear-gradient(135deg,#1e1b4b,#312e81,#4c1d95)","bg_color":"#0f172a","accent":"#6366f1"},
-        {"id":"ocean","name":"Ocean","primary":"#0ea5e9","gradient":"linear-gradient(135deg,#0c4a6e,#0369a1,#0284c7)","bg_color":"#0c1929","accent":"#0ea5e9"},
-        {"id":"sunset","name":"Sunset","primary":"#f59e0b","gradient":"linear-gradient(135deg,#431407,#7c2d12,#b45309)","bg_color":"#1c1917","accent":"#f59e0b"},
-        {"id":"emerald","name":"Emerald","primary":"#10b981","gradient":"linear-gradient(135deg,#022c22,#065f46,#059669)","bg_color":"#021a14","accent":"#10b981"},
-        {"id":"rose","name":"Rose","primary":"#ec4899","gradient":"linear-gradient(135deg,#4c0519,#831843,#be185d)","bg_color":"#1a0510","accent":"#ec4899"},
-        {"id":"amber","name":"Amber","primary":"#d97706","gradient":"linear-gradient(135deg,#451a03,#78350f,#b45309)","bg_color":"#1c1105","accent":"#d97706"}
+        {
+            "id": "cyber_dark",
+            "name": "Cyber Dark",
+            "primary": "#a855f7",
+            "gradient": "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
+            "bg_color": "#0f172a",
+            "accent": "#a855f7",
+            "colors": {
+                "background": "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
+                "card_bg": "rgba(255, 255, 255, 0.05)",
+                "backdrop_filter": "blur(16px) saturate(180%)",
+                "border": "1px solid rgba(168, 85, 247, 0.25)",
+                "accent_glow": "0 0 25px rgba(168, 85, 247, 0.4)",
+                "text": "#ffffff",
+                "text_secondary": "#c4b5fd",
+                "button_bg": "rgba(168, 85, 247, 0.25)",
+                "button_text": "#ffffff",
+                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(168, 85, 247, 0.15)"
+            }
+        },
+        {
+            "id": "sunset_kinetic",
+            "name": "Sunset Kinetic",
+            "primary": "#ff4b2b",
+            "gradient": "linear-gradient(45deg, #ff416c 0%, #ff4b2b 100%)",
+            "bg_color": "#1a0510",
+            "accent": "#ff4b2b",
+            "colors": {
+                "background": "linear-gradient(45deg, #ff416c 0%, #ff4b2b 100%)",
+                "card_bg": "rgba(0, 0, 0, 0.2)",
+                "backdrop_filter": "blur(12px)",
+                "border": "1px solid rgba(255, 255, 255, 0.25)",
+                "accent_glow": "0 10px 30px rgba(255, 75, 43, 0.5)",
+                "text": "#ffffff",
+                "text_secondary": "#ffe4e6",
+                "button_bg": "rgba(255, 75, 43, 0.3)",
+                "button_text": "#ffffff",
+                "card_shadow": "0 8px 32px rgba(255, 75, 43, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.15)"
+            }
+        },
+        {
+            "id": "emerald_glass",
+            "name": "Emerald Glass",
+            "primary": "#10b981",
+            "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
+            "bg_color": "#022c22",
+            "accent": "#10b981",
+            "colors": {
+                "background": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
+                "card_bg": "rgba(6, 78, 59, 0.3)",
+                "backdrop_filter": "blur(20px)",
+                "border": "1px solid rgba(52, 211, 153, 0.25)",
+                "accent_glow": "0 0 20px rgba(16, 185, 129, 0.35)",
+                "text": "#ecfdf5",
+                "text_secondary": "#a7f3d0",
+                "button_bg": "rgba(16, 185, 129, 0.25)",
+                "button_text": "#ecfdf5",
+                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(16, 185, 129, 0.2)"
+            }
+        },
+        {
+            "id": "midnight",
+            "name": "Midnight",
+            "primary": "#6366f1",
+            "gradient": "linear-gradient(135deg, #1e1b4b, #312e81, #4c1d95)",
+            "bg_color": "#0f172a",
+            "accent": "#6366f1",
+            "colors": {
+                "background": "linear-gradient(135deg, #1e1b4b, #312e81, #4c1d95)",
+                "card_bg": "rgba(255, 255, 255, 0.06)",
+                "backdrop_filter": "blur(14px)",
+                "border": "1px solid rgba(99, 102, 241, 0.2)",
+                "accent_glow": "0 0 20px rgba(99, 102, 241, 0.35)",
+                "text": "#ffffff",
+                "text_secondary": "#c7d2fe",
+                "button_bg": "rgba(99, 102, 241, 0.25)",
+                "button_text": "#ffffff",
+                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.35)"
+            }
+        },
+        {
+            "id": "ocean",
+            "name": "Ocean",
+            "primary": "#0ea5e9",
+            "gradient": "linear-gradient(135deg, #0c4a6e, #0369a1, #0284c7)",
+            "bg_color": "#0c1929",
+            "accent": "#0ea5e9",
+            "colors": {
+                "background": "linear-gradient(135deg, #0c4a6e, #0369a1, #0284c7)",
+                "card_bg": "rgba(14, 165, 233, 0.08)",
+                "backdrop_filter": "blur(14px)",
+                "border": "1px solid rgba(14, 165, 233, 0.2)",
+                "accent_glow": "0 0 20px rgba(14, 165, 233, 0.3)",
+                "text": "#ffffff",
+                "text_secondary": "#bae6fd",
+                "button_bg": "rgba(14, 165, 233, 0.25)",
+                "button_text": "#ffffff",
+                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3)"
+            }
+        },
+        {
+            "id": "rose",
+            "name": "Rose",
+            "primary": "#ec4899",
+            "gradient": "linear-gradient(135deg, #4c0519, #831843, #be185d)",
+            "bg_color": "#1a0510",
+            "accent": "#ec4899",
+            "colors": {
+                "background": "linear-gradient(135deg, #4c0519, #831843, #be185d)",
+                "card_bg": "rgba(236, 72, 153, 0.08)",
+                "backdrop_filter": "blur(14px)",
+                "border": "1px solid rgba(236, 72, 153, 0.2)",
+                "accent_glow": "0 0 20px rgba(236, 72, 153, 0.3)",
+                "text": "#fce7f3",
+                "text_secondary": "#fbcfe8",
+                "button_bg": "rgba(236, 72, 153, 0.25)",
+                "button_text": "#ffffff",
+                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3)"
+            }
+        }
     ])))
 }
 
 pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Value>> {
     Ok(Json(json!([
         {
-            "id": "bio_link",
-            "name": "Bio Link",
-            "category": "bio_link",
-            "description": "Centered avatar + bio + stacked link buttons — perfect for Instagram, TikTok, Twitter",
-            "card_type": "bio-link",
-            "preview": "<div style=\"text-align:center;padding:12px\"><div style=\"width:32px;height:32px;border-radius:50%;background:#6366f1;margin:4px auto\"></div><div style=\"height:6px;width:70%;background:#475569;margin:8px auto;border-radius:3px\"></div><div style=\"height:14px;background:#6366f1;border-radius:4px;margin:6px 0\"></div><div style=\"height:14px;background:#6366f1;border-radius:4px;margin:6px 0\"></div><div style=\"height:14px;background:#6366f1;border-radius:4px;margin:6px 0\"></div></div>",
-            "bg_color": "#0f172a",
-            "accent_color": "#6366f1",
-            "gradient": "linear-gradient(135deg,#1e1b4b,#312e81,#1e1b4b)",
-            "blocks": [{"type":"biolink","avatar_url":"","bio":"Your bio here...","buttons":[],"social_links":[]}]
-        },
-        {
-            "id": "business_card",
-            "name": "Business Card",
+            "id": "digital_business_card",
+            "name": "Digital Business Card",
+            "type": "business_card",
             "category": "business_card",
-            "description": "Professional card with photo, title, company, contact info, and social links",
+            "niche": "Professional",
+            "icon": "BC",
+            "description": "Floating avatar with glow border, name/title, 2×2 action grid, glassmorphic bio card, social strip",
+            "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
             "card_type": "business-card",
-            "preview": "<div style=\"text-align:center;padding:12px\"><div style=\"width:28px;height:28px;border-radius:50%;background:#0ea5e9;margin:4px auto\"></div><div style=\"height:6px;width:60%;background:#7dd3fc;margin:6px auto;border-radius:3px\"></div><div style=\"height:5px;width:40%;background:#38bdf8;margin:4px auto;border-radius:3px\"></div><div style=\"display:flex;gap:4px;margin-top:8px;justify-content:center\"><div style=\"width:16px;height:16px;border-radius:3px;background:#0ea5e9\"></div><div style=\"width:16px;height:16px;border-radius:3px;background:#0ea5e9\"></div><div style=\"width:16px;height:16px;border-radius:3px;background:#0ea5e9\"></div></div></div>",
-            "bg_color": "#0c1929",
-            "accent_color": "#0ea5e9",
-            "gradient": "linear-gradient(135deg,#0c4a6e,#0369a1,#0c4a6e)",
-            "blocks": [{"type":"businesscard","name":"Your Name","title":"Your Title","company":"Your Company","phone":"","email":"","website":"","avatar_url":"","social_links":[]}]
+            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type": "avatar","style": "circle_glow","catchphrase": "Professional Identity"},
+                {"type": "action_grid_2x2","items": [{"icon": "📞","label": "Call"},{"icon": "📅","label": "Book"},{"icon": "📧","label": "Email"},{"icon": "💾","label": "Save"}]},
+                {"type": "glass_bio","content": "Helping SaaS founders scale through automated acquisition funnels."},
+                {"type": "social_strip","platforms": ["linkedin","twitter","instagram"]}
+            ]
         },
         {
-            "id": "mini_page",
-            "name": "Mini Page",
+            "id": "bio_link_creator",
+            "name": "Creator Bio Link",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "Creator",
+            "icon": "BL",
+            "description": "Centered avatar with glow, handle tag, stacked kinetic buttons with hover effects, featured media slot, social row",
+            "preview_colors": ["#0c1929", "#0ea5e9", "#ffffff"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0c1929 100%)",
+            "theme_key": "ocean",
+            "layout_blocks": [
+                {"type": "avatar","style": "circle_glow","catchphrase": "@yourhandle"},
+                {"type": "stacked_links","items": [{"label": "Latest Video","url": "#"},{"label": "Free Course","url": "#"},{"label": "Book a Call","url": "#"},{"label": "Newsletter","url": "#"}]},
+                {"type": "featured_card","title": "Featured Product","subtitle": "Check out my new eBook"},
+                {"type": "social_row","platforms": ["youtube","twitter","instagram","tiktok"]}
+            ]
+        },
+        {
+            "id": "mini_page_showcase",
+            "name": "Product Showcase",
+            "type": "mini_page",
             "category": "mini_page",
-            "description": "Hero section + features grid + lead capture form — your own landing page",
+            "niche": "SaaS",
+            "icon": "MP",
+            "description": "Floating logo bar, bold hero section, 2-column feature grid, trust badge strip, dual CTA buttons",
+            "preview_colors": ["#0f172a", "#8b5cf6", "#ffffff"],
             "card_type": "mini-page",
-            "preview": "<div style=\"text-align:center;padding:8px\"><div style=\"height:8px;width:50%;background:rgba(255,255,255,.4);margin:4px auto;border-radius:2px;font-size:6px\">HERO</div><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:4px 0\"><div style=\"height:16px;background:rgba(239,68,68,.15);border-radius:2px\"></div><div style=\"height:16px;background:rgba(239,68,68,.15);border-radius:2px\"></div></div><div style=\"height:8px;background:rgba(99,102,241,.25);border-radius:4px;font-size:6px\">FORM</div></div>",
-            "bg_color": "#0f172a",
-            "accent_color": "#8b5cf6",
-            "gradient": "linear-gradient(135deg,#1e1b4b,#4c1d95,#1e1b4b)",
-            "blocks": [{"type":"hero","headline":"Headline","subtitle":"Subtitle","bg_image":"","bg_color":"#0f172a"},{"type":"features","items":[{"icon":"🚀","title":"Feature 1","desc":"Description"},{"icon":"💡","title":"Feature 2","desc":"Description"}]},{"type":"leadform","form_title":"Get Started","button_text":"Submit","placeholder":"your@email.com","fields":["name","email"]}]
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #1e1b4b 100%)",
+            "theme_key": "midnight",
+            "layout_blocks": [
+                {"type": "hero","headline": "Grow Your Business","subtitle": "The all-in-one platform for modern founders","cta_primary": "Get Started","cta_secondary": "Watch Demo"},
+                {"type": "feature_grid","items": [{"icon": "🚀","title": "Fast Setup","desc": "Launch in minutes"},{"icon": "📊","title": "Analytics","desc": "Real-time insights"},{"icon": "🔒","title": "Secure","desc": "Enterprise grade"},{"icon": "🤝","title": "Support","desc": "24/7 help"}]},
+                {"type": "trust_bar","text":"Trusted by 10k+ businesses · 4.9 ★ Rating"}
+            ]
         },
         {
-            "id": "mini_funnel",
-            "name": "Mini Funnel",
+            "id": "conversion_funnel",
+            "name": "Conversion Funnel",
+            "type": "mini_funnel",
             "category": "mini_funnel",
-            "description": "Single-product micro-funnel with urgency CTA — perfect for launches and lead magnets",
+            "niche": "Marketing",
+            "icon": "CF",
+            "description": "Urgency badge, massive value headline, focused lead capture form, trust guarantee row, kinetic pulsing CTA",
+            "preview_colors": ["#1c1917", "#f59e0b", "#ffffff"],
             "card_type": "mini-funnel",
-            "preview": "<div style=\"text-align:center;padding:12px\"><div style=\"width:90%;height:28px;background:#334155;margin:4px auto;border-radius:4px\"></div><div style=\"height:5px;width:50%;background:#fbbf24;margin:6px auto;border-radius:3px\"></div><div style=\"height:14px;background:#ef4444;border-radius:4px;margin:8px 0;font-size:9px;line-height:14px\">GET IT NOW →</div></div>",
-            "bg_color": "#0f172a",
-            "accent_color": "#f59e0b",
-            "gradient": "linear-gradient(135deg,#451a03,#78350f,#451a03)",
-            "blocks": [{"type":"minifunnel","product_image":"","product_title":"Amazing Product","product_subtitle":"Short description","cta_text":"Get It Now","cta_url":"https://"}]
+            "gradient": "linear-gradient(135deg, #451a03 0%, #78350f 50%, #1c1105 100%)",
+            "theme_key": "sunset_kinetic",
+            "layout_blocks": [
+                {"type": "urgency_badge","text": "🔥 Limited Time Access"},
+                {"type": "value_headline","headline": "Get Your Free Growth Kit","bullets": ["✓ Custom strategy template","✓ 5 email sequences","✓ Growth calculator"]},
+                {"type": "lead_form","fields": ["name","email"],"button": "Send Me The Kit"},
+                {"type": "trust_icons","items": ["🔒 Secure","✓ No spam","⭐ 5-star rated"]}
+            ]
         },
         {
-            "id": "hero_page",
-            "name": "Hero Page",
+            "id": "hero_landing",
+            "name": "Hero Landing",
+            "type": "hero",
             "category": "hero",
-            "description": "Full-screen gradient hero with product carousel and bold value proposition",
+            "niche": "Brand",
+            "icon": "HP",
+            "description": "Full-screen gradient hero with big headline, product image, dual CTA, infinite trust ticker",
+            "preview_colors": ["#022c22", "#10b981", "#ecfdf5"],
             "card_type": "hero-page",
-            "preview": "<div style=\"text-align:center;padding:8px;min-height:60px;display:flex;flex-direction:column;justify-content:center\"><div style=\"height:8px;width:70%;background:rgba(255,255,255,.7);margin:3px auto;border-radius:2px\"></div><div style=\"height:5px;width:50%;background:rgba(255,255,255,.4);margin:3px auto;border-radius:2px\"></div><div style=\"height:12px;width:40%;background:#10b981;border-radius:4px;margin:6px auto;font-size:7px;line-height:12px;color:#fff\">CTA →</div></div>",
-            "bg_color": "#0c1929",
-            "accent_color": "#10b981",
-            "gradient": "linear-gradient(135deg,#022c22,#064e3b,#022c22)",
-            "blocks": [{"type":"hero","headline":"Big Bold Headline","subtitle":"Supporting text here","bg_image":"","bg_color":"#0f172a","gradient":"135deg,#4f46e5,#0f172a"},{"type":"leadform","form_title":"Join Now","button_text":"Submit","placeholder":"your@email.com","fields":["name","email"]}]
+            "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
+            "theme_key": "emerald_glass",
+            "layout_blocks": [
+                {"type": "hero","headline": "Build Something Great","subtitle": "The modern way to launch and grow","cta_primary": "Start Free","cta_secondary": "Learn More","image_url": ""},
+                {"type": "trust_ticker","items": ["🚀 50k+ Users","⭐ 4.9 Rating","🔒 SOC 2","💳 No CC Needed"]}
+            ]
         }
     ])))
 }
