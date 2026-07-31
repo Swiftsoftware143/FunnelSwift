@@ -801,6 +801,222 @@ pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Va
                 {"type":"partner_strip","logos":["unicef","redcross","who","gatesfoundation"]},
                 {"type":"email_capture","headline":"Get Impact Updates","button":"Subscribe"}
             ]
+        },
+
+        // ==========================================
+        // DAVID'S INDUSTRY TARGETS — REAL ESTATE, CREATORS, E-COMMERCE,
+        // LOCAL SERVICES, B2B SAAS/AGENCY/FREELANCE
+        // ==========================================
+
+        // --- REAL ESTATE: Property Showcase + Luxury Agent ---
+        {
+            "id": "realestate_showcase",
+            "name": "Property Showcase",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Real Estate",
+            "icon": "PR",
+            "description": "Swipeable property photo carousel, Beds/Baths/Price spec pills, 'Schedule Showing' booking widget, agent contact card, school/walk-score grid, 'Just Listed' urgency badge",
+            "preview_colors": ["#0c1929", "#0ea5e9", "#ffffff"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0c1929 100%)",
+            "theme_key": "ocean",
+            "layout_blocks": [
+                {"type":"urgency_badge","text":"🔥 Just Listed · 2 hours ago"},
+                {"type":"hero_media","media_type":"carousel","images":4},
+                {"type":"property_specs","items":[{"icon":"🛏️","value":"4","label":"Beds"},{"icon":"🚿","value":"3","label":"Baths"},{"icon":"📐","value":"2,400","label":"Sq Ft"},{"icon":"💰","value":"$875K","label":"Price"}]},
+                {"type":"cta_row_dual","cta_primary":"📅 Schedule Showing","cta_secondary":"💬 Text Agent"},
+                {"type":"agent_contact_card","name":"Marcus Chen","title":"Luxury Home Specialist","phone":"(555) 234-5678","avatar":true},
+                {"type":"feature_grid","columns":2,"items":[{"icon":"🏫","title":"Top Schools","desc":"Rated 9/10 GreatSchools"},{"icon":"🚇","title":"Walk Score","desc":"91 · Walker's Paradise"},{"icon":"🛒","title":"Nearby","desc":"5 min to downtown"},{"icon":"📈","title":"Appreciation","desc":"+12% YoY in area"}]},
+                {"type":"trust_bar","text":"🏆 #1 Agent in Metro Area · 150+ Homes Sold · 4.9 ★"}
+            ]
+        },
+        {
+            "id": "biz_realestate_luxury",
+            "name": "Luxury Agent Card",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Luxury Real Estate",
+            "icon": "LX",
+            "description": "Frosted-glass overlay on headshot, 'Available Now' status dot, champagne gold borders, 2×2 marble-textured action grid, Zillow/Realtor profile badges, luxury sales stat counter",
+            "preview_colors": ["#1c1105", "#d97706", "#fffbeb"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #1c1105 0%, #0f172a 50%, #1e1b4b 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"avatar","style":"frosted_glass","size":"large","catchphrase":"Your Luxury Expert","status":"available"},
+                {"type":"title_block","headline":"Victoria Sterling","subtitle":"Global Luxury Property Advisor"},
+                {"type":"stat_row","items":[{"value":"$340M+","label":"Sold"},{"value":"12","label":"Years Exp"},{"value":"4.9★","label":"Rating"}]},
+                {"type":"action_grid_2x2","items":[{"icon":"📞","label":"Private Line","action":"tel:"},{"icon":"📅","label":"Private Tour","action":"cal:"},{"icon":"🏠","label":"My Listings","action":"link:"},{"icon":"💎","label":"Off Market","action":"link:"}]},
+                {"type":"profile_links","items":[{"label":"Zillow Profile","icon":"🏡"},{"label":"Realtor.com","icon":"🏘️"}]},
+                {"type":"social_strip","platforms":["linkedin","instagram"]}
+            ]
+        },
+
+        // --- CREATORS & COACHES: Creator Hub ---
+        {
+            "id": "creator_hub",
+            "name": "Creator Hub",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Creator/Coach",
+            "icon": "CH",
+            "description": "Mesh-gradient hero, centered avatar with live pulsing ring + 'Live Now' indicator, high-visibility lead magnet card with glow animation, embedded video hook player, 1-click calendar, testimonial pill badges, bold gradient CTA",
+            "preview_colors": ["#4c0519", "#ec4899", "#fce7f3"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #4c0519 0%, #831843 40%, #1a0510 100%)",
+            "theme_key": "rose",
+            "layout_blocks": [
+                {"type":"avatar","style":"pulse_ring","size":"large","catchphrase":"@creatormaster · Live Now","status":"live"},
+                {"type":"title_block","headline":"Master Your Craft","subtitle":"I help ambitious creators build 6-figure businesses."},
+                {"type":"cta_button_large","label":"Download Free Strategy Guide","icon":"📘","action":"download:","style":"pulse"},
+                {"type":"featured_media","media_type":"video","title":"▶️ Watch: My Exact Growth System","subtitle":"12-minute deep dive"},
+                {"type":"stat_row","items":[{"value":"500K+","label":"Followers"},{"value":"3,200+","label":"Students"},{"value":"120","label":"Countries"}]},
+                {"type":"testimonial_slot","quote":"\"Sarah's framework 5x'd my email list in 30 days.\" — Mark T."},
+                {"type":"service_cards","items":[{"title":"The Accelerator","desc":"12-week group program"},{"title":"1:1 Coaching","desc":"Bi-weekly strategy calls"},{"title":"Template Vault","desc":"50+ done-for-you assets"}]},
+                {"type":"cta_button_large","label":"Book Your 1-on-1 Strategy Call","icon":"📅","action":"cal:","style":"pulse"},
+                {"type":"social_row","platforms":["youtube","twitter","instagram","tiktok","linkedin"]}
+            ]
+        },
+
+        // --- E-COMMERCE: Boutique Storefront ---
+        {
+            "id": "ecom_boutique",
+            "name": "Boutique Storefront",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Fashion/Beauty",
+            "icon": "BT",
+            "description": "Editorial hero banner with model photo, product tiles with Quick-Add, flash sale countdown ticker, multi-SKU variant selector, single-step checkout CTA, trust badges (free shipping, returns, secure checkout)",
+            "preview_colors": ["#f8fafc", "#0f172a", "#ffffff"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"countdown_timer","target_date":"2026-08-02T23:59:00Z","label":"Summer Collection · Ends In","style":"urgent"},
+                {"type":"hero","headline":"The Summer Edit","subtitle":"Effortless style for the season ahead. New arrivals dropping weekly.","cta_primary":"Shop New Arrivals","cta_secondary":"View Lookbook","image_slot":true},
+                {"type":"product_grid","columns":2,"items":[{"label":"Linen Blazer","price":"$128","badge":"NEW","img":true},{"label":"Silk Cami","price":"$68","badge":"TREND","img":true},{"label":"Wide-Leg Pant","price":"$98","badge":"BEST","img":true},{"label":"Oversized Tee","price":"$45","badge":"SALE","img":true}]},
+                {"type":"promo_pill","text":"✨ Buy 2+ items — save 15% with code SUMMER15"},
+                {"type":"variant_selector","options":["XS","S","M","L","XL","XXL"]},
+                {"type":"cta_button_large","label":"Shop All — Free Shipping","icon":"🛍️","action":"link:","style":"pulse"},
+                {"type":"trust_strip","items":["📦 Free Shipping $50+","↩️ 30-Day Returns","🔒 Secure Checkout","⭐ 4.9 · 8,500+ Reviews"]}
+            ]
+        },
+
+        // --- LOCAL SERVICES: Pro Card + Salon/Clinic ---
+        {
+            "id": "biz_local_service",
+            "name": "Local Service Pro",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Local Services",
+            "icon": "LS",
+            "description": "Dark slate + cyan accent, instant one-tap action row (Call, Directions, Book), 'Open Now' live status badge, verified Google review stars, service menu cards with pricing, business hours block",
+            "preview_colors": ["#0f172a", "#06b6d4", "#ffffff"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type":"hours_badge","status":"open","text":"🟢 Open Now · Closes 8pm"},
+                {"type":"avatar","style":"rounded_square","size":"medium","catchphrase":"Premium Auto Detailing"},
+                {"type":"title_block","headline":"Elite Auto Spa","subtitle":"★★★★★ 5.0 · 340 reviews"},
+                {"type":"action_row_3","items":[{"icon":"📞","label":"Tap to Call","action":"tel:"},{"icon":"🗺️","label":"Directions","action":"maps:"},{"icon":"📅","label":"Book Now","action":"cal:"}]},
+                {"type":"service_cards","items":[{"title":"Full Detail","desc":"Interior + Exterior","price":"From $199"},{"title":"Express Wash","desc":"30-min turnaround","price":"From $39"},{"title":"Ceramic Coat","desc":"5-year protection","price":"From $899"},{"title":"Paint Correction","desc":"Showroom finish","price":"From $499"}]},
+                {"type":"hours_block","today":"Today: 8am-8pm","week":[{"day":"Mon-Fri","hours":"8am-8pm"},{"day":"Sat","hours":"9am-6pm"},{"day":"Sun","hours":"10am-4pm"}]},
+                {"type":"review_strip","rating":"5.0","count":340,"source":"Google","quotes":["\"Best detail in the city!\" — James R.","\"My car looks brand new\" — Lisa M."]},
+                {"type":"cta_button_large","label":"Book Your Appointment","icon":"📅","action":"cal:"}
+            ]
+        },
+        {
+            "id": "biz_salon_clinic",
+            "name": "Salon / Clinic Card",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Beauty/Health",
+            "icon": "SC",
+            "description": "Clean white design, practitioner photo + credentials, instant booking, service accordion (hair/nails/skin), 'Open Now' live status, verified Google review badge strip, location map pin link",
+            "preview_colors": ["#f8fafc", "#8b5cf6", "#0f172a"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #ffffff 0%, #faf5ff 50%, #f3e8ff 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"rounded_square","size":"medium","catchphrase":"Board-Certified Specialist"},
+                {"type":"title_block","headline":"Glow Aesthetics Studio","subtitle":"Advanced Skincare & Laser · Est. 2018"},
+                {"type":"cta_button_large","label":"Book Appointment","icon":"📅","action":"cal:"},
+                {"type":"hours_badge","status":"open","text":"🟢 Open Now · Until 7pm"},
+                {"type":"service_cards","items":[{"title":"HydraFacial","desc":"60 min · Deep cleanse","price":"$185"},{"title":"Laser Treatment","desc":"45 min · Full face","price":"$350"},{"title":"Chemical Peel","desc":"30 min · 3 levels","price":"$150"},{"title":"Microneedling","desc":"90 min · With PRP","price":"$425"}]},
+                {"type":"review_strip","rating":"4.9","count":520,"source":"Google","quotes":["\"Amazing results!\" — Sarah K.","\"My skin has never looked better\" — Rachel D."]},
+                {"type":"action_row_3","items":[{"icon":"📞","label":"Call","action":"tel:"},{"icon":"🗺️","label":"Map","action":"maps:"},{"icon":"📸","label":"Gallery","action":"link:"}]},
+                {"type":"social_strip","platforms":["instagram","facebook"]}
+            ]
+        },
+
+        // --- B2B SAAS & AGENCY: Founder Card + Tech Agency + Freelancer ---
+        {
+            "id": "biz_saas_founder",
+            "name": "SaaS Founder Card",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "B2B SaaS",
+            "icon": "SF",
+            "description": "Dark mesh-gradient canvas, terminal-style typography, background grid lines, vCard download, calendar booking, live metric counters ($4.2M ARR, 50K+ Users, NPS 94), case study highlight, interactive lead capture form",
+            "preview_colors": ["#0f172a", "#6366f1", "#c7d2fe"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #0f172a 100%)",
+            "theme_key": "midnight",
+            "layout_blocks": [
+                {"type":"logo_mark","shape":"hexagon","initial":"S","catchphrase":"Scale. Automate. Grow."},
+                {"type":"title_block","headline":"David Park","subtitle":"Founder & CEO · SwiftSoftware"},
+                {"type":"stat_row","items":[{"value":"$4.2M","label":"ARR"},{"value":"50K+","label":"Users"},{"value":"94","label":"NPS"}]},
+                {"type":"action_grid_2x2","items":[{"icon":"💾","label":"Save vCard","action":"download:"},{"icon":"📅","label":"Schedule Call","action":"cal:"},{"icon":"📊","label":"Pitch Deck","action":"link:"},{"icon":"💻","label":"Live Demo","action":"link:"}]},
+                {"type":"case_studies","headline":"Case Study","items":[{"title":"Enterprise Client","result":"300% ROI in 6 months"}]},
+                {"type":"lead_form","fields":["name","email","company"],"button":"Let's Talk","button_style":"pulse"},
+                {"type":"social_strip","platforms":["linkedin","twitter","github"]}
+            ]
+        },
+        {
+            "id": "page_agency_tech",
+            "name": "Tech Agency Page",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Tech Agency",
+            "icon": "TA",
+            "description": "Terminal-style code block animation hero, live metric dashboard counters, case study cards with before/after metrics, ROI calculator placeholder, tech stack badge strip, 'Start a Project' CTA",
+            "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
+            "card_type": "mini-page",
+            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type":"hero","headline":"We Build Software That Wins","subtitle":"Full-stack development agency. Rust, React, AI. Zero-fluff engineering for startups that ship.","cta_primary":"Start a Project","cta_secondary":"See Case Studies"},
+                {"type":"stat_row","items":[{"value":"$120M+","label":"Client Revenue"},{"value":"47","label":"Products Shipped"},{"value":"14","label":"Years Building"},{"value":"98%","label":"Client Retention"}]},
+                {"type":"case_studies","headline":"Recent Work","items":[{"title":"FinTech Platform","result":"$12M Series A, 45K users in 90d","tags":["Rust","React","AWS"]},{"title":"AI SaaS","result":"$3.2M ARR, acquired in 14mo","tags":["Python","LLM","GCP"]},{"title":"E-Commerce","result":"2.1M visits/mo, 99.9% uptime","tags":["Next.js","Postgres","K8s"]}]},
+                {"type":"cta_button_large","label":"Book a Strategy Session","icon":"🚀","action":"cal:","style":"pulse"},
+                {"type":"integration_strip","logos":["rust","typescript","react","python","aws","docker","kubernetes","postgres","redis","terraform"]},
+                {"type":"lead_form","fields":["name","email","company","budget"],"button":"Get Free Tech Assessment","button_style":"pulse"},
+                {"type":"trust_bar","text":"🔐 SOC 2 · ISO 27001 · 14-Year Track Record · US-Based Team"}
+            ]
+        },
+        {
+            "id": "biz_freelancer",
+            "name": "Freelancer Card",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Freelance",
+            "icon": "FL",
+            "description": "Clean minimal card, availability toggle + hourly rate badge, skill tag cloud, portfolio preview links, downloadable CV, calendar booking, Upwork/Fiverr verification badges",
+            "preview_colors": ["#0f172a", "#10b981", "#ecfdf5"],
+            "card_type": "business-card",
+            "gradient": "radial-gradient(circle at top left, #064e3b 0%, #0f172a 70%)",
+            "theme_key": "emerald_glass",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"medium","status":"available","catchphrase":"🟢 Available for Projects"},
+                {"type":"title_block","headline":"Alex Rivera","subtitle":"Senior Full-Stack Developer"},
+                {"type":"stat_row","items":[{"value":"$125/hr","label":"Rate"},{"value":"8+","label":"Years Exp"},{"value":"32","label":"Projects"}]},
+                {"type":"skill_cloud","items":["React","TypeScript","Node.js","Postgres","AWS","Docker","GraphQL","Next.js"]},
+                {"type":"action_grid_2x2","items":[{"icon":"📄","label":"Download CV","action":"download:"},{"icon":"📅","label":"Book a Call","action":"cal:"},{"icon":"💼","label":"Portfolio","action":"link:"},{"icon":"✉️","label":"Send Email","action":"mailto:"}]},
+                {"type":"profile_links","items":[{"label":"Upwork · Top Rated","icon":"🟢"},{"label":"GitHub · 1.2k ★","icon":"⭐"}]},
+                {"type":"social_strip","platforms":["github","linkedin","twitter","stackoverflow"]}
+            ]
         }
     ])))
 }
