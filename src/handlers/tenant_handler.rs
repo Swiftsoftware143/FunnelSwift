@@ -26,7 +26,7 @@ pub async fn create_tenant(auth: AuthUser, State(state): State<AppState>, Json(r
     let name = req["name"].as_str().unwrap_or("New Tenant");
     let email = req["email"].as_str().unwrap_or("");
     sqlx::query("INSERT INTO tenants (id, name, email) VALUES ($1, $2, $3)").bind(id).bind(name).bind(email).execute(&state.pool).await?;
-    Ok((StatusCode::CREATED, json!({"id": id, "message": "Tenant created"})))
+    Ok((StatusCode::CREATED, Json(json!({"id": id, "message": "Tenant created"}))))
 }
 
 pub async fn update_tenant(auth: AuthUser, State(state): State<AppState>, Path(id): Path<Uuid>, Json(req): Json<serde_json::Value>) -> AppResult<Json<serde_json::Value>> {
