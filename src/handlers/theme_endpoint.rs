@@ -1017,6 +1017,236 @@ pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Va
                 {"type":"profile_links","items":[{"label":"Upwork · Top Rated","icon":"🟢"},{"label":"GitHub · 1.2k ★","icon":"⭐"}]},
                 {"type":"social_strip","platforms":["github","linkedin","twitter","stackoverflow"]}
             ]
+        },
+
+        // ==========================================
+        // DAVID'S BUSINESS CATEGORIES — Marketing, Multimedia,
+        // SaaS, Investing/VC, Local Services
+        // ==========================================
+
+        // --- MARKETING ---
+        {
+            "id": "biz_marketer_growth",
+            "name": "Growth Marketer",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Marketing",
+            "icon": "GM",
+            "description": "Bold gradient card with campaign stat highlights, stacked case study results, email capture for lead magnet, Calendly booking, newsletter subscriber badge, LinkedIn+X row",
+            "preview_colors": ["#451a03", "#f59e0b", "#fffbeb"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #451a03 0%, #78350f 50%, #1c1105 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"large","catchphrase":"Growth @ Scale"},
+                {"type":"title_block","headline":"Jordan Miles","subtitle":"Performance Marketing Strategist"},
+                {"type":"stat_row","items":[{"value":"$47M+","label":"Ad Spend Managed"},{"value":"3.2x","label":"Avg ROAS"},{"value":"120+","label":"Campaigns"}]},
+                {"type":"case_studies","headline":"Featured Results","items":[{"title":"DTC Brand Launch","result":"$2.1M revenue in 90 days"},{"title":"SaaS Scale-Up","result":"CAC down 64%, LTV up 2.8x"}]},
+                {"type":"action_grid_2x2","items":[{"icon":"📅","label":"Strategy Call","action":"cal:"},{"icon":"📊","label":"Case Studies","action":"link:"},{"icon":"📧","label":"Newsletter","action":"link:"},{"icon":"💾","label":"Save Contact","action":"download:"}]},
+                {"type":"social_strip","platforms":["linkedin","twitter"]}
+            ]
+        },
+        {
+            "id": "page_marketing_agency",
+            "name": "Marketing Agency",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Marketing Agency",
+            "icon": "MA",
+            "description": "Big results hero with revenue stats, service tiers (SEO, PPC, Social, Email, Creative), client logo wall, case study carousel, 'Get a Free Audit' lead capture CTA",
+            "preview_colors": ["#0f172a", "#f59e0b", "#fffbeb"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #1c1105 0%, #451a03 50%, #0f172a 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"hero","headline":"We Scale Brands That Matter","subtitle":"Full-stack performance marketing agency. Paid ads, SEO, email, creative — all under one roof.","cta_primary":"Get a Free Audit","cta_secondary":"See Our Work"},
+                {"type":"stat_row","items":[{"value":"$120M+","label":"Client Revenue"},{"value":"85+","label":"Brands Scaled"},{"value":"4.8x","label":"Avg ROAS"},{"value":"14","label":"Awards"}]},
+                {"type":"service_cards","items":[{"title":"Paid Ads","desc":"Meta, Google, TikTok"},{"title":"SEO & Content","desc":"Organic growth engine"},{"title":"Email & SMS","desc":"Retention + LTV"},{"title":"Creative Studio","desc":"Ad creatives that convert"}]},
+                {"type":"client_logos","style":"scrolling","clients":["Nike","Airbnb","Shopify","Notion","Stripe"]},
+                {"type":"case_studies","headline":"Recent Wins","items":[{"title":"E-Comm Scale","result":"$12M → $47M in 12mo"},{"title":"App Install Campaign","result":"2.3M installs, $1.42 CPI"}]},
+                {"type":"lead_form","fields":["name","email","company","budget"],"button":"Get Free Marketing Audit","button_style":"pulse"},
+                {"type":"trust_bar","text":"🏆 Agency of the Year · Google Premier Partner · Meta Business Partner"}
+            ]
+        },
+
+        // --- MULTIMEDIA: Podcaster + Photographer ---
+        {
+            "id": "bio_podcaster",
+            "name": "Podcaster",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "Podcasting",
+            "icon": "PC",
+            "description": "Show logo + 'New Episodes Weekly' badge, embedded latest episode player, stacked platform links (Spotify, Apple, YouTube), newsletter signup for show notes, Patreon/Support link, host bio snippet, social row",
+            "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
+            "card_type": "bio-link",
+            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"medium","catchphrase":"🎙️ New Episodes Every Tuesday"},
+                {"type":"title_block","headline":"The Growth Podcast","subtitle":"Interviews with founders who scaled from zero to millions."},
+                {"type":"featured_media","media_type":"audio","title":"🎧 Latest: E124 — From $0 to $50M ARR","subtitle":"with Sarah Chen, CEO of DataFlow"},
+                {"type":"stacked_links","style":"icon_left","items":[{"label":"Listen on Spotify","icon":"🟢","url":"#"},{"label":"Apple Podcasts","icon":"🍎","url":"#"},{"label":"Watch on YouTube","icon":"▶️","url":"#"},{"label":"Join the Newsletter","icon":"📧","url":"#"},{"label":"Support on Patreon","icon":"❤️","url":"#"}]},
+                {"type":"testimonial_slot","quote":"\"Top 10 business podcast — The Hustle\" · 4.9★ · 2M+ downloads"},
+                {"type":"social_row","platforms":["twitter","instagram","linkedin","tiktok"]}
+            ]
+        },
+        {
+            "id": "biz_photographer",
+            "name": "Photographer / Videographer",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Photography",
+            "icon": "PH",
+            "description": "Full-bleed portfolio sample background, subtle overlay for text legibility, 'Book a Shoot' primary CTA, service cards (Portraits, Events, Commercial, Drone), Instagram preview grid, gear list badge, client review strip",
+            "preview_colors": ["#0f172a", "#10b981", "#ecfdf5"],
+            "card_type": "business-card",
+            "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
+            "theme_key": "emerald_glass",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"large","catchphrase":"Capturing moments that last"},
+                {"type":"title_block","headline":"Lena Park","subtitle":"Portrait & Commercial Photographer"},
+                {"type":"service_cards","items":[{"title":"Portraits","desc":"Individual + Family"},{"title":"Events","desc":"Weddings + Corporate"},{"title":"Commercial","desc":"Product + Brand"},{"title":"Drone/Aerial","desc":"Real Estate + Landscape"}]},
+                {"type":"action_grid_2x2","items":[{"icon":"📅","label":"Book a Shoot","action":"cal:"},{"icon":"🖼️","label":"Portfolio","action":"link:"},{"icon":"📸","label":"Instagram","action":"link:"},{"icon":"💾","label":"Save Contact","action":"download:"}]},
+                {"type":"review_strip","rating":"5.0","count":186,"source":"Google","quotes":["\"Absolutely stunning work!\" — Maria G.","\"Made us feel so comfortable\" — The Parkers"]},
+                {"type":"social_strip","platforms":["instagram","youtube","tiktok"]}
+            ]
+        },
+
+        // --- SAAS: Micro SaaS + DevTool ---
+        {
+            "id": "biz_micro_saas",
+            "name": "Indie Maker / Micro SaaS",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Indie SaaS",
+            "icon": "IM",
+            "description": "Clean minimal card, product screenshot preview, MRR badge ($Xk/mo), 'Try It Free' CTA, Product Hunt badge, testimonial quote, GitHub stars counter, Twitter+build-in-public socials",
+            "preview_colors": ["#f8fafc", "#6366f1", "#0f172a"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #e0e7ff 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"rounded_square","size":"medium","catchphrase":"Building in Public 🚧"},
+                {"type":"title_block","headline":"ShipFast Analytics","subtitle":"Privacy-first analytics for indie hackers"},
+                {"type":"stat_row","items":[{"value":"$12.4K","label":"MRR"},{"value":"840+","label":"Customers"},{"value":"4.8★","label":"Rating"}]},
+                {"type":"cta_button_large","label":"Try It Free — No CC Required","icon":"🚀","action":"link:","style":"pulse"},
+                {"type":"testimonial_slot","quote":"\"Finally, analytics that don't slow down my site. Game changer.\" — @indiehacker"},
+                {"type":"action_grid_2x2","items":[{"icon":"🐱","label":"GitHub","action":"link:"},{"icon":"🏆","label":"Product Hunt","action":"link:"},{"icon":"📧","label":"Newsletter","action":"link:"},{"icon":"💾","label":"Save vCard","action":"download:"}]},
+                {"type":"social_strip","platforms":["twitter","github","linkedin"]}
+            ]
+        },
+
+        // --- INVESTING / VC (biggest gap!) ---
+        {
+            "id": "biz_vc_partner",
+            "name": "Venture Capitalist",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Venture Capital",
+            "icon": "VC",
+            "description": "Premium dark gold card, firm logo + partner title, fund size + portfolio count stat bar, 'Pitch Us' primary CTA, investment thesis snippet, portfolio company logo strip, 'Send Deck' button, LinkedIn+Twitter",
+            "preview_colors": ["#1c1105", "#d97706", "#fffbeb"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #1c1105 0%, #0f172a 50%, #1e1b4b 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"avatar","style":"frosted_glass","size":"large","catchphrase":"Backing Bold Founders"},
+                {"type":"title_block","headline":"Alex Harrington","subtitle":"General Partner · Horizon Ventures"},
+                {"type":"stat_row","items":[{"value":"$450M","label":"Fund Size"},{"value":"60+","label":"Portfolio"},{"value":"12","label":"Unicorns"}]},
+                {"type":"glass_bio","content":"We invest in pre-seed to Series A B2B SaaS and AI-native companies. Check size: $500K–$5M."},
+                {"type":"action_grid_2x2","items":[{"icon":"📧","label":"Send Deck","action":"mailto:"},{"icon":"📅","label":"Office Hours","action":"cal:"},{"icon":"🏢","label":"Portfolio","action":"link:"},{"icon":"📊","label":"Annual Letter","action":"link:"}]},
+                {"type":"social_strip","platforms":["linkedin","twitter"]}
+            ]
+        },
+        {
+            "id": "biz_angel_investor",
+            "name": "Angel Investor",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Angel Investing",
+            "icon": "AI",
+            "description": "Personal brand-driven card, exited founder tag, investment focus tags (SaaS, AI, Health), portfolio logos, 'Pitch Me' Calendly link, investment count + check size badges, Twitter build-in-public style, newsletter opt-in",
+            "preview_colors": ["#0f172a", "#6366f1", "#ffffff"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)",
+            "theme_key": "midnight",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"large","catchphrase":"2x Exited Founder · Now Paying It Forward"},
+                {"type":"title_block","headline":"Priya Mehta","subtitle":"Angel Investor & Startup Advisor"},
+                {"type":"stat_row","items":[{"value":"45+","label":"Investments"},{"value":"$25K–","label":"$250K"},{"value":"7","label":"Exits"}]},
+                {"type":"skill_cloud","items":["SaaS","AI/ML","HealthTech","FinTech","DevTools","Climate"]},
+                {"type":"action_grid_2x2","items":[{"icon":"📅","label":"Pitch Me","action":"cal:"},{"icon":"📧","label":"Send Deck","action":"mailto:"},{"icon":"📝","label":"AngelList","action":"link:"},{"icon":"💾","label":"Save Contact","action":"download:"}]},
+                {"type":"email_capture","headline":"Weekly Founder Advice","button":"Subscribe Free"},
+                {"type":"social_strip","platforms":["twitter","linkedin","github"]}
+            ]
+        },
+        {
+            "id": "page_vc_firm",
+            "name": "VC Firm Page",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Venture Capital",
+            "icon": "VF",
+            "description": "Firm brand hero, fund metrics dashboard ($X AUM, Y investments, Z exits), investment thesis grid, portfolio logo wall, partner team grid, 'Pitch Us' CTA with deck submission guidelines, portfolio job board link",
+            "preview_colors": ["#1c1105", "#d97706", "#fffbeb"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #1c1105 0%, #451a03 50%, #0f172a 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"hero","headline":"We Back Founders Who Bend the Curve","subtitle":"Horizon Ventures · Pre-Seed to Series A · $450M AUM · 60+ portfolio companies","cta_primary":"Pitch Your Startup","cta_secondary":"Meet the Team","logo_slot":true},
+                {"type":"stat_row","items":[{"value":"$450M","label":"Assets Under Mgmt"},{"value":"60+","label":"Investments"},{"value":"$12B+","label":"Portfolio Value"},{"value":"12","label":"Unicorn Exits"}]},
+                {"type":"feature_grid","columns":2,"headline":"What We Invest In","items":[{"icon":"🤖","title":"AI & ML","desc":"Foundational models and AI-native apps"},{"icon":"☁️","title":"SaaS","desc":"Vertical SaaS and enterprise platforms"},{"icon":"💰","title":"FinTech","desc":"Embedded finance and infrastructure"},{"icon":"🏥","title":"HealthTech","desc":"Digital health and biotech"}]},
+                {"type":"client_logos","style":"scrolling","clients":["Notion","Figma","Vercel","Linear","Ramp","Mercury"]},
+                {"type":"case_studies","headline":"Portfolio Highlights","items":[{"title":"DataFlow","result":"$50M Series B at $400M valuation"},{"title":"CloudBuilt","result":"Acquired by AWS for $320M"},{"title":"HealthAI","result":"$2B valuation, 5M+ patients served"}]},
+                {"type":"cta_button_large","label":"Submit Your Pitch Deck","icon":"📧","action":"mailto:","style":"pulse"},
+                {"type":"trust_bar","text":"🔐 NDA-friendly · Response within 48hrs · Portfolio value creation team"}
+            ]
+        },
+        {
+            "id": "biz_investment_firm",
+            "name": "Investment Firm",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Investment Firm",
+            "icon": "IF",
+            "description": "Corporate elegance card, firm logo + MD title, AUM stat, asset class expertise tags (PE, RE, Credit, Venture), investor portal link, quarterly letter signup, team headcount stat, LinkedIn",
+            "preview_colors": ["#0f172a", "#d97706", "#fffbeb"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #0f172a 0%, #1c1105 50%, #1e1b4b 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"logo_mark","shape":"hexagon","initial":"M","catchphrase":"Strategic Capital. Lasting Value."},
+                {"type":"title_block","headline":"Meridian Capital Group","subtitle":"Managing Director · Private Equity"},
+                {"type":"stat_row","items":[{"value":"$2.8B","label":"AUM"},{"value":"28","label":"Portfolio Cos"},{"value":"45","label":"Team"},{"value":"18yr","label":"Track Record"}]},
+                {"type":"skill_cloud","items":["Private Equity","Real Estate","Credit","Venture","Secondaries","Infrastructure"]},
+                {"type":"action_grid_2x2","items":[{"icon":"🔐","label":"Investor Portal","action":"link:"},{"icon":"📊","label":"Quarterly Letter","action":"link:"},{"icon":"📧","label":"Contact","action":"mailto:"},{"icon":"💾","label":"Save Contact","action":"download:"}]},
+                {"type":"social_strip","platforms":["linkedin"]}
+            ]
+        },
+
+        // --- LOCAL SERVICES: Gym/Fitness ---
+        {
+            "id": "biz_gym_fitness",
+            "name": "Gym / Fitness Studio",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Fitness",
+            "icon": "GY",
+            "description": "High-energy dark card, trainer photo, class schedule quick-view, 'Book a Session' CTA, membership tier cards (Drop-in, Monthly, Annual), Google review strip, hours badge, location+map, Instagram fitness reel link",
+            "preview_colors": ["#0f172a", "#ff4b2b", "#ffffff"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #0f172a 0%, #451a03 50%, #1c1105 100%)",
+            "theme_key": "sunset_kinetic",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"large","catchphrase":"Transform Your Body. Transform Your Life."},
+                {"type":"title_block","headline":"Iron Forge Fitness","subtitle":"Strength & Conditioning · Est. 2020"},
+                {"type":"hours_badge","status":"open","text":"🟢 Open Now · Until 9pm"},
+                {"type":"action_row_3","items":[{"icon":"📞","label":"Call","action":"tel:"},{"icon":"🗺️","label":"Map","action":"maps:"},{"icon":"📅","label":"Book","action":"cal:"}]},
+                {"type":"service_cards","items":[{"title":"Personal Training","desc":"1-on-1 · Custom program","price":"From $85/session"},{"title":"Group Classes","desc":"HIIT, Yoga, Spin","price":"From $25/class"},{"title":"Open Gym","desc":"24/7 access","price":"From $49/mo"}]},
+                {"type":"review_strip","rating":"4.9","count":420,"source":"Google","quotes":["\"Best gym in the city!\" — Mike R.","\"Changed my life\" — Jessica L."]},
+                {"type":"social_strip","platforms":["instagram","tiktok","youtube"]}
+            ]
         }
     ])))
 }
