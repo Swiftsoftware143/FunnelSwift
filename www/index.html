@@ -46,6 +46,18 @@ tr:hover{background:#f8fafc}
 .tags-inline{display:flex;flex-wrap:wrap;gap:4px;padding:8px 0}
 .section-label{font-size:10px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #6366f120}
 .mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center}
+.help-panel{position:fixed;right:-380px;top:0;width:370px;max-width:calc(100vw-20px);height:100vh;background:#1e1b4b;color:#e2e8f0;z-index:1001;overflow-y:auto;transition:right .3s ease;box-shadow:-4px 0 24px rgba(0,0,0,.4);font-size:13px;padding:0}
+.help-panel.open{right:0}
+.help-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.1);font-size:15px}
+.help-body{padding:16px 18px;line-height:1.7;color:#c7d2fe}
+.help-body h4{margin:16px 0 6px;font-size:13px;color:#a5b4fc;text-transform:uppercase;letter-spacing:.5px}
+.help-body p{margin:0 0 10px}
+.help-body ul{margin:4px 0 12px 16px;padding:0}
+.help-body li{margin-bottom:6px}
+.help-body code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px;color:#a5b4fc}
+.help-fab{position:fixed;bottom:20px;right:20px;width:48px;height:48px;border-radius:50%;background:#6366f1;color:#fff;border:none;font-size:20px;cursor:pointer;z-index:1000;box-shadow:0 4px 16px rgba(99,102,241,.4);transition:all .2s;display:flex;align-items:center;justify-content:center}
+.help-fab:hover{transform:scale(1.1);box-shadow:0 6px 24px rgba(99,102,241,.5)}
+.help-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:1000}
 .mo.sh{display:flex}
 .modal{background:#fff;border-radius:12px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .modal h3{font-size:16px;color:#1e1b4b;margin-bottom:16px}
@@ -91,9 +103,11 @@ tr:hover{background:#f8fafc}
   </div>
 </div>
 <div class="main">
-  <div class="header"><h1 id="pt">Dashboard</h1><span id="rb"></span></div>
+  <div class="header"><h1 id="pt">Dashboard</h1><div style="display:flex;gap:8px;align-items:center"><button onclick="toggleHelp()" style="background:var(--primary, #6366f1);color:#fff;border:none;border-radius:100px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s" id="helpBtn">💡 Help</button><span id="rb"></span></div></div>
   <div class="ct" id="ct"><div class="loading">Loading...</div></div>
 </div>
+<div class="help-panel" id="helpPanel"><div class="help-header"><strong id="helpTitle">Quick Help</strong><button onclick="toggleHelp()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div><div class="help-body" id="helpBody">Select a section for help tips.</div></div>
+<button class="help-fab" id="helpFab" onclick="toggleHelp()" title="Help">💡</button>
 <div class="mo" id="mod"><div class="modal"><h3 id="mt"></h3><div id="mb"></div><div id="mm" class="msg"></div><div class="mf" id="mf"></div></div></div>
 <script>
 
@@ -101,6 +115,40 @@ tr:hover{background:#f8fafc}
 /* No inline onclick escaping — zero-bug approach */
 
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
+
+/* ═══ INLINE HELP SYSTEM — slide-out panel with per-section tips ═══ */
+var helpContent={
+  "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
+  "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — system tags auto-provision accounts in other Swift apps</li><li>Stages track progress: New → Contacted → Qualified → Converted → Lost</li></ul>',
+  "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Each card lives at <code>/k/your-slug</code>.</p><ul><li><strong>+ New Card</strong> opens the template gallery — choose from 54 templates or start from a <em>Blank Canvas</em></li><li>Pick a <strong>Theme</strong> to change colors instantly</li><li>Click a card to preview, edit, or copy its URL</li><li><strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates</li><li><strong>Branding badge:</strong> Your card shows "Claim your free Digital Business Card" at the bottom unless you hide it (paid plans only)</li></ul>',
+  "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> that trigger actions in other Swift apps.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are controlled by admins — they auto-provision accounts</li></ul>',
+  "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
+  "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
+  "integrations":'<h4>Integrations Center</h4><p>Connect FunnelSwift to other tools. Manage API keys for Web-to-Lead forms, Stripe for payments, and cross-app sync.</p><ul><li><strong>API Keys</strong> — Create keys for programmatic access</li><li><strong>Stripe</strong> — Connect to process plan payments</li></ul>',
+  "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
+  "stags":'<h4>System Tags</h4><p>Special tags that <strong>do something</strong> when applied — like creating a free ADASwift account or adding a contact to CoreSwift CRM.</p><ul><li><strong>Target:</strong> adaswift, coreswift, workflowswift, incentiveswift, missedcall</li><li><strong>Toggle ON/OFF</strong> — Disable without deleting</li></ul>',
+  "tenants":'<h4>Users (Tenants)</h4><p>All registered tenants. View who is on what plan, assign plans, and manage accounts.</p>',
+  "affiliates":'<h4>Affiliates</h4><p>Manage your affiliate partners. Each gets a unique referral code for tracking clicks and conversions.</p><ul><li><strong>Commission Rate</strong> — Percentage per conversion</li><li><strong>Tier</strong> — Assign Bronze/Silver/Gold</li><li><strong>Payouts</strong> — Track earnings and payment history</li></ul>',
+  "tiers":'<h4>Affiliate Tiers</h4><p>Create commission tiers with different rates and minimum payout thresholds.</p><ul><li><strong>+ New Tier</strong> — Create Bronze, Silver, Gold, etc.</li><li>Set commission %, min payout, and requirements</li></ul>',
+  "templates":'<h4>Template Gallery</h4><p><strong>54 templates</strong> across 5 archetypes and dozens of industries.</p><ul><li><strong>Free Plan:</strong> 8 templates (4 starters + 4 blank canvases)</li><li><strong>Paid Plans:</strong> All 54 templates unlocked</li><li><strong>Blank Canvas:</strong> Start from scratch with just a title</li><li><strong>Industry:</strong> Real Estate, Cleaning, Gym, VC, Podcast, Photography, SaaS, etc.</li></ul>',
+  "themes":'<h4>8 Visual Themes</h4><ul><li><strong>Cyber Dark</strong> — Purple/black neon</li><li><strong>Ghost White</strong> — Clean glassmorphic</li><li><strong>Ocean</strong> — Blue/teal professional</li><li><strong>Forest</strong> — Green organic</li><li><strong>Sunset</strong> — Orange/amber warm</li><li><strong>Ruby</strong> — Red/crimson bold</li><li><strong>Midnight</strong> — Deep indigo</li><li><strong>Arctic</strong> — Ice blue crisp</li></ul>'
+};
+function toggleHelp() {
+  var p=document.getElementById("helpPanel"), f=document.getElementById("helpFab");
+  var ct=document.querySelector(".help-overlay"), isOpen=p.classList.contains("open");
+  if(isOpen){p.classList.remove("open");f.style.display="flex";if(ct)ct.style.display="none";}
+  else{
+    var tab=document.querySelector(".sidebar a.active");
+    var key=tab?tab.getAttribute("data-tab"):"dashboard";
+    var h=helpContent[key]||('<h4>'+key.replace(/-/g," ").replace(/\\b\\w/g,function(l){return l.toUpperCase()})+'</h4><p>Tips for this section coming soon.</p>');
+    document.getElementById("helpBody").innerHTML=h;
+    document.getElementById("helpTitle").textContent="Help: "+(tab?tab.textContent.trim():"Dashboard");
+    p.classList.add("open");f.style.display="none";
+    if(!ct){ct=document.createElement("div");ct.className="help-overlay";document.body.appendChild(ct);}
+    ct.style.display="block";ct.onclick=toggleHelp;
+  }
+}
+window.addEventListener("keydown",function(e){if(e.key==="Escape"){var p=document.getElementById("helpPanel");if(p&&p.classList.contains("open"))toggleHelp();}});
 
 function api(p,o){
   o=o||{}; o.headers=o.headers||{};
