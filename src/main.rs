@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 #![allow(dead_code)]
 
 use axum::Router;

@@ -10,18 +10,14 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
             "name": "Cyber Dark",
             "primary": "#a855f7",
             "gradient": "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
-            "bg_color": "#0f172a",
-            "accent": "#a855f7",
             "colors": {
                 "background": "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
                 "card_bg": "rgba(255, 255, 255, 0.05)",
                 "backdrop_filter": "blur(16px) saturate(180%)",
                 "border": "1px solid rgba(168, 85, 247, 0.25)",
                 "accent_glow": "0 0 25px rgba(168, 85, 247, 0.4)",
-                "text": "#ffffff",
-                "text_secondary": "#c4b5fd",
-                "button_bg": "rgba(168, 85, 247, 0.25)",
-                "button_text": "#ffffff",
+                "text": "#ffffff", "text_secondary": "#c4b5fd",
+                "button_bg": "rgba(168, 85, 247, 0.25)", "button_text": "#ffffff",
                 "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(168, 85, 247, 0.15)"
             }
         },
@@ -30,19 +26,15 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
             "name": "Sunset Kinetic",
             "primary": "#ff4b2b",
             "gradient": "linear-gradient(45deg, #ff416c 0%, #ff4b2b 100%)",
-            "bg_color": "#1a0510",
-            "accent": "#ff4b2b",
             "colors": {
-                "background": "linear-gradient(45deg, #ff416c 0%, #ff4b2b 100%)",
+                "background": "linear-gradient(45deg, #180325 0%, #4a0e2e 50%, #7c1d23 100%)",
                 "card_bg": "rgba(0, 0, 0, 0.2)",
                 "backdrop_filter": "blur(12px)",
-                "border": "1px solid rgba(255, 255, 255, 0.25)",
+                "border": "1px solid rgba(255, 115, 92, 0.25)",
                 "accent_glow": "0 10px 30px rgba(255, 75, 43, 0.5)",
-                "text": "#ffffff",
-                "text_secondary": "#ffe4e6",
-                "button_bg": "rgba(255, 75, 43, 0.3)",
-                "button_text": "#ffffff",
-                "card_shadow": "0 8px 32px rgba(255, 75, 43, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.15)"
+                "text": "#ffffff", "text_secondary": "#ffe4e6",
+                "button_bg": "rgba(255, 75, 43, 0.3)", "button_text": "#ffffff",
+                "card_shadow": "0 8px 32px rgba(255, 75, 43, 0.25)"
             }
         },
         {
@@ -50,19 +42,15 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
             "name": "Emerald Glass",
             "primary": "#10b981",
             "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
-            "bg_color": "#022c22",
-            "accent": "#10b981",
             "colors": {
                 "background": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
                 "card_bg": "rgba(6, 78, 59, 0.3)",
                 "backdrop_filter": "blur(20px)",
                 "border": "1px solid rgba(52, 211, 153, 0.25)",
                 "accent_glow": "0 0 20px rgba(16, 185, 129, 0.35)",
-                "text": "#ecfdf5",
-                "text_secondary": "#a7f3d0",
-                "button_bg": "rgba(16, 185, 129, 0.25)",
-                "button_text": "#ecfdf5",
-                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(16, 185, 129, 0.2)"
+                "text": "#ecfdf5", "text_secondary": "#a7f3d0",
+                "button_bg": "rgba(16, 185, 129, 0.25)", "button_text": "#ecfdf5",
+                "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3)"
             }
         },
         {
@@ -70,18 +58,14 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
             "name": "Midnight",
             "primary": "#6366f1",
             "gradient": "linear-gradient(135deg, #1e1b4b, #312e81, #4c1d95)",
-            "bg_color": "#0f172a",
-            "accent": "#6366f1",
             "colors": {
                 "background": "linear-gradient(135deg, #1e1b4b, #312e81, #4c1d95)",
                 "card_bg": "rgba(255, 255, 255, 0.06)",
                 "backdrop_filter": "blur(14px)",
                 "border": "1px solid rgba(99, 102, 241, 0.2)",
                 "accent_glow": "0 0 20px rgba(99, 102, 241, 0.35)",
-                "text": "#ffffff",
-                "text_secondary": "#c7d2fe",
-                "button_bg": "rgba(99, 102, 241, 0.25)",
-                "button_text": "#ffffff",
+                "text": "#ffffff", "text_secondary": "#c7d2fe",
+                "button_bg": "rgba(99, 102, 241, 0.25)", "button_text": "#ffffff",
                 "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.35)"
             }
         },
@@ -90,18 +74,14 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
             "name": "Ocean",
             "primary": "#0ea5e9",
             "gradient": "linear-gradient(135deg, #0c4a6e, #0369a1, #0284c7)",
-            "bg_color": "#0c1929",
-            "accent": "#0ea5e9",
             "colors": {
                 "background": "linear-gradient(135deg, #0c4a6e, #0369a1, #0284c7)",
                 "card_bg": "rgba(14, 165, 233, 0.08)",
                 "backdrop_filter": "blur(14px)",
                 "border": "1px solid rgba(14, 165, 233, 0.2)",
                 "accent_glow": "0 0 20px rgba(14, 165, 233, 0.3)",
-                "text": "#ffffff",
-                "text_secondary": "#bae6fd",
-                "button_bg": "rgba(14, 165, 233, 0.25)",
-                "button_text": "#ffffff",
+                "text": "#ffffff", "text_secondary": "#bae6fd",
+                "button_bg": "rgba(14, 165, 233, 0.25)", "button_text": "#ffffff",
                 "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3)"
             }
         },
@@ -110,19 +90,47 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
             "name": "Rose",
             "primary": "#ec4899",
             "gradient": "linear-gradient(135deg, #4c0519, #831843, #be185d)",
-            "bg_color": "#1a0510",
-            "accent": "#ec4899",
             "colors": {
                 "background": "linear-gradient(135deg, #4c0519, #831843, #be185d)",
                 "card_bg": "rgba(236, 72, 153, 0.08)",
                 "backdrop_filter": "blur(14px)",
                 "border": "1px solid rgba(236, 72, 153, 0.2)",
                 "accent_glow": "0 0 20px rgba(236, 72, 153, 0.3)",
-                "text": "#fce7f3",
-                "text_secondary": "#fbcfe8",
-                "button_bg": "rgba(236, 72, 153, 0.25)",
-                "button_text": "#ffffff",
+                "text": "#fce7f3", "text_secondary": "#fbcfe8",
+                "button_bg": "rgba(236, 72, 153, 0.25)", "button_text": "#ffffff",
                 "card_shadow": "0 8px 32px rgba(0, 0, 0, 0.3)"
+            }
+        },
+        {
+            "id": "gold_premium",
+            "name": "Gold Premium",
+            "primary": "#d97706",
+            "gradient": "linear-gradient(135deg, #0f172a, #1c1105, #451a03)",
+            "colors": {
+                "background": "linear-gradient(135deg, #0f172a, #1c1105, #451a03)",
+                "card_bg": "rgba(217, 119, 6, 0.08)",
+                "backdrop_filter": "blur(14px)",
+                "border": "1px solid rgba(245, 158, 11, 0.3)",
+                "accent_glow": "0 0 30px rgba(245, 158, 11, 0.4)",
+                "text": "#fffbeb", "text_secondary": "#fde68a",
+                "button_bg": "linear-gradient(135deg, #d97706, #f59e0b)", "button_text": "#1c1105",
+                "card_shadow": "0 8px 32px rgba(0,0,0,0.4)"
+            }
+        },
+        {
+            "id": "ghost_white",
+            "name": "Ghost White",
+            "primary": "#ffffff",
+            "gradient": "linear-gradient(135deg, #f8fafc, #e2e8f0, #cbd5e1)",
+            "colors": {
+                "background": "linear-gradient(135deg, #ffffff, #f8fafc, #f1f5f9)",
+                "card_bg": "rgba(255, 255, 255, 0.7)",
+                "backdrop_filter": "blur(12px)",
+                "border": "1px solid rgba(0, 0, 0, 0.08)",
+                "accent_glow": "0 0 20px rgba(99, 102, 241, 0.2)",
+                "text": "#0f172a", "text_secondary": "#475569",
+                "button_bg": "#0f172a", "button_text": "#ffffff",
+                "card_shadow": "0 4px 16px rgba(0, 0, 0, 0.06)"
             }
         }
     ])))
@@ -130,96 +138,668 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
 
 pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Value>> {
     Ok(Json(json!([
+        // ==========================================
+        // ARCHETYPE: DIGITAL BUSINESS CARD (5)
+        // ==========================================
         {
-            "id": "digital_business_card",
-            "name": "Digital Business Card",
+            "id": "biz_executive",
+            "name": "Executive",
             "type": "business_card",
             "category": "business_card",
-            "niche": "Professional",
-            "icon": "BC",
-            "description": "Floating avatar with glow border, name/title, 2×2 action grid, glassmorphic bio card, social strip",
+            "niche": "C-Suite",
+            "icon": "EX",
+            "description": "Large centered avatar with dual-ring glow, prominent job title, 2×2 contact grid, glass bio snippet, LinkedIn+X row",
             "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
             "card_type": "business-card",
-            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "gradient": "radial-gradient(circle at 50% 25%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
             "theme_key": "cyber_dark",
             "layout_blocks": [
-                {"type": "avatar","style": "circle_glow","catchphrase": "Professional Identity"},
-                {"type": "action_grid_2x2","items": [{"icon": "📞","label": "Call"},{"icon": "📅","label": "Book"},{"icon": "📧","label": "Email"},{"icon": "💾","label": "Save"}]},
-                {"type": "glass_bio","content": "Helping SaaS founders scale through automated acquisition funnels."},
-                {"type": "social_strip","platforms": ["linkedin","twitter","instagram"]}
+                {"type":"avatar","style":"circle_glow","size":"large","catchphrase":"Executive Profile"},
+                {"type":"title_block","headline":"CEO & Founder","subtitle":"@ SwiftSoftware"}, 
+                {"type":"action_grid_2x2","items":[
+                    {"icon":"📞","label":"Direct Line","action":"tel:"},
+                    {"icon":"📅","label":"Schedule","action":"cal:"},
+                    {"icon":"📧","label":"InMail","action":"mailto:"},
+                    {"icon":"💼","label":"Portfolio","action":"link:"}
+                ]},
+                {"type":"glass_bio","content":"Building the next generation of multi-tenant SaaS platforms."},
+                {"type":"social_strip","platforms":["linkedin","twitter"]}
             ]
         },
         {
-            "id": "bio_link_creator",
-            "name": "Creator Bio Link",
-            "type": "bio_link",
-            "category": "bio_link",
-            "niche": "Creator",
-            "icon": "BL",
-            "description": "Centered avatar with glow, handle tag, stacked kinetic buttons with hover effects, featured media slot, social row",
+            "id": "biz_creative",
+            "name": "Creative Pro",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Design/Art",
+            "icon": "CP",
+            "description": "Split layout: colorful avatar left, title + tagline right, 3-column skill badges, portfolio link grid, Instagram+Dribbble",
+            "preview_colors": ["#831843", "#ec4899", "#fce7f3"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #4c0519 0%, #831843 50%, #a21caf 100%)",
+            "theme_key": "rose",
+            "layout_blocks": [
+                {"type":"profile_split","avatar":"left","headline":"Creative Director","tagline":"Visual Storyteller"},
+                {"type":"skill_badges","items":["Branding","UI/UX","Motion","3D","Illustration"]},
+                {"type":"portfolio_grid","columns":3,"items":[
+                    {"label":"Behance","icon":"🎨"},
+                    {"label":"Dribbble","icon":"🏀"},
+                    {"label":"Vimeo","icon":"🎬"}
+                ]},
+                {"type":"social_strip","platforms":["instagram","dribbble","behance"]}
+            ]
+        },
+        {
+            "id": "biz_realestate",
+            "name": "Real Estate Agent",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Real Estate",
+            "icon": "RE",
+            "description": "Professional photo + agency badge at top, large 'Schedule a Tour' CTA button, property count stat, office location map link, Zillow+Realtor links",
             "preview_colors": ["#0c1929", "#0ea5e9", "#ffffff"],
-            "card_type": "bio-link",
+            "card_type": "business-card",
             "gradient": "linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0c1929 100%)",
             "theme_key": "ocean",
             "layout_blocks": [
-                {"type": "avatar","style": "circle_glow","catchphrase": "@yourhandle"},
-                {"type": "stacked_links","items": [{"label": "Latest Video","url": "#"},{"label": "Free Course","url": "#"},{"label": "Book a Call","url": "#"},{"label": "Newsletter","url": "#"}]},
-                {"type": "featured_card","title": "Featured Product","subtitle": "Check out my new eBook"},
-                {"type": "social_row","platforms": ["youtube","twitter","instagram","tiktok"]}
+                {"type":"avatar","style":"rounded_square","size":"large","catchphrase":"Your Neighborhood Expert"},
+                {"type":"stat_badge","value":"150+","label":"Homes Sold"},
+                {"type":"cta_button_large","label":"Schedule a Tour","icon":"🏠","action":"cal:"},
+                {"type":"location_card","address":"Serving Greater Metro Area","google_maps":true},
+                {"type":"action_row_3","items":[
+                    {"icon":"📞","label":"Call"},
+                    {"icon":"📱","label":"Text"},
+                    {"icon":"📧","label":"Email"}
+                ]}
             ]
         },
         {
-            "id": "mini_page_showcase",
-            "name": "Product Showcase",
+            "id": "biz_medical",
+            "name": "Medical Practice",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Healthcare",
+            "icon": "MD",
+            "description": "Credentials-first layout with certification badges, condition badges, 'Book Appointment' primary CTA, insurance accepted strip, office hours block",
+            "preview_colors": ["#022c22", "#10b981", "#ecfdf5"],
+            "card_type": "business-card",
+            "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
+            "theme_key": "emerald_glass",
+            "layout_blocks": [
+                {"type":"credentials_header","name":"Dr. Sarah Chen","title":"Board-Certified Dermatologist","badges":["MD","FAAD"]},
+                {"type":"specialty_tags","items":["Cosmetic","Medical","Surgical","Pediatric"]},
+                {"type":"cta_button_large","label":"Book Appointment","icon":"📅","action":"cal:"},
+                {"type":"office_info","hours":"Mon-Fri 8am-6pm","phone":"(555) 123-4567"},
+                {"type":"trust_strip","items":["🏥 Board Certified","💳 Most Insurance","⭐ 4.9 · 200+ Reviews"]}
+            ]
+        },
+        {
+            "id": "biz_startup",
+            "name": "Tech Founder",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Startup",
+            "icon": "TF",
+            "description": "Minimalist: animated logo mark, 'Currently Building' tag, product link buttons (App Store, Web, GitHub), investor deck link, Twitter+LinkedIn+GitHub row",
+            "preview_colors": ["#0f172a", "#6366f1", "#ffffff"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%)",
+            "theme_key": "midnight",
+            "layout_blocks": [
+                {"type":"logo_mark","shape":"hexagon","initial":"S","catchphrase":"Building in Stealth"},
+                {"type":"title_block","headline":"Developer & Founder","subtitle":"SaaS · AI · Automation"},
+                {"type":"project_links","items":[
+                    {"label":"Product Hunt","icon":"🚀","url":"https://"},
+                    {"label":"GitHub","icon":"💻","url":"https://"},
+                    {"label":"Pitch Deck","icon":"📊","url":"https://"}
+                ]},
+                {"type":"stat_row","items":[
+                    {"value":"$2.4M","label":"Raised"},
+                    {"value":"15k+","label":"Users"},
+                    {"value":"42","label":"Team"}
+                ]},
+                {"type":"social_strip","platforms":["twitter","linkedin","github"]}
+            ]
+        },
+
+        // ==========================================
+        // ARCHETYPE: BIO LINK PAGE (5)
+        // ==========================================
+        {
+            "id": "bio_creator",
+            "name": "Content Creator",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "YouTuber/Streamer",
+            "icon": "YT",
+            "description": "Centered avatar with engagement ring, subscriber count pill, latest video embed slot, 5 stacked icon+label buttons, 'Join Community' CTA, all social platforms",
+            "preview_colors": ["#1c1105", "#f59e0b", "#ffffff"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #451a03 0%, #78350f 50%, #1c1105 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_ring","size":"medium","catchphrase":"@YourChannel"},
+                {"type":"follower_pill","count":"245K","platform":"YouTube"},
+                {"type":"featured_media","media_type":"video","title":"🎬 Latest Upload","subtitle":"Why I Switched Tech Stacks"},
+                {"type":"stacked_links","style":"icon_left","items":[
+                    {"label":"Watch on YouTube","icon":"▶️","url":"#"},
+                    {"label":"Join Discord","icon":"💬","url":"#"},
+                    {"label":"Merch Store","icon":"👕","url":"#"},
+                    {"label":"Sponsorships","icon":"🤝","url":"#"},
+                    {"label":"Free Resources","icon":"📚","url":"#"}
+                ]},
+                {"type":"social_row","platforms":["youtube","twitter","instagram","tiktok","discord"]}
+            ]
+        },
+        {
+            "id": "bio_musician",
+            "name": "Musician / Artist",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "Music",
+            "icon": "MU",
+            "description": "Full-bleed album art background, artist name + genre tag, embedded music player slot, streaming platform grid (Spotify, Apple Music, SoundCloud), tour dates link, merch link",
+            "preview_colors": ["#4c0519", "#ec4899", "#fce7f3"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #4c0519 0%, #831843 40%, #1a0510 100%)",
+            "theme_key": "rose",
+            "layout_blocks": [
+                {"type":"hero_bg","image_slot":true,"overlay":"gradient"},
+                {"type":"artist_header","name":"LUNA","genre":"Alt-Pop · Electronic"},
+                {"type":"music_player","track":"New Release","album":"Midnight Sessions"},
+                {"type":"streaming_grid","columns":4,"items":[
+                    {"label":"Spotify","icon":"🟢"},
+                    {"label":"Apple","icon":"🍎"},
+                    {"label":"SoundCloud","icon":"☁️"},
+                    {"label":"YouTube","icon":"▶️"}
+                ]},
+                {"type":"action_stack","items":[
+                    {"label":"🎫 Tour Dates","url":"#"},
+                    {"label":"👕 Official Merch","url":"#"},
+                    {"label":"📸 Behind the Scenes","url":"#"}
+                ]}
+            ]
+        },
+        {
+            "id": "bio_coach",
+            "name": "Coach / Consultant",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "Coaching",
+            "icon": "CO",
+            "description": "Trust-building header with credentials + photo, 'Book a Free Discovery Call' prominent CTA, testimonial rotator slot, 3 service tier link cards, Calendly embed link, newsletter signup",
+            "preview_colors": ["#0f172a", "#6366f1", "#ffffff"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)",
+            "theme_key": "midnight",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"medium","catchphrase":"Transform Your Life"},
+                {"type":"title_block","headline":"Executive Coach","subtitle":"ICF Certified · 10+ Years"},
+                {"type":"cta_button_large","label":"Book Free Discovery Call","icon":"📅","action":"cal:"},
+                {"type":"service_cards","items":[
+                    {"title":"1:1 Coaching","desc":"Personalized sessions","price":"From $250"},
+                    {"title":"Group Program","desc":"Cohort-based 8 weeks","price":"From $997"},
+                    {"title":"Keynote Speaking","desc":"Events & workshops","price":"Custom"}
+                ]},
+                {"type":"testimonial_slot","quote":"\"Changed the trajectory of my career\" — Forbes 30U30"},
+                {"type":"social_strip","platforms":["linkedin","twitter","instagram"]}
+            ]
+        },
+        {
+            "id": "bio_shop",
+            "name": "Online Store",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "eCommerce",
+            "icon": "SH",
+            "description": "Store logo at top, 'New Arrivals' featured product grid (3 products with images), discount code pill, category navigation links, cart/bookmark count badge, social proof strip",
+            "preview_colors": ["#f8fafc", "#0f172a", "#ffffff"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"store_header","logo_slot":true,"tagline":"Curated Lifestyle Goods"},
+                {"type":"promo_pill","text":"🚚 Free Shipping Over $50"},
+                {"type":"product_grid","columns":2,"items":[
+                    {"label":"Ceramic Vase","price":"$38","badge":"NEW"},
+                    {"label":"Linen Set","price":"$89","badge":"BEST"},
+                    {"label":"Candle Trio","price":"$42","badge":"SALE"},
+                    {"label":"Wall Art","price":"$64","badge":"ART"}
+                ]},
+                {"type":"stacked_links","style":"full_width","items":[
+                    {"label":"🛍️ Shop All Products","url":"#"},
+                    {"label":"⭐ Best Sellers","url":"#"},
+                    {"label":"🎁 Gift Cards","url":"#"},
+                    {"label":"📦 Track Order","url":"#"}
+                ]},
+                {"type":"trust_strip","items":["⭐ 4.8 · 2,500+ Reviews","🔒 Secure Checkout","📦 Easy Returns"]}
+            ]
+        },
+        {
+            "id": "bio_author",
+            "name": "Author / Writer",
+            "type": "bio_link",
+            "category": "bio_link",
+            "niche": "Writing",
+            "icon": "AU",
+            "description": "Book cover showcase (floating 3D tilt card), author bio excerpt, 'Latest Book' purchase link grid (Amazon, Barnes, local), newsletter subscribe form, podcast appearance links, socials",
+            "preview_colors": ["#0f172a", "#d97706", "#fffbeb"],
+            "card_type": "bio-link",
+            "gradient": "linear-gradient(135deg, #1c1105 0%, #451a03 50%, #0f172a 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"book_showcase","cover_slot":true,"badge":"#1 Bestseller","title":"The Growth Playbook"},
+                {"type":"bio_snippet","text":"Bestselling author of 3 books on product strategy and growth."},
+                {"type":"purchase_grid","columns":3,"items":[
+                    {"label":"Amazon","icon":"📦"},
+                    {"label":"Barnes","icon":"📚"},
+                    {"label":"Local","icon":"🏪"}
+                ]},
+                {"type":"email_capture","headline":"Get Chapter 1 Free","button":"Send It To Me"},
+                {"type":"featured_links","items":[
+                    {"label":"🎙️ Recent Podcast","url":"#"},
+                    {"label":"✍️ Latest Article","url":"#"},
+                    {"label":"📖 Reading List","url":"#"}
+                ]},
+                {"type":"social_strip","platforms":["twitter","linkedin","goodreads"]}
+            ]
+        },
+
+        // ==========================================
+        // ARCHETYPE: MINI PAGE (5)
+        // ==========================================
+        {
+            "id": "page_saas",
+            "name": "SaaS Product",
             "type": "mini_page",
             "category": "mini_page",
             "niche": "SaaS",
-            "icon": "MP",
-            "description": "Floating logo bar, bold hero section, 2-column feature grid, trust badge strip, dual CTA buttons",
-            "preview_colors": ["#0f172a", "#8b5cf6", "#ffffff"],
+            "icon": "SA",
+            "description": "Product logo + tagline hero, animated feature highlight grid (4 cards), pricing table (3 tiers), enterprise CTA, integration logos strip, testimonial carousel slot",
+            "preview_colors": ["#1e1b4b", "#6366f1", "#ffffff"],
             "card_type": "mini-page",
             "gradient": "linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #1e1b4b 100%)",
             "theme_key": "midnight",
             "layout_blocks": [
-                {"type": "hero","headline": "Grow Your Business","subtitle": "The all-in-one platform for modern founders","cta_primary": "Get Started","cta_secondary": "Watch Demo"},
-                {"type": "feature_grid","items": [{"icon": "🚀","title": "Fast Setup","desc": "Launch in minutes"},{"icon": "📊","title": "Analytics","desc": "Real-time insights"},{"icon": "🔒","title": "Secure","desc": "Enterprise grade"},{"icon": "🤝","title": "Support","desc": "24/7 help"}]},
-                {"type": "trust_bar","text":"Trusted by 10k+ businesses · 4.9 ★ Rating"}
+                {"type":"hero","headline":"Automate Your Entire Workflow","subtitle":"The no-code platform that connects all your tools. Launch automations in minutes.","cta_primary":"Start Free Trial","cta_secondary":"See How It Works"},
+                {"type":"feature_grid","columns":2,"items":[
+                    {"icon":"⚡","title":"Instant Sync","desc":"Real-time data flow between apps"},
+                    {"icon":"🧩","title":"500+ Integrations","desc":"Connect every tool you use"},
+                    {"icon":"🤖","title":"AI Copilot","desc":"Smart suggestions as you build"},
+                    {"icon":"📊","title":"Live Analytics","desc":"See what's working in real time"}
+                ]},
+                {"type":"pricing_table","tiers":[
+                    {"name":"Starter","price":"$29","features":["1,000 actions","5 workflows","Email support"]},
+                    {"name":"Pro","price":"$99","features":["10,000 actions","Unlimited workflows","Priority support","AI features"]},
+                    {"name":"Enterprise","price":"Custom","features":["Unlimited everything","SSO","Dedicated support","SLA"]}
+                ]},
+                {"type":"integration_strip","logos":["slack","github","jira","stripe","hubspot","salesforce"]},
+                {"type":"trust_bar","text":"Trusted by 15,000+ teams · SOC 2 Type II · 99.99% uptime"}
             ]
         },
         {
-            "id": "conversion_funnel",
-            "name": "Conversion Funnel",
+            "id": "page_event",
+            "name": "Event / Conference",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Events",
+            "icon": "EV",
+            "description": "Date+location header bar with countdown, keynote speaker photo grid (3 columns), schedule timeline (collapsible days), sponsor logo strip, 'Get Tickets' sticky CTA, venue map link",
+            "preview_colors": ["#451a03", "#f59e0b", "#ffffff"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #451a03 0%, #78350f 50%, #1c1105 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"event_header","date":"October 15-17, 2026","location":"San Francisco, CA","countdown":true},
+                {"type":"cta_button_large","label":"Get Your Tickets","icon":"🎟️","action":"link:"},
+                {"type":"speaker_grid","columns":3,"headline":"Featured Speakers","items":[
+                    {"name":"Jane Smith","title":"CEO, TechCorp"},
+                    {"name":"Mark Rivera","title":"VP Product, CloudCo"},
+                    {"name":"Priya Patel","title":"CTO, DataFlow"},
+                    {"name":"James Chen","title":"Founder, AI Labs"},
+                    {"name":"Lisa Park","title":"Head of Design, UXCo"},
+                    {"name":"Tom Wright","title":"Partner, VC Fund"}
+                ]},
+                {"type":"schedule_timeline","days":[{"day":"Day 1","events":["10am Keynote","1pm Workshops","5pm Networking"]},{"day":"Day 2","events":["9am Panels","2pm Demos","6pm Afterparty"]}]},
+                {"type":"sponsor_strip","tiers":["Platinum","Gold","Silver"]}
+            ]
+        },
+        {
+            "id": "page_restaurant",
+            "name": "Restaurant",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Food",
+            "icon": "RS",
+            "description": "Hero food photo carousel, cuisine type tags, 'Reserve a Table' + 'Order Online' dual CTA, hours block (today highlighted), menu highlight grid with photos, location+map embed, review rating badge",
+            "preview_colors": ["#1c1105", "#d97706", "#fffbeb"],
+            "card_type": "mini-page",
+            "gradient": "linear-gradient(135deg, #451a03 0%, #1c1105 50%, #0f172a 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"hero_media","media_type":"carousel","images":3},
+                {"type":"restaurant_header","name":"The Ember Room","cuisine":["Modern American","Craft Cocktails"],"rating":"4.8 ★ (340 reviews)"},
+                {"type":"cta_row_dual", "cta_primary":"Reserve a Table","cta_secondary":"Order Online"},
+                {"type":"hours_block","today":"Today: 5pm-11pm","week":[{"day":"Mon-Thu","hours":"5pm-10pm"},{"day":"Fri-Sat","hours":"5pm-11pm"},{"day":"Sun","hours":"11am-3pm"}]},
+                {"type":"menu_highlights","columns":2,"items":[
+                    {"name":"Truffle Pasta","price":"$28","img":true},
+                    {"name":"Wagyu Burger","price":"$34","img":true},
+                    {"name":"Scallops","price":"$32","img":true},
+                    {"name":"Tiramisu","price":"$16","img":true}
+                ]},
+                {"type":"location_block","address":"42 Main St, Downtown","map_slot":true}
+            ]
+        },
+        {
+            "id": "page_agency",
+            "name": "Agency Portfolio",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Agency",
+            "icon": "AG",
+            "description": "Bold value prop hero, client logo wall (auto-scrolling), case study cards (3 featured), services list with icons, 'Start a Project' inquiry form, team photo strip, office locations",
+            "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
+            "card_type": "mini-page",
+            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type":"hero","headline":"We Build Digital Products That Scale","subtitle":"A full-service design & development studio for ambitious startups and enterprises.","cta_primary":"Start a Project","cta_secondary":"View Our Work"},
+                {"type":"client_logos","style":"scrolling","clients":["Nike","Spotify","Airbnb","Stripe","Coinbase","Notion"]},
+                {"type":"case_studies","headline":"Selected Work","items":[
+                    {"title":"FinTech App Redesign","tags":["UX","Mobile","FinTech"],"result":"+240% engagement"},
+                    {"title":"E-Commerce Platform","tags":["Web","Full-Stack"],"result":"$12M in first year"},
+                    {"title":"AI Dashboard","tags":["AI","Data Viz"],"result":"Used by 50k analysts"}
+                ]},
+                {"type":"services_grid","items":[
+                    {"icon":"🎨","title":"Brand & Design"},
+                    {"icon":"💻","title":"Web Development"},
+                    {"icon":"📱","title":"Mobile Apps"},
+                    {"icon":"🤖","title":"AI & Automation"},
+                    {"icon":"📈","title":"Growth Marketing"},
+                    {"icon":"🔧","title":"DevOps & Infra"}
+                ]},
+                {"type":"cta_button_large","label":"Let's Work Together","icon":"✉️","action":"mailto:"}
+            ]
+        },
+        {
+            "id": "page_course",
+            "name": "Online Course",
+            "type": "mini_page",
+            "category": "mini_page",
+            "niche": "Education",
+            "icon": "ED",
+            "description": "Course title + instructor badge hero, curriculum accordion (module list), student testimonial rotator, 'What You'll Learn' bullet grid, pricing card with payment plan, 'Enroll Now' CTA, student count badge",
+            "preview_colors": ["#022c22", "#10b981", "#ecfdf5"],
+            "card_type": "mini-page",
+            "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
+            "theme_key": "emerald_glass",
+            "layout_blocks": [
+                {"type":"hero","headline":"Master Product Strategy","subtitle":"A 6-week cohort-based course. Learn frameworks used at top tech companies.","badge":"🏆 4,200+ Students Enrolled"},
+                {"type":"instructor_card","name":"David Park","title":"Ex-Google PM, 3x Founder","avatar":true},
+                {"type":"learning_outcomes","headline":"What You'll Learn","items":[
+                    "Craft compelling product visions",
+                    "Run effective user research sprints",
+                    "Build data-driven roadmaps",
+                    "Lead cross-functional teams",
+                    "Ace PM interviews at FAANG"
+                ]},
+                {"type":"curriculum","modules":[
+                    {"title":"Module 1: Foundations","lessons":4},
+                    {"title":"Module 2: Discovery","lessons":5},
+                    {"title":"Module 3: Strategy","lessons":6},
+                    {"title":"Module 4: Execution","lessons":5},
+                    {"title":"Module 5: Growth","lessons":4},
+                    {"title":"Module 6: Leadership","lessons":3}
+                ]},
+                {"type":"pricing_card","price":"$1,497","installments":"3 x $499","includes":["Live sessions","Slack community","1:1 coaching","Certificate"]},
+                {"type":"cta_button_large","label":"Enroll Now — Seats Filling","icon":"🚀","action":"link:"},
+                {"type":"testimonial_slot","quote":"\"Best career investment I've ever made. Landed a PM role at Stripe.\" — Sarah L."}
+            ]
+        },
+
+        // ==========================================
+        // ARCHETYPE: MINI FUNNEL (5)
+        // ==========================================
+        {
+            "id": "funnel_lead_magnet",
+            "name": "Freebie Lead Magnet",
             "type": "mini_funnel",
             "category": "mini_funnel",
-            "niche": "Marketing",
-            "icon": "CF",
-            "description": "Urgency badge, massive value headline, focused lead capture form, trust guarantee row, kinetic pulsing CTA",
-            "preview_colors": ["#1c1917", "#f59e0b", "#ffffff"],
+            "niche": "Lead Gen",
+            "icon": "LM",
+            "description": "Mockup image of the freebie (eBook/checklist preview), value bullets with checkmarks, compact email+name form, 'Download Instantly' CTA, privacy reassurance line, 'What's Inside' preview row",
+            "preview_colors": ["#0f172a", "#6366f1", "#ffffff"],
             "card_type": "mini-funnel",
-            "gradient": "linear-gradient(135deg, #451a03 0%, #78350f 50%, #1c1105 100%)",
-            "theme_key": "sunset_kinetic",
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)",
+            "theme_key": "midnight",
             "layout_blocks": [
-                {"type": "urgency_badge","text": "🔥 Limited Time Access"},
-                {"type": "value_headline","headline": "Get Your Free Growth Kit","bullets": ["✓ Custom strategy template","✓ 5 email sequences","✓ Growth calculator"]},
-                {"type": "lead_form","fields": ["name","email"],"button": "Send Me The Kit"},
-                {"type": "trust_icons","items": ["🔒 Secure","✓ No spam","⭐ 5-star rated"]}
+                {"type":"media_preview","media_type":"image","label":"eBook Cover Mockup"},
+                {"type":"value_props","headline":"The Ultimate Growth Playbook","bullets":[
+                    "✅ 47-page actionable strategy guide",
+                    "✅ 12 ready-to-use templates",
+                    "✅ Case studies from $0 to $10M ARR",
+                    "✅ Lifetime access + future updates"
+                ]},
+                {"type":"lead_form","fields":["name","email"],"button":"Send Me The Free Guide","button_style":"pulse"},
+                {"type":"trust_line","text":"🔒 No spam. Unsubscribe anytime. Used by 35,000+ founders."}
             ]
         },
         {
-            "id": "hero_landing",
-            "name": "Hero Landing",
+            "id": "funnel_webinar",
+            "name": "Webinar Registration",
+            "type": "mini_funnel",
+            "category": "mini_funnel",
+            "niche": "Webinars",
+            "icon": "WB",
+            "description": "Live countdown timer to event, host photo + credentials, 3 key takeaways as icon cards, compact registration form (name+email), 'Save My Seat' CTA, calendar add link, 'Limited to 500 spots' urgency",
+            "preview_colors": ["#451a03", "#f59e0b", "#ffffff"],
+            "card_type": "mini-funnel",
+            "gradient": "linear-gradient(135deg, #451a03 0%, #78350f 50%, #1c1105 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"countdown_timer","target_date":"2026-08-15T14:00:00Z","label":"Live Masterclass Starts In"},
+                {"type":"host_card","name":"Maria Gonzalez","title":"Growth Lead @ Notion","avatar":true},
+                {"type":"takeaway_cards","headline":"You'll Walk Away With","items":[
+                    {"icon":"📊","text":"A repeatable growth framework"},
+                    {"icon":"🛠️","text":"The exact tools we use daily"},
+                    {"icon":"📋","text":"30-day action plan template"}
+                ]},
+                {"type":"lead_form","fields":["name","email","company"],"button":"Save My Spot — It's Free","button_style":"pulse"},
+                {"type":"urgency_badge","text":"⚠️ Only 87 spots remaining · Live on Aug 15"},
+                {"type":"calendar_link","platform":"google"}
+            ]
+        },
+        {
+            "id": "funnel_flash_sale",
+            "name": "Flash Sale / Offer",
+            "type": "mini_funnel",
+            "category": "mini_funnel",
+            "niche": "eCommerce",
+            "icon": "FS",
+            "description": "Strikethrough original price + bold sale price, animated countdown timer, product image gallery (swipeable), size/variant selector, 'Buy Now' big CTA, stock scarcity indicator, payment icons trust row",
+            "preview_colors": ["#4c0519", "#ec4899", "#fce7f3"],
+            "card_type": "mini-funnel",
+            "gradient": "linear-gradient(135deg, #4c0519 0%, #831843 50%, #1a0510 100%)",
+            "theme_key": "rose",
+            "layout_blocks": [
+                {"type":"countdown_timer","target_date":"2026-08-01T23:59:00Z","label":"Sale Ends In","style":"urgent"},
+                {"type":"offer_header","original_price":"$199","sale_price":"$49","discount":"75% OFF","headline":"Premium Annual Plan"},
+                {"type":"product_gallery","images":3,"swipeable":true},
+                {"type":"variant_selector","options":["Monthly","Annual (Save 75%)","Lifetime"]},
+                {"type":"cta_button_large","label":"Buy Now — $49","icon":"⚡","action":"checkout:","style":"pulse"},
+                {"type":"scarcity_bar","text":"🔥 Only 124 left at this price · 47 people viewing"},
+                {"type":"payment_strip","icons":["visa","mastercard","amex","paypal","applepay"]}
+            ]
+        },
+        {
+            "id": "funnel_waitlist",
+            "name": "Product Waitlist",
+            "type": "mini_funnel",
+            "category": "mini_funnel",
+            "niche": "Launch",
+            "icon": "WL",
+            "description": "Product teaser image/animation, 'Coming Q4 2026' badge, early access benefit bullets, email-only form (super low friction), 'Join the Waitlist' CTA, referral counter ('You're #X in line'), social share buttons, founding member perks list",
+            "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
+            "card_type": "mini-funnel",
+            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type":"teaser_image","label":"Product Preview","animated":true},
+                {"type":"coming_soon_badge","text":"Launching Q4 2026 · Be First in Line"},
+                {"type":"headline","text":"The Future of Team Collaboration","subtitle":"A workspace that thinks with you. Powered by AI."},
+                {"type":"perk_list","headline":"Founding Member Perks","items":[
+                    "🎖️ Lifetime discount (50% off forever)",
+                    "🔮 Early access to beta features",
+                    "💬 Private Slack with the founders",
+                    "🎁 Swag pack shipped to your door"
+                ]},
+                {"type":"lead_form","fields":["email"],"button":"Join 8,400+ on the Waitlist","button_style":"pulse"},
+                {"type":"referral_counter","text":"You'll be #8,421 in line"},
+                {"type":"social_share","platforms":["twitter","linkedin","facebook"],"message":"I just joined the waitlist for @ProductName! 🚀"}
+            ]
+        },
+        {
+            "id": "funnel_survey",
+            "name": "Quiz / Assessment",
+            "type": "mini_funnel",
+            "category": "mini_funnel",
+            "niche": "Engagement",
+            "icon": "QZ",
+            "description": "Quiz title with curiosity hook, progress bar (Step 1 of 5), first question preview (multiple choice), 'Start the Quiz' big CTA, 'Takes 2 minutes' time badge, result preview teaser ('Get your personalized report'), trust badges",
+            "preview_colors": ["#0c1929", "#0ea5e9", "#ffffff"],
+            "card_type": "mini-funnel",
+            "gradient": "linear-gradient(135deg, #0c4a6e, #0369a1, #0284c7)",
+            "theme_key": "ocean",
+            "layout_blocks": [
+                {"type":"quiz_header","headline":"What's Your Leadership Style?","subtitle":"Discover your unique leadership archetype in 2 minutes.","difficulty":"5 questions · 2 min"},
+                {"type":"progress_bar","current":0,"total":5},
+                {"type":"question_preview","text":"When facing a team conflict, you typically:","options":["Mediate between parties","Make a quick decision","Gather more data","Delegate to a lead"]},
+                {"type":"cta_button_large","label":"Start the Free Assessment","icon":"🧠","action":"start_quiz:","style":"pulse"},
+                {"type":"result_teaser","headline":"Your Personalized Report Includes:","items":["Your leadership archetype","Strengths breakdown","Growth opportunities","Team communication guide"]},
+                {"type":"trust_strip","items":["🏆 50,000+ assessments taken","📊 Research-backed","🔒 Results private"]}
+            ]
+        },
+
+        // ==========================================
+        // ARCHETYPE: HERO PAGE (5)
+        // ==========================================
+        {
+            "id": "hero_brand",
+            "name": "Brand Launch",
             "type": "hero",
             "category": "hero",
             "niche": "Brand",
-            "icon": "HP",
-            "description": "Full-screen gradient hero with big headline, product image, dual CTA, infinite trust ticker",
+            "icon": "BR",
+            "description": "Full-screen gradient + animated logo reveal, brand tagline, 'Coming Soon' with launch date, email capture for early access, social media follow row, press kit download link",
+            "preview_colors": ["#0f172a", "#a855f7", "#ffffff"],
+            "card_type": "hero-page",
+            "gradient": "radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #311042 100%)",
+            "theme_key": "cyber_dark",
+            "layout_blocks": [
+                {"type":"hero","headline":"A New Era of Productivity","subtitle":"We're reimagining how teams work together.","cta_primary":"Get Early Access","cta_secondary":"Learn More","logo_slot":true},
+                {"type":"email_capture","headline":"Be the first to know","button":"Notify Me"},
+                {"type":"countdown_timer","target_date":"2026-09-01T00:00:00Z","label":"Launching In"},
+                {"type":"social_row","platforms":["twitter","linkedin","instagram","youtube"]}
+            ]
+        },
+        {
+            "id": "hero_app",
+            "name": "App Download",
+            "type": "hero",
+            "category": "hero",
+            "niche": "Mobile App",
+            "icon": "AP",
+            "description": "Phone mockup (center, angled), app name + rating stars, feature bullet points (left), 'Download on App Store' + 'Get on Google Play' dual store badges, QR code for instant download, '4.9 ★ · 2M+ Downloads' social proof",
+            "preview_colors": ["#0f172a", "#6366f1", "#ffffff"],
+            "card_type": "hero-page",
+            "gradient": "linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #1e1b4b 100%)",
+            "theme_key": "midnight",
+            "layout_blocks": [
+                {"type":"hero_split","media":"phone_mockup","headline":"Your Wallet, Smarter.","subtitle":"Track spending, save automatically, and invest your spare change. The app 2 million people trust.","rating":"4.9 ★"},
+                {"type":"feature_bullets","items":[
+                    {"icon":"🔔","text":"Smart notifications that actually help"},
+                    {"icon":"📊","text":"Beautiful spending insights"},
+                    {"icon":"🤖","text":"AI-powered savings goals"},
+                    {"icon":"🔒","text":"Bank-level security, always"}
+                ]},
+                {"type":"store_badges","apps":["app_store","google_play"],"qr_code":true},
+                {"type":"trust_bar","text":"⭐ 4.9 · 2M+ Downloads · Featured by Apple · SOC 2 Certified"}
+            ]
+        },
+        {
+            "id": "hero_community",
+            "name": "Community Hub",
+            "type": "hero",
+            "category": "hero",
+            "niche": "Community",
+            "icon": "CM",
+            "description": "Member avatar mosaic (overlapping circles), community name + member count, 'Join X,000+ members' headline, benefit tiles (networking, resources, events), 'Apply to Join' CTA, featured member quote, platform logos (Discord, Slack, Circle)",
+            "preview_colors": ["#0c1929", "#0ea5e9", "#ffffff"],
+            "card_type": "hero-page",
+            "gradient": "linear-gradient(135deg, #0c4a6e, #0369a1, #0284c7)",
+            "theme_key": "ocean",
+            "layout_blocks": [
+                {"type":"avatar_mosaic","count":12,"label":"+ 15,000 members"},
+                {"type":"hero","headline":"Join the Largest Design Community","subtitle":"Connect with 15,000+ designers, get feedback on your work, and land your next role.","cta_primary":"Apply to Join","cta_secondary":"See What's Inside"},
+                {"type":"benefit_grid","columns":3,"items":[
+                    {"icon":"🤝","text":"Mentorship matching"},
+                    {"icon":"📂","text":"Portfolio reviews"},
+                    {"icon":"💼","text":"Job board access"},
+                    {"icon":"🎓","text":"Weekly workshops"},
+                    {"icon":"🌍","text":"Local meetups"},
+                    {"icon":"📚","text":"Resource library"}
+                ]},
+                {"type":"testimonial_slot","quote":"\"Got my dream job at Figma through a connection in this community.\" — Alex K."},
+                {"type":"platform_badges","platforms":["discord","slack","circle"]}
+            ]
+        },
+        {
+            "id": "hero_portfolio",
+            "name": "Personal Portfolio",
+            "type": "hero",
+            "category": "hero",
+            "niche": "Portfolio",
+            "icon": "PF",
+            "description": "Full-bleed hero image, name + role title large, 3-column project cards with hover previews, skill tag cloud, 'Available for hire' badge, contact form or Calendly link, resume download button",
+            "preview_colors": ["#0f172a", "#d97706", "#fffbeb"],
+            "card_type": "hero-page",
+            "gradient": "linear-gradient(135deg, #1c1105 0%, #451a03 50%, #0f172a 100%)",
+            "theme_key": "gold_premium",
+            "layout_blocks": [
+                {"type":"hero","headline":"Hi, I'm Jordan.","subtitle":"Full-stack engineer & open source contributor. I build tools that developers love.","badge":"🟢 Available for new projects","cta_primary":"View My Work","cta_secondary":"Download Resume"},
+                {"type":"project_grid","columns":3,"headline":"Featured Projects","items":[
+                    {"title":"OpenAPI CLI","desc":"5.2k ★ on GitHub","tags":["Rust","CLI"]},
+                    {"title":"Design System","desc":"Used by 3 startups","tags":["React","Storybook"]},
+                    {"title":"AI Copilot","desc":"#1 Product of the Week","tags":["Python","LLM"]}
+                ]},
+                {"type":"skill_cloud","items":["Rust","TypeScript","React","Python","AWS","Docker","Kubernetes","GraphQL","Postgres","Redis","Terraform","Next.js"]},
+                {"type":"cta_button_large","label":"Let's Build Something","icon":"💬","action":"cal:"},
+                {"type":"social_strip","platforms":["github","twitter","linkedin","stackoverflow"]}
+            ]
+        },
+        {
+            "id": "hero_nonprofit",
+            "name": "Nonprofit / Cause",
+            "type": "hero",
+            "category": "hero",
+            "niche": "Nonprofit",
+            "icon": "NP",
+            "description": "Impact stat banner (lives changed, dollars raised), mission statement hero, 'Donate Now' primary CTA + 'Volunteer' secondary, progress bar for current campaign ($X of $Y raised), impact photo gallery, partner logo strip, newsletter signup",
             "preview_colors": ["#022c22", "#10b981", "#ecfdf5"],
             "card_type": "hero-page",
             "gradient": "radial-gradient(circle at top left, #064e3b, #022c22, #0f172a)",
             "theme_key": "emerald_glass",
             "layout_blocks": [
-                {"type": "hero","headline": "Build Something Great","subtitle": "The modern way to launch and grow","cta_primary": "Start Free","cta_secondary": "Learn More","image_url": ""},
-                {"type": "trust_ticker","items": ["🚀 50k+ Users","⭐ 4.9 Rating","🔒 SOC 2","💳 No CC Needed"]}
+                {"type":"impact_stats","items":[
+                    {"value":"12,400+","label":"Lives Changed"},
+                    {"value":"$3.2M","label":"Raised"},
+                    {"value":"34","label":"Countries"}
+                ]},
+                {"type":"hero","headline":"Clean Water for Every Community","subtitle":"We're on a mission to bring sustainable water solutions to communities that need them most.","cta_primary":"Donate Now","cta_secondary":"Become a Volunteer"},
+                {"type":"progress_bar","label":"Current Campaign","current":74250,"goal":100000,"prefix":"$"},
+                {"type":"impact_gallery","columns":4,"images":4,"caption":"See your impact in action"},
+                {"type":"partner_strip","logos":["unicef","redcross","who","gatesfoundation"]},
+                {"type":"email_capture","headline":"Get Impact Updates","button":"Subscribe"}
             ]
         }
     ])))
