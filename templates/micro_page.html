@@ -176,21 +176,7 @@
 <body style="color: {% if is_dark %}white{% else %}#1e293b{% endif %};" class="font-jakarta antialiased min-h-screen flex flex-col relative z-10 {{ self.theme_class() }}">
     <div class="bg-page-wrap{% if theme.is_some() %} translucent{% endif %}"></div>
     <div class="bg-noise-overlay"></div>
-    <!-- Navigation — only for multi-block pages; hidden for bio-links and biz cards -->
-    {% if blocks.len() > 1 %}
-    <header class="sticky top-0 z-50" style="background-color: color-mix(in srgb, var(--primary) 85%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid {% if is_dark %}rgba(255,255,255,.08){% else %}rgba(0,0,0,.06){% endif %};">
-        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                {% if logo_url.is_some() && !logo_url.as_ref().unwrap().is_empty() %}
-                <img src="{{ logo_url.as_ref().unwrap() }}" alt="Logo" class="h-8 w-auto rounded">
-                {% else %}
-                <div class="h-8 w-8 rounded-lg bg-brand flex items-center justify-center text-white font-bold text-sm">{{ tenant_name.chars().next().unwrap_or('B') }}</div>
-                {% endif %}
-                <span class="font-semibold" style="color: {% if is_dark %}white{% else %}#1e293b{% endif %};">{{ tenant_name }}</span>
-            </div>
-        </div>
-    </header>
-    {% endif %}
+    <!-- NO navigation header — these cards are independent user-branded pages, not FunnelSwift pages -->
     <main class="flex-1">
 {% for block in blocks %}
         {% match block %}
@@ -687,16 +673,7 @@
     </div>
     {% endif %}
 
-    <!-- Footer -->
-    <footer class="bg-gray-900 text-gray-400 py-6 border-t border-gray-800 mt-auto">
-        <div class="max-w-6xl mx-auto px-6 text-center text-xs">
-            {% if show_branding %}
-            <p>&copy; 2026 {{ tenant_name }}. <a href="https://funnelswift.net/kinetic{% if affiliate_code.is_some() %}?ref={{ affiliate_code.unwrap() }}{% endif %}" class="text-accent/80 hover:text-accent transition font-semibold">{{ cta_label }} &rarr;</a></p>
-            {% else %}
-            <p><a href="https://funnelswift.net/kinetic{% if affiliate_code.is_some() %}?ref={{ affiliate_code.unwrap() }}{% endif %}" class="text-accent/80 hover:text-accent transition font-semibold">{{ cta_label }} &rarr;</a></p>
-            {% endif %}
-        </div>
-    </footer>
+    <!-- NO footer — these are independent user-branded cards, not FunnelSwift pages -->
 
     <script>
         function openModal() {
