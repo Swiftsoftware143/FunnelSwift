@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign Up — FunnelSwift</title>
+<link rel="canonical" href="https://funnelswift.net/">
+<meta name="theme-color" content="#0F172A">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='fav' x1='0%25' y1='100%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%232563EB'/%3E%3Cstop offset='100%25' stop-color='%2306B6D4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%230F172A'/%3E%3Cpath d='M 23 8 A 7 7 0 0 1 23 24' fill='none' stroke='url(%23fav)' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M 12 22 L 20 10 L 16 16 L 22 16 L 13 24 L 15 19 Z' fill='url(%23fav)'/%3E%3C/svg%3E">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#2563eb,#1d4ed8);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.signup-card{background:#fff;border-radius:16px;padding:40px;width:420px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.signup-card .emoji{font-size:40px;text-align:center;margin-bottom:8px}
+.signup-card h1{font-size:24px;font-weight:700;text-align:center;color:#1e293b;margin-bottom:4px}
+.signup-card p.sub{text-align:center;color:#64748b;font-size:14px;margin-bottom:24px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px}
+.form-group input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;outline:none}
+.form-group input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:15px;font-weight:600;color:#fff;background:#2563eb;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.error{color:#ef4444;font-size:13px;margin-bottom:12px;display:none;text-align:center}
+.error.show{display:block}
+.loading{text-align:center;margin-top:12px;font-size:13px;color:#64748b;display:none}
+.login-link{text-align:center;margin-top:18px;font-size:13px;color:#64748b}
+.login-link a{color:#2563eb;text-decoration:none;font-weight:500}
+.login-link a:hover{text-decoration:underline}
+.ref-badge{display:none;background:#eef2ff;color:#4338ca;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:500;text-align:center;margin-bottom:16px}
+.ref-badge.show{display:block}
+</style>
+</head>
+<body>
+<div class="signup-card">
+<div class="emoji">🚀</div>
+<h1>Get Started Free</h1>
+<p class="sub">Create your FunnelSwift workspace</p>
+<div class="ref-badge" id="ref-badge"></div>
+<div class="error" id="signup-error"></div>
+<form id="signup-form">
+<div class="form-group">
+<label>Full Name</label>
+<input type="text" id="signup-name" placeholder="Your name" required autocomplete="name">
+</div>
+<div class="form-group">
+<label>Email</label>
+<input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email">
+</div>
+<div class="form-group">
+<label>Password</label>
+<input type="password" id="signup-password" placeholder="Min 6 characters" required minlength="6" autocomplete="new-password">
+</div>
+<button type="submit" class="btn" id="signup-btn">Create Free Account</button>
+</form>
+<div class="loading" id="signup-loading">Creating your workspace...</div>
+<p class="login-link">Already have an account? <a href="/login">Sign in</a></p>
+</div>
+<script>
+// Check for affiliate ref code in URL
+var params = new URLSearchParams(window.location.search);
+var refCode = params.get('ref') || params.get('affiliate_code');
+var badge = document.getElementById('ref-badge');
+if (refCode) {
+  badge.textContent = '🔗 Referred by ' + refCode;
+  badge.classList.add('show');
+}
+
+document.getElementById('signup-form').addEventListener('submit', async function(e){
+e.preventDefault();
+var btn = document.getElementById('signup-btn');
+var err = document.getElementById('signup-error');
+var loading = document.getElementById('signup-loading');
+err.classList.remove('show');
+btn.disabled = true;
+loading.style.display = 'block';
+
+var body = {
+  name: document.getElementById('signup-name').value,
+  email: document.getElementById('signup-email').value,
+  password: document.getElementById('signup-password').value,
+  source: refCode ? 'affiliate_referral' : 'homepage',
+  plan: 'free'
+};
+
+if (refCode) {
+  body.affiliate_code = refCode;
+}
+
+try{
+  var res = await fetch('/api/v1/auth/signup', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  var data = await res.json();
+  if (!res.ok) throw new Error(data.error || data.message || 'Signup failed');
+  var token = data.token || data.access_token;
+  if (token) localStorage.setItem('token', token);
+  window.location.href = '/dashboard';
+} catch(ex) {
+  err.textContent = ex.message;
+  err.classList.add('show');
+  btn.disabled = false;
+  loading.style.display = 'none';
+}
+});
+</script>
+</body>
+</html>

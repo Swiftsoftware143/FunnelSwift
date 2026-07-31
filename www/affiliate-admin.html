@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FunnelSwift Affiliate Admin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{background:#f1f5f9;color:#1e293b;min-height:100vh}
+.flex{display:flex}.gap{gap:12px}.wrap{flex-wrap:wrap}
+.btn{padding:8px 16px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#475569;transition:all .15s}
+.btn:hover{background:#f1f5f9}
+.btn-pri{background:#6366f1;color:#fff;border-color:#6366f1}
+.btn-pri:hover{background:#4f46e5}
+.btn-del{color:#ef4444;border-color:#fca5a5}
+.btn-del:hover{background:#fef2f2}
+.btn-sm{padding:4px 10px;font-size:12px}
+.card{background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:20px;margin-bottom:16px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:8px;color:#334155}
+.tabs{display:flex;gap:0;border-bottom:1px solid #e2e8f0;margin-bottom:20px}
+.tab{padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;color:#64748b;border-bottom:2px solid transparent;transition:all .15s}
+.tab:hover{color:#334155;background:#f8fafc}
+.tab.active{color:#6366f1;border-bottom-color:#6366f1}
+.tb{width:100%;border-collapse:collapse;font-size:13px}
+.tb th{padding:10px 12px;text-align:left;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;white-space:nowrap;background:#f8fafc}
+.tb td{padding:8px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+.tb tr:hover{background:#f8fafc}
+.tb .act{white-space:nowrap}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-green{background:#dcfce7;color:#166534}
+.badge-red{background:#fef2f2;color:#991b1b}
+.badge-blue{background:#dbeafe;color:#1e40af}
+.badge-yellow{background:#fef9c3;color:#854d0e}
+.mod{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:100}
+.mod.show{display:flex}
+.mod-c{background:#fff;border-radius:12px;padding:24px;min-width:480px;max-width:600px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.mod-c h2{font-size:16px;font-weight:600;margin-bottom:16px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:0;background:#fff;transition:border .15s}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.fld textarea{min-height:60px;resize:vertical}
+.mod-f{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.empty{padding:24px;text-align:center;color:#94a3b8;font-size:13px}
+.s{display:flex;gap:8px;margin-bottom:16px}
+.s input{flex:1;padding:8px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;outline:0}
+.s input:focus{border-color:#6366f1}
+.info-box{padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:12px;color:#1e40af;margin-bottom:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<div style="max-width:1200px;margin:0 auto;padding:24px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+    <div><h2 style="font-size:20px;font-weight:700">Affiliate Admin</h2><p style="color:#64748b;font-size:13px">Manage products, categories, links, and conversions</p></div>
+    <button class="btn btn-pri" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="products" onclick="switchTab('products')">Products</div>
+    <div class="tab" data-tab="categories" onclick="switchTab('categories')">Categories</div>
+    <div class="tab" data-tab="links" onclick="switchTab('links')">Affiliate Links</div>
+    <div class="tab" data-tab="conversions" onclick="switchTab('conversions')">Conversions</div>
+  </div>
+
+  <!-- PRODUCTS TAB -->
+  <div id="tab-products" class="tab-content">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="info-box">Affiliate products are the services your partners promote. Third-party products are from other SwiftSoftware apps (ADASwift, MissedCall, WorkflowSwift).</div>
+      <div><button class="btn btn-pri" onclick="openProduct()">+ Add Product</button></div>
+    </div>
+    <div class="s">
+      <input id="prod-search" placeholder="Search products..." oninput="filterProducts()">
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="tb" id="products-table">
+        <thead><tr>
+          <th>Name</th><th>Category</th><th>Price</th><th>Commission</th><th>Source</th><th>Type</th><th>Status</th><th class="act">Actions</th>
+        </tr></thead>
+        <tbody id="products-body"><tr><td colspan="8" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CATEGORIES TAB -->
+  <div id="tab-categories" class="tab-content" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="info-box">Categories group affiliate products by service. Each category should represent a distinct product line.</div>
+      <div><button class="btn btn-pri" onclick="openCategory()">+ Add Category</button></div>
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="tb">
+        <thead><tr><th>Name</th><th>Slug</th><th>Products</th><th>Status</th><th class="act">Actions</th></tr></thead>
+        <tbody id="categories-body"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LINKS TAB -->
+  <div id="tab-links" class="tab-content" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="info-box">Affiliate links are unique tracking URLs for each affiliate-product pairing. Share these with your affiliates.</div>
+      <div><button class="btn btn-pri" onclick="openLink()">+ Add Link</button></div>
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="tb">
+        <thead><tr>
+          <th>Code</th><th>Affiliate</th><th>Product</th><th>Target App</th><th>Target URL</th><th>Status</th><th class="act">Actions</th>
+        </tr></thead>
+        <tbody id="links-body"><tr><td colspan="7" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CONVERSIONS TAB -->
+  <div id="tab-conversions" class="tab-content" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="info-box">Conversions track completed purchases from referred leads. Commission is calculated based on the affiliate's rate.</div>
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="tb">
+        <thead><tr>
+          <th>Date</th><th>Affiliate</th><th>Source App</th><th>Event</th><th>Lead Email</th><th>Amount</th><th>Commission</th>
+        </tr></thead>
+        <tbody id="conversions-body"><tr><td colspan="7" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="mod" id="modal">
+  <div class="mod-c">
+    <h2 id="modal-title">Title</h2>
+    <div id="modal-body"></div>
+    <div class="mod-f" id="modal-footer"></div>
+  </div>
+</div>
+
+<script>
+window.appGuidePages = {
+  "": {
+    title: "Affiliate Admin",
+    desc: "Admin panel for managing affiliate products, categories, and sync operations.",
+    actions: ["View all affiliate products across apps", "Edit product details and commission rates", "Run manual sync to bring in new plans", "Manage product categories"]
+  }
+};
+</script>
+<script src="/inline-guide-widget.js"></script>
+<script>
+const BASE = window.location.origin;
+
+// ─── Auth ───
+function getToken(){return localStorage.getItem('funnelswift_admin_token')||sessionStorage.getItem('funnelswift_admin_token')||localStorage.getItem('token')}
+function logout(){localStorage.removeItem('funnelswift_admin_token');localStorage.removeItem('token');sessionStorage.clear();window.location.href='/'}
+
+// ─── API Helper ───
+async function api(path,opts){
+  opts=opts||{};const headers={'Content-Type':'application/json','Accept':'application/json'};
+  const t=getToken();if(t)headers['Authorization']='Bearer '+t;
+  try{
+    const r=await fetch(BASE+path,{...opts,headers:{...headers,...opts.headers}});
+    if(r.status===401||r.status===403){logout();return null}
+    const ct=r.headers.get('content-type')||'';
+    if(ct.includes('json')){const d=await r.json();if(!r.ok&&d.error)throw new Error(d.error);return d}
+    return await r.text();
+  }catch(e){console.error('API error:',e);return null}
+}
+
+// ─── Tab Navigation ───
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  document.querySelectorAll('.tab-content').forEach(c=>c.style.display=c.id==='tab-'+tab?'':'none');
+  if(tab==='products')loadProducts();
+  else if(tab==='categories')loadCategories();
+  else if(tab==='links')loadLinks();
+  else if(tab==='conversions')loadConversions();
+}
+
+// ─── Modal ───
+function showModal(title,body,footer){
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').innerHTML=body;
+  document.getElementById('modal-footer').innerHTML=footer;
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){document.getElementById('modal').classList.remove('show')}
+document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)closeModal()});
+
+// ─── Products ───
+let productsCache=[];
+async function loadProducts(){
+  document.getElementById('products-body').innerHTML='<tr><td colspan="8" class="empty">Loading...</td></tr>';
+  const d=await api('/api/v1/affiliate-products/admin');
+  const items=Array.isArray(d)?d:d&&d.data?d.data:[];
+  productsCache=items;
+  renderProducts(items);
+}
+function filterProducts(){
+  const q=document.getElementById('prod-search').value.toLowerCase();
+  const f=productsCache.filter(p=>p.name&&p.name.toLowerCase().includes(q));
+  renderProducts(f);
+}
+function renderProducts(items){
+  const b=document.getElementById('products-body');
+  if(!items.length){b.innerHTML='<tr><td colspan="8" class="empty">No products found.</td></tr>';return}
+  b.innerHTML=items.map(function(p){
+    const active=p.is_active!==false;
+    return '<tr>'+
+      '<td><strong>'+(p.name||'Unnamed')+'</strong>'+(p.description?'<br><span style="color:#94a3b8;font-size:11px">'+esc(p.description).substring(0,60)+(p.description.length>60?'...':'')+'</span>':'')+'</td>'+
+      '<td>'+(p.category_name||p.category_id||'-')+'</td>'+
+      '<td>$'+fmtPrice(p.price)+'</td>'+
+      '<td>'+(p.default_commission_rate||p.commission_rate||'10')+'%</td>'+
+      '<td>'+(p.source_app||p.owner_name||'-')+'</td>'+
+      '<td><span class="badge '+(p.is_third_party?'badge-blue':'badge-green')+'">'+(p.is_third_party?'Third-Party':'First-Party')+'</span></td>'+
+      '<td><span class="badge '+(active?'badge-green':'badge-red')+'">'+(active?'Active':'Inactive')+'</span></td>'+
+      '<td class="act"><button class="btn btn-sm" onclick="editProduct(\''+p.id+'\')">Edit</button>&nbsp;<button class="btn btn-sm btn-del" onclick="deleteProduct(\''+p.id+'\')">Del</button></td>'+
+    '</tr>';
+  }).join('');
+}
+function openProduct(){productForm(null)}
+function editProduct(id){productForm(id)}
+function productForm(id){
+  const item=id?productsCache.find(p=>p.id===id):{};
+  const body='<div class="fld"><label>Name</label><input id="pf-name" value="'+(item.name||'')+'"></div>'+
+    '<div class="fld"><label>Description</label><textarea id="pf-desc">'+(item.description||'')+'</textarea></div>'+
+    '<div class="fld"><label>Price ($)</label><input id="pf-price" type="number" step="0.01" value="'+(item.price||'0')+'"></div>'+
+    '<div class="fld"><label>Default Commission Rate (%)</label><input id="pf-rate" type="number" step="0.5" value="'+(item.default_commission_rate||item.commission_rate||'10')+'"></div>'+
+    '<div class="fld"><label>Category</label><select id="pf-cat"></select></div>'+
+    '<div class="fld"><label>Source App</label><select id="pf-source"><option value="funnelswift"'+(item.source_app==='funnelswift'?' selected':'')+'>FunnelSwift</option><option value="adaswift"'+(item.source_app==='adaswift'?' selected':'')+'>ADASwift</option><option value="missedcallrespondr"'+(item.source_app==='missedcallrespondr'?' selected':'')+'>MissedCall</option><option value="workflowswift"'+(item.source_app==='workflowswift'?' selected':'')+'>WorkflowSwift</option><option value="incentiveswift"'+(item.source_app==='incentiveswift'?' selected':'')+'>IncentiveSwift</option><option value="coreswift"'+(item.source_app==='coreswift'?' selected':'')+'>CoreSwift</option></select></div>'+
+    '<div class="fld"><label>URL</label><input id="pf-url" value="'+(item.url||'')+'"></div>'+
+    '<div class="fld"><label><input id="pf-3p" type="checkbox"'+(item.is_third_party?' checked':'')+'> Third-Party Product</label></div>'+
+    '<div class="fld"><label><input id="pf-active" type="checkbox"'+(item.is_active!==false?' checked':'')+'> Active</label></div>';
+  const footer='<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="saveProduct(\''+(id||'')+'\')">'+(id?'Save':'Create')+'</button>';
+  showModal(id?'Edit Product':'Add Product',body,footer);
+  // Load categories into select
+  api('/api/v1/product-categories').then(function(cats){
+    const sel=document.getElementById('pf-cat');
+    const items=Array.isArray(cats)?cats:cats&&cats.data?cats.data:[];
+    sel.innerHTML='<option value="">-- Select Category --</option>'+
+      items.map(c=>'<option value="'+c.id+'"'+(item.category_id===c.id?' selected':'')+'>'+esc(c.name)+'</option>').join('');
+  });
+}
+async function saveProduct(id){
+  const body={name:document.getElementById('pf-name').value,description:document.getElementById('pf-desc').value,
+    price:parseFloat(document.getElementById('pf-price').value)||0,
+    default_commission_rate:parseFloat(document.getElementById('pf-rate').value)||10,
+    category_id:document.getElementById('pf-cat').value,
+    source_app:document.getElementById('pf-source').value,
+    url:document.getElementById('pf-url').value,
+    is_third_party:document.getElementById('pf-3p').checked,
+    is_active:document.getElementById('pf-active').checked};
+  const method=id?'PUT':'POST';
+  const url=id?'/api/v1/affiliate-products/'+id:'/api/v1/affiliate-products';
+  await api(url,{method,body:JSON.stringify(body)});
+  closeModal();loadProducts();
+}
+async function deleteProduct(id){
+  if(!confirm('Delete this product?'))return;
+  await api('/api/v1/affiliate-products/'+id,{method:'DELETE'});
+  loadProducts();
+}
+
+// ─── Categories ───
+async function loadCategories(){
+  const b=document.getElementById('categories-body');
+  b.innerHTML='<tr><td colspan="5" class="empty">Loading...</td></tr>';
+  const d=await api('/api/v1/product-categories');
+  const items=Array.isArray(d)?d:d&&d.data?d.data:[];
+  if(!items.length){b.innerHTML='<tr><td colspan="5" class="empty">No categories found.</td></tr>';return}
+  b.innerHTML=items.map(function(c){
+    return '<tr>'+
+      '<td><strong>'+esc(c.name)+'</strong></td>'+
+      '<td>'+c.slug+'</td>'+
+      '<td>-</td>'+
+      '<td><span class="badge '+(c.is_active!==false?'badge-green':'badge-red')+'">'+(c.is_active!==false?'Active':'Inactive')+'</span></td>'+
+      '<td class="act"><button class="btn btn-sm" onclick="editCategory(\''+c.id+'\')">Edit</button>&nbsp;<button class="btn btn-sm btn-del" onclick="deleteCategory(\''+c.id+'\')">Del</button></td>'+
+    '</tr>';
+  }).join('');
+}
+function openCategory(){categoryForm(null)}
+function editCategory(id){categoryForm(id)}
+function categoryForm(id){
+  const d=id?null:{};
+  const item=null;
+  api(id?'/api/v1/product-categories/'+id:'').then(function(cat){
+    const c=id?cat:{};
+    const body='<div class="fld"><label>Name</label><input id="cf-name" value="'+(c.name||'')+'"></div>'+
+      '<div class="fld"><label>Slug</label><input id="cf-slug" value="'+(c.slug||'')+'"></div>'+
+      '<div class="fld"><label>Description</label><textarea id="cf-desc">'+(c.description||'')+'</textarea></div>'+
+      '<div class="fld"><label><input id="cf-active" type="checkbox"'+(c.is_active!==false?' checked':'')+'> Active</label></div>';
+    const footer='<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="saveCategory(\''+(id||'')+'\')">'+(id?'Save':'Create')+'</button>';
+    showModal(id?'Edit Category':'Add Category',body,footer);
+  });
+}
+async function saveCategory(id){
+  const body={name:document.getElementById('cf-name').value,slug:document.getElementById('cf-slug').value,
+    description:document.getElementById('cf-desc').value,is_active:document.getElementById('cf-active').checked};
+  const method=id?'PUT':'POST';
+  const url=id?'/api/v1/product-categories/'+id:'/api/v1/product-categories';
+  await api(url,{method,body:JSON.stringify(body)});
+  closeModal();loadCategories();
+}
+async function deleteCategory(id){
+  if(!confirm('Delete this category?'))return;
+  await api('/api/v1/product-categories/'+id,{method:'DELETE'});
+  loadCategories();
+}
+
+// ─── Affiliate Links ───
+async function loadLinks(){
+  const b=document.getElementById('links-body');
+  b.innerHTML='<tr><td colspan="7" class="empty">Loading...</td></tr>';
+  const d=await api('/api/v1/affiliate-links');
+  const items=Array.isArray(d)?d:d&&d.data?d.data:[];
+  if(!items.length){b.innerHTML='<tr><td colspan="7" class="empty">No affiliate links found.</td></tr>';return}
+  b.innerHTML=items.map(function(l){
+    return '<tr>'+
+      '<td><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:12px">'+esc(l.code)+'</code></td>'+
+      '<td>'+(l.affiliate_name||l.affiliate_id||'-')+'</td>'+
+      '<td>'+(l.product_name||'-')+'</td>'+
+      '<td>'+(l.target_app||'-')+'</td>'+
+      '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.target_url||'')+'</td>'+
+      '<td><span class="badge '+(l.is_active!==false?'badge-green':'badge-red')+'">'+(l.is_active!==false?'Active':'Inactive')+'</span></td>'+
+      '<td class="act"><button class="btn btn-sm" onclick="editLink(\''+l.id+'\')">Edit</button>&nbsp;<button class="btn btn-sm btn-del" onclick="deleteLink(\''+l.id+'\')">Del</button></td>'+
+    '</tr>';
+  }).join('');
+}
+function openLink(){linkForm(null)}
+function editLink(id){linkForm(id)}
+function linkForm(id){
+  const item=null;
+  api(id?'/api/v1/affiliate-links/'+id:'').then(async function(link){
+    const l=id?link:{};
+    // Load affiliates and products for selects
+    const [affs,prods]=await Promise.all([
+      api('/api/v1/affiliates'),
+      api('/api/v1/affiliate-products/admin')
+    ]);
+    const affItems=Array.isArray(affs)?affs:affs&&affs.data?affs.data:[];
+    const prodItems=Array.isArray(prods)?prods:prods&&prods.data?prods.data:[];
+    const body='<div class="fld"><label>Affiliate</label><select id="lf-aff">'+
+      '<option value="">-- Select Affiliate --</option>'+
+      affItems.map(a=>'<option value="'+(a.affiliate_id||a.id)+'"'+(l.affiliate_id===a.affiliate_id?' selected':'')+'>'+esc(a.name)+' ('+esc(a.affiliate_id||a.id)+')</option>').join('')+
+      '</select></div>'+
+      '<div class="fld"><label>Product</label><select id="lf-prod"><option value="">-- Select Product --</option>'+
+      prodItems.map(p=>'<option value="'+p.id+'"'+(l.product_id===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+
+      '</select></div>'+
+      '<div class="fld"><label>Target App</label><select id="lf-app"><option value="funnelswift"'+(l.target_app==='funnelswift'?' selected':'')+'>FunnelSwift</option><option value="adaswift"'+(l.target_app==='adaswift'?' selected':'')+'>ADASwift</option><option value="missedcallrespondr"'+(l.target_app==='missedcallrespondr'?' selected':'')+'>MissedCall</option><option value="workflowswift"'+(l.target_app==='workflowswift'?' selected':'')+'>WorkflowSwift</option></select></div>'+
+      '<div class="fld"><label>Target URL</label><input id="lf-url" value="'+(l.target_url||'')+'"></div>'+
+      '<div class="fld"><label>Code (auto-generated if empty)</label><input id="lf-code" value="'+(l.code||'')+'"></div>'+
+      '<div class="fld"><label><input id="lf-active" type="checkbox"'+(l.is_active!==false?' checked':'')+'> Active</label></div>';
+    const footer='<button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" onclick="saveLink(\''+(id||'')+'\')">'+(id?'Save':'Create')+'</button>';
+    showModal(id?'Edit Link':'Add Link',body,footer);
+  });
+}
+async function saveLink(id){
+  const body={affiliate_id:document.getElementById('lf-aff').value,product_id:document.getElementById('lf-prod').value,
+    target_app:document.getElementById('lf-app').value,target_url:document.getElementById('lf-url').value,
+    code:document.getElementById('lf-code').value,is_active:document.getElementById('lf-active').checked};
+  const method=id?'PUT':'POST';
+  const url=id?'/api/v1/affiliate-links/'+id:'/api/v1/affiliate-links';
+  await api(url,{method,body:JSON.stringify(body)});
+  closeModal();loadLinks();
+}
+async function deleteLink(id){
+  if(!confirm('Delete this link?'))return;
+  await api('/api/v1/affiliate-links/'+id,{method:'DELETE'});
+  loadLinks();
+}
+
+// ─── Conversions ───
+async function loadConversions(){
+  const b=document.getElementById('conversions-body');
+  b.innerHTML='<tr><td colspan="7" class="empty">Loading...</td></tr>';
+  const d=await api('/api/v1/affiliate-conversions');
+  const items=Array.isArray(d)?d:d&&d.data?d.data:[];
+  if(!items.length){b.innerHTML='<tr><td colspan="7" class="empty">No conversions recorded yet.</td></tr>';return}
+  b.innerHTML=items.map(function(c){
+    const dt=c.created_at||c.converted_at;
+    const dateStr=dt?new Date(dt).toLocaleDateString()+' '+new Date(dt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'-';
+    return '<tr>'+
+      '<td style="white-space:nowrap;font-size:12px">'+dateStr+'</td>'+
+      '<td>'+(c.affiliate_name||c.affiliate_id||'-')+'</td>'+
+      '<td>'+esc(c.source_app||'-')+'</td>'+
+      '<td>'+esc(c.event||'-')+'</td>'+
+      '<td>'+esc(c.lead_email||'-')+'</td>'+
+      '<td>'+(c.amount?'$'+fmtPrice(c.amount):'-')+'</td>'+
+      '<td>'+(c.commission_earned?'$'+fmtPrice(c.commission_earned):(c.commission_rate?c.commission_rate+'%':'-'))+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+// ─── Helpers ───
+function esc(s){if(!s)return '';const d=document.createElement('div');d.appendChild(document.createTextNode(s));return d.innerHTML}
+function fmtPrice(n){if(n===null||n===undefined)return '0.00';return parseFloat(n).toFixed(2)}
+
+// ─── Init ───
+if(!getToken()){document.body.innerHTML='<div style="max-width:400px;margin:100px auto;text-align:center;padding:24px"><h2>Not Logged In</h2><p style="color:#64748b;margin:12px 0">You need admin access to view this page.</p><a href="/" style="color:#6366f1">Go to FunnelSwift</a></div>'}
+else{loadProducts()}
+</script>
+</body>
+</html>
