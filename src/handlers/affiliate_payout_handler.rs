@@ -31,12 +31,13 @@ pub async fn list_tiers(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tiers: Vec<serde_json::Value> = sqlx::query_as(
+    let rows: Vec<(Uuid, String, f64, i32, f64, Option<String>, chrono::NaiveDateTime)> = sqlx::query_as(
         "SELECT id, name, commission_rate, min_sales, min_revenue, description, created_at FROM affiliate_tiers ORDER BY min_sales ASC"
     )
     .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
+    let tiers: Vec<serde_json::Value> = rows.iter().map(|r| json!({"id": r.0.to_string(), "name": r.1, "commission_rate": r.2, "min_sales": r.3, "min_revenue": r.4, "description": r.5, "created_at": r.6})).collect();
     Ok(Json(json!(tiers)))
 }
 
@@ -62,7 +63,7 @@ pub async fn create_tier(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, json!({"id": id, "message": "Tier created"})))
+    Ok((StatusCode::CREATED, Json(json!({"id": id, "message": "Tier created"}))))
 }
 
 pub async fn update_tier(
@@ -114,12 +115,13 @@ pub async fn list_payouts(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let payouts: Vec<serde_json::Value> = sqlx::query_as(
+    let rows: Vec<(Uuid, String, f64, String, Option<String>, chrono::NaiveDateTime, Option<String>)> = sqlx::query_as(
         "SELECT p.id, p.affiliate_id, p.amount, p.status, p.period, p.created_at, a.name as affiliate_name FROM affiliate_payouts p LEFT JOIN affiliates a ON p.affiliate_id = a.id ORDER BY p.created_at DESC"
     )
     .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
+    let payouts: Vec<serde_json::Value> = rows.iter().map(|r| json!({"id": r.0.to_string(), "affiliate_id": r.1, "amount": r.2, "status": r.3, "period": r.4, "created_at": r.5, "affiliate_name": r.6})).collect();
     Ok(Json(json!(payouts)))
 }
 
@@ -145,7 +147,7 @@ pub async fn create_payout(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, json!({"id": id, "message": "Payout created"})))
+    Ok((StatusCode::CREATED, Json(json!({"id": id, "message": "Payout created"}))))
 }
 
 pub async fn mark_payout_paid(

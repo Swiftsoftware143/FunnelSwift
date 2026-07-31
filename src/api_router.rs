@@ -12,8 +12,9 @@ use crate::auth::handlers::{login, me, register, change_password, forgot_passwor
 use crate::handlers::{
     site_settings_handler,
     public_signup_handler,
+    coreswift_push, workflowswift_push, adaswift_provision,
     affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
-    ocr, plan_handler,
+    ocr, plan_handler, bulk_handler,
     plan_tag_handler, tag_rule_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
     sync_plan_tag_handler, linkedin_auth_handler, web_to_lead_handler,
     webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
@@ -141,6 +142,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/tenants/:id/users", post(crate::handlers::admin_handler::list_tenant_users))
         .route("/api/v1/admin/tenants/:id/feature-overrides", get(crate::handlers::admin_handler::get_tenant_feature_overrides))
         .route("/api/v1/admin/tenants/:id/feature-override", post(crate::handlers::admin_handler::set_tenant_feature_override))
+        // Bulk operations
+        .route("/api/v1/bulk/leads", post(bulk_handler::bulk_delete_leads))
+        .route("/api/v1/bulk/affiliates", post(bulk_handler::bulk_delete_affiliates))
+        .route("/api/v1/bulk/users", post(bulk_handler::bulk_delete_users))
+        .route("/api/v1/bulk/products", post(bulk_handler::bulk_delete_products))
         // Site settings management (admin only)
         .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
         .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
@@ -205,6 +211,18 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns))
         .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
         .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
+        // Cross-app push routes — FunnelSwift provisions users in sister apps via tags
+        .route("/api/v1/push/coreswift", post(coreswift_push::push_lead_to_coreswift))
+        .route("/api/v1/push/coreswift/user", post(coreswift_push::provision_coreswift_user))
+        .route("/api/v1/push/coreswift/tag", post(coreswift_push::sync_coreswift_tag))
+        .route("/api/v1/push/coreswift/health", get(coreswift_push::coreswift_health))
+        .route("/api/v1/push/workflowswift", post(workflowswift_push::push_lead_to_workflowswift))
+        .route("/api/v1/push/workflowswift/user", post(workflowswift_push::provision_workflowswift_user))
+        .route("/api/v1/push/workflowswift/tag", post(workflowswift_push::sync_workflowswift_tag))
+        .route("/api/v1/push/workflowswift/health", get(workflowswift_push::workflowswift_health))
+        .route("/api/v1/push/adaswift", post(adaswift_provision::push_lead_to_adaswift))
+        .route("/api/v1/push/adaswift/user", post(adaswift_provision::provision_adaswift_user))
+        .route("/api/v1/push/adaswift/health", get(adaswift_provision::adaswift_health))
         // Serve static files (SPA admin pages)
         .nest_service("/affiliate-admin.html", ServeDir::new("/var/www/funnelswift/affiliate-admin.html"))
         .with_state(state)
