@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Affiliate Portal - FunnelSwift</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f1f5f9;color:#1e293b;font-size:14px}
+a{color:#2563eb;text-decoration:none}
+.fade-in{animation:fadeIn .25s ease-out}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.modal-scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:#fff;border-radius:12px;width:560px;max-width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+.modal-header{padding:16px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+.modal-header h2{font-size:17px;font-weight:600}
+.modal-body{padding:20px 24px}
+.modal-footer{padding:14px 24px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px}
+.btn{padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}
+.btn-secondary{background:#e2e8f0;color:#475569}.btn-secondary:hover{background:#cbd5e1}
+.btn-success{background:#059669;color:#fff}.btn-success:hover{background:#047857}
+.btn-sm{padding:6px 12px;font-size:12px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.form-row{grid-template-columns:1fr}}
+.auth-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#2563eb,#1d4ed8,#1e40af)}
+.auth-card{background:#fff;border-radius:16px;padding:36px;width:420px;max-width:92vw;box-shadow:0 25px 60px rgba(0,0,0,.25)}
+.auth-card h1{font-size:24px;font-weight:700;text-align:center;margin-bottom:4px;color:#2563eb}
+.auth-card p{text-align:center;color:#64748b;font-size:13px;margin-bottom:24px}
+.auth-card .links{margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center}
+.links a{display:block;margin:4px 0}
+.portal{display:flex;min-height:100vh}
+.sidebar{width:200px;background:#1e293b;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100}
+.sidebar-header{padding:18px 16px;border-bottom:1px solid #334155}
+.sidebar-header h1{font-size:17px;font-weight:700;color:#fff}
+.sidebar-header .sub{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.12em;margin-top:2px}
+.sidebar-nav{padding:8px;flex:1}
+.sidebar-nav a{display:block;padding:9px 14px;color:#94a3b8;text-decoration:none;font-size:13px;border-radius:6px;margin:1px 0;cursor:pointer}
+.sidebar-nav a:hover{background:#334155;color:#e2e8f0}
+.sidebar-nav a.active{background:#2563eb;color:#fff}
+.sidebar-footer{padding:14px 16px;border-top:1px solid #334155}
+.sidebar-footer span{font-size:12px;color:#64748b;display:block;margin-bottom:6px}
+.sidebar-footer button{background:0;border:1px solid #475569;border-radius:6px;color:#94a3b8;font-size:12px;padding:6px 10px;cursor:pointer;width:100%}
+.main{margin-left:200px;flex:1;padding:24px 28px;min-height:100vh}
+.page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.page-header h2{font-size:20px;font-weight:700}
+.page-header p{color:#64748b;font-size:13px;margin-top:2px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.stat-card .label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+.stat-card .value{font-size:22px;font-weight:700;margin:4px 0}
+.stat-card .sub{font-size:11px;color:#94a3b8}
+.card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:14px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:12px}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px}
+.badge-green{background:#dcfce7;color:#059669}.badge-blue{background:#dbeafe;color:#2563eb}
+.badge-yellow{background:#fef3c7;color:#d97706}.badge-gray{background:#f1f5f9;color:#64748b}
+.text-muted{color:#64748b}.text-sm{font-size:12px}
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 18px;border-radius:8px;color:#fff;font-size:13px}
+.toast-success{background:#059669}.toast-error{background:#ef4444}
+.hidden{display:none}.w-full{width:100%}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div class="toast-container" id="toast-container"></div>
+<script>
+
+window.appGuidePages = {
+  "dashboard": {
+    title: "Affiliate Dashboard",
+    desc: "Your affiliate performance at a glance — clicks, conversions, and commissions earned.",
+    actions: ["See total clicks and conversion rates", "Track commissions earned this month", "View your personalized affiliate links"]
+  },
+  "leads": {
+    title: "Leads",
+    desc: "People who've signed up or converted through your affiliate links.",
+    actions: ["View all leads attributed to you", "See conversion status and dates", "Copy referral links for specific campaigns"]
+  },
+  "earnings": {
+    title: "Earnings",
+    desc: "Your commission history — what you've earned, what's pending, and what's been paid out.",
+    actions: ["View earnings broken down by product", "See pending vs. paid commissions", "Track payout history and status"]
+  },
+  "settings": {
+    title: "Settings",
+    desc: "Your affiliate account settings. Update profile, payment info, and notification preferences.",
+    actions: ["Update your profile and contact info", "Configure payout method", "View your affiliate agreement terms"]
+  }
+};
+</script>
+<script src="/inline-guide-widget.js"></script>
+<script>
+const API=window.location.origin+'/api/v1';
+const AFF_KEY='aff_token';
+let S={user:null,view:'login',prospects:[],leadsStats:null,earnings:null,payouts:[],links:[],selections:[]};
+function $(id){return document.getElementById(id)}
+function esc(s){if(s===null||s===void 0)return'-';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+function dstr(d){if(!d)return'-';try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch(e){return String(d)}}
+function money(n){return'$'+Number(n||0).toFixed(2)}
+function toast(msg,t){t=t||'success';const c=$('toast-container'),e=document.createElement('div');e.className='toast toast-'+t;e.textContent=msg;c.appendChild(e);setTimeout(()=>e.remove(),3500)}
+function showModal(h,w){$('modal').innerHTML='<div class="modal-scrim" onclick="if(event.target===this)closeModal()"><div class="modal'+(w?' wide-modal':'')+' fade-in">'+h+'</div></div>'}
+function closeModal(){$('modal').innerHTML=''}
+async function affApi(m,p,b){
+  const o={method:m,headers:{'Content-Type':'application/json'}};
+  const t=localStorage.getItem(AFF_KEY);if(t)o.headers['X-Affiliate-Token']=t;if(b)o.body=JSON.stringify(b);
+  const r=await fetch(API+p,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.message);return d;
+}
+function affLogout(){localStorage.removeItem(AFF_KEY);S.user=null;S.view='login';render()}
+async function handleAffLogin(e){
+  e.preventDefault();const el=$('aff-login-error');el.classList.add('hidden');
+  try{
+    const r=await fetch(API+'/affiliate/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('aff-login-email').value,password:$('aff-login-pass').value})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||d.message);
+    localStorage.setItem(AFF_KEY,d.token);S.user=d.user;toast('Welcome!');navigate('dashboard');
+  }catch(e){el.textContent=e.message;el.classList.remove('hidden')}
+}
+async function handleAffSignup(e){
+  e.preventDefault();const el=$('aff-signup-error');el.classList.add('hidden');
+  try{
+    const fd=e.target;const apps=[];
+    if(fd.elements['app_workflowswift']&&fd.elements['app_workflowswift'].checked)apps.push('workflowswift');
+    if(fd.elements['app_incentiveswift']&&fd.elements['app_incentiveswift'].checked)apps.push('incentiveswift');
+    if(fd.elements['app_coreswift']&&fd.elements['app_coreswift'].checked)apps.push('coreswift');
+    if(fd.elements['app_adaswift']&&fd.elements['app_adaswift'].checked)apps.push('adaswift');
+    if(fd.elements['app_missedcall']&&fd.elements['app_missedcall'].checked)apps.push('missedcall');
+    if(fd.elements['app_funnelswift']&&fd.elements['app_funnelswift'].checked)apps.push('funnelswift');
+    const r=await fetch(API+'/affiliate/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({first_name:fd.elements['first_name'].value,last_name:fd.elements['last_name'].value,email:fd.elements['signup-email'].value,password:fd.elements['signup-pass'].value,selected_apps:apps,commission_rate:15})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||d.message);
+    toast('Account created! ID: '+d.affiliate_id);navigate('login');
+  }catch(e){el.textContent=e.message;el.classList.remove('hidden')}
+}
+async function handleSubmitLead(e){
+  e.preventDefault();const el=$('lead-submit-error');if(el)el.classList.add('hidden');
+  const fd=e.target;
+  try{
+    await affApi('POST','/affiliate/submit-lead',{token:localStorage.getItem(AFF_KEY),name:fd.elements['lead_name'].value,email:fd.elements['lead_email'].value||null,phone:fd.elements['lead_phone'].value||null,company:fd.elements['lead_company'].value||null,target_app_slug:fd.elements['lead_target_app'].value,source:'manual_entry',notes:fd.elements['lead_notes'].value||null});
+    toast('Lead submitted!');closeModal();render();
+  }catch(e){if(el){el.textContent=e.message;el.classList.remove('hidden')}else{toast(e.message,'error')}}
+}
+function navigate(v){S.view=v;window.location.hash=v;render()}
+function render(){
+  if(!S.user){
+    if(S.view==='signup'){$('app').innerHTML=signupView();return}
+    $('app').innerHTML=loginView();return
+  }
+  $('app').innerHTML=portalLayout();renderView();
+}
+function renderView(){
+  const c=$('view-content');if(!c)return;
+  const m={dashboard:renderDashboard,leads:renderLeads,earnings:renderEarnings,settings:renderSettings};
+  (m[S.view]||renderDashboard)(c);
+}
+function loginView(){
+  return '<div class="auth-page"><div class="auth-card fade-in"><h1>FunnelSwift</h1><p>Affiliate Portal</p>'+
+    '<form onsubmit="handleAffLogin(event)">'+
+    '<div class="form-group"><label>Email</label><input type="email" id="aff-login-email" placeholder="your@email.com" required></div>'+
+    '<div class="form-group"><label>Password</label><input type="password" id="aff-login-pass" required></div>'+
+    '<p id="aff-login-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:12px"></p>'+
+    '<button type="submit" class="btn btn-primary w-full" style="justify-content:center;padding:10px;font-size:14px">Sign In</button></form>'+
+    '<div class="links"><a href="#" onclick="navigate('signup');return false" style="font-size:13px">Become an Affiliate</a>'+
+    '<a href="'+window.location.origin+'" style="font-size:12px;color:#94a3b8">Back to FunnelSwift</a></div></div></div>';
+}
+function signupView(){
+  return '<div class="auth-page"><div class="auth-card fade-in"><h1>FunnelSwift</h1><p>Become an Affiliate Partner</p>'+
+    '<form onsubmit="handleAffSignup(event)">'+
+    '<div class="form-row"><div class="form-group"><label>First Name</label><input name="first_name" required></div>'+
+    '<div class="form-group"><label>Last Name</label><input name="last_name" required></div></div>'+
+    '<div class="form-group"><label>Email</label><input name="signup-email" type="email" required></div>'+
+    '<div class="form-group"><label>Password</label><input name="signup-pass" type="password" required minlength="6"></div>'+
+    '<div class="form-group"><label>Choose Apps to Market</label>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">'+
+    '<label><input type="checkbox" name="app_workflowswift" checked> WorkflowSwift</label>'+
+    '<label><input type="checkbox" name="app_incentiveswift" checked> IncentiveSwift</label>'+
+    '<label><input type="checkbox" name="app_coreswift" checked> CoreSwift CRM</label>'+
+    '<label><input type="checkbox" name="app_adaswift" checked> ADASwift</label>'+
+    '<label><input type="checkbox" name="app_missedcall" checked> MissedCall Respondr</label>'+
+    '<label><input type="checkbox" name="app_funnelswift" checked> FunnelSwift</label></div></div>'+
+    '<p id="aff-signup-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:12px"></p>'+
+    '<button type="submit" class="btn btn-primary w-full" style="justify-content:center;padding:10px;font-size:14px">Create Account</button></form>'+
+    '<div class="links"><a href="#" onclick="navigate('login');return false" style="font-size:12px;color:#94a3b8">Already have an account? Sign in</a></div></div></div>';
+}
+function portalLayout(){
+  const n=[{id:'dashboard',label:'Dashboard'},{id:'leads',label:'Submit Leads'},{id:'earnings',label:'Earnings'},{id:'settings',label:'Settings'}];
+  const nh=n.map(i=>'<a class="'+(S.view===i.id?'active':'')+'" onclick="navigate(''+i.id+'')"><span>'+i.label+'</span></a>').join('');
+  const un=S.user?.first_name?S.user.first_name+' '+(S.user.last_name||''):(S.user?.email||'Affiliate');
+  return '<div class="portal"><div class="sidebar"><div class="sidebar-header"><h1>FunnelSwift</h1><div class="sub">Affiliate Portal</div></div>'+
+    '<div class="sidebar-nav">'+nh+'</div>'+
+    '<div class="sidebar-footer"><span>'+esc(un)+'</span><button onclick="affLogout()">Sign out</button></div></div>'+
+    '<div class="main fade-in" id="view-content"></div></div>';
+}
+async function renderDashboard(el){
+  el.innerHTML='<p style="color:#64748b">Loading...</p>';
+  try{
+    const t=localStorage.getItem(AFF_KEY);
+    const [dash,stats]=await Promise.all([affApi('POST','/affiliate/dashboard',{token:t}),affApi('POST','/affiliate/leads-stats',{token:t})]);
+    S.earnings=dash.stats||{};S.payouts=dash.payouts||[];S.links=dash.links||[];S.selections=dash.selections||[];S.leadsStats=stats;
+  }catch(e){toast(e.message,'error')}
+  const s=S.leadsStats||{};const e=S.earnings||{};
+  el.innerHTML='<div class="page-header"><div><h2>Affiliate Dashboard</h2><p>Your performance overview</p></div></div>'+
+    '<div class="stat-grid">'+
+    '<div class="stat-card"><div class="label">Prospects Submitted</div><div class="value">'+(s.total_prospects||0)+'</div><div class="sub">across all apps</div></div>'+
+    '<div class="stat-card"><div class="label">Total Earned</div><div class="value">'+money(e.total_earned)+'</div><div class="sub">'+money(e.total_pending)+' pending</div></div>'+
+    '<div class="stat-card"><div class="label">Conversions</div><div class="value">'+(e.total_conversions||0)+'</div><div class="sub">'+(e.conversion_rate||'0')+'% rate</div></div>'+
+    '<div class="stat-card"><div class="label">Clicks</div><div class="value">'+(e.total_clicks||0)+'</div></div></div>'+
+    '<div class="card"><h3>Prospects by App</h3>'+
+    (s.by_app&&s.by_app.length?s.by_app.map(a=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9"><span>'+esc(a.app)+'</span><span style="font-weight:600">'+a.count+'</span></div>').join(''):'<p class="text-muted text-sm">No prospects yet</p>')+'</div>'+
+    '<div class="card"><h3>Recent Activity</h3>'+
+    (s.recent_activity&&s.recent_activity.length?s.recent_activity.slice(0,10).map(a=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px"><span>'+esc(a.action)+' -> '+esc(a.target||'-')+'</span><span class="text-muted text-sm">'+(a.email?esc(a.email):'')+' '+dstr(a.created_at)+'</span></div>').join(''):'<p class="text-muted text-sm">No recent activity</p>')+'</div>';
+}
+function renderLeads(el){
+  el.innerHTML='<div class="page-header"><div><h2>Submit Leads</h2><p>Capture prospects and route to any SwiftSoftware app</p></div>'+
+    '<div><button class="btn btn-primary" onclick="showLeadForm()">+ New Lead</button></div></div>'+
+    '<div class="card"><h3>Quick Submit</h3><form onsubmit="handleSubmitLead(event)">'+
+    '<div class="form-row"><div class="form-group"><label>Full Name *</label><input name="lead_name" required></div>'+
+    '<div class="form-group"><label>Email</label><input name="lead_email" type="email"></div></div>'+
+    '<div class="form-row"><div class="form-group"><label>Phone</label><input name="lead_phone"></div>'+
+    '<div class="form-group"><label>Company</label><input name="lead_company"></div></div>'+
+    '<div class="form-group"><label>Target App *</label><select name="lead_target_app" required>'+
+    '<option value="">Select app...</option>'+
+    '<option value="workflowswift">WorkflowSwift</option><option value="incentiveswift">IncentiveSwift</option>'+
+    '<option value="coreswift">CoreSwift CRM</option><option value="adaswift">ADASwift</option>'+
+    '<option value="missedcall">MissedCall Respondr</option><option value="funnelswift">FunnelSwift</option></select></div>'+
+    '<div class="form-group"><label>Notes</label><textarea name="lead_notes" rows="2"></textarea></div>'+
+    '<p id="lead-submit-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:8px"></p>'+
+    '<button type="submit" class="btn btn-success">Submit Lead</button></form></div>'+
+    '<div class="card"><h3>Your Submitted Prospects</h3><div id="prospects-list"><p class="text-muted text-sm">Loading...</p></div></div>';
+  loadProspects();
+}
+function showLeadForm(){
+  const a=['workflowswift','incentiveswift','coreswift','adaswift','missedcall','funnelswift'];
+  const o=a.map(x=>'<option value="'+x+'">'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('');
+  showModal('<div class="modal-header"><h2>Submit New Lead</h2><button class="btn btn-secondary btn-sm" onclick="closeModal()">X</button></div>'+
+    '<div class="modal-body"><form onsubmit="handleSubmitLead(event)">'+
+    '<div class="form-group"><label>Full Name *</label><input name="lead_name" required></div>'+
+    '<div class="form-row"><div class="form-group"><label>Email</label><input name="lead_email" type="email"></div>'+
+    '<div class="form-group"><label>Phone</label><input name="lead_phone"></div></div>'+
+    '<div class="form-row"><div class="form-group"><label>Company</label><input name="lead_company"></div>'+
+    '<div class="form-group"><label>Target App *</label><select name="lead_target_app" required><option value="">Select...</option>'+o+'</select></div></div>'+
+    '<div class="form-group"><label>Notes</label><textarea name="lead_notes" rows="2"></textarea></div>'+
+    '<p id="lead-submit-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:8px"></p>'+
+    '<div class="modal-footer" style="padding:0;padding-top:14px;border-top:1px solid #e2e8f0">'+
+    '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>'+
+    '<button type="submit" class="btn btn-success">Submit Lead</button></div></form></div>');
+}
+async function loadProspects(){
+  try{
+    const r=await affApi('POST','/affiliate/leads',{token:localStorage.getItem(AFF_KEY)});
+    S.prospects=r.prospects||[];const el=$('prospects-list');
+    if(!el)return;
+    if(!S.prospects.length){el.innerHTML='<p class="text-muted text-sm" style="padding:16px;text-align:center">No prospects yet.</p>';return}
+    el.innerHTML=S.prospects.map(p=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">'+
+      '<div><strong>'+esc(p.name)+'</strong><br><span class="text-muted text-sm">'+esc(p.email||'')+' '+(p.phone?esc(p.phone):'')+'</span></div>'+
+      '<div style="text-align:right"><span class="badge badge-blue">'+esc(p.target_app_slug)+'</span><br><span class="badge '+(p.status==='pending'?'badge-yellow':'badge-green')+'">'+esc(p.status)+'</span></div></div>').join('');
+  }catch(e){toast(e.message,'error')}
+}
+function renderEarnings(el){
+  const e=S.earnings||{};
+  el.innerHTML='<div class="page-header"><div><h2>Earnings and Payouts</h2></div></div>'+
+    '<div class="stat-grid">'+
+    '<div class="stat-card"><div class="label">Earned</div><div class="value">'+money(e.total_earned)+'</div></div>'+
+    '<div class="stat-card"><div class="label">Pending</div><div class="value">'+money(e.total_pending)+'</div></div>'+
+    '<div class="stat-card"><div class="label">Paid Out</div><div class="value">'+money(e.total_paid)+'</div></div>'+
+    '<div class="stat-card"><div class="label">Conversions</div><div class="value">'+(e.total_conversions||0)+'</div></div></div>'+
+    '<div class="card"><h3>Payout History</h3>'+
+    (S.payouts&&S.payouts.length?S.payouts.map(p=>'<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9"><span>'+money(p.amount)+'</span><span class="badge '+(p.status==='paid'?'badge-green':'badge-yellow')+'">'+esc(p.status)+'</span><span class="text-muted text-sm">'+(p.paid_at?dstr(p.paid_at):'-')+'</span></div>').join(''):'<p class="text-muted text-sm">No payouts yet</p>')+'</div>';
+}
+function renderSettings(el){
+  el.innerHTML='<div class="page-header"><div><h2>Settings</h2><p>Your affiliate profile</p></div></div>'+
+    (S.user?'<div class="card"><h3>Account Info</h3>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+    '<div><span class="text-muted text-sm">Affiliate ID</span><div style="font-weight:600">'+esc(S.user.affiliate_id)+'</div></div>'+
+    '<div><span class="text-muted text-sm">Email</span><div>'+esc(S.user.email)+'</div></div>'+
+    '<div><span class="text-muted text-sm">Name</span><div>'+esc(S.user.first_name+' '+S.user.last_name)+'</div></div>'+
+    '<div><span class="text-muted text-sm">Min Payout</span><div>'+money(S.user.min_payout)+'</div></div></div></div>':'')+
+    '<div class="card"><h3>Marketing Selections</h3>'+
+    '<div id="app-selections">'+
+    (S.selections&&S.selections.length?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+S.selections.map(s=>'<span class="badge badge-blue">'+esc(s)+'</span>').join('')+'</div>':'<p class="text-muted text-sm">None selected</p>')+
+    '</div></div>';
+}
+window.addEventListener('DOMContentLoaded',function(){
+  var h=window.location.hash.replace('#','');
+  if(h&&h!=='login')S.view=h;
+  render();
+});
+window.addEventListener('hashchange',function(){
+  var h=window.location.hash.replace('#','');
+  if(h&&h!==S.view)navigate(h);
+});
+
+</script>
+</body>
+</html>

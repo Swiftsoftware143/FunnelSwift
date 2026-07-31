@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FunnelSwift - Lead Generation & Affiliate Marketing Platform</title>
+  <meta name="description" content="FunnelSwift is a powerful lead generation and affiliate marketing platform. Capture leads, route to affiliates, manage funnels, and track everything in one place.">
+  <meta name="keywords" content="lead generation, affiliate marketing, funnel management, lead capture, CRM, web-to-lead, affiliate routing">
+  <link rel="canonical" href="https://funnelswift.net/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://funnelswift.net/">
+  <meta property="og:title" content="FunnelSwift - Lead Generation & Affiliate Marketing Platform">
+  <meta property="og:description" content="Capture leads, route to affiliates, and grow your business. All-in-one funnel management platform.">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f8fafc;color:#0f172a;line-height:1.6}
+    .container{max-width:1100px;margin:0 auto;padding:0 24px}
+    nav{background:#1e1b4b;padding:16px 0;position:sticky;top:0;z-index:100}
+    nav .container{display:flex;align-items:center;justify-content:space-between}
+    nav .logo{font-size:22px;font-weight:800;color:#fff;text-decoration:none}
+    nav .logo span{color:#a5b4fc}
+    nav a{color:#c7d2fe;text-decoration:none;margin-left:24px;font-size:14px;font-weight:500;transition:color .2s}
+    nav a:hover{color:#fff}
+    nav .btn-primary{padding:8px 20px;background:#6366f1;color:#fff;border-radius:8px;font-weight:600}
+    nav .btn-primary:hover{background:#4f46e5}
+    .hero{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4338ca 100%);padding:100px 0 80px;text-align:center;position:relative;overflow:hidden}
+    .hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 30% 50%,rgba(99,102,241,.15) 0%,transparent 60%),radial-gradient(circle at 70% 30%,rgba(167,139,250,.1) 0%,transparent 40%);pointer-events:none}
+    .hero h1{font-size:48px;font-weight:800;color:#fff;margin-bottom:16px;position:relative;line-height:1.2}
+    .hero h1 span{color:#a5b4fc}
+    .hero p{font-size:18px;color:#c7d2fe;max-width:650px;margin:0 auto 32px;position:relative}
+    .hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;position:relative}
+    .btn-primary{padding:14px 32px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;transition:all .2s}
+    .btn-primary:hover{background:#4f46e5;transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,.4)}
+    .btn-secondary{padding:14px 32px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;transition:all .2s}
+    .btn-secondary:hover{background:rgba(255,255,255,.15);transform:translateY(-1px)}
+    .section{padding:80px 0}
+    .section-title{text-align:center;margin-bottom:56px}
+    .section-title h2{font-size:32px;font-weight:800;color:#0f172a;margin-bottom:8px}
+    .section-title p{font-size:16px;color:#64748b;max-width:600px;margin:0 auto}
+    .features{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:24px}
+    .feature-card{background:#fff;border-radius:12px;padding:28px;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .2s;border:1px solid #e2e8f0}
+    .feature-card:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.1)}
+    .feature-card .icon{font-size:32px;margin-bottom:12px}
+    .feature-card h3{font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px}
+    .feature-card p{font-size:14px;color:#64748b}
+    .how-it-works{background:#1e1b4b;padding:80px 0}
+    .how-it-works .section-title h2{color:#fff}
+    .how-it-works .section-title p{color:#a5b4fc}
+    .steps{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:32px}
+    .step{text-align:center;position:relative}
+    .step .num{width:48px;height:48px;background:#6366f1;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;margin:0 auto 12px}
+    .step h3{color:#fff;font-size:18px;font-weight:700;margin-bottom:6px}
+    .step p{color:#a5b4fc;font-size:14px}
+    .cta{background:linear-gradient(135deg,#4338ca,#6366f1);padding:80px 0;text-align:center}
+    .cta h2{font-size:36px;font-weight:800;color:#fff;margin-bottom:12px}
+    .cta p{color:#c7d2fe;font-size:16px;margin-bottom:32px;max-width:500px;margin-left:auto;margin-right:auto}
+    .cta .btn-primary{background:#fff;color:#4338ca;font-size:18px;padding:16px 40px}
+    .cta .btn-primary:hover{background:#eef2ff;box-shadow:0 4px 20px rgba(255,255,255,.3)}
+    .testimonial{background:#f1f5f9;padding:60px 0}
+    .testimonial-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px}
+    .testimonial-card{background:#fff;border-radius:12px;padding:24px;border:1px solid #e2e8f0}
+    .testimonial-card p{font-size:14px;color:#475569;font-style:italic;margin-bottom:12px}
+    .testimonial-card .author{font-size:13px;font-weight:600;color:#0f172a}
+    .testimonial-card .role{font-size:12px;color:#64748b}
+    footer{background:#0f172a;padding:40px 0;color:#94a3b8}
+    footer .container{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:32px}
+    footer h4{color:#fff;font-size:14px;font-weight:600;margin-bottom:12px}
+    footer a{color:#94a3b8;text-decoration:none;display:block;font-size:13px;margin-bottom:6px;transition:color .2s}
+    footer a:hover{color:#6366f1}
+    footer .copyright{margin-top:32px;padding-top:24px;border-top:1px solid #1e293b;text-align:center;font-size:13px;grid-column:1/-1}
+    .animate-in{opacity:0;transform:translateY(20px);transition:all .6s ease}
+    .animate-in.visible{opacity:1;transform:translateY(0)}
+    @media(max-width:768px){
+      .hero h1{font-size:32px}
+      .hero p{font-size:16px}
+      nav .links{display:none}
+      .features{grid-template-columns:1fr}
+      footer .container{grid-template-columns:1fr}
+/* Signup Modal */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.active{display:flex}
+.modal-box{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative}
+.modal-box h2{font-size:22px;font-weight:700;color:#111827;margin-bottom:4px}
+.modal-box .subtitle{color:#6b7280;font-size:13px;margin-bottom:20px}
+.modal-close{position:absolute;top:16px;right:16px;background:none;border:none;font-size:22px;color:#9ca3af;cursor:pointer}
+.modal-close:hover{color:#111827}
+.modal-box label{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px;margin-top:12px}
+.modal-box input{width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;transition:border-color .2s;box-sizing:border-box}
+.modal-box input:focus{outline:none;border-color:var(--primary,#f27f2f);box-shadow:0 0 0 3px rgba(242,127,47,0.1)}
+.modal-error{color:#ef4444;font-size:12px;margin-top:8px;display:none}
+.modal-error.show{display:block}
+.modal-success{color:#10b981;font-size:13px;margin-top:8px;display:none;text-align:center}
+.modal-success.show{display:block}
+.btn-modal{width:100%;padding:12px;background:linear-gradient(135deg,#f27f2f,#e06e1a);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-modal:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(242,127,47,0.4)}
+.btn-modal:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.modal-spinner{display:none;width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.modal-footer{text-align:center;margin-top:12px;font-size:12px;color:#9ca3af}
+.modal-footer a{color:var(--primary,#f27f2f);text-decoration:none;font-weight:600}
+.modal-footer a:hover{text-decoration:underline}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="/" class="logo">Funnel<span>Swift</span></a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="/kinetic">Kinetic</a>
+      <a href="#" onclick="openSignupModal();return false" class="btn-primary">Sign Up Free</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container">
+    <h1>Capture Leads. <span>Route to Affiliates.</span> Grow Faster.</h1>
+    <p>All-in-one lead generation and affiliate marketing platform. Capture prospects, auto-tag and route to partners, track conversions, and scale your funnel — all from one dashboard.</p>
+    <div class="hero-btns">
+      <a href="#" onclick="openSignupModal();return false" class="btn-primary">Get Started Free →</a>
+      <a href="/kinetic" class="btn-secondary">Try Kinetic Card</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-title animate-in">
+      <h2>Everything You Need to Generate Leads</h2>
+      <p>From web-to-lead capture to affiliate routing, FunnelSwift gives you all the tools in one platform.</p>
+    </div>
+    <div class="features">
+      <div class="feature-card animate-in">
+        <div class="icon">🎯</div>
+        <h3>Lead Capture & Forms</h3>
+        <p>Web-to-lead forms, manual entry, and API ingestion. Capture prospects from any source with custom fields and auto-tagging.</p>
+      </div>
+      <div class="feature-card animate-in">
+        <div class="icon">🔄</div>
+        <h3>Affiliate Routing</h3>
+        <p>Auto-route leads to the right affiliate partners based on source, tags, or custom rules. Dual routing supported for multi-party deals.</p>
+      </div>
+      <div class="feature-card animate-in">
+        <div class="icon">🏷️</div>
+        <h3>Smart Tagging</h3>
+        <p>Auto-tag leads by source, status, services, engagement, or custom groups. Tag rules fire on creation for instant organization.</p>
+      </div>
+      <div class="feature-card animate-in">
+        <div class="icon">📊</div>
+        <h3>Analytics & Insights</h3>
+        <p>Track conversions, source performance, affiliate payouts, and pipeline velocity. Export leads with all custom fields.</p>
+      </div>
+      <div class="feature-card animate-in">
+        <div class="icon">🔗</div>
+        <h3>Webhooks & API</h3>
+        <p>Push leads to any CRM, automation tool, or custom endpoint. Full REST API for programmatic management of leads, tags, and affiliates.</p>
+      </div>
+      <div class="feature-card animate-in">
+        <div class="icon">🤝</div>
+        <h3>Affiliate Portal</h3>
+        <p>Affiliates get their own portal with dashboard, lead stats, and conversion tracking. Built-in commission tiers and payout management.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="how-it-works">
+  <div class="container">
+    <div class="section-title">
+      <h2>How It Works</h2>
+      <p>Three simple steps to start capturing and routing leads.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Capture Leads</h3>
+        <p>Add leads manually, embed a web-to-lead form on your site, or ingest via the API. Custom fields, tags, and source tracking included.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Route & Automate</h3>
+        <p>Set up tag rules and routing logic. Leads are automatically sent to the right affiliate or software target based on your rules.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Track & Scale</h3>
+        <p>Monitor conversions, payout affiliates, and export analytics. Add more sources and affiliates as your funnel grows.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background:#0f172a;padding:80px 0">
+  <div class="container">
+    <div class="section-title animate-in">
+      <span style="display:inline-block;background:#312e81;color:#a5b4fc;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px">Free Tool</span>
+      <h2 style="color:#fff">FunnelSwift Kinetic</h2>
+      <p style="color:#94a3b8;max-width:650px;margin:0 auto">Bio-links, digital business cards, mini funnels, mini pages, and hero pages — all in one platform. Free to start.</p>
+    </div>
+    <div class="features" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px">
+      <div class="feature-card animate-in" style="text-align:center;padding:28px;background:rgba(255,255,255,0.03);border-color:rgba(99,102,241,0.15);backdrop-filter:blur(4px)">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#6366f1);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">🔗</div>
+        <h3 style="color:#fff;font-size:16px;margin-bottom:6px">Bio-Link</h3>
+        <p style="color:#94a3b8;font-size:13px">Avatar, bio, quick-action buttons, and social icons. The classic link-in-bio everyone trusts.</p>
+      </div>
+      <div class="feature-card animate-in" style="text-align:center;padding:28px;background:rgba(255,255,255,0.03);border-color:rgba(16,185,129,0.15);backdrop-filter:blur(4px)">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#059669,#10b981);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">🪪</div>
+        <h3 style="color:#fff;font-size:16px;margin-bottom:6px">Business Card</h3>
+        <p style="color:#94a3b8;font-size:13px">Smart digital card with name, title, contact fields, and NFC/QR sharing. Replaces paper cards.</p>
+      </div>
+      <div class="feature-card animate-in" style="text-align:center;padding:28px;background:rgba(255,255,255,0.03);border-color:rgba(245,158,11,0.15);backdrop-filter:blur(4px)">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#d97706,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">🔥</div>
+        <h3 style="color:#fff;font-size:16px;margin-bottom:6px">Mini Funnel</h3>
+        <p style="color:#94a3b8;font-size:13px">Product hero, scarcity timer, urgency CTA. Perfect for launches and flash sales.</p>
+      </div>
+      <div class="feature-card animate-in" style="text-align:center;padding:28px;background:rgba(255,255,255,0.03);border-color:rgba(139,92,246,0.15);backdrop-filter:blur(4px)">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">📄</div>
+        <h3 style="color:#fff;font-size:16px;margin-bottom:6px">Mini Page</h3>
+        <p style="color:#94a3b8;font-size:13px">Section-based landing page with hero, grids, and lead-capture popups in a micro footprint.</p>
+      </div>
+      <div class="feature-card animate-in" style="text-align:center;padding:28px;background:rgba(255,255,255,0.03);border-color:rgba(217,70,239,0.15);backdrop-filter:blur(4px)">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#a21caf,#d946ef);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">🎨</div>
+        <h3 style="color:#fff;font-size:16px;margin-bottom:6px">Hero Page</h3>
+        <p style="color:#94a3b8;font-size:13px">Full-screen gradient hero with product carousel. Designed for brand launches.</p>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:40px">
+      <a href="/kinetic" style="display:inline-block;padding:14px 32px;background:#6366f1;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;transition:all .2s">Create Your Free Kinetic Card →</a>
+      <p style="color:#64748b;font-size:12px;margin-top:10px">No credit card required</p>
+    </div>
+  </div>
+</section>
+
+<section class="testimonial">
+  <div class="container">
+    <div class="section-title animate-in">
+      <h2>Trusted by SwiftSoftware Partners</h2>
+      <p>FunnelSwift powers lead generation across the entire SwiftSoftware ecosystem.</p>
+    </div>
+    <div class="testimonial-grid">
+      <div class="testimonial-card animate-in">
+        <p>"FunnelSwift streamlined our lead routing to affiliates. We went from spreadsheets to automated pipeline in one afternoon."</p>
+        <div class="author">— CoreSwift CRM</div>
+        <div class="role">SwiftSoftware Partner</div>
+      </div>
+      <div class="testimonial-card animate-in">
+        <p>"FunnelSwift streamlined our lead routing pipeline. Our affiliates get leads in real-time now."</p>
+        <div class="author">— WorkflowSwift</div>
+        <div class="role">Platform Partner</div>
+      </div>
+      <div class="testimonial-card animate-in">
+        <p>"The API is clean, the webhooks are reliable, and the affiliate portal gives our partners full visibility. Highly recommended."</p>
+        <div class="author">— ADASwift</div>
+        <div class="role">Integration Partner</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="container">
+    <h2>Ready to Scale Your Lead Generation?</h2>
+    <p>FunnelSwift helps businesses capture, route, and convert more leads every day.</p>
+    <a href="#" onclick="openSignupModal();return false" class="btn-primary">Get Started Free →</a>
+  </div>
+</section>
+
+<section class="section" style="padding:40px 0">
+  <div class="container">
+    <div class="features" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+      <div class="feature-card animate-in" style="text-align:center;padding:30px">
+        <div class="icon" style="font-size:40px;margin-bottom:12px">📱</div>
+        <h3>Get the Mobile App</h3>
+        <p>Capture leads on the go. Business card scanning, NFC taps, and QR codes — right from your phone. Available for Android.</p>
+        <a href="/download-app" class="btn-primary" style="margin-top:12px;font-size:14px;padding:12px 24px">Download App →</a>
+      </div>
+      <div class="feature-card animate-in" style="text-align:center;padding:30px">
+        <div class="icon" style="font-size:40px;margin-bottom:12px">🃏</div>
+        <h3>Create Your Kinetic Card</h3>
+        <p>Bio-links, business cards, mini funnels, mini pages, and hero pages — five layouts, one link, all free. Replace paper business cards with smart digital cards that capture leads.</p>
+        <a href="/kinetic" class="btn-primary" style="margin-top:12px;font-size:14px;padding:12px 24px">Create Free Card →</a>
+      </div>
+      <div class="feature-card animate-in" style="text-align:center;padding:30px">
+        <div class="icon" style="font-size:40px;margin-bottom:12px">🔑</div>
+        <h3>Already Have an Account?</h3>
+        <p>Sign in to your dashboard to manage leads, affiliates, tags, and settings. Your lead generation command center.</p>
+        <a href="https://app.funnelswift.net/login" class="btn-primary" style="margin-top:12px;font-size:14px;padding:12px 24px">Log In →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div>
+      <h4>FunnelSwift</h4>
+      <p style="font-size:13px">Lead generation &amp; affiliate marketing platform by SwiftSoftware.</p>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <a href="#features">Features</a>
+      <a href="/kinetic">Kinetic Cards</a>
+      <a href="/download-app">Mobile App</a>
+      <a href="/api/health">API Status</a>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <a href="/guide">User Guide</a>
+      <a href="mailto:swiftsoftware143@yahoo.com">Contact</a>
+      <a href="https://swiftsoftware.net">SwiftSoftware</a>
+    </div>
+    <div>
+      <h4>Apps</h4>
+      <a href="https://app.funnelswift.net/login">Log In</a>
+      <a href="https://app.funnelswift.net">Dashboard</a>
+      <a href="https://admin.funnelswift.net">Admin</a>
+    </div>
+    <div class="copyright">© 2026 SwiftSoftware. All rights reserved.</div>
+  </div>
+</section>
+
+<script>
+// Scroll animation
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(e) {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.animate-in').forEach(function(el) {
+  observer.observe(el);
+});
+</script>
+
+</body>
+
+<!-- Signup Modal -->
+<div class="modal-overlay" id="signupModal">
+<div class="modal-box">
+<button class="modal-close" onclick="closeSignupModal()">&times;</button>
+<h2>Create Your Free Account</h2>
+<p class="subtitle">Start capturing and routing leads in minutes. No credit card required.</p>
+<form onsubmit="handleSignup(event)">
+<label>Name *</label>
+<input type="text" id="signupName" placeholder="Your full name" required>
+<label>Email *</label>
+<input type="email" id="signupEmail" placeholder="you@example.com" required>
+<label>Password *</label>
+<input type="password" id="signupPassword" placeholder="Min 8 characters" minlength="8" required>
+<div class="modal-error" id="signupError"></div>
+<div class="modal-success" id="signupSuccess"></div>
+<button type="submit" class="btn-modal" id="signupBtn">
+<span id="signupBtnText">Create Free Account</span>
+<div class="modal-spinner" id="signupBtnSpinner"></div>
+</button>
+</form>
+<p class="modal-footer">Already have an account? <a href="https://app.funnelswift.net/login">Sign In</a></p>
+</div>
+</div>
+
+<script>
+function openSignupModal(){document.getElementById('signupModal').classList.add('active')}
+function closeSignupModal(){document.getElementById('signupModal').classList.remove('active');document.getElementById('signupError').classList.remove('show')}
+async function handleSignup(e){
+  e.preventDefault();
+  const btn=document.getElementById('signupBtn');const btnText=document.getElementById('signupBtnText');const spinner=document.getElementById('signupBtnSpinner');const err=document.getElementById('signupError');
+  const name=document.getElementById('signupName').value.trim();
+  const email=document.getElementById('signupEmail').value.trim();
+  const password=docu…yId('signupPassword').value;
+  err.classList.remove('show');
+  if(!email||!password||!name){err.textContent='Please fill in all fields';err.classList.add('show');return}
+  if(password.length<8){err.textContent='Password must be at least 8 characters';err.classList.add('show');return}
+  btn.disabled=true;btnText.textContent='Creating...';spinner.style.display='inline-block';
+  try{
+    const body={email,password,name,tenant_name:name};
+    const res=await fetch('/api/v1/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json();
+    if(!res.ok||!data.token){err.textContent=data.message||data.error||'Registration failed';err.classList.add('show');btn.disabled=false;btnText.textContent='Create Free Account';spinner.style.display='none';return}
+    localStorage.setItem('ws_fs_token',data.token);
+    window.location.href='https://app.funnelswift.net/';
+  }catch(ex){err.textContent='Network error. Please try again.';err.classList.add('show');btn.disabled=false;btnText.textContent='Create Free Account';spinner.style.display='none'}
+}
+</script>
+</html>

@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+ <!-- Primary SEO Meta Tags -->
+ <title>FunnelSwift Kinetic - Bio-Links, Digital Business Cards & Mini-Pages</title>
+ <meta name="description" content="FunnelSwift Kinetic — bio-links, digital business cards, and mini-pages in one platform. Replace your paper business card with a smart digital card that captures leads.">
+ <meta name="keywords" content="funnelswift, kinetic card, digital business card, bio link alternative, trackable links, lead capture, mobile landing page, micro-funnel, smart business card">
+ <meta name="author" content="FunnelSwift Solutions">
+ <link rel="canonical" href="https://funnelswift.net/kinetic">
+
+ <!-- Open Graph / Facebook -->
+ <meta property="og:type" content="website">
+ <meta property="og:url" content="https://funnelswift.net/kinetic">
+ <meta property="og:title" content="FunnelSwift Kinetic - Bio-Links, Digital Business Cards & Mini-Pages">
+ <meta property="og:description" content="Replace your paper business card with a smart digital card. Bio-links, digital business cards, and mini-pages — all in one free platform.">
+ <meta property="og:image" content="https://funnelswift.net/assets/og-free-banner.png">
+ <meta property="product:price:amount" content="0.00">
+ <meta property="product:price:currency" content="USD">
+
+ <!-- Twitter -->
+ <meta property="twitter:card" content="summary_large_image">
+ <meta property="twitter:url" content="https://funnelswift.net/kinetic">
+ <meta property="twitter:title" content="FunnelSwift Kinetic | Digital Business Cards & Bio-Links">
+ <meta property="twitter:description" content="Replace your paper business card with a smart digital card. Bio-links, digital business cards, and mini-pages — all in one. Free to start.">
+ <meta property="twitter:image" content="https://funnelswift.net/assets/og-free-banner.png">
+
+ <!-- Google Fonts & Tailwind -->
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+ <script src="https://cdn.tailwindcss.com"></script>
+
+ <script>
+ tailwind.config = {
+ theme: {
+ extend: {
+ fontFamily: {
+ sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+ },
+ colors: {
+ brandDark: '#0F172A',
+ brandBlue: '#2563EB',
+ brandAccent: '#F59E0B'
+ }
+ }
+ }
+ }
+ </script>
+
+ <style>
+ html { scroll-behavior: smooth; }
+ .modal-overlay {
+ position: fixed; inset: 0; z-index: 100;
+ background: rgba(0,0,0,0.6);
+ backdrop-filter: blur(4px);
+ display: flex; align-items: center; justify-content: center;
+ padding: 20px;
+ opacity: 0; visibility: hidden;
+ transition: opacity 0.25s ease, visibility 0.25s ease;
+ }
+ .modal-overlay.active {
+ opacity: 1; visibility: visible;
+ }
+ .modal-box {
+ background: #0f172a; border: 1px solid #1e293b;
+ border-radius: 16px; padding: 32px;
+ max-width: 420px; width: 100%;
+ box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+ transform: scale(0.95);
+ transition: transform 0.25s ease;
+ }
+ .modal-overlay.active .modal-box {
+ transform: scale(1);
+ }
+ .modal-box input {
+ width: 100%; padding: 10px 14px;
+ background: #1e293b; border: 1px solid #334155;
+ color: white; border-radius: 8px;
+ font-size: 14px; outline: none;
+ transition: border-color 0.2s;
+ }
+ .modal-box input:focus { border-color: #2563EB; }
+ .modal-box input::placeholder { color: #64748b; }
+ .spinner {
+ display: inline-block; width: 16px; height: 16px;
+ border: 2px solid rgba(255,255,255,0.3);
+ border-top-color: white; border-radius: 50%;
+ animation: spin 0.6s linear infinite;
+ }
+ @keyframes spin { to { transform: rotate(360deg); } }
+ .error-msg { color: #ef4444; font-size: 12px; margin-top: 6px; display: none; }
+ </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans flex flex-col min-h-screen">
+
+ <!-- Sticky Navigation -->
+ <header class="sticky top-0 z-50 bg-brandDark/95 backdrop-blur-md border-b border-slate-800 text-white">
+ <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+ <div class="flex items-center space-x-2">
+ <div class="w-8 h-8 rounded-lg bg-brandBlue flex items-center justify-center font-bold text-white tracking-wider">K</div>
+ <span class="text-xl font-extrabold tracking-tight">FunnelSwift <span class="text-brandBlue">Kinetic</span></span>
+ </div>
+ <nav class="hidden md:flex space-x-8 text-sm font-medium text-slate-300">
+ <a href="#layouts" class="hover:text-white transition">Three Layouts</a>
+ <a href="#tracking" class="hover:text-white transition">Traffic Tracking</a>
+ <a href="#features" class="hover:text-white transition">Visual Features</a>
+ </nav>
+ <div>
+ <a href="https://app.funnelswift.net/login" class="text-slate-400 hover:text-white text-sm font-medium transition hidden md:inline-block">Log in</a>
+ <button onclick="openSignupModal()" class="bg-brandBlue text-white text-xs md:text-sm px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition cursor-pointer">
+ Sign Up Free
+ </button>
+ </div>
+ </div>
+ </header>
+
+ <!-- Hero Section -->
+ <section class="bg-brandDark text-white py-28 px-6 relative overflow-hidden">
+ <!-- Animated gradient overlay -->
+ <div class="absolute inset-0 overflow-hidden">
+  <div class="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-transparent" style="animation: heroPulse 8s ease-in-out infinite;"></div>
+  <div class="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-brandBlue/10 via-transparent to-transparent"></div>
+  <div class="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#fff_1px,transparent_1px)]" style="background-size: 24px 24px;"></div>
+ </div>
+ <div class="max-w-6xl mx-auto relative z-10 grid md:grid-cols-2 gap-12 items-center">
+  <!-- Left: Text Content -->
+  <div class="text-center md:text-left">
+   <span class="inline-block bg-slate-800 border border-slate-700 text-slate-300 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider mb-6">
+    Now Live: Zero-Cost Signup
+   </span>
+   <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight mb-6">
+    Bio-Links, Business Cards <br>
+    <span class="text-brandBlue">& Mini-Pages &mdash; One Link</span>
+   </h1>
+   <p class="text-lg md:text-xl text-slate-400 mb-8 max-w-xl font-light leading-relaxed">
+    Replace paper business cards with smart digital cards that capture leads on tap. Switch between five layouts instantly &mdash; all free.
+   </p>
+   <div class="flex flex-col sm:flex-row items-center md:items-start gap-4">
+    <button onclick="openSignupModal()" class="w-full sm:w-auto bg-brandBlue hover:bg-blue-700 text-white font-semibold px-8 py-3.5 rounded-lg transition text-center shadow-lg shadow-blue-500/20 cursor-pointer text-sm">
+     Get Started Free
+    </button>
+    <a href="#layouts" class="w-full sm:w-auto border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 font-semibold px-8 py-3.5 rounded-lg transition text-center text-sm">
+     See All Layouts
+    </a>
+   </div>
+   <p class="text-xs text-slate-500 mt-4">No credit card required &middot; Free custom domain</p>
+  </div>
+  <!-- Right: Card Preview Stack -->
+  <div class="relative h-[420px] hidden md:block">
+   <!-- Card 1: Bio-Link (front, left) -->
+   <div class="absolute top-0 left-0 w-[220px] bg-white rounded-2xl shadow-2xl p-4 z-30" style="animation: heroFloat 4s ease-in-out infinite;">
+    <div class="flex justify-center mb-2">
+     <div class="w-10 h-10 bg-gradient-to-br from-brandBlue to-purple-500 rounded-full flex items-center justify-center text-white text-base font-bold shadow-md">J</div>
+    </div>
+    <p class="text-center text-[9px] text-slate-500 mb-2 leading-tight">Digital creator &middot; NYC</p>
+    <div class="space-y-1.5">
+     <div class="h-6 bg-slate-100 rounded-lg flex items-center justify-center text-[8px] font-medium text-slate-600 border border-slate-200">&#x1F4F7; Latest Project</div>
+     <div class="h-6 bg-slate-100 rounded-lg flex items-center justify-center text-[8px] font-medium text-slate-600 border border-slate-200">&#x1F4DD; Featured Article</div>
+     <div class="h-6 bg-brandBlue rounded-lg flex items-center justify-center text-[8px] font-bold text-white">&#x1F4E7; Subscribe</div>
+    </div>
+    <div class="flex justify-center gap-2.5 mt-2 text-slate-400 text-xs">&#x1F4F8; &#x1F426; &#x25B6;&#xFE0F;</div>
+   </div>
+   <!-- Card 2: Business Card (right, slightly behind) -->
+   <div class="absolute top-6 right-0 w-[210px] bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl shadow-xl p-4 z-20" style="animation: heroFloat 4s ease-in-out infinite; animation-delay: 1s;">
+    <div class="flex justify-center mb-2">
+     <div class="w-9 h-9 bg-slate-300 rounded-full flex items-center justify-center border-2 border-white shadow-sm text-[7px] text-slate-500">Logo</div>
+    </div>
+    <p class="text-center font-bold text-xs text-slate-800">Sarah Chen</p>
+    <p class="text-center text-[8px] text-slate-500 mb-1.5">CEO, SwiftTech</p>
+    <div class="border-t border-emerald-200 my-1.5"></div>
+    <div class="space-y-1 text-[7px] text-slate-500">
+     <div><span>&#x1F4DE;</span> (555) 123-4567</div>
+     <div><span>&#x2709;&#xFE0F;</span> sarah@swifttech.com</div>
+    </div>
+   </div>
+   <!-- Card 3: Mini-Page (bottom, behind) -->
+   <div class="absolute bottom-0 left-6 w-[240px] bg-slate-800 rounded-2xl shadow-xl overflow-hidden z-10" style="animation: heroFloat 4s ease-in-out infinite; animation-delay: 2s;">
+    <div class="h-12 bg-gradient-to-r from-brandBlue to-purple-600 flex items-center justify-center">
+     <span class="text-[7px] text-white/80 font-semibold">LAUNCH SALE &mdash; 50% OFF</span>
+    </div>
+    <div class="p-3 space-y-1.5">
+     <div class="grid grid-cols-2 gap-1">
+      <div class="h-4 bg-slate-700 rounded text-[6px] flex items-center justify-center text-slate-400">Features</div>
+      <div class="h-4 bg-slate-700 rounded text-[6px] flex items-center justify-center text-slate-400">Benefits</div>
+     </div>
+     <div class="h-5 bg-brandBlue/80 rounded flex items-center justify-center text-[7px] font-bold text-white">Get Started</div>
+    </div>
+   </div>
+  </div>
+ </div>
+ <style>
+  @keyframes heroFloat { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+  @keyframes heroPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.8; } }
+ </style>
+</section></section>
+
+ <!-- TWO LAYOUTS SECTION -->
+ <section id="layouts" class="py-20 px-6 bg-white border-b border-slate-100">
+ <div class="max-w-6xl mx-auto">
+ <div class="text-center max-w-2xl mx-auto mb-16">
+ <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight text-brandDark mb-4">
+ Five Layouts. One Platform.
+ </h2>
+ <p class="text-slate-600">
+ From a digital business card for in-person networking to a bio-link for your Instagram and a mini-page for campaigns — switch instantly. No jumping between tools.
+ </p>
+ </div>
+
+ <div class="grid md:grid-cols-3 gap-8">
+ <!-- Bio-Link Card -->
+ <div class="bg-slate-50 p-8 rounded-2xl border border-slate-100 flex flex-col justify-between">
+ <div>
+ <span class="inline-block bg-brandBlue/10 text-brandBlue text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Option A</span>
+ <h3 class="text-2xl font-bold mb-4 text-brandDark">The Bio-Link</h3>
+ <p class="text-slate-600 mb-6 text-sm leading-relaxed">
+ The classic, universally trusted link-in-bio layout. Features a circular avatar (image or autoplay video), clean centered bio text, stacked quick-action buttons, and centralized social media icons. Works perfectly across every social browser footprint.
+ </p>
+ <div class="bg-white rounded-2xl p-6 border border-slate-200 space-y-4 max-w-[260px] mx-auto my-4 shadow-sm text-center">
+ <div class="w-16 h-16 bg-slate-200 rounded-full mx-auto relative overflow-hidden flex items-center justify-center border-2 border-brandBlue/20">
+ <span class="text-[10px] text-slate-400">Avatar</span>
+ </div>
+ <div class="space-y-1">
+ <div class="h-3 bg-slate-300 rounded w-1/2 mx-auto"></div>
+ <div class="h-2 bg-slate-200 rounded w-2/3 mx-auto"></div>
+ </div>
+ <div class="space-y-2">
+ <div class="h-8 bg-slate-100 rounded-lg w-full flex items-center justify-center text-xs text-slate-500 font-medium border border-slate-200">Featured Article</div>
+ <div class="h-8 bg-slate-100 rounded-lg w-full flex items-center justify-center text-xs text-slate-500 font-medium border border-slate-200">Latest Project</div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Mini-Page Card -->
+ <div class="bg-slate-900 p-8 rounded-2xl border border-slate-800 text-white flex flex-col justify-between shadow-xl">
+ <div>
+ <span class="inline-block bg-brandAccent text-brandDark text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Option B</span>
+ <h3 class="text-2xl font-bold mb-4">The Mini-Page</h3>
+ <p class="text-slate-400 mb-6 text-sm leading-relaxed">
+ A complete section-based landing page experience inside a micro footprint. Features a full-bleed hero backdrop (image or continuous loop video with gradient color blending), dynamic multi-column feature grids, and native lead-capture popup modals. Built entirely from modular, repositionable blocks.
+ </p>
+ <div class="bg-slate-800 rounded-2xl border border-slate-700 max-w-[260px] mx-auto my-4 overflow-hidden shadow-md">
+ <div class="relative h-24 bg-slate-700 flex items-center justify-center">
+ <div class="absolute inset-0 bg-gradient-to-t from-slate-800 to-transparent"></div>
+ <span class="text-[10px] text-slate-300 relative z-10">Hero Video/Image Block</span>
+ </div>
+ <div class="p-4 space-y-3">
+ <div class="h-2 bg-slate-600 rounded w-3/4"></div>
+ <div class="grid grid-cols-2 gap-2">
+ <div class="bg-slate-700 p-2 rounded text-[8px] text-slate-300">Features Grid</div>
+ <div class="bg-slate-700 p-2 rounded text-[8px] text-slate-300">Feature Block</div>
+ </div>
+ <div class="h-6 bg-brandBlue rounded text-[8px] flex items-center justify-center font-bold">Lead Popup Target</div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Digital Business Card -->
+ <div class="bg-gradient-to-br from-emerald-50 to-teal-50 p-8 rounded-2xl border border-emerald-100 flex flex-col justify-between shadow-sm">
+ <div>
+ <span class="inline-block bg-emerald-100 text-emerald-700 text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Option C</span>
+ <h3 class="text-2xl font-bold mb-4 text-brandDark">Digital Business Card</h3>
+ <p class="text-slate-600 mb-6 text-sm leading-relaxed">
+ Replace your paper business card with a smart digital card. Shows your name, title, company logo, phone, email, website, and a personal catchphrase — only the fields you fill in. Perfect for networking events, conferences, and in-person meetups. Tap to save contact or capture a lead instantly.
+ </p>
+ <div class="bg-white rounded-2xl p-6 border border-slate-200 max-w-[260px] mx-auto my-4 shadow-sm">
+ <!-- Avatar -->
+ <div class="flex justify-center mb-3">
+ <div class="w-14 h-14 bg-slate-300 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+ <span class="text-[9px] text-slate-500">Photo</span>
+ </div>
+ </div>
+ <!-- Name & Title -->
+ <div class="text-center mb-3">
+ <div class="h-4 bg-slate-800 rounded w-3/5 mx-auto mb-1.5"></div>
+ <div class="h-2.5 bg-slate-400 rounded w-2/5 mx-auto"></div>
+ </div>
+ <!-- Divider -->
+ <div class="border-t border-slate-200 my-3"></div>
+ <!-- Contact Icons -->
+ <div class="space-y-1.5">
+ <div class="flex items-center gap-2 text-[9px] text-slate-500">
+ <svg class="w-3 h-3 flex-shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+ <span>(555) 123-4567</span>
+ </div>
+ <div class="flex items-center gap-2 text-[9px] text-slate-500">
+ <svg class="w-3 h-3 flex-shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+ <span>john@company.com</span>
+ </div>
+ <div class="flex items-center gap-2 text-[9px] text-slate-500">
+ <svg class="w-3 h-3 flex-shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+ <span>company.com</span>
+ </div>
+ </div>
+ <!-- Catchphrase -->
+ <div class="mt-3 pt-3 border-t border-slate-200">
+ <div class="h-2 bg-slate-300 rounded w-3/4 mx-auto"></div>
+ </div>
+ </div>
+ </div>
+ </div>
+   </div>
+  <!-- Row 2: Mini Funnel + Hero Page -->
+  <div class="grid md:grid-cols-2 gap-8 mt-8">
+   <!-- Mini Funnel Card -->
+   <div class="bg-gradient-to-br from-amber-50 to-orange-50 p-8 rounded-2xl border border-amber-100 flex flex-col justify-between shadow-sm">
+    <div>
+     <span class="inline-block bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Option D</span>
+     <h3 class="text-2xl font-bold mb-4 text-brandDark">Mini Funnel</h3>
+     <p class="text-slate-600 mb-6 text-sm leading-relaxed">
+      A single-product micro-funnel with built-in urgency. Features a hero product image or video, bold headline, scarcity indicators, and a prominent CTA button. Perfect for launches, flash sales, and lead magnets.
+     </p>
+     <div class="bg-white rounded-2xl border border-amber-200 max-w-[280px] mx-auto my-4 overflow-hidden shadow-sm">
+      <div class="h-28 bg-gradient-to-br from-amber-200 to-orange-200 flex items-center justify-center relative">
+       <div class="w-12 h-12 bg-white/80 rounded-lg flex items-center justify-center text-xl shadow-sm">&#x1F4E6;</div>
+       <div class="absolute top-2 right-2 bg-red-500 text-white text-[7px] font-bold px-1.5 py-0.5 rounded-full">LIVE</div>
+      </div>
+      <div class="p-4 space-y-3 text-center">
+       <div>
+        <div class="h-3.5 bg-slate-800 rounded w-3/4 mx-auto mb-1.5"></div>
+        <div class="h-2 bg-slate-300 rounded w-1/2 mx-auto"></div>
+       </div>
+       <div class="flex justify-center gap-1 text-[8px] font-bold text-slate-500">
+        <span class="bg-slate-100 px-1.5 py-0.5 rounded">02d</span>
+        <span class="bg-slate-100 px-1.5 py-0.5 rounded">14h</span>
+        <span class="bg-slate-100 px-1.5 py-0.5 rounded">36m</span>
+       </div>
+       <div class="h-8 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg flex items-center justify-center text-[9px] font-bold text-white">&#x26A0; Claim Offer Now</div>
+      </div>
+     </div>
+    </div>
+   </div>
+   <!-- Hero Page Card -->
+   <div class="bg-gradient-to-br from-purple-50 to-violet-50 p-8 rounded-2xl border border-purple-100 flex flex-col justify-between shadow-sm">
+    <div>
+     <span class="inline-block bg-purple-100 text-purple-700 text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">Option E</span>
+     <h3 class="text-2xl font-bold mb-4 text-brandDark">Hero Page</h3>
+     <p class="text-slate-600 mb-6 text-sm leading-relaxed">
+      A full-screen gradient hero with product carousel, feature highlights, and a bold value proposition. Designed for brand launches, product announcements, and high-traffic campaign pages.
+     </p>
+     <div class="bg-white rounded-2xl border border-purple-200 max-w-[280px] mx-auto my-4 overflow-hidden shadow-sm">
+      <div class="h-20 bg-gradient-to-r from-purple-600 to-violet-600 flex items-center justify-center relative">
+       <span class="text-white font-bold text-xs tracking-wider">Product Launch</span>
+       <div class="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+        <span class="w-1.5 h-1.5 bg-white/40 rounded-full"></span>
+        <span class="w-1.5 h-1.5 bg-white rounded-full"></span>
+        <span class="w-1.5 h-1.5 bg-white/40 rounded-full"></span>
+       </div>
+      </div>
+      <div class="p-4 space-y-3">
+       <div class="h-3.5 bg-slate-800 rounded w-2/3"></div>
+       <div class="h-2 bg-slate-300 rounded w-full"></div>
+       <div class="h-2 bg-slate-300 rounded w-5/6"></div>
+       <div class="flex justify-center gap-1.5 pt-1">
+        <div class="w-6 h-6 bg-slate-200 rounded-md"></div>
+        <div class="w-6 h-6 bg-slate-300 rounded-md"></div>
+        <div class="w-6 h-6 bg-slate-200 rounded-md"></div>
+       </div>
+       <div class="h-7 bg-gradient-to-r from-purple-500 to-violet-500 rounded-lg flex items-center justify-center text-[8px] font-bold text-white">Explore Product &rarr;</div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+</div>
+ </section>
+
+ <!-- TRAFFIC TRACKING (THE KILLER FEATURE) -->
+ <section id="tracking" class="py-20 px-6 bg-slate-50 border-b border-slate-100">
+ <div class="max-w-4xl mx-auto">
+ <div class="text-center mb-12">
+ <span class="text-brandBlue text-xs font-bold uppercase tracking-wider block mb-2">The Killer Feature</span>
+ <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight text-brandDark">Dynamic Source Tracking</h2>
+ <p class="text-slate-600 mt-4 max-w-2xl mx-auto">
+ Know exactly which post, bio link, or campaign drives performance without setting up complex third-party tools. Just add standard routing parameters to your URL.
+ </p>
+ </div>
+
+ <div class="bg-white p-8 rounded-2xl border border-slate-200/60 shadow-sm space-y-6">
+ <p class="text-sm text-slate-500 font-semibold uppercase tracking-wider text-center">How It Resolves</p>
+ <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+ <div class="p-3 bg-slate-50 rounded-lg border border-slate-200"><code class="text-xs font-bold text-brandBlue">?src=ig</code><div class="text-[10px] text-slate-500 mt-1">Instagram</div></div>
+ <div class="p-3 bg-slate-50 rounded-lg border border-slate-200"><code class="text-xs font-bold text-brandBlue">?src=fb</code><div class="text-[10px] text-slate-500 mt-1">Facebook</div></div>
+ <div class="p-3 bg-slate-50 rounded-lg border border-slate-200"><code class="text-xs font-bold text-brandBlue">?src=yt</code><div class="text-[10px] text-slate-500 mt-1">YouTube</div></div>
+ <div class="p-3 bg-slate-50 rounded-lg border border-slate-200"><code class="text-xs font-bold text-brandBlue">?src=tt</code><div class="text-[10px] text-slate-500 mt-1">TikTok</div></div>
+ <div class="p-3 bg-slate-50 rounded-lg border border-slate-200"><code class="text-xs font-bold text-brandBlue">?src=email</code><div class="text-[10px] text-slate-500 mt-1">Email</div></div>
+ </div>
+ <p class="text-sm text-slate-600 text-center leading-relaxed">
+ The analytics system compiles every page hit, link click, and form opt-in under clean, human-readable source handles inside your data control panel. No cryptic codes—just transparent marketing data.
+ </p>
+ </div>
+ </div>
+ </section>
+
+ <!-- VISUAL FEATURES TABLE -->
+ <section id="features" class="py-20 px-6 bg-white">
+ <div class="max-w-4xl mx-auto">
+ <div class="text-center mb-12">
+ <h2 class="text-3xl font-bold tracking-tight text-brandDark mb-4">Visual Component Specs</h2>
+ <p class="text-slate-600">Dynamic UI assets fully customizable through our global variable style system.</p>
+ </div>
+
+ <div class="overflow-x-auto rounded-xl border border-slate-200/60 shadow-sm">
+ <table class="w-full text-left border-collapse bg-white text-sm">
+ <thead>
+ <tr class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider border-b border-slate-200">
+ <th class="py-4 px-6 font-bold">Feature</th>
+ <th class="py-4 px-6 font-bold">Functional Capabilities</th>
+ </tr>
+ </thead>
+ <tbody class="divide-y divide-slate-200 text-slate-700">
+ <tr><td class="py-4 px-6 font-semibold text-brandDark">Hero Image/Video</td><td class="py-4 px-6 text-slate-600">Full-width high-resolution images or auto-play background video.</td></tr>
+ <tr><td class="py-4 px-6 font-semibold text-brandDark">Gradient Overlay</td><td class="py-4 px-6 text-slate-600">Adjustable multi-stop colors with angle control to blend images seamlessly.</td></tr>
+ <tr><td class="py-4 px-6 font-semibold text-brandDark">Custom Colors</td><td class="py-4 px-6 text-slate-600">Direct color assignment for branding, buttons, and borders.</td></tr>
+ <tr><td class="py-4 px-6 font-semibold text-brandDark">Video Avatar</td><td class="py-4 px-6 text-slate-600">Circular video profile thumbnail that loops silently.</td></tr>
+ <tr><td class="py-4 px-6 font-semibold text-brandDark">Lead Modal</td><td class="py-4 px-6 text-slate-600">Popup capture cards on button triggers without page navigation.</td></tr>
+ </tbody>
+ </table>
+ </div>
+ </div>
+ </section>
+
+ <!-- BONUS: WHO IT'S FOR (Use-Case Cards) -->
+<section class="py-20 px-6 bg-slate-50 border-b border-slate-100">
+ <div class="max-w-5xl mx-auto">
+  <div class="text-center mb-12">
+   <span class="text-brandBlue text-xs font-bold uppercase tracking-wider block mb-2">Who It's For</span>
+   <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight text-brandDark mb-4">Built For Real Use Cases</h2>
+   <p class="text-slate-600 max-w-2xl mx-auto">Kinetic Cards works across industries. Here's how different professionals use each layout type.</p>
+  </div>
+  <div class="grid md:grid-cols-3 gap-6">
+   <!-- Use Case 1: Creators -->
+   <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition">
+    <div class="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl flex items-center justify-center text-xl mb-4">&#x1F3A5;</div>
+    <h3 class="text-lg font-bold text-brandDark mb-2">Content Creators &amp; Influencers</h3>
+    <p class="text-sm text-slate-600 mb-4 leading-relaxed">Replace your Linktree with a bio-link that includes a lead capture form. Collect emails, offer digital products, and track which platform drives the most signups.</p>
+    <div class="flex flex-wrap gap-2">
+     <span class="text-[10px] bg-purple-100 text-purple-700 font-semibold px-2.5 py-1 rounded-full">Bio-Link</span>
+     <span class="text-[10px] bg-purple-100 text-purple-700 font-semibold px-2.5 py-1 rounded-full">Mini Page</span>
+    </div>
+   </div>
+   <!-- Use Case 2: Sales Teams -->
+   <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition">
+    <div class="w-12 h-12 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-xl flex items-center justify-center text-xl mb-4">&#x1F91D;</div>
+    <h3 class="text-lg font-bold text-brandDark mb-2">Sales Teams &amp; Networking</h3>
+    <p class="text-sm text-slate-600 mb-4 leading-relaxed">Replace paper business cards with digital cards that save contacts instantly. Tap-to-share at conferences, with automatic lead capture into your CRM. NFC and QR supported.</p>
+    <div class="flex flex-wrap gap-2">
+     <span class="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">Business Card</span>
+     <span class="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">Hero Page</span>
+    </div>
+   </div>
+   <!-- Use Case 3: E-Commerce -->
+   <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition">
+    <div class="w-12 h-12 bg-gradient-to-br from-amber-100 to-amber-200 rounded-xl flex items-center justify-center text-xl mb-4">&#x1F4E6;</div>
+    <h3 class="text-lg font-bold text-brandDark mb-2">E-Commerce &amp; Launches</h3>
+    <p class="text-sm text-slate-600 mb-4 leading-relaxed">Launch products with a mini funnel that includes scarcity countdowns and urgency CTAs. Pair with a hero page for brand announcements and campaign traffic.</p>
+    <div class="flex flex-wrap gap-2">
+     <span class="text-[10px] bg-amber-100 text-amber-700 font-semibold px-2.5 py-1 rounded-full">Mini Funnel</span>
+     <span class="text-[10px] bg-amber-100 text-amber-700 font-semibold px-2.5 py-1 rounded-full">Hero Page</span>
+    </div>
+   </div>
+  </div>
+  <div class="text-center mt-10">
+   <a href="#signup" class="inline-block bg-brandBlue text-white font-semibold px-8 py-3.5 rounded-lg transition shadow-lg hover:bg-blue-700">Start Free &mdash; No Card Required</a>
+  </div>
+ </div>
+</section>
+
+<!-- KEY DIFFERENTIATORS -->
+ <section class="py-20 px-6 bg-slate-900 text-white relative">
+ <div class="max-w-5xl mx-auto">
+ <h2 class="text-3xl font-bold text-center mb-16">Why FunnelSwift Kinetic Changes Everything</h2>
+ <div class="grid md:grid-cols-2 gap-10">
+ <div class="space-y-2"><span class="text-brandAccent font-bold text-lg">01</span><h4 class="text-lg font-bold">Three Layouts, One Link</h4><p class="text-sm text-slate-400 leading-relaxed">Switch between bio-link, digital business card, or mini-page without resetting your tracking URL. All three share one link — no jumping between tools.</p></div>
+ <div class="space-y-2"><span class="text-brandBlue font-bold text-lg">02</span><h4 class="text-lg font-bold">Clean, Actionable Metrics</h4><p class="text-sm text-slate-400 leading-relaxed">Pinpoint high-impact content by tracking views, clicks, and opt-ins from source handles linked to your platforms.</p></div>
+ <div class="space-y-2"><span class="text-brandBlue font-bold text-lg">03</span><h4 class="text-lg font-bold">Digital Business Card Engine</h4><p class="text-sm text-slate-400 leading-relaxed">Replace paper cards with a smart digital card. Name, title, company logo, phone, email, website, and catchphrase — only the fields you fill appear. Blank fields stay hidden.</p></div>
+ <div class="space-y-2"><span class="text-brandAccent font-bold text-lg">04</span><h4 class="text-lg font-bold">Integrated Automations</h4><p class="text-sm text-slate-400 leading-relaxed">Auto-segment leads with tags on form submission, pushing to webhooks and routes.</p></div>
+ </div>
+ </div>
+ </section>
+
+<!-- SECTION 1: Competitive Comparison Chart -->
+<div class="w-full max-w-5xl mx-auto my-16 px-4">
+ <div class="text-center mb-10">
+ <h3 class="text-3xl font-bold tracking-tight text-brandDark">How Kinetic Cards Stack Up</h3>
+ <p class="mt-2 text-lg text-slate-500">Bio-links, digital business cards, and mini-pages — all in one free platform.</p>
+ </div>
+
+ <div class="overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
+ <table class="min-w-full divide-y divide-slate-200 text-left text-sm whitespace-nowrap">
+ <thead class="bg-slate-50">
+ <tr>
+ <th scope="col" class="py-4 px-6 font-semibold text-brandDark">Feature Capabilities</th>
+ <th scope="col" class="py-4 px-6 font-bold text-brandBlue bg-blue-50/50 text-center">Kinetic Cards</th>
+ <th scope="col" class="py-4 px-6 font-semibold text-slate-500 text-center">Linktree</th>
+ <th scope="col" class="py-4 px-6 font-semibold text-slate-500 text-center">Beacons</th>
+ <th scope="col" class="py-4 px-6 font-semibold text-slate-500 text-center">Carrd</th>
+ </tr>
+ </thead>
+ <tbody class="divide-y divide-slate-200 bg-white">
+ <!-- Row 1 -->
+ <tr>
+ <td class="py-4 px-6 font-semibold text-brandDark">Entry Cost</td>
+ <td class="py-4 px-6 text-center text-brandBlue font-bold bg-blue-50/30">Free ($0)</td>
+ <td class="py-4 px-6 text-center text-slate-500">Free / $5+ mo</td>
+ <td class="py-4 px-6 text-center text-slate-500">Free / $10+ mo</td>
+ <td class="py-4 px-6 text-center text-slate-500">From $9/yr</td>
+ </tr>
+ <!-- Row 2 -->
+ <tr>
+ <td class="py-4 px-6 font-medium text-brandDark">Multi-Step Funnels</td>
+ <td class="py-4 px-6 text-center text-brandBlue font-bold bg-blue-50/30">&#10003; Built-In</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; No</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; No</td>
+ <td class="py-4 px-6 text-center text-slate-500">Basic Only</td>
+ </tr>
+ <!-- Row 3 -->
+ <tr>
+ <td class="py-4 px-6 font-medium text-brandDark">Lead Generation CRM</td>
+ <td class="py-4 px-6 text-center text-brandBlue font-bold bg-blue-50/30">&#10003; Native (Unlimited)</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; External Integration</td>
+ <td class="py-4 px-6 text-center text-slate-500">Basic</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; No CRM</td>
+ </tr>
+ <!-- Row 4 -->
+ <tr>
+ <td class="py-4 px-6 font-medium text-brandDark">Custom Domain</td>
+ <td class="py-4 px-6 text-center text-brandBlue font-bold bg-blue-50/30">&#10003; Free Tier</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Paid Only</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Paid Only</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Paid Only</td>
+ </tr>
+ <!-- Row 5 -->
+ <tr>
+ <td class="py-4 px-6 font-medium text-brandDark">Watermark Removal</td>
+ <td class="py-4 px-6 text-center text-brandBlue font-bold bg-blue-50/30">&#10003; Free Tier</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Paid Only</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Paid Only</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Paid Only</td>
+ </tr>
+ <!-- Row 6 -->
+ <tr>
+ <td class="py-4 px-6 font-medium text-brandDark">Automation &amp; Webhooks</td>
+ <td class="py-4 px-6 text-center text-brandBlue font-bold bg-blue-50/30">&#10003; Advanced</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; No</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; Basic Only</td>
+ <td class="py-4 px-6 text-center text-slate-400">&#10007; No</td>
+ </tr>
+ </tbody>
+ </table>
+ </div>
+</div>
+
+<section id="signup" class="py-24 px-6 bg-slate-950 text-white relative">
+ <div class="max-w-md mx-auto">
+ <div class="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl relative z-10 text-center">
+ <h3 class="text-2xl font-bold mb-2">Create Your Free Kinetic Account</h3>
+ <p class="text-xs text-slate-400 mb-2">Launch your bio-link or mini-page in seconds.</p>
+ <p class="text-xs text-slate-500 mb-6">No credit card required</p>
+ <button onclick="openSignupModal()" class="w-full py-3 bg-brandBlue hover:bg-blue-700 text-white font-semibold text-xs rounded-lg transition uppercase tracking-wider cursor-pointer">
+ Create Free Account
+ </button>
+ <p class="text-center text-[10px] text-slate-500 mt-4">Already have one? <a href="https://app.funnelswift.net/login" class="text-brandBlue hover:underline text-[10px]">Log in</a></p>
+ </div>
+ </div>
+ </section>
+
+<!-- SECTION 2: Interactive Accordion FAQ -->
+<div class="w-full max-w-3xl mx-auto my-20 px-4">
+ <div class="text-center mb-10">
+ <h3 class="text-3xl font-bold tracking-tight text-brandDark">Frequently Asked Questions</h3>
+ <p class="mt-2 text-lg text-slate-500">Got questions about Kinetic Cards? We have answers.</p>
+ </div>
+
+ <div class="space-y-4">
+ <!-- FAQ item 1 -->
+ <details class="group border border-slate-200 rounded-lg bg-white p-6 [&_summary::-webkit-details-marker]:hidden" open>
+ <summary class="flex items-center justify-between cursor-pointer focus:outline-none">
+ <h4 class="font-semibold text-brandDark text-lg">What is a Kinetic Card?</h4>
+ <span class="ml-1.5 flex-shrink-0 rounded-full bg-slate-100 p-1.5 text-brandDark group-open:rotate-180 transition-transform duration-200">
+ <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+ <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+ </svg>
+ </span>
+ </summary>
+ <p class="mt-4 leading-relaxed text-slate-600">
+ Unlike standard link-in-bio tools that just give you a static, boring list of buttons, Kinetic Cards are highly interactive elements built to convert. They combine multi-step lead capture, CRM synchronization, and customized automation flows directly inside a beautiful, rapid-loading card interface.
+ </p>
+ </details>
+
+ <!-- FAQ item 2 -->
+ <details class="group border border-slate-200 rounded-lg bg-white p-6 [&_summary::-webkit-details-marker]:hidden">
+ <summary class="flex items-center justify-between cursor-pointer focus:outline-none">
+ <h4 class="font-semibold text-brandDark text-lg">Is it really completely free to join?</h4>
+ <span class="ml-1.5 flex-shrink-0 rounded-full bg-slate-100 p-1.5 text-brandDark group-open:rotate-180 transition-transform duration-200">
+ <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+ <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+ </svg>
+ </span>
+ </summary>
+ <p class="mt-4 leading-relaxed text-slate-600">
+ Yes! Our core entry plan is 100% free with no credit card required to sign up. You can create your account, configure your initial Kinetic Cards, and collect leads instantly. You only choose to upgrade to our premium Kinetic Tier when you need unlimited active funnels, API endpoints, and advanced team features.
+ </p>
+ </details>
+
+ <!-- FAQ item 3 -->
+ <details class="group border border-slate-200 rounded-lg bg-white p-6 [&_summary::-webkit-details-marker]:hidden">
+ <summary class="flex items-center justify-between cursor-pointer focus:outline-none">
+ <h4 class="font-semibold text-brandDark text-lg">How does Kinetic Cards differ from Linktree?</h4>
+ <span class="ml-1.5 flex-shrink-0 rounded-full bg-slate-100 p-1.5 text-brandDark group-open:rotate-180 transition-transform duration-200">
+ <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+ <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+ </svg>
+ </span>
+ </summary>
+ <p class="mt-4 leading-relaxed text-slate-600">
+ Linktree forces you to pay if you want basic features like custom domains or watermark removal. With Kinetic Cards, you get those features completely free. Furthermore, we offer native multi-step funnels, lead capture mechanics, and backend CRM integration directly inside the app, while Linktree functions primarily as an external routing index.
+ </p>
+ </details>
+
+ <!-- FAQ item 4 -->
+ <details class="group border border-slate-200 rounded-lg bg-white p-6 [&_summary::-webkit-details-marker]:hidden">
+ <summary class="flex items-center justify-between cursor-pointer focus:outline-none">
+ <h4 class="font-semibold text-brandDark text-lg">Can I connect my own custom domain?</h4>
+ <span class="ml-1.5 flex-shrink-0 rounded-full bg-slate-100 p-1.5 text-brandDark group-open:rotate-180 transition-transform duration-200">
+ <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+ <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+ </svg>
+ </span>
+ </summary>
+ <p class="mt-4 leading-relaxed text-slate-600">
+ Absolutely. We believe you should always own your web traffic. You can map your custom domains directly to your cards on the free plan, ensuring your branding is clean, cohesive, and professional from day one.
+ </p>
+ </details>
+
+ <!-- FAQ item 5 -->
+ <details class="group border border-slate-200 rounded-lg bg-white p-6 [&_summary::-webkit-details-marker]:hidden">
+ <summary class="flex items-center justify-between cursor-pointer focus:outline-none">
+ <h4 class="font-semibold text-brandDark text-lg">What is a Digital Business Card? How is it different from a bio-link?</h4>
+ <span class="ml-1.5 flex-shrink-0 rounded-full bg-slate-100 p-1.5 text-brandDark group-open:rotate-180 transition-transform duration-200">
+ <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+ <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+ </svg>
+ </span>
+ </summary>
+ <p class="mt-4 leading-relaxed text-slate-600">
+ A digital business card looks and works like a physical business card — but smarter. It displays your name, title, company logo, phone, email, website, and a personal catchphrase in a clean card layout. Perfect for in-person networking: tap to share, the other person saves your contact info, and FunnelSwift captures them as a lead automatically. Unlike a bio-link (which is a list of links) or a mini-page (which is a full landing page), the digital business card is designed to replace the paper card you hand out at events.
+ </p>
+ </details>
+ </div>
+</div>
+
+
+<!-- Footer -->
+ <!-- Bottom CTA Bar: Login + App + Get Connected -->
+ <section class="py-16 px-6 bg-slate-950">
+ <div class="max-w-4xl mx-auto">
+ <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+ <a href="/download-app" class="block bg-slate-900 border border-slate-800 rounded-xl p-6 text-center hover:border-brandBlue/40 transition">
+ <div class="text-3xl mb-3">📱</div>
+ <h4 class="text-white font-semibold text-sm mb-2">Get the Mobile App</h4>
+ <p class="text-slate-400 text-xs">Capture leads on the go. Android APK available now.</p>
+ <span class="inline-block mt-3 text-xs text-brandBlue font-medium">Download App →</span>
+ </a>
+ <a href="/kinetic" class="block bg-slate-900 border border-slate-800 rounded-xl p-6 text-center hover:border-brandBlue/40 transition">
+ <div class="text-3xl mb-3">🃏</div>
+ <h4 class="text-white font-semibold text-sm mb-2">Get Your Kinetic Card</h4>
+ <p class="text-slate-400 text-xs">Free bio-link, digital business card, or mini-page.</p>
+ <span class="inline-block mt-3 text-xs text-brandBlue font-medium">Create Yours →</span>
+ </a>
+ <a href="https://app.funnelswift.net/login" class="block bg-slate-900 border border-slate-800 rounded-xl p-6 text-center hover:border-brandBlue/40 transition">
+ <div class="text-3xl mb-3">🔑</div>
+ <h4 class="text-white font-semibold text-sm mb-2">Log In</h4>
+ <p class="text-slate-400 text-xs">Sign in to manage your cards, leads, and analytics.</p>
+ <span class="inline-block mt-3 text-xs text-brandBlue font-medium">Sign In →</span>
+ </a>
+ </div>
+ </div>
+ </section>
+
+ <footer class="bg-slate-950 text-slate-600 py-12 px-6 border-t border-slate-900">
+ <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+ <div class="flex items-center space-x-2">
+ <div class="w-6 h-6 rounded bg-slate-900 flex items-center justify-center font-bold text-white text-xs">F</div>
+ <span class="text-sm font-bold text-slate-400">FunnelSwift Kinetic</span>
+ </div>
+ <p class="text-xs">&copy; 2026 FunnelSwift Solutions. Built using high-performance web standards. All rights reserved.</p>
+ </div>
+ </footer>
+
+ <!-- Signup Modal -->
+ <div class="modal-overlay" id="signupModal" onclick="if(event.target===this)closeSignupModal()">
+ <div class="modal-box">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+ <h3 style="font-size:18px;font-weight:700">\u26a1 Join Kinetic Free</h3>
+ <button onclick="closeSignupModal()" style="background:none;border:none;color:#64748b;font-size:20px;cursor:pointer">\u2716</button>
+ </div>
+ <form onsubmit="handleSignup(event)">
+ <div style="margin-bottom:14px">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Your Name</label>
+ <input type="text" id="signupName" placeholder="John Smith" required>
+ </div>
+ <div style="margin-bottom:14px">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Work Email</label>
+ <input type="email" id="signupEmail" placeholder="you@company.com" required>
+ </div>
+ <div style="margin-bottom:14px">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Password</label>
+ <input type="password" id="signupPassword" placeholder="At least 6 characters" minlength="6" required>
+ </div>
+ <div class="error-msg" id="signupError">Error message</div>
+ <button type="submit" id="signupBtn" style="width:100%;padding:12px;background:#2563EB;color:white;border:none;border-radius:8px;font-weight:600;font-size:13px;margin-top:8px;cursor:pointer" class="hover:bg-blue-700">
+ <span id="signupBtnText">Create Free Account</span>
+ <span id="signupBtnSpinner" class="spinner" style="display:none"></span>
+ </button>
+ </form>
+ <p style="text-align:center;font-size:10px;color:#64748b;margin-top:12px">
+ By signing up, you agree to our <a href="#" style="color:#2563EB">Terms</a> and <a href="#" style="color:#2563EB">Privacy Policy</a>
+ </p>
+ </div>
+ </div>
+
+ <!-- Schema.org Structured Data -->
+ <script type="application/ld+json">
+ {
+ "@context": "https://schema.org",
+ "@type": "SoftwareApplication",
+ "name": "FunnelSwift Kinetic",
+ "operatingSystem": "All",
+ "applicationCategory": "BusinessApplication",
+ "offers": {
+ "@type": "Offer",
+ "price": "0.00",
+ "priceCurrency": "USD",
+ "description": "Free to join. Optional premium upgrades available inside."
+ }
+ }
+ </script>
+
+ <script>
+ // Read ?ref= from URL for affiliate tracking
+ window._kineticRef = null;
+ (function(){
+  var m = window.location.search.match(/[?&]ref=([^&]+)/);
+  if(m) window._kineticRef = decodeURIComponent(m[1]);
+ })();
+ 
+ const API = window.location.origin + '/api/v1';
+
+ function openSignupModal(){
+ document.getElementById('signupModal').classList.add('active');
+ document.getElementById('signupError').style.display = 'none';
+ document.getElementById('signupBtnText').style.display = 'inline';
+ document.getElementById('signupBtnSpinner').style.display = 'none';
+ document.getElementById('signupBtn').disabled = false;
+ document.getElementById('signupName').focus();
+ }
+
+ function closeSignupModal(){
+ document.getElementById('signupModal').classList.remove('active');
+ }
+
+ function showError(msg){
+ const el = document.getElementById('signupError');
+ el.textContent = msg;
+ el.style.display = 'block';
+ }
+
+ async function handleSignup(e){
+ e.preventDefault();
+ const name = document.getElementById('signupName').value.trim();
+ const email = document.getElementById('signupEmail').value.trim();
+ const password = document.getElementById('signupPassword').value;
+
+ if(!name || !email || !password) return showError('All fields are required.');
+ if(password.length < 6) return showError('Password must be at least 6 characters.');
+
+ document.getElementById('signupBtnText').style.display = 'none';
+ document.getElementById('signupBtnSpinner').style.display = 'inline-block';
+ document.getElementById('signupBtn').disabled = true;
+ document.getElementById('signupError').style.display = 'none';
+
+ try {
+ const res = await fetch(API + '/auth/signup', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ name: name,
+ email: email,
+ password: password,
+ source: 'kinetic-landing',
+ plan: 'kinetic_free',
+ affiliate_code: window._kineticRef || null
+ })
+ });
+
+ const data = await res.json();
+
+ if(!res.ok){
+ throw new Error(data.error || data.message || 'Signup failed');
+ }
+
+ // Store token and redirect to dashboard
+ localStorage.setItem('token', data.token);
+ localStorage.setItem('user', JSON.stringify(data.user));
+ window.location.href = data.redirect || '/dashboard';
+
+ } catch(err) {
+ showError(err.message);
+ document.getElementById('signupBtnText').style.display = 'inline';
+ document.getElementById('signupBtnSpinner').style.display = 'none';
+ document.getElementById('signupBtn').disabled = false;
+ }
+ }
+
+ // Close on Escape key
+ document.addEventListener('keydown', function(e){
+ if(e.key === 'Escape') closeSignupModal();
+ });
+ </script>
+
+</body>
+</html>

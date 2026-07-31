@@ -1,0 +1,69 @@
+<h2 class="section-title">Admin Guide — System Tags &amp; Auto-Provisioning</h2>
+
+<div class="card">
+  <h3>What Are System Tags?</h3>
+  <p>System Tags are special tags that, when assigned to a lead, automatically trigger an action in another Swift app — like creating a free ADASwift account, adding a contact to CoreSwift CRM, or registering a lead in WorkflowSwift.</p>
+  <p>They're different from regular tags. Regular tags just organize your leads. System Tags <strong>do something</strong> when applied.</p>
+</div>
+
+<div class="card">
+  <h3>How It Works</h3>
+  <ol style="padding-left:20px;line-height:2">
+    <li><strong>Lead gets tagged</strong> — A lead in FunnelSwift receives a System Tag (manually or via automation)</li>
+    <li><strong>Webhook fires</strong> — FunnelSwift sends a webhook to the target app with the lead's contact info</li>
+    <li><strong>App provisions</strong> — The target app creates a free account/contact for that lead</li>
+    <li><strong>No duplicates</strong> — If the email already exists, nothing happens</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h3>Creating a System Tag</h3>
+  <p>Go to <strong>Super Admin &gt; Tags &gt; System Tags</strong>. Click <strong>+ New Tag</strong> and fill in:</p>
+  <table class="table">
+    <tr><th>Field</th><th>Description</th><th>Example</th></tr>
+    <tr><td>Tag Name</td><td>Display name</td><td>ADASwift Free</td></tr>
+    <tr><td>Slug</td><td>URL-safe identifier</td><td>adaswift_free</td></tr>
+    <tr><td>Target Software</td><td>Which app this tag triggers</td><td>adaswift</td></tr>
+    <tr><td>Webhook URL</td><td>Override (optional)</td><td>Leave blank</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Available Targets</h3>
+  <table class="table">
+    <tr><th>Value</th><th>App</th><th>What Gets Created</th></tr>
+    <tr><td>adaswift</td><td>ADASwift</td><td>Full ADA widget account (8 pages, free tier) with login credentials + welcome email</td></tr>
+    <tr><td>coreswift</td><td>CoreSwift CRM</td><td>Contact record tagged "Free"</td></tr>
+    <tr><td>workflowswift</td><td>WorkflowSwift</td><td>Client record</td></tr>
+    <tr><td>incentiveswift</td><td>IncentiveSwift</td><td>Contact record</td></tr>
+    <tr><td>missedcall</td><td>MissedCall Respondr</td><td>Contact record</td></tr>
+  </table>
+  <p style="margin-top:8px;color:#64748b;font-size:13px">All automatically provisioned accounts are <strong>free tier (8 pages)</strong>. Only an admin can upgrade to paid tiers.</p>
+</div>
+
+<div class="card">
+  <h3>Managing Tags</h3>
+  <p>From the System Tags table you can:</p>
+  <ul style="padding-left:20px;line-height:1.8">
+    <li><strong>Toggle ON/OFF</strong> — Disable a tag without deleting it. While disabled, no webhooks fire.</li>
+    <li><strong>Delete</strong> — Remove the tag entirely. Won't affect leads already tagged.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>Free Tier Details</h3>
+  <ul style="padding-left:20px;line-height:1.8">
+    <li><strong>Pages:</strong> 8 pages max</li>
+    <li><strong>Profiles:</strong> Visual, Epilepsy, Hearing, Motor, Cognitive</li>
+    <li><strong>Features:</strong> 20 accessibility features</li>
+    <li><strong>Monthly Scan:</strong> 3rd of every month</li>
+    <li><strong>Widget:</strong> Embed code provided in welcome email</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>FAQ</h3>
+  <p><strong>Q: Can a lead upgrade themselves?</strong><br>No. Free-tier accounts can only be upgraded by an admin.</p>
+  <p><strong>Q: What if the webhook fails?</strong><br>The tag still records in FunnelSwift but the target app won't create the account. Re-assign the tag to retry.</p>
+  <p><strong>Q: What happens if I tag a lead that already exists?</strong><br>The webhook detects the duplicate email and returns success without creating a duplicate.</p>
+</div>
