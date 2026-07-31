@@ -169,7 +169,7 @@ pub async fn set_custom_domain(auth: AuthUser, State(state): State<AppState>, Js
 pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>, State(state): State<AppState>) -> impl axum::response::IntoResponse {
     use sqlx::Row;
     let row = sqlx::query(
-        "SELECT id, tenant_id, title, slug, bio, bg_color, accent_color, text_color, sub_color, btn_color, card_type, tagline, meta_description, avatar_url, social_links, theme_slug, video_provider, video_id, is_template, template_category, category, cta_text, created_at, updated_at FROM kinetic_cards WHERE slug = $1 LIMIT 1"
+        "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plans tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or(None);
 
     if row.is_none() {
@@ -177,7 +177,19 @@ pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>,
     }
 
     let r = row.unwrap();
-    let card_type: String = r.try_get("card_type").unwrap_or_default();
+    let template_type: String = r.try_get("template_type").unwrap_or_default();
+    // Branding badge logic:
+    //   white_label=true + tenant.settings.hide_branding_badge → hidden
+    //   Otherwise → always show (free plans forced ON, paid plans can toggle off)
+    let is_white_label: String = r.try_get("white_label").unwrap_or_else(|_| "false".into());
+    let tenant_settings: Option<Value> = r.try_get("tenant_settings").unwrap_or(None);
+    let tenant_hides_badge = is_white_label == "true"
+        && tenant_settings.as_ref()
+            .and_then(|s| s.get("hide_branding_badge"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    let show_branding = !tenant_hides_badge;  // always show unless explicitly hidden
+    let affiliate_code: Option<String> = r.try_get("affiliate_code").unwrap_or(None);
     let title: String = r.try_get("title").unwrap_or_default();
     let bio: String = r.try_get("bio").unwrap_or_default();
     let bg: String = r.try_get("bg_color").unwrap_or_default();
@@ -186,30 +198,41 @@ pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>,
     let avatar: Option<String> = r.try_get("avatar_url").unwrap_or(None);
     let tagline: Option<String> = r.try_get("tagline").unwrap_or(None);
     let meta_desc: Option<String> = r.try_get("meta_description").unwrap_or(None);
-    let social_links: Option<Value> = r.try_get("social_links").unwrap_or(None);
-    let cta_text: Option<String> = r.try_get("cta_text").unwrap_or(None);
     let video_provider: Option<String> = r.try_get("video_provider").unwrap_or(None);
     let video_id: Option<String> = r.try_get("video_id").unwrap_or(None);
+
+    // Dynamic branding badge — "Claim your free {Card Type} →"
+    let (branding_text, branding_url) = if show_branding {
+        let card_label = match template_type.as_str() {
+            "business_card" | "digital_card" => "Digital Business Card",
+            "bio_link" => "Bio Link",
+            "mini_page" => "Mini Page",
+            "mini_funnel" => "Mini Funnel",
+            _ => "Kinetic Card",
+        };
+        let url = if let Some(ref code) = affiliate_code {
+            format!("https://funnelswift.net/kinetic?ref={}", code)
+        } else {
+            "https://funnelswift.net/kinetic".to_string()
+        };
+        (format!("Claim your free {} →", card_label), url)
+    } else {
+        (String::new(), String::new())
+    };
+    let branding_html = if !branding_text.is_empty() {
+        format!("<a href='{}' class='branding-badge'>{}</a>", branding_url, branding_text)
+    } else {
+        String::new()
+    };
 
     let av_html = if let Some(ref a) = avatar { if a.is_empty() { String::new() } else { format!("<img src='{}' class='av' alt='' onerror=\"this.style.display='none'\">", a) } } else { String::new() };
     let tag_html = if let Some(ref t) = tagline { if t.is_empty() { String::new() } else { format!("<p class='tag'>{}</p>", t) } } else { String::new() };
     let bio_html = if !bio.is_empty() { format!("<p class='bio'>{}</p>", bio) } else { String::new() };
-    let cta_html = if let Some(ref c) = cta_text { if c.is_empty() { String::new() } else { format!("<a href='#' class='cta'>{}</a>", c) } } else { String::new() };
+    let cta_html = String::new(); // CTA pulled from layout_blocks by front-end JS
 
     let bg_gradient = format!("radial-gradient(circle at 50% 25%, {}44 0%, {} 70%)", accent, bg);
 
-    let social_html = if let Some(ref sl) = social_links {
-        let mut s = String::from("<div class='socials'>");
-        if let Some(arr) = sl.as_array() {
-            for item in arr {
-                let platform = item["platform"].as_str().unwrap_or("link");
-                let url = item["url"].as_str().unwrap_or("#");
-                s.push_str(&format!("<a href='{}' class='s-icon' target='_blank' rel='noopener'>{}</a>", url, platform));
-            }
-        }
-        s.push_str("</div>");
-        s
-    } else { String::new() };
+    let social_html = String::new(); // social links rendered by front-end JS from layout_blocks
 
     let page_title = if meta_desc.as_ref().map_or(true, |m| m.is_empty()) { title.clone() } else { format!("{} — {}", title, meta_desc.as_ref().unwrap()) };
 
@@ -239,8 +262,8 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 .socials{{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}}
 .s-icon{{display:inline-flex;align-items:center;gap:4px;padding:7px 16px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);border-radius:20px;font-size:12px;color:{text};text-decoration:none;transition:all .2s}}
 .s-icon:hover{{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25)}}
-.badge{{position:absolute;top:16px;right:16px;font-size:10px;padding:4px 10px;border-radius:100px;background:rgba(255,255,255,.08);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);color:{text};opacity:.6;text-decoration:none;z-index:10}}
-.badge:hover{{opacity:1}}
+.branding-badge{{position:absolute;bottom:16px;right:16px;font-size:11px;padding:6px 14px;border-radius:100px;background:rgba(255,255,255,.1);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);color:{text};text-decoration:none;z-index:10;transition:all .2s;font-weight:600;letter-spacing:.3px}}
+.branding-badge:hover{{background:rgba(255,255,255,.18);border-color:{accent};color:{accent};transform:translateY(-1px);box-shadow:0 4px 16px {accent}33}}
 @keyframes fadeIn{{from{{opacity:0;transform:translateY(16px)}}to{{opacity:1;transform:translateY(0)}}}}
 @keyframes pulse-glow{{0%,100%{{box-shadow:0 0 0 4px {accent},0 0 24px {accent}66}}50%{{box-shadow:0 0 0 5px {accent},0 0 36px {accent}88}}}}
 </style>
@@ -250,7 +273,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 <div class="bg"></div>
 <div class="noise"></div>
 <div class="glow"></div>
-<a href="https://funnelswift.net/kinetic" class="badge">Create your card →</a>
+{branding_html}
 <div class="card">
 {av_html}
 <h1>{title}</h1>
@@ -263,7 +286,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 </html>"#, 
         page_title = page_title, meta = meta_desc.unwrap_or_default(), text = text, 
         bg_gradient = bg_gradient, accent = accent, title = title,
-        av_html = av_html, tag_html = tag_html, bio_html = bio_html, cta_html = cta_html, social_html = social_html
+        av_html = av_html, tag_html = tag_html, bio_html = bio_html, cta_html = cta_html, social_html = social_html, branding_html = branding_html
     ))
 }
 pub async fn submit_lead(axum::extract::Path(slug): axum::extract::Path<String>, State(_state): State<AppState>, Json(_body): Json<Value>) -> Json<Value> {
