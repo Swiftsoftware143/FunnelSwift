@@ -1,69 +1,425 @@
-<h2 class="section-title">Admin Guide — System Tags &amp; Auto-Provisioning</h2>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FunnelSwift Admin Guide</title>
+<style>
+  :root {
+    --indigo: #4f46e5; --indigo-light: #6366f1; --indigo-glow: rgba(79, 70, 229, 0.12);
+    --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
+    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-dark); color: var(--text-primary); line-height: 1.7; min-height: 100vh; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-dark); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .app-layout { display: flex; min-height: 100vh; }
 
-<div class="card">
-  <h3>What Are System Tags?</h3>
-  <p>System Tags are special tags that, when assigned to a lead, automatically trigger an action in another Swift app — like creating a free ADASwift account, adding a contact to CoreSwift CRM, or registering a lead in WorkflowSwift.</p>
-  <p>They're different from regular tags. Regular tags just organize your leads. System Tags <strong>do something</strong> when applied.</p>
-</div>
+  .sidebar { width: 260px; background: var(--bg-card); border-right: 1px solid var(--border); position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 100; display: flex; flex-direction: column; }
+  .sidebar-logo { display: flex; align-items: center; gap: 12px; padding: 24px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo .logo-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #f97316, #ef4444); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .sidebar-logo h1 { font-size: 18px; font-weight: 600; }
+  .sidebar-logo p { font-size: 11px; color: var(--text-muted); }
+  .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+  .sidebar-nav .section-title { padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); display: block; text-decoration: none; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--text-secondary); text-decoration: none; transition: all 0.15s; cursor: pointer; }
+  .nav-item:hover { background: var(--border); color: var(--text-primary); }
 
-<div class="card">
-  <h3>How It Works</h3>
-  <ol style="padding-left:20px;line-height:2">
-    <li><strong>Lead gets tagged</strong> — A lead in FunnelSwift receives a System Tag (manually or via automation)</li>
-    <li><strong>Webhook fires</strong> — FunnelSwift sends a webhook to the target app with the lead's contact info</li>
-    <li><strong>App provisions</strong> — The target app creates a free account/contact for that lead</li>
-    <li><strong>No duplicates</strong> — If the email already exists, nothing happens</li>
-  </ol>
-</div>
+  .main-content { margin-left: 260px; flex: 1; }
+  .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar h2 { font-size: 16px; font-weight: 600; }
+  .topbar-badge { background: rgba(249, 115, 22, 0.15); color: #f97316; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .content-area { padding: 32px; max-width: 1100px; }
 
-<div class="card">
-  <h3>Creating a System Tag</h3>
-  <p>Go to <strong>Super Admin &gt; Tags &gt; System Tags</strong>. Click <strong>+ New Tag</strong> and fill in:</p>
-  <table class="table">
-    <tr><th>Field</th><th>Description</th><th>Example</th></tr>
-    <tr><td>Tag Name</td><td>Display name</td><td>ADASwift Free</td></tr>
-    <tr><td>Slug</td><td>URL-safe identifier</td><td>adaswift_free</td></tr>
-    <tr><td>Target Software</td><td>Which app this tag triggers</td><td>adaswift</td></tr>
-    <tr><td>Webhook URL</td><td>Override (optional)</td><td>Leave blank</td></tr>
-  </table>
-</div>
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 22px; font-weight: 700; margin: 40px 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 18px; font-weight: 600; margin: 24px 0 10px; color: var(--indigo-light); }
+  p { margin-bottom: 14px; color: var(--text-secondary); }
+  a { color: var(--indigo-light); text-decoration: none; }
+  .lead { font-size: 17px; color: var(--text-secondary); margin-bottom: 28px; padding: 16px 0; border-bottom: 1px solid var(--border); }
 
-<div class="card">
-  <h3>Available Targets</h3>
-  <table class="table">
-    <tr><th>Value</th><th>App</th><th>What Gets Created</th></tr>
-    <tr><td>adaswift</td><td>ADASwift</td><td>Full ADA widget account (8 pages, free tier) with login credentials + welcome email</td></tr>
-    <tr><td>coreswift</td><td>CoreSwift CRM</td><td>Contact record tagged "Free"</td></tr>
-    <tr><td>workflowswift</td><td>WorkflowSwift</td><td>Client record</td></tr>
-    <tr><td>incentiveswift</td><td>IncentiveSwift</td><td>Contact record</td></tr>
-    <tr><td>missedcall</td><td>MissedCall Respondr</td><td>Contact record</td></tr>
-  </table>
-  <p style="margin-top:8px;color:#64748b;font-size:13px">All automatically provisioned accounts are <strong>free tier (8 pages)</strong>. Only an admin can upgrade to paid tiers.</p>
-</div>
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card h3 { margin-top: 0; }
 
-<div class="card">
-  <h3>Managing Tags</h3>
-  <p>From the System Tags table you can:</p>
-  <ul style="padding-left:20px;line-height:1.8">
-    <li><strong>Toggle ON/OFF</strong> — Disable a tag without deleting it. While disabled, no webhooks fire.</li>
-    <li><strong>Delete</strong> — Remove the tag entirely. Won't affect leads already tagged.</li>
-  </ul>
-</div>
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { background: var(--bg-elevated); font-weight: 600; color: var(--text-primary); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  td { color: var(--text-secondary); }
 
-<div class="card">
-  <h3>Free Tier Details</h3>
-  <ul style="padding-left:20px;line-height:1.8">
-    <li><strong>Pages:</strong> 8 pages max</li>
-    <li><strong>Profiles:</strong> Visual, Epilepsy, Hearing, Motor, Cognitive</li>
-    <li><strong>Features:</strong> 20 accessibility features</li>
-    <li><strong>Monthly Scan:</strong> 3rd of every month</li>
-    <li><strong>Widget:</strong> Embed code provided in welcome email</li>
-  </ul>
-</div>
+  ul, ol { margin: 8px 0 16px 20px; color: var(--text-secondary); }
+  li { margin-bottom: 6px; }
 
-<div class="card">
-  <h3>FAQ</h3>
-  <p><strong>Q: Can a lead upgrade themselves?</strong><br>No. Free-tier accounts can only be upgraded by an admin.</p>
-  <p><strong>Q: What if the webhook fails?</strong><br>The tag still records in FunnelSwift but the target app won't create the account. Re-assign the tag to retry.</p>
-  <p><strong>Q: What happens if I tag a lead that already exists?</strong><br>The webhook detects the duplicate email and returns success without creating a duplicate.</p>
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge-green { background: rgba(34, 197, 94, 0.15); color: #22C55E; }
+  .badge-orange { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+  .badge-indigo { background: var(--indigo-glow); color: var(--indigo-light); }
+
+  pre { background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; overflow-x: auto; font-size: 13px; color: var(--text-secondary); margin: 10px 0; }
+
+  .mobile-menu-btn { display: none; position: fixed; top: 14px; left: 14px; z-index: 200; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 20px; }
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99; }
+
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); transition: transform .2s; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay.open { display: block; }
+    .main-content { margin-left: 0; }
+    .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
+    .content-area { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<button class="mobile-menu-btn" onclick="toggleMobileSidebar()">☰</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">⚙️</div>
+      <div>
+        <h1>FunnelSwift</h1>
+        <p>Admin Guide v2.0</p>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#overview" class="section-title" onclick="closeMobile()">Overview</a>
+      <a href="#overview" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📋</span> Dashboard</a>
+      <a href="#tenants" class="section-title" onclick="closeMobile()">Tenant Management</a>
+      <a href="#tenants" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏢</span> Tenants & Plans</a>
+      <a href="#plans" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">💳</span> Plans</a>
+      <a href="#template-gating" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔒</span> Template Gating</a>
+      <a href="#branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Branding Toggle</a>
+      <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
+      <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Auto-Provisioning</a>
+      <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🤝</span> Affiliates</a>
+      <a href="#kinetic-admin" class="section-title" onclick="closeMobile()">Kinetic Admin</a>
+      <a href="#kinetic-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🃏</span> Manage Templates</a>
+      <a href="#theme-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Manage Themes</a>
+      <a href="#bulk-ops" class="section-title" onclick="closeMobile()">Bulk Operations</a>
+      <a href="#bulk-ops" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🗑️</span> Bulk Delete</a>
+      <a href="#api" class="section-title" onclick="closeMobile()">API Reference</a>
+      <a href="#api" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔌</span> Admin API Endpoints</a>
+      <a href="#faq" class="section-title" onclick="closeMobile()">Support</a>
+      <a href="#faq" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">❓</span> FAQ</a>
+    </nav>
+  </aside>
+  <div class="main-content">
+    <header class="topbar">
+      <h2>FunnelSwift Admin Guide</h2>
+      <span class="topbar-badge">v2.0 &middot; Super Admin Reference</span>
+    </header>
+    <div class="content-area">
+
+      <h1 id="overview">🛡️ FunnelSwift Admin Guide</h1>
+      <p class="lead">Complete reference for Super Admins managing FunnelSwift — tenants, plans, template gating, Kinetic branding, system tags, affiliate management, and bulk operations. Covers everything added in the July 2026 overhaul.</p>
+
+      <!-- ============ DASHBOARD ============ -->
+      <h2 id="tenants">🏢 Tenant & Plan Management</h2>
+      <p>The Super Admin dashboard at <code>/admin</code> provides full control over tenants (workspaces), plans, and feature assignments. You must be logged in as the root super admin.</p>
+
+      <div class="card">
+        <h3>Tenant List</h3>
+        <p>Shows all tenants with their current plan assignment, creation date, and status. You can:</p>
+        <ul>
+          <li><strong>Assign Plan</strong> — Click "Plan" on any tenant row to select a plan from the dropdown</li>
+          <li><strong>View Details</strong> — Click a tenant name to see full info</li>
+          <li><strong>Disable</strong> — Toggle tenant active/inactive</li>
+        </ul>
+      </div>
+
+      <!-- ============ PLANS ============ -->
+      <h2 id="plans">💳 Plans & Feature Toggles</h2>
+      <p>Plans define what each tenant can access. Navigate to <code>/admin/plans</code> to manage them. Each plan has a set of feature toggles stored as JSONB:</p>
+
+      <div class="card">
+        <h3>Plan Features</h3>
+        <table>
+          <tr><th>Feature Key</th><th>Type</th><th>Description</th></tr>
+          <tr><td>max_kinetic_cards</td><td>Number</td><td>How many cards a tenant can create</td></tr>
+          <tr><td>kinetic_custom_colors</td><td>Toggle</td><td>Allow custom accent/bg colors</td></tr>
+          <tr><td>kinetic_video</td><td>Toggle</td><td>Video embeds in cards</td></tr>
+          <tr><td>kinetic_source_tracking</td><td>Toggle</td><td>Track per-source card analytics</td></tr>
+          <tr><td>kinetic_minipage</td><td>Toggle</td><td>Mini Page archetype access</td></tr>
+          <tr><td>kinetic_branding</td><td>Toggle</td><td>Show branding badge on cards</td></tr>
+          <tr><td>kinetic_minifunnel</td><td>Toggle</td><td>Mini Funnel archetype access</td></tr>
+          <tr><td>kinetic_custom_domain</td><td>Toggle</td><td>Use own domain for cards</td></tr>
+          <tr><td>kinetic_analytics</td><td>Toggle</td><td>Insights dashboard</td></tr>
+          <tr><td>kinetic_cta_buttons_max</td><td>Number</td><td>Max CTA buttons (0=none, -1=unlimited)</td></tr>
+          <tr><td>kinetic_social_links_max</td><td>Number</td><td>Max social links (0=none, -1=unlimited)</td></tr>
+          <tr><td>white_label</td><td>Toggle</td><td>Remove all FunnelSwift branding (see below)</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Default Plans</h3>
+        <table>
+          <tr><th>Plan</th><th>Cards</th><th>Templates</th><th>Branding</th><th>White Label</th></tr>
+          <tr><td><strong>Free</strong></td><td>1 card</td><td>8 (4 starters + 4 blanks)</td><td>Always ON</td><td>❌</td></tr>
+          <tr><td><strong>Pro</strong></td><td>500 cards</td><td>All 54 templates</td><td>Toggleable</td><td>❌</td></tr>
+          <tr><td><strong>Enterprise</strong></td><td>9999 cards</td><td>All 54 templates</td><td>Toggleable</td><td>✅</td></tr>
+        </table>
+      </div>
+
+      <!-- ============ TEMPLATE GATING ============ -->
+      <h2 id="template-gating">🔒 Template Gating</h2>
+      <p>Control <strong>which templates</strong> each plan can access. Templates are gated per plan using an <code>allowed_template_ids</code> array on the plans table.</p>
+
+      <div class="card">
+        <h3>How It Works</h3>
+        <ul>
+          <li><strong>NULL</strong> — Plan sees ALL 54 templates (Pro, Enterprise default)</li>
+          <li><strong>Empty array []</strong> — Plan sees ZERO templates (effectively locked)</li>
+          <li><strong>List of IDs</strong> — Plan sees ONLY those specific templates</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>API Endpoints</h3>
+        <pre>GET  /api/v1/admin/plans/:id/templates   — View allowed templates for a plan
+PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
+
+        <h4>Example: Give Free plan 8 templates</h4>
+        <pre>curl -X PUT https://funnelswift.net/api/v1/admin/plans/{plan_id}/templates \
+  -H "Content-Type: application/json" \
+  -d '{"allowed_template_ids":[
+    "starter_biz_card","starter_bio_link",
+    "starter_mini_page","starter_mini_funnel",
+    "blank_biz_card","blank_bio_link",
+    "blank_mini_page","blank_mini_funnel"
+  ]}'</pre>
+
+        <h4>Example: Unlock all templates</h4>
+        <pre>curl -X PUT https://funnelswift.net/api/v1/admin/plans/{plan_id}/templates \
+  -H "Content-Type: application/json" \
+  -d '{"allowed_template_ids":null}'</pre>
+      </div>
+
+      <div class="card">
+        <h3>Template Categories</h3>
+        <table>
+          <tr><th>Category</th><th>Count</th><th>IDs</th><th>Who Gets Them</th></tr>
+          <tr><td><strong>Free Starters</strong></td><td>4</td><td>starter_biz_card, starter_bio_link, starter_mini_page, starter_mini_funnel</td><td>Free tier</td></tr>
+          <tr><td><strong>Blank Canvases</strong></td><td>4</td><td>blank_biz_card, blank_bio_link, blank_mini_page, blank_mini_funnel</td><td>Free tier</td></tr>
+          <tr><td><strong>Bio Links</strong></td><td>6</td><td>link_social_agency, link_podcaster, starter_bio_link, ...</td><td>Paid</td></tr>
+          <tr><td><strong>Business Cards</strong></td><td>19</td><td>biz_executive, biz_realestate, biz_gym_fitness, biz_cleaning_*, ...</td><td>Paid</td></tr>
+          <tr><td><strong>Mini Pages</strong></td><td>11</td><td>page_saas, page_marketing_agency, page_vc_firm, ...</td><td>Paid</td></tr>
+          <tr><td><strong>Mini Funnels</strong></td><td>5</td><td>funnel_course, funnel_product, funnel_lead_magnet, ...</td><td>Paid</td></tr>
+          <tr><td><strong>Hero Pages</strong></td><td>5</td><td>hero_brand, hero_podcast, hero_launch, ...</td><td>Paid</td></tr>
+        </table>
+      </div>
+
+      <!-- ============ BRANDING TOGGLE ============ -->
+      <h2 id="branding">🏷️ Branding Badge Toggle</h2>
+      <p>The branded badge ("Claim your free Digital Business Card →") appears on every public card page unless the tenant turns it off.</p>
+
+      <div class="card">
+        <h3>Rules</h3>
+        <ul>
+          <li><strong>Free plan:</strong> Branding badge is always shown — cannot be hidden</li>
+          <li><strong>Paid plans (Pro, Enterprise):</strong> Tenant can toggle branding badge OFF in their settings</li>
+          <li><strong>Affiliate link:</strong> If tenant has an <code>affiliate_code</code>, the badge URL includes <code>?ref={code}</code> — tracking clicks through their affiliate account</li>
+          <li><strong>Card type aware:</strong> Badge text changes automatically: "Digital Business Card", "Bio Link", "Mini Page", "Mini Funnel"</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Tenant Toggle (for paid plans)</h3>
+        <p>Tenants can hide branding by setting a flag in their workspace settings:</p>
+        <pre>// Tenant Settings JSON
+{
+  "hide_branding_badge": true
+}</pre>
+        <p>When <code>true</code> and on a paid plan, the branding badge disappears. Affiliates who want referral clicks should leave this OFF.</p>
+      </div>
+
+      <div class="card">
+        <h3>Why Keep Branding On?</h3>
+        <p>Paid tenants who are also affiliates benefit from keeping branding ON — the badge links to <code>funnelswift.net/kinetic?ref={their_code}</code>, giving them referral credit for every signup that comes through their card.</p>
+      </div>
+
+      <!-- ============ SYSTEM TAGS ============ -->
+      <h2 id="system-tags">🏷️ System Tags & Auto-Provisioning</h2>
+
+      <div class="card">
+        <h3>What Are System Tags?</h3>
+        <p>System Tags automatically trigger actions in other Swift apps when assigned to a lead — creating accounts, adding contacts, or registering clients. They <strong>do something</strong>, unlike regular tags which just organize.</p>
+      </div>
+
+      <div class="card">
+        <h3>Available Targets</h3>
+        <table>
+          <tr><th>Value</th><th>App</th><th>What Gets Created</th></tr>
+          <tr><td>adaswift</td><td>ADASwift</td><td>Full ADA widget account (free tier) with login + welcome email</td></tr>
+          <tr><td>coreswift</td><td>CoreSwift CRM</td><td>Contact record tagged "Free"</td></tr>
+          <tr><td>workflowswift</td><td>WorkflowSwift</td><td>Client record</td></tr>
+          <tr><td>incentiveswift</td><td>IncentiveSwift</td><td>Contact record</td></tr>
+          <tr><td>missedcall</td><td>MissedCall Respondr</td><td>Contact record</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>How It Works</h3>
+        <ol>
+          <li><strong>Lead gets tagged</strong> — Manually or via automation, a System Tag is applied</li>
+          <li><strong>Webhook fires</strong> — FunnelSwift sends lead data to the target app</li>
+          <li><strong>App provisions</strong> — Target app creates free account/contact for that lead</li>
+          <li><strong>No duplicates</strong> — Existing emails are detected and skipped</li>
+        </ol>
+      </div>
+
+      <!-- ============ AFFILIATES ============ -->
+      <h2 id="affiliates">🤝 Affiliate Management</h2>
+
+      <div class="card">
+        <h3>Affiliate Products</h3>
+        <p>Define products that affiliates can promote. Each product has a name, description, price, commission rate, and optional tracking URL. Products are available to all affiliates in their portal.</p>
+      </div>
+
+      <div class="card">
+        <h3>Affiliate Tiers</h3>
+        <p>Create commission tiers (Bronze, Silver, Gold, etc.) with different rates and minimum payout thresholds. Tiers determine what percentage affiliates earn and when they get paid.</p>
+      </div>
+
+      <div class="card">
+        <h3>Affiliate Portal</h3>
+        <p>Affiliates log in at <code>/affiliate</code> to view their dashboard, track clicks/conversions, see earnings, and get their referral links. The portal shows real-time stats and payout history.</p>
+      </div>
+
+      <!-- ============ KINETIC ADMIN ============ -->
+      <h2 id="kinetic-admin">🃏 Kinetic Template Management</h2>
+
+      <div class="card">
+        <h3>Template Library</h3>
+        <p>54 templates are served from <code>/api/v1/kinetic/templates</code> across 5 archetypes and dozens of industry niches. Templates are defined in <code>src/handlers/theme_endpoint.rs</code> and deployed as part of the binary.</p>
+        <p>Each template contains:</p>
+        <ul>
+          <li><strong>layout_blocks</strong> — The UI structure (avatar, title, CTA, services, reviews, etc.)</li>
+          <li><strong>theme_key</strong> — Which theme to use (cyber_dark, ghost_white, ocean, forest, sunset, ruby, midnight, arctic)</li>
+          <li><strong>gradient</strong> — CSS gradient string for the background</li>
+          <li><strong>preview_colors</strong> — 3-color palette for the gallery thumbnail</li>
+          <li><strong>niche</strong> — Industry/trade classification</li>
+        </ul>
+      </div>
+
+      <!-- ============ THEMES ============ -->
+      <h2 id="theme-admin">🎨 Theme Management</h2>
+
+      <div class="card">
+        <h3>8 Visual Themes</h3>
+        <table>
+          <tr><th>Theme</th><th>Key</th><th>Vibe</th></tr>
+          <tr><td>Cyber Dark</td><td>cyber_dark</td><td>Purple/black, neon glow, futuristic</td></tr>
+          <tr><td>Ghost White</td><td>ghost_white</td><td>Clean white, glassmorphic, soft shadows</td></tr>
+          <tr><td>Ocean</td><td>ocean</td><td>Blue/teal gradient, calm professional</td></tr>
+          <tr><td>Forest</td><td>forest</td><td>Green emerald, organic/natural</td></tr>
+          <tr><td>Sunset</td><td>sunset</td><td>Orange/amber, warm and energetic</td></tr>
+          <tr><td>Ruby</td><td>ruby</td><td>Red/crimson, bold and passionate</td></tr>
+          <tr><td>Midnight</td><td>midnight</td><td>Deep indigo, sophisticated dark</td></tr>
+          <tr><td>Arctic</td><td>arctic</td><td>Ice blue, cold and crisp</td></tr>
+        </table>
+        <p>Themes provide complete CSS tokens: backdrop_filter, accent_glow, border, card_shadow, and full gradient backgrounds.</p>
+      </div>
+
+      <!-- ============ BULK OPS ============ -->
+      <h2 id="bulk-ops">🗑️ Bulk Operations</h2>
+
+      <div class="card">
+        <h3>Bulk Delete Endpoints</h3>
+        <pre>POST /api/v1/bulk/leads        — Delete multiple leads by ID array
+POST /api/v1/bulk/affiliates   — Delete multiple affiliates
+POST /api/v1/bulk/users        — Delete multiple users
+POST /api/v1/bulk/products     — Delete multiple products</pre>
+        <p>Each accepts: <code>{"ids": ["uuid1", "uuid2", ...]}</code>. Returns count of deleted records.</p>
+      </div>
+
+      <!-- ============ API ============ -->
+      <h2 id="api">🔌 Admin API Reference</h2>
+
+      <div class="card">
+        <h3>Plan Management</h3>
+        <table>
+          <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+          <tr><td>GET</td><td>/api/v1/admin/plans</td><td>List all plans</td></tr>
+          <tr><td>POST</td><td>/api/v1/admin/plans</td><td>Create a plan</td></tr>
+          <tr><td>PUT</td><td>/api/v1/admin/plans/:id/features</td><td>Update plan features</td></tr>
+          <tr><td>POST</td><td>/api/v1/admin/plans/assign</td><td>Assign plan to tenant</td></tr>
+          <tr><td>GET</td><td>/api/v1/admin/plans/:id/templates</td><td>View allowed templates</td></tr>
+          <tr><td>PUT</td><td>/api/v1/admin/plans/:id/templates</td><td>Set allowed templates</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Template & Theme</h3>
+        <table>
+          <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+          <tr><td>GET</td><td>/api/v1/kinetic/templates</td><td>All 54 templates</td></tr>
+          <tr><td>GET</td><td>/api/v1/kinetic/themes</td><td>All 8 themes</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Card Routes (Public)</h3>
+        <table>
+          <tr><th>Route</th><th>Archetype</th></tr>
+          <tr><td>/k/:slug</td><td>Kinetic Card (any type)</td></tr>
+          <tr><td>/b/:slug</td><td>Bio Link</td></tr>
+          <tr><td>/c/:slug</td><td>Business Card</td></tr>
+          <tr><td>/m/:slug</td><td>Mini Page</td></tr>
+          <tr><td>/f/:slug</td><td>Mini Funnel</td></tr>
+          <tr><td>/h/:slug</td><td>Hero Page</td></tr>
+          <tr><td>/thank/:slug</td><td>Thank You / Post-CTA page</td></tr>
+        </table>
+      </div>
+
+      <!-- ============ FAQ ============ -->
+      <h2 id="faq">❓ FAQ</h2>
+
+      <div class="card">
+        <h3>Q: How do I add new templates?</h3>
+        <p>Edit <code>src/handlers/theme_endpoint.rs</code> and add a new JSON object to the template array. Follow the existing schema for <code>layout_blocks</code>. Deploy with <code>cargo build --release</code> and <code>systemctl restart funnelswift</code>.</p>
+      </div>
+
+      <div class="card">
+        <h3>Q: Can a Free plan user see paid templates?</h3>
+        <p>No. The template picker filters based on <code>allowed_template_ids</code>. Free plan users only see the 8 templates assigned to them. The API respects this gating.</p>
+      </div>
+
+      <div class="card">
+        <h3>Q: How does the branding badge know what card type to show?</h3>
+        <p>The <code>render_card</code> handler reads <code>template_type</code> from the database and maps it to a human label: "Digital Business Card", "Bio Link", "Mini Page", or "Mini Funnel". It also checks the tenant's plan for white_label status and whether they've toggled hiding.</p>
+      </div>
+
+      <div class="card">
+        <h3>Q: What if the webhook fails?</h3>
+        <p>The tag still records in FunnelSwift but the target app won't create the account. Re-assign the tag to retry.</p>
+      </div>
+
+      <div class="card">
+        <h3>Q: Where are the guides hosted?</h3>
+        <ul>
+          <li>User Guide: <code>funnelswift.net/guide</code></li>
+          <li>Admin Guide: <code>funnelswift.net/guide-admin</code></li>
+          <li>Also available at <code>/opt/swift/funnelswift/www/guide.html</code> and <code>guide-admin.html</code></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
 </div>
+<script>
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+function closeMobile() {
+  if (window.innerWidth <= 900) {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+  }
+}
+</script>
+</body>
+</html>

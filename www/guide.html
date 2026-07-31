@@ -149,7 +149,7 @@
       <div class="logo-icon">🔁</div>
       <div>
         <h1>FunnelSwift</h1>
-        <p>User Guide v2.1</p>
+        <p>User Guide v3.0</p>
       </div>
     </div>
     <nav class="sidebar-nav">
@@ -167,6 +167,7 @@
       <a href="#kinetic-minifunnel" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎯</span> Mini Funnel</a>
       <a href="#kinetic-analytics" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📈</span> Insights</a>
       <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
+      <a href="#branding-badge" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Branding Badge</a>
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
@@ -182,7 +183,7 @@
   <div class="main-content">
     <header class="topbar">
       <h2>FunnelSwift User Guide</h2>
-      <span class="topbar-badge">v2.1 &middot; Lead Gen, Kinetic Cards &amp; Affiliates</span>
+      <span class="topbar-badge">v3.0 &middot; Lead Gen, Kinetic Cards &amp; Affiliates</span>
     </header>
     <div class="content-area">
       <h1 id="introduction">FunnelSwift User Guide</h1>
@@ -270,9 +271,9 @@
       <h3>Creating a Kinetic Card</h3>
       <ol class="step-list">
         <li><strong>Navigate to Kinetic Cards</strong><p>From the sidebar, click <strong>Cards</strong> under the main navigation.</p></li>
-        <li><strong>Choose a Template</strong><p>Click "+ New Card". Select from templates: biolink, Digital Business Card, Mini Funnel, Hero Page, or Mini Page. You can also start from scratch.</p></li>
+        <li><strong>Choose a Template</strong><p>Click "+ New Card". Choose from 54 templates across 5 archetypes — Bio Link, Business Card, Mini Page, Mini Funnel, or Hero. Or build from scratch with a blank canvas.</p></li>
         <li><strong>Configure Content</strong><p>Fill in your content fields — name, description, image/logo URL, buttons, social links, lead form fields — depending on the template.</p></li>
-        <li><strong>Choose a Theme</strong><p>Select a color theme (Clean, Bold, Dark, Minimal) or use your brand colors. The card renders instantly with the chosen theme.</p></li>
+        <li><strong>Choose a Theme</strong><p>Pick from 8 visual themes — Cyber Dark, Ghost White, Ocean, Forest, Sunset, Ruby, Midnight, or Arctic. Each theme sets the card's color palette, fonts, and visual identity.</p></li>
         <li><strong>Set Your Slug</strong><p>Give your card a unique slug (e.g. "my-link"). It will be available at <code>https://funnelswift.net/k/my-link</code>.</p></li>
         <li><strong>Save &amp; Share</strong><p>Save the card. Share the URL, print a QR code, or embed it anywhere. The card is live immediately.</p></li>
       </ol>
@@ -287,76 +288,96 @@
           <tr><td>Buttons</td><td>List of CTA buttons with labels, URLs, and optional icons</td></tr>
           <tr><td>Lead Form</td><td>Inline lead capture form with configurable fields (name, email, phone, message)</td></tr>
           <tr><td>Social Icons</td><td>Social media profile links with platform icons</td></tr>
-          <tr><td>Mini Funnel</td><td>Product image + CTA — the affiliate bridge block</td></tr>
+          <tr><td>Mini Funnel</td><td>Product image/video + CTA — the affiliate bridge block</td></tr>
           <tr><td>QR Code</td><td>Embed a QR code that links to the card or any URL</td></tr>
         </tbody>
       </table>
 
-      <h2 id="kinetic-templates">📐 Card Templates</h2>
+      <h2 id="kinetic-templates">📐 Template Library</h2>
+      <p>FunnelSwift ships with <strong>54 pre-built templates</strong> organized across <strong>5 archetypes</strong>, each available in <strong>8 visual themes</strong>. Whether you're a real estate agent, musician, fitness coach, restaurant owner, or consultant — there's a template built for your industry.</p>
 
+      <h3>Five Card Archetypes</h3>
       <div class="template-grid">
         <div class="tmpl-card">
           <span class="tmpl-icon">🔗</span>
-          <h4>Biolink</h4>
-          <p>Avatar + bio + CTA buttons + social links — link-in-bio classic</p>
-          <span class="badge badge-indigo tmpl-badge">Popular</span>
+          <h4>Bio Link</h4>
+          <p>Avatar + bio + CTA buttons + social links — your personal hub-in-bio</p>
+          <span class="badge badge-indigo tmpl-badge">Most Popular</span>
         </div>
         <div class="tmpl-card">
           <span class="tmpl-icon">💳</span>
-          <h4>Digital Business Card</h4>
-          <p>Virtual contact card — name, title, company, phone, email</p>
-        </div>
-        <div class="tmpl-card">
-          <span class="tmpl-icon">🎯</span>
-          <h4>Mini Funnel</h4>
-          <p>Affiliate bridge — product image/video + CTA button</p>
-          <span class="badge badge-green tmpl-badge">New 🆕</span>
+          <h4>Business Card</h4>
+          <p>Digital contact card — name, title, company, phone, email, socials</p>
+          <span class="badge badge-indigo tmpl-badge">Essential</span>
         </div>
         <div class="tmpl-card">
           <span class="tmpl-icon">📄</span>
           <h4>Mini Page</h4>
           <p>Compact landing with hero + feature grid + lead form</p>
+          <span class="badge badge-blue tmpl-badge">Landing Page</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🎯</span>
+          <h4>Mini Funnel</h4>
+          <p>Affiliate bridge — product image/video + strong CTA</p>
+          <span class="badge badge-green tmpl-badge">Affiliate Focus</span>
         </div>
         <div class="tmpl-card">
           <span class="tmpl-icon">🎨</span>
-          <h4>Hero Page</h4>
-          <p>Full-screen hero for product launches & influencer storefronts</p>
-          <span class="badge badge-blue tmpl-badge">New</span>
+          <h4>Hero</h4>
+          <p>Full-screen immersive landing for launches & storefronts</p>
+          <span class="badge badge-orange tmpl-badge">Flagship</span>
         </div>
       </div>
 
-      <h3>🔗 Biolink Template</h3>
-      <p>The most popular Kinetic template. Create a biolink page with your avatar, name, bio, a list of CTA buttons, and social icons. Perfect for Instagram bios, email signatures, and podcast show notes.</p>
+      <h3>Eight Visual Themes</h3>
+      <p>Every template can be styled with any of these 8 themes — each theme defines the card's color palette, typography, gradient, and visual identity:</p>
+      <table>
+        <thead><tr><th>Theme</th><th>Vibe</th><th>Best For</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Cyber Dark</strong></td><td>Dark, neon-accent, futuristic</td><td>Tech, SaaS, gaming, crypto</td></tr>
+          <tr><td><strong>Ghost White</strong></td><td>Clean white, minimal, modern</td><td>Consulting, corporate, legal</td></tr>
+          <tr><td><strong>Ocean</strong></td><td>Cool blues, calm, professional</td><td>Finance, healthcare, education</td></tr>
+          <tr><td><strong>Forest</strong></td><td>Earthy greens, grounded, natural</td><td>Wellness, eco, outdoor, agriculture</td></tr>
+          <tr><td><strong>Sunset</strong></td><td>Warm oranges/golds, vibrant, energetic</td><td>Fitness, hospitality, food, events</td></tr>
+          <tr><td><strong>Ruby</strong></td><td>Bold reds, passionate, attention-grabbing</td><td>Sales, promotions, entertainment</td></tr>
+          <tr><td><strong>Midnight</strong></td><td>Deep navy/dark blue, elegant, premium</td><td>Luxury, real estate, law firms</td></tr>
+          <tr><td><strong>Arctic</strong></td><td>Icy whites/blues, crisp, minimalist</td><td>Design, photography, architecture</td></tr>
+        </tbody>
+      </table>
 
-      <h3>💳 Digital Business Card Template</h3>
-      <p>Replace paper business cards with a digital version. Displays name, title, company, phone number, email, website, and socials. Share via QR code or NFC. The card updates instantly if your info changes.</p>
-
-      <h3>📄 Mini Page Template</h3>
-      <p>A compact, section-based landing page with a hero backdrop, feature grid, and native lead capture form. Think of it as a single-page micro-site — lightweight, fast-loading, and focused on one goal.</p>
+      <h3>Template Gallery — Industry-Specific Designs</h3>
+      <p>The template library includes industry-specific variations for each archetype. Examples include:</p>
       <ul>
-        <li><strong>Hero backdrop</strong> — Full-bleed image or gradient background with headline + subtitle</li>
-        <li><strong>Feature grid</strong> — Multi-column grid of feature blocks with icons, titles, and descriptions</li>
-        <li><strong>Lead capture form</strong> — Native inline form collects name + email before the CTA</li>
-        <li><strong>Modular blocks</strong> — Drag-and-drop layout: hero, features, lead form, buttons</li>
-        <li><strong>Mobile-first</strong> — Optimized for mobile traffic from social and ads</li>
+        <li><strong>Real Estate Agent</strong> — Business Card with property showcase, Bio Link with listing links</li>
+        <li><strong>Musician / Artist</strong> — Hero page for album drops, Bio Link for streaming platforms</li>
+        <li><strong>Fitness Coach</strong> — Mini Page with program tiers, Mini Funnel for challenge sign-ups</li>
+        <li><strong>Restaurant / Café</strong> — Bio Link with menu + reservation, Mini Funnel for catering</li>
+        <li><strong>Consultant / Coach</strong> — Business Card + booking, Mini Page for service packages</li>
+        <li><strong>E-commerce / Creator</strong> — Hero page for product drops, Mini Funnel for limited offers</li>
+        <li><strong>Healthcare / Clinic</strong> — Business Card with appointment booking, Bio Link with services</li>
+        <li><strong>Event / Wedding</strong> — Mini Page for RSVPs, Bio Link for gift registry</li>
       </ul>
-      <p><strong>Best for:</strong> Campaign landing pages, event registration, simple product promos, lead gen offers. Use when you need more than a link-in-bio but less than a full Hero Page.</p>
+      <p>Simply choose your archetype, pick an industry template, apply a theme, and your card is ready.</p>
+
+      <h3>Build from Scratch</h3>
+      <p>Prefer to start from a blank canvas? Each archetype has a <strong>Build from Scratch</strong> option — four blank canvases (one per archetype: Bio Link, Business Card, Mini Page, Mini Funnel) that let you assemble layout blocks from the ground up.</p>
       <div class="alert alert-info">
-        <strong>Mini Page vs Biolink:</strong> A Biolink is just avatar + bio + buttons + socials. A Mini Page adds a full hero section, feature grid, and lead form — giving you a real landing page experience in a micro footprint.
+        <strong>Blank canvases:</strong> Build from Scratch cards start with zero pre-populated content. Add only the layout blocks you need — hero, bio, buttons, lead form, socials, QR code, mini funnel block — in any order. Every blank canvas is available on all plans (free, pro, and enterprise).
       </div>
 
-      <h3>🎨 Hero Page Template</h3>
-      <p>Full-screen blended background landing page designed for product launches, influencer storefronts, and brand showcases. Rivals platforms like Big Cartel and Shopify for creators — but lighter, faster, and free to start.</p>
-      <ul>
-        <li><strong>Background image or video</strong> — Full-width hero with image, MP4 video, or gradient overlay</li>
-        <li><strong>Gradient overlay</strong> — Custom multi-stop blend colors with angle control</li>
-        <li><strong>Product carousel</strong> — Swipeable CSS scroll-snap carousel for showcasing multiple products</li>
-        <li><strong>Embedded video</strong> — YouTube/Vimeo embeds or MP4 background for product demos</li>
-        <li><strong>Direct "Buy Now" product links</strong> — Stack CTA buttons with custom labels going to any checkout or affiliate URL</li>
-        <li><strong>Lead capture form</strong> — Native form + modal for collecting emails before/after purchase</li>
-        <li><strong>Below hero sections</strong> — Add features grid, testimonial, pricing, or more content blocks</li>
-      </ul>
-      <p><strong>Best for:</strong> Influencers selling merchandise, music/album launches, product drops, brand landing pages, portfolio showcases. The Hero Page is designed to compete with Big Cartel — influencers get a full storefront experience with zero monthly fees, instant SSR-cached load times, and built-in lead capture that auto-syncs to FunnelSwift CRM.</p>
+      <h3>Template Gating by Plan</h3>
+      <table>
+        <thead><tr><th>Plan</th><th>Templates Available</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Free</strong></td><td><span class="badge badge-orange">8</span></td><td>4 industry starter templates + 4 blank canvases (Build from Scratch)</td></tr>
+          <tr><td><strong>Pro</strong></td><td><span class="badge badge-green">54</span></td><td>Full template library — all 5 archetypes, all industry variants, all 8 themes</td></tr>
+          <tr><td><strong>Enterprise</strong></td><td><span class="badge badge-indigo">54 + White Label</span></td><td>Full library plus white label toggle — hide FunnelSwift branding entirely</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-warning">
+        <strong>Free plan starter templates:</strong> Free users get one curated starter template per archetype (the most popular industry design — e.g. Bio Link for creators, Digital Business Card for consultants, Mini Page for coaches, Mini Funnel for affiliate promotions) plus all 4 blank canvases. Upgrade to Pro or Enterprise to unlock the full 54-template library.
+      </div>
 
       <h2 id="kinetic-minifunnel">🎯 Mini Funnel Template</h2>
       <p>The Mini Funnel template is designed specifically for affiliate marketing and product promotions. Create a focused bridge page between a traffic source (social media, ad, QR code) and your offer.</p>
@@ -365,13 +386,13 @@
       <ul>
         <li><strong>Product Showcase</strong> — Display a product image (or video embed) with title and subtitle</li>
         <li><strong>Strong CTA</strong> — Large call-to-action button with custom text and URL</li>
-        <li><strong>4 Themes</strong> — Clean (light, professional), Bold (vibrant, high-contrast), Dark (sleek), Minimal (ultra-clean)</li>
+        <li><strong>8 Themes</strong> — Cyber Dark, Ghost White, Ocean, Forest, Sunset, Ruby, Midnight, Arctic</li>
         <li><strong>Mobile-First</strong> — Optimized for mobile traffic from social media and ads</li>
         <li><strong>Lead Capture</strong> — Optional embedded form before the CTA</li>
       </ul>
 
       <div class="alert alert-warning">
-        <strong>Use case:</strong> Mini Funnels are ideal for Facebook/Instagram ads, influencer shoutouts, and QR code campaigns. Instead of sending traffic to a generic landing page, create a branded bridge page that leads to your offer. The 4 themes help match your ad creative.
+        <strong>Use case:</strong> Mini Funnels are ideal for Facebook/Instagram ads, influencer shoutouts, and QR code campaigns. Instead of sending traffic to a generic landing page, create a branded bridge page that leads to your offer. Choose from 8 themes to perfectly match your ad creative or brand aesthetic.
       </div>
 
       <h3>Setting Up a Mini Funnel</h3>
@@ -380,7 +401,7 @@
         <li><strong>Product Image or Video</strong><p>Upload a product image URL or paste a video embed URL (YouTube/Vimeo). One or the other — pick what converts best.</p></li>
         <li><strong>Write Copy</strong><p>Add a compelling title and subtitle that drives the visitor to click the CTA.</p></li>
         <li><strong>Set CTA</strong><p>Enter the button text (e.g. "Get My Free Trial", "Claim Discount") and the destination URL.</p></li>
-        <li><strong>Pick Theme</strong><p>Choose from Clean, Bold, Dark, or Minimal — whichever matches your brand or ad creative.</p></li>
+        <li><strong>Pick Theme</strong><p>Choose from 8 themes — Cyber Dark (tech/gaming), Ghost White (corporate), Ocean (finance/healthcare), Forest (wellness/eco), Sunset (fitness/food), Ruby (sales/promos), Midnight (luxury), or Arctic (design/photo).</p></li>
         <li><strong>Enable Lead Form</strong><p>Optionally add a name + email form before the CTA to capture leads before the click.</p></li>
         <li><strong>Publish</strong><p>Save and share. Your Mini Funnel is live at <code>/k/YOUR-SLUG</code>.</p></li>
       </ol>
@@ -423,6 +444,36 @@
       <p>For programmatic generation, use the QR code API endpoint:</p>
       <pre><code>GET /api/v1/kinetic/qr/{slug}?format=svg&size=300
 GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
+
+      <!-- ==================== BRANDING & AFFILIATE BADGE ==================== -->
+      <h2 id="branding-badge">🏷️ Branding &amp; Affiliate Badge</h2>
+      <p>FunnelSwift displays a subtle branding badge at the bottom of every Kinetic Card page. This badge is dynamic — it adapts based on your plan, card type, and whether you are an affiliate partner.</p>
+
+      <h3>How the Badge Works</h3>
+      <ul>
+        <li><strong>Free plan</strong> — All card pages display a branding badge at the bottom: <em>"Claim your free [Card Type] →"</em> where the card type is auto-detected.</li>
+        <li><strong>Paid plans (Pro &amp; Enterprise)</strong> — You can toggle the branding badge <strong>on or off</strong> from card settings. When off, your card pages are clean with no FunnelSwift footer.</li>
+        <li><strong>Enterprise with White Label</strong> — The badge toggle is available, plus additional white label controls to remove all FunnelSwift references (favicon, meta tags, etc.).</li>
+      </ul>
+
+      <h3>Auto-Detected Card Types</h3>
+      <p>The badge message automatically detects your card's archetype and displays one of these labels:</p>
+      <table>
+        <thead><tr><th>Archetype</th><th>Badge Text</th></tr></thead>
+        <tbody>
+          <tr><td>Bio Link</td><td>Claim your free <strong>Bio Link</strong> →</td></tr>
+          <tr><td>Business Card</td><td>Claim your free <strong>Digital Business Card</strong> →</td></tr>
+          <tr><td>Mini Page</td><td>Claim your free <strong>Mini Page</strong> →</td></tr>
+          <tr><td>Mini Funnel</td><td>Claim your free <strong>Mini Funnel</strong> →</td></tr>
+          <tr><td>Hero</td><td>Claim your free <strong>Hero Page</strong> →</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Affiliate Badge Links</h3>
+      <p>If your tenant account is an <strong>affiliate partner</strong>, the branding badge automatically routes through your affiliate referral code. The badge link becomes <code>/signup?ref=YOUR_AFFILIATE_ID</code>, so anyone who clicks the badge on your card and signs up generates a commission for you.</p>
+      <div class="alert alert-success">
+        <strong>Pro tip:</strong> As an affiliate, you can keep the badge enabled even on paid plans — turning free views into referral signups that earn you recurring commissions.
+      </div>
 
       <!-- ==================== WEB-TO-LEAD SECTION ==================== -->
       <h2 id="web-to-lead">🌐 Web-to-Lead</h2>
@@ -485,20 +536,30 @@ Content-Type: application/json
       </ol>
 
       <h2 id="plans">💳 Plans</h2>
-      <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, API access, Kinetic card limits, QR code limits, etc.).</p>
+      <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, API access, Kinetic card limits, QR code limits, template access, etc.).</p>
 
       <h3>Plan Features</h3>
       <p>Manage feature flags for each plan in the admin panel. Available features include:</p>
       <ul>
         <li><strong>Lead Capacity</strong> — Maximum leads per workspace</li>
         <li><strong>Kinetic Cards</strong> — Number of active cards allowed</li>
+        <li><strong>Template Access</strong> — Number of templates available (Free: 8, Pro: 54, Enterprise: 54 + white label)</li>
         <li><strong>QR Generation</strong> — Monthly QR code generation limit</li>
         <li><strong>Web-to-Lead</strong> — Hourly submission rate limit</li>
         <li><strong>API Access</strong> — API rate limits and endpoint access</li>
         <li><strong>Analytics</strong> — Data retention and export options</li>
+        <li><strong>Branding Badge</strong> — Toggle FunnelSwift badge on/off (paid plans only)</li>
+        <li><strong>White Label</strong> — Remove all FunnelSwift branding (Enterprise only)</li>
         <li><strong>Mobile App</strong> — Business card scan and import limits</li>
         <li><strong>Cross-App Sync</strong> — CoreSwift CRM integration access</li>
       </ul>
+
+      <h3>Template Gating by Plan</h3>
+      <div class="alert alert-info">
+        <strong>Free Plan (8 templates):</strong> 4 industry starter templates (one per archetype) + 4 blank canvases (Build from Scratch for each archetype, except Hero which requires Pro).<br>
+        <strong>Pro Plan (54 templates):</strong> Full template library — all 5 archetypes with all industry variants styled across all 8 visual themes.<br>
+        <strong>Enterprise Plan (54 + White Label):</strong> Same full library as Pro, plus white label toggle to remove all FunnelSwift branding from card pages.
+      </div>
 
       <h2 id="settings">⚙️ Settings</h2>
       <p>Configure your account profile, change password, and manage workspace preferences including SEO settings and legal pages.</p>
@@ -533,7 +594,15 @@ Content-Type: application/json
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What's the Mini Funnel template for?</button>
-        <div class="faq-a">Mini Funnels are designed for affiliate marketing and product promotions. Display a product image or video with a strong CTA button. Choose from 4 themes to match your ad creative. Great for Facebook/Instagram ads, influencer campaigns, and QR code bridge pages.</div>
+        <div class="faq-a">Mini Funnels are designed for affiliate marketing and product promotions. Display a product image or video with a strong CTA button. Choose from 8 themes to match your ad creative. Great for Facebook/Instagram ads, influencer campaigns, and QR code bridge pages.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How does template gating work? What templates do I get on the free plan?</button>
+        <div class="faq-a">The free plan includes <strong>8 templates</strong>: 4 industry starter templates (one curated template per archetype — Bio Link, Digital Business Card, Mini Page, Mini Funnel) plus 4 blank canvases (Build from Scratch for all four free-eligible archetypes). The Hero archetype is available on Pro/Enterprise only. Upgrading to Pro unlocks the full <strong>54-template library</strong> with all industry-specific variants. Enterprise adds white label controls on top of the full library.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Can I build a card from scratch without using a template?</button>
+        <div class="faq-a">Yes! Every archetype has a <strong>Build from Scratch</strong> blank canvas option. You start with zero pre-populated content and add only the layout blocks you need — hero, bio, buttons, lead form, social icons, QR code, mini funnel — in any order you want. Blank canvases count toward your template limit and are available on all plans (free: 4 blank canvases, Pro/Enterprise: blank canvases for every archetype).</div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Does FunnelSwift sync with CoreSwift CRM?</button>
