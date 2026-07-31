@@ -1247,6 +1247,56 @@ pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Va
                 {"type":"review_strip","rating":"4.9","count":420,"source":"Google","quotes":["\"Best gym in the city!\" — Mike R.","\"Changed my life\" — Jessica L."]},
                 {"type":"social_strip","platforms":["instagram","tiktok","youtube"]}
             ]
+        },
+
+        // --- LOCAL SERVICES: Residential + Commercial Cleaning ---
+        {
+            "id": "biz_cleaning_residential",
+            "name": "Residential Cleaning Pro",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Cleaning Services",
+            "icon": "RC",
+            "description": "Clean white/teal card, before/after photo gallery, one-tap action row (Call, Text, Book), service menu with pricing (Deep Clean, Regular, Move Out, Post-Construction), Google 5★ review strip, 'Get Instant Quote' CTA, service area badge, licensed/insured trust badges",
+            "preview_colors": ["#f8fafc", "#0d9488", "#0f172a"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 50%, #f8fafc 100%)",
+            "theme_key": "ghost_white",
+            "layout_blocks": [
+                {"type":"avatar","style":"circle_glow","size":"medium","catchphrase":"Sparkling Homes. Happy Families."},
+                {"type":"title_block","headline":"Fresh Start Cleaning Co.","subtitle":"Residential Cleaning Specialists · Est. 2019"},
+                {"type":"action_row_3","items":[{"icon":"📞","label":"Call Now","action":"tel:"},{"icon":"💬","label":"Text Us","action":"sms:"},{"icon":"📅","label":"Book Online","action":"cal:"}]},
+                {"type":"service_cards","items":[{"title":"Deep Clean","desc":"Top-to-bottom · 3-5 hrs","price":"From $199"},{"title":"Regular Cleaning","desc":"Weekly/Bi-weekly","price":"From $119/visit"},{"title":"Move In/Out","desc":"Empty home deep clean","price":"From $249"},{"title":"Post-Construction","desc":"Dust & debris removal","price":"From $349"}]},
+                {"type":"cta_button_large","label":"Get Instant Quote","icon":"💰","action":"link:","style":"pulse"},
+                {"type":"review_strip","rating":"5.0","count":285,"source":"Google","quotes":["\"My house has never been this clean!\" — Amanda R.","\"Reliable, thorough, and so friendly\" — The Johnsons"]},
+                {"type":"skill_cloud","items":["Eco-Friendly Products","Licensed & Insured","Background Checked","Satisfaction Guaranteed","Pet-Friendly","Same-Day Available"]},
+                {"type":"social_strip","platforms":["instagram","facebook","tiktok"]}
+            ]
+        },
+        {
+            "id": "biz_cleaning_commercial",
+            "name": "Commercial Cleaning Pro",
+            "type": "business_card",
+            "category": "business_card",
+            "niche": "Cleaning Services",
+            "icon": "CC",
+            "description": "Professional dark navy card, facility size badges (small office to large warehouse), service tier cards (Daily Janitorial, Floor Care, Window Washing, Disinfection), 'Request a Proposal' CTA, commercial client logo strip, OSHA/HIPAA compliance badges, 24/7 availability indicator",
+            "preview_colors": ["#0f172a", "#0ea5e9", "#ffffff"],
+            "card_type": "business-card",
+            "gradient": "linear-gradient(135deg, #0c4a6e 0%, #0f172a 60%, #1e293b 100%)",
+            "theme_key": "ocean",
+            "layout_blocks": [
+                {"type":"logo_mark","shape":"hexagon","initial":"P","catchphrase":"Clean Spaces. Better Business."},
+                {"type":"title_block","headline":"ProClean Commercial","subtitle":"Janitorial & Facility Services · Est. 2015"},
+                {"type":"hours_badge","status":"open","text":"🟢 24/7 Service Available"},
+                {"type":"action_row_3","items":[{"icon":"📞","label":"Call","action":"tel:"},{"icon":"📧","label":"Email","action":"mailto:"},{"icon":"📋","label":"Get Proposal","action":"link:"}]},
+                {"type":"service_cards","items":[{"title":"Daily Janitorial","desc":"Offices · Retail · Gyms","price":"Custom quote"},{"title":"Floor Care","desc":"Strip/Wax · Carpet · Tile","price":"Per sq ft"},{"title":"Window Washing","desc":"Interior + Exterior","price":"Per pane"},{"title":"Disinfection","desc":"Electrostatic · Hospital-grade","price":"Per visit"}]},
+                {"type":"cta_button_large","label":"Request a Proposal","icon":"📋","action":"link:","style":"pulse"},
+                {"type":"stat_row","items":[{"value":"80+","label":"Facilities Served"},{"value":"50+","label":"Team Members"},{"value":"24/7","label":"Availability"},{"value":"4.9★","label":"Rating"}]},
+                {"type":"skill_cloud","items":["OSHA Compliant","HIPAA Certified","Fully Insured","Bonded Staff","Green Cleaning","ISO Certified"]},
+                {"type":"client_logos","style":"scrolling","clients":["WeWork","Regus","Kaiser","CBRE"]},
+                {"type":"social_strip","platforms":["linkedin","facebook"]}
+            ]
         }
     ])))
 }

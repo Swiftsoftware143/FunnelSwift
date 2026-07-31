@@ -14,7 +14,7 @@ use crate::handlers::{
     public_signup_handler,
     coreswift_push, workflowswift_push, adaswift_provision,
     affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
-    ocr, plan_handler, bulk_handler,
+    ocr, plan_handler, bulk_handler, template_gating_handler,
     plan_tag_handler, tag_rule_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
     sync_plan_tag_handler, linkedin_auth_handler, web_to_lead_handler,
     webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
@@ -152,6 +152,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
         // Admin plan management
         .route("/admin/plans", get(admin_plans_page))
+        .route("/api/v1/admin/plans/:id/templates", get(template_gating_handler::get_plan_templates).put(template_gating_handler::update_plan_templates))
 .route("/api/v1/admin/plans", get(crate::handlers::plan_handler::admin_list_all_plans).post(crate::handlers::plan_handler::admin_create_plan_json))
         .route("/api/v1/admin/plans/assign", post(crate::handlers::plan_handler::admin_assign_plan))
         .route("/api/v1/admin/plans/:id/features", put(crate::handlers::plan_handler::admin_update_plan_features))

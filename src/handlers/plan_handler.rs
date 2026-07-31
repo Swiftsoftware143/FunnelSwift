@@ -265,7 +265,7 @@ pub async fn admin_list_all_plans(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features, created_at, updated_at FROM plans ORDER BY price")
+    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features, allowed_template_ids, created_at, updated_at FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
 
@@ -282,6 +282,7 @@ pub async fn admin_list_all_plans(
             "has_multi_tenant": row.try_get::<bool, _>("has_multi_tenant").unwrap_or(false),
             "has_white_label": row.try_get::<bool, _>("has_white_label").unwrap_or(false),
             "features": row.try_get::<Option<serde_json::Value>, _>("features").unwrap_or(None),
+            "allowed_template_ids": row.try_get::<Option<Vec<String>>, _>("allowed_template_ids").unwrap_or(None),
         })
     }).collect();
 
@@ -365,6 +366,23 @@ pub async fn admin_update_plan_features(
     .bind(id)
     .execute(&state.pool)
     .await?;
+
+    // Also update allowed_template_ids if provided
+    if let Some(templates) = req.get("allowed_template_ids") {
+        if let Some(arr) = templates.as_array() {
+            let ids: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+            sqlx::query("UPDATE plans SET allowed_template_ids = $1 WHERE id = $2")
+                .bind(&ids)
+                .bind(id)
+                .execute(&state.pool)
+                .await?;
+        } else if templates.is_null() {
+            sqlx::query("UPDATE plans SET allowed_template_ids = NULL WHERE id = $2")
+                .bind(id)
+                .execute(&state.pool)
+                .await?;
+        }
+    }
 
     Ok(Json(json!({"message": "Features updated"})))
 }
