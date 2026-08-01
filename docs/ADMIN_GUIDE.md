@@ -252,3 +252,93 @@ All templates: `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}`, `{{plan_n
 - iOS mobile app (blocked on Apple Developer account renewal)
 - Field mapping UI (manual override for web-to-lead)
 - Domain whitelist validation (currently logged but not enforced)
+
+---
+
+## URL Routing — Card Types (HARD-WIRED)
+
+This map is authoritative. Defined in `kinetic_handler.rs` (`resolve_canonical_url` + `cta_for_prefix`) and mirrored in `dashboard.js` (`CARD_ROUTES`). Both locations must stay in sync.
+
+| Prefix | Card Type | Branding CTA |
+|--------|-----------|-------------|
+| `/k/` | Kinetic Card | Claim your free Kinetic Card → |
+| `/b/` | Bio Link | Claim your free Bio Link → |
+| `/c/` | Digital Business Card | Claim your free Digital Business Card → |
+| `/m/` | Micro Page | Claim your free Micro Page → |
+| `/f/` | Mini Funnel | Claim your free Mini Funnel → |
+| `/h/` | Hero Page | Claim your free Hero Page → |
+
+**How it works:** The Rust handler reads the URL prefix from the request path (`/{prefix}/{slug}`), maps it to a card type label, and injects the correct canonical URL + branded CTA. The branding badge at the bottom of every public card auto-adjusts based on the URL prefix — a `/c/myjones` card shows "Claim your free Digital Business Card →" while `/b/mylinks` shows "Claim your free Bio Link →".
+
+**Rules:**
+- `funnelswift.net/{prefix}/{slug}` → canonical redirects to `kntcrd.com/{prefix}/{slug}`
+- `{tenant}.kntcrd.com/{prefix}/{slug}` → canonical uses the subdomain directly
+- Custom domains → canonical uses the custom domain
+
+---
+
+## SEO Settings (Admin → SEO tab)
+
+Access at: **https://app.funnelswift.net/app** → Admin → SEO
+
+All fields stored in `site_settings` table with `seo_` prefix. Public cards and funnels auto-inject these tags via SSR.
+
+### Configurable Fields
+
+| Field | Key | Injected As |
+|-------|-----|------------|
+| Site Name | `seo_site_name` | `<meta property="og:site_name">` |
+| Meta Description | `seo_description` | `<meta name="description">` + OG version |
+| Keywords | `seo_keywords` | `<meta name="keywords">` |
+| OG Image | `seo_og_image` | `<meta property="og:image">` + Twitter image |
+| Twitter Handle | `seo_twitter_handle` | `<meta name="twitter:site">` + creator |
+| Google Analytics | `seo_google_analytics` | Full gtag.js script block |
+| Facebook Pixel | `seo_facebook_pixel` | Full fbq() init + noscript fallback |
+| Site Verification | `seo_site_verification` | `<meta name="google-site-verification">` |
+| Schema Type | `seo_schema_type` | `<script type="application/ld+json">` |
+
+### Public Endpoints
+
+| URL | Description | Cache |
+|-----|-------------|-------|
+| `/api/v1/seo/sitemap.xml` | Dynamic sitemap with all public cards + funnels | 1 hour |
+| `/robots.txt` | Configurable crawl rules (via `seo_robots` setting) | 24 hours |
+| `/api/v1/seo/inject` | Returns current meta + script tags as JSON | — |
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v1/seo/settings` | JWT (admin) | Get all SEO settings |
+| PUT | `/api/v1/seo/settings` | JWT (admin) | Update SEO settings |
+| GET | `/api/v1/seo/sitemap.xml` | Public | Dynamic XML sitemap |
+| GET | `/api/v1/seo/inject` | Public | JSON of meta/script tags |
+| GET | `/robots.txt` | Public | Dynamic crawl rules |
+
+### CSP Header
+
+Content-Security-Policy injected via `middleware/security.rs`. Allows:
+- `script-src`: self, Tailwind CDN, Google Tag Manager, Facebook
+- `img-src`: self, data: URIs, all HTTPS sources
+- `frame-src`: self, YouTube, Vimeo, Facebook
+
+### Security Headers (via Nginx + Rust middleware)
+
+| Header | Value |
+|--------|-------|
+| Strict-Transport-Security | max-age=63072000; includeSubDomains; preload |
+| X-Frame-Options | DENY (allow on card pages) |
+| X-Content-Type-Options | nosniff |
+| Referrer-Policy | strict-origin-when-cross-origin |
+| Permissions-Policy | camera=(), microphone=(), geolocation=(), interest-cohort=() |
+| Content-Security-Policy | (see above) |
+
+---
+
+## Sidebar Accordions
+
+The admin sidebar uses accordion groups for cleaner navigation:
+- **Tags** — collapses System Tags + System Tag Groups
+- **Affiliates** — collapses Affiliates + Affiliate Tiers + Affiliate Payouts
+
+State persisted in `localStorage` keys: `fs_acc_tags`, `fs_acc_affiliates`. Clicking a child tab auto-opens its parent accordion.
