@@ -10,7 +10,7 @@ use askama::Template;
 
 use crate::auth::handlers::{login, me, register, change_password, forgot_password, reset_password, update_profile};
 use crate::handlers::{
-    site_settings_handler,
+    site_settings_handler, seo_handler,
     public_signup_handler,
     coreswift_push, workflowswift_push, adaswift_provision,
     affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
@@ -147,6 +147,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/bulk/affiliates", post(bulk_handler::bulk_delete_affiliates))
         .route("/api/v1/bulk/users", post(bulk_handler::bulk_delete_users))
         .route("/api/v1/bulk/products", post(bulk_handler::bulk_delete_products))
+        // SEO endpoints — public sitemap + robots, admin config
+        .route("/api/v1/seo/sitemap.xml", get(seo_handler::sitemap_xml))
+        .route("/robots.txt", get(seo_handler::robots_txt))
+        .route("/api/v1/seo/settings", get(seo_handler::get_seo_settings).put(seo_handler::update_seo_settings))
+        .route("/api/v1/seo/inject", get(seo_handler::seo_inject_tags))
         // Site settings management (admin only)
         .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
         .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))

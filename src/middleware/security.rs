@@ -43,6 +43,14 @@ pub async fn security_headers(
         header::HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
 
+    // CSP — Content Security Policy
+    headers.insert(
+        header::HeaderName::from_static("content-security-policy"),
+        header::HeaderValue::from_static(
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://www.googletagmanager.com https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:; frame-src 'self' https://www.youtube.com https://player.vimeo.com https://www.facebook.com;"
+        ),
+    );
+
     // Permissions policy
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),

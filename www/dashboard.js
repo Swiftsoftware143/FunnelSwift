@@ -19,14 +19,43 @@ function X(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").re
 
 function $(id){return document.getElementById(id);}
 
+/* ═══ HARD-WIRED URL ROUTING MAP ═══
+ * Prefix → Card Type → Branding CTA
+ * DO NOT CHANGE without updating kinetic_handler.rs resolve_canonical_url + cta_for_prefix
+ */
+var CARD_ROUTES={
+  k:{type:"Kinetic Card",cta:"Claim your free Kinetic Card →",desc:"Original/default card — all links, socials, media"},
+  b:{type:"Bio Link",cta:"Claim your free Bio Link →",desc:"Single-page link collection"},
+  c:{type:"Digital Business Card",cta:"Claim your free Digital Business Card →",desc:"Digital business card with contact info"},
+  m:{type:"Micro Page",cta:"Claim your free Micro Page →",desc:"Compact landing/micro page"},
+  f:{type:"Mini Funnel",cta:"Claim your free Mini Funnel →",desc:"Multi-step mini funnel"},
+  h:{type:"Hero Page",cta:"Claim your free Hero Page →",desc:"Hero section with headline + CTA"}
+};
+/* ═══ END ROUTING MAP ═══ */
+function TA(group){
+  var a=document.getElementById("acc-"+group);
+  if(a){ a.classList.toggle("open"); localStorage.setItem("fs_acc_"+group, a.classList.contains("open")?"1":"0"); }
+}
+function initAccordions(){
+  ["affiliates","tags"].forEach(function(g){
+    if(localStorage.getItem("fs_acc_"+g)==="1"){
+      var a=document.getElementById("acc-"+g); if(a) a.classList.add("open");
+    }
+  });
+}
+/* ── Tab Switch (with accordion auto-open) ── */
 function S(t){
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Users",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages"};
+  /* Auto-open parent accordion */
+  var accMap={stags:"tags",sgroups:"tags",affiliates:"affiliates",tiers:"affiliates",payouts:"affiliates"};
+  var accGroup=accMap[t];
+  if(accGroup){ var a=document.getElementById("acc-"+accGroup); if(a){a.classList.add("open"); localStorage.setItem("fs_acc_"+accGroup,"1");} }
+  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Users",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",seo:"SEO Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages"};
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,seo:LSEO,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS};
   if(L[t]) L[t]();
 }
 
@@ -65,7 +94,7 @@ if(T){
       U=u; $("ue").textContent=u.name||u.email;
       $("rb").innerHTML=u.is_admin?'<span class="badge bg">Admin</span>':'<span class="badge bb">User</span>';
       if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}
-      S("dashboard");
+      initAccordions(); S("dashboard");
     }
   });
 }else{
@@ -1545,6 +1574,95 @@ function LM(){
     list.appendChild(lsDiv);
   });
 }
+function showMsg(msg,cls){
+  $("mm").className="msg "+cls; $("mm").textContent=msg;
+}
+
+/* ═══ ADMIN SEO SETTINGS ═══ */
+function LSEO(){
+  if(!U||!U.is_admin) return;
+  api("/api/v1/seo/settings").then(function(d){
+    var seo=typeof d==="object"?d:{};
+    $("ct").innerHTML='<div class="cc"><h3>🎛️ SEO Settings</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">Control how search engines see your site. All fields optional — leave blank to use defaults.</p><div id="seo-fields"></div><div style="margin-top:16px;display:flex;gap:8px"><button class="btn" onclick="SEOSave()">Save All</button><button class="btn btn-o" onclick="S(\'seo\')">Reload</button></div><p id="seo-msg" class="msg" style="margin-top:8px"></p><hr style="margin:20px 0;border-color:#e2e8f0"><h3 style="font-size:14px;margin-bottom:8px">📡 Public Endpoints</h3><p style="font-size:12px;color:#64748b"><a href="/api/v1/seo/sitemap.xml" target="_blank" style="color:#6366f1">/api/v1/seo/sitemap.xml</a> — Dynamic sitemap (all cards + funnels)</p><p style="font-size:12px;color:#64748b"><a href="/robots.txt" target="_blank" style="color:#6366f1">/robots.txt</a> — Dynamic crawl rules</p></div>';
+
+    var fields=[
+      {k:"site_name", label:"Site Name", ph:"FunnelSwift", desc:"Shown in browser tabs & Open Graph"},
+      {k:"description", label:"Meta Description", ph:"Lead generation & affiliate marketing platform", desc:"155-160 chars. Appears in search results."},
+      {k:"keywords", label:"Meta Keywords", ph:"lead generation, affiliate marketing, CRM", desc:"Comma-separated."},
+      {k:"og_image", label:"Open Graph Image URL", ph:"https://funnelswift.net/assets/og-banner.png", desc:"Image shown when shared on Facebook/LinkedIn/Slack. 1200×630px."},
+      {k:"twitter_handle", label:"Twitter/X Handle", ph:"@funnelswift", desc:"Twitter card attribution (include @)."},
+      {k:"google_analytics", label:"Google Analytics ID", ph:"G-XXXXXXXXXX or UA-XXXXXXXXX-X", desc:"GA4 or Universal Analytics tracking ID."},
+      {k:"facebook_pixel", label:"Facebook Pixel ID", ph:"1234567890", desc:"Facebook Pixel ID for conversion tracking."},
+      {k:"site_verification", label:"Google Site Verification", ph:"verification-token-from-google", desc:"Content value from Google Search Console verification."}
+    ];
+
+    var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="seo-grid">';
+    fields.forEach(function(f){
+      var v=seo[f.k]||"";
+      html+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">'+f.label+'</label><p style="font-size:10px;color:#94a3b8;margin-bottom:6px">'+f.desc+'</p><input id="seo-'+f.k+'" value="'+X(v)+'" placeholder="'+f.ph+'" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit"></div>';
+    });
+    html+='</div>';
+
+    // Schema type selector
+    html+='<div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:14px"><label style="font-size:12px;font-weight:600;color:#475569">Schema Markup Type</label><p style="font-size:10px;color:#94a3b8;margin-bottom:6px">Google structured data type for your company.</p>';
+    var schemaTypes=["Organization","LocalBusiness","SoftwareApplication"];
+    var currentSchema=seo.schema_type||"SoftwareApplication";
+    html+='<select id="seo-schema_type" style="width:240px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">';
+    schemaTypes.forEach(function(t){ html+='<option value="'+t+'"'+(currentSchema===t?' selected':'')+'>'+t+'</option>'; });
+    html+='</select>';
+
+    // Company info fields for schema
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">';
+    [
+      {k:"company_name", label:"Company Name", ph:"FunnelSwift"},
+      {k:"company_logo", label:"Logo URL", ph:"https://funnelswift.net/logo.png"},
+      {k:"company_address", label:"Address", ph:"123 Main St, City, State"},
+      {k:"company_phone", label:"Phone", ph:"+1-555-555-5555"},
+      {k:"company_email", label:"Email", ph:"hello@funnelswift.net"}
+    ].forEach(function(cf){
+      var cv=seo[cf.k]||"";
+      html+='<div><label style="font-size:11px;color:#64748b">'+cf.label+'</label><input id="seo-'+cf.k+'" value="'+X(cv)+'" placeholder="'+cf.ph+'" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit"></div>';
+    });
+    html+='</div></div>';
+
+    $("seo-fields").innerHTML=html;
+  }).catch(function(e){ $("ct").innerHTML='<div class="msg me">Failed to load SEO settings: '+e.message+'</div>'; });
+}
+function SEOSave(){
+  var keys=["site_name","description","keywords","og_image","twitter_handle","google_analytics","facebook_pixel","site_verification","schema_type","company_name","company_logo","company_address","company_phone","company_email"];
+  var payload={};
+  keys.forEach(function(k){
+    var el=document.getElementById("seo-"+k);
+    if(el&&el.value.trim()) payload[k]=el.value.trim();
+  });
+  // Build schema_type JSON
+  var schemaType=document.getElementById("seo-schema_type");
+  if(schemaType&&schemaType.value){
+    var schema={};
+    schema["@type"]=schemaType.value;
+    var companyName=payload["company_name"]||"FunnelSwift";
+    schema.name=companyName;
+    if(payload.company_logo) schema.logo=payload.company_logo;
+    if(schemaType.value==="LocalBusiness"||schemaType.value==="Organization"){
+      if(payload.company_address) schema.address={streetAddress:payload.company_address};
+      if(payload.company_phone) schema.telephone=payload.company_phone;
+      if(payload.company_email) schema.email=payload.company_email;
+    }
+    payload.schema_type=JSON.stringify(schema);
+    delete payload.company_name; delete payload.company_logo; delete payload.company_address;
+    delete payload.company_phone; delete payload.company_email;
+  }
+
+  var msg=$("seo-msg");
+  msg.className="msg mi"; msg.textContent="Saving...";
+  api("/api/v1/seo/settings",{method:"PUT",body:JSON.stringify(payload)}).then(function(){
+    msg.className="msg ms"; msg.textContent="✅ SEO settings saved!";
+    setTimeout(function(){msg.className="msg"},3000);
+  }).catch(function(e){
+    msg.className="msg me"; msg.textContent="❌ "+e.message;
+  });
+}
+
 /* === Updated group edit — handle system flag === */
 function MFG(id,isSystem){
   if(id) api("/api/v1/tag-groups/"+id).then(function(g){RFG(id,g,isSystem)});

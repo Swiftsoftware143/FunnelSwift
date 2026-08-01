@@ -31,6 +31,7 @@ pub mod provider_keys_handler;
 pub mod public_signup_handler;
 pub mod qr_handler;
 pub mod routing_handler;
+pub mod seo_handler;
 pub mod settings_handler;
 pub mod site_settings_handler;
 pub mod sync_plan_tag_handler;

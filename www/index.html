@@ -69,6 +69,15 @@ tr:hover{background:#f8fafc}
 .cfr{display:flex;gap:4px;margin-bottom:4px}
 .cfk{flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px}
 .cfv{flex:2;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px}
+/* ── Sidebar Accordions ── */
+.nav-accordion{margin:0}
+.nav-acc-header{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;font-size:13px;color:#c7d2fe;cursor:pointer;transition:all .15s;user-select:none}
+.nav-acc-header:hover{background:rgba(99,102,241,.15);color:#fff}
+.nav-acc-header .acc-arrow{font-size:10px;transition:transform .2s}
+.nav-accordion.open .acc-arrow{transform:rotate(-180deg)}
+.nav-acc-body{overflow:hidden;max-height:0;transition:max-height .25s ease}
+.nav-acc-body a{padding-left:36px;font-size:12px;opacity:.85}
+.nav-accordion.open .nav-acc-body{max-height:300px}
 </style>
 </head>
 <body>
@@ -86,17 +95,15 @@ tr:hover{background:#f8fafc}
   <div id="adm-links">
   <a data-tab="settings" onclick="S('settings')">Settings</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
-  <a data-tab="stags" onclick="S('stags')">System Tags</a>
-  <a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a>
+  <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
   <a data-tab="tenants" onclick="S('tenants')">Users</a>
-  <a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a>
-  <a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a>
-  <a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a>
+  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a></div></div>
   <a data-tab="plans" onclick="S('plans')">Plans</a>
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
   <a data-tab="keys" onclick="S('keys')">API Keys</a>
   <a data-tab="domains" onclick="S('domains')">Domain Settings</a>
+  <a data-tab="seo" onclick="S('seo')">SEO</a>
   </div>
   <div style="margin-top:auto;padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)">
     <a href="/logout" style="color:#94a3b8;font-size:12px">Sign Out</a>
@@ -120,13 +127,15 @@ var T=localStorage.getItem("ws_fs_token")||"", U=null;
 var helpContent={
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
   "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — system tags auto-provision accounts in other Swift apps</li><li>Stages track progress: New → Contacted → Qualified → Converted → Lost</li></ul>',
-  "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Each card lives at <code>/k/your-slug</code>.</p><ul><li><strong>+ New Card</strong> opens the template gallery — choose from 54 templates or start from a <em>Blank Canvas</em></li><li>Pick a <strong>Theme</strong> to change colors instantly</li><li>Click a card to preview, edit, or copy its URL</li><li><strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates</li><li><strong>Branding badge:</strong> Your card shows "Claim your free Digital Business Card" at the bottom unless you hide it (paid plans only)</li></ul>',
+  "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Each card type has its own URL route:</p><ul><li><code>/k/slug</code> — Kinetic Card (original)</li><li><code>/b/slug</code> — Bio Link</li><li><code>/c/slug</code> — Digital Business Card</li><li><code>/m/slug</code> — Micro Page</li><li><code>/f/slug</code> — Mini Funnel</li><li><code>/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
   "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> that trigger actions in other Swift apps.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are controlled by admins — they auto-provision accounts</li></ul>',
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
   "integrations":'<h4>Integrations Center</h4><p>Connect FunnelSwift to other tools. Manage API keys for Web-to-Lead forms, Stripe for payments, and cross-app sync.</p><ul><li><strong>API Keys</strong> — Create keys for programmatic access</li><li><strong>Stripe</strong> — Connect to process plan payments</li></ul>',
   "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
   "stags":'<h4>System Tags</h4><p>Special tags that <strong>do something</strong> when applied — like creating a free ADASwift account or adding a contact to CoreSwift CRM.</p><ul><li><strong>Target:</strong> adaswift, coreswift, workflowswift, incentiveswift, missedcall</li><li><strong>Toggle ON/OFF</strong> — Disable without deleting</li></ul>',
+  "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
+  "plans":'<h4>Plans</h4><p>Manage subscription plans, pricing, and feature toggles. Each plan is a set of permissions that controls what features tenants can use.</p><ul><li><strong>Free Plan</strong> — 1 card, 8 templates, basic features</li><li><strong>Paid Plans</strong> — Customize card limits, templates, and features per tier</li><li><strong>Plan Features Editor</strong> — Toggle 12+ features per plan (custom colors, video, analytics, etc.)</li></ul>',
   "tenants":'<h4>Users (Tenants)</h4><p>All registered tenants. View who is on what plan, assign plans, and manage accounts.</p>',
   "affiliates":'<h4>Affiliates</h4><p>Manage your affiliate partners. Each gets a unique referral code for tracking clicks and conversions.</p><ul><li><strong>Commission Rate</strong> — Percentage per conversion</li><li><strong>Tier</strong> — Assign Bronze/Silver/Gold</li><li><strong>Payouts</strong> — Track earnings and payment history</li></ul>',
   "tiers":'<h4>Affiliate Tiers</h4><p>Create commission tiers with different rates and minimum payout thresholds.</p><ul><li><strong>+ New Tier</strong> — Create Bronze, Silver, Gold, etc.</li><li>Set commission %, min payout, and requirements</li></ul>',

@@ -1,4 +1,12 @@
 User-agent: *
-Allow: /
+Allow: /k/
+Allow: /funnel/
+Allow: /kinetic
+Allow: /download-app
+Allow: /guide
+Disallow: /api/
+Disallow: /admin
+Disallow: /app
+Crawl-delay: 1
 
-Sitemap: https://funnelswift.net/sitemap.xml
+Sitemap: https://funnelswift.net/api/v1/seo/sitemap.xml
