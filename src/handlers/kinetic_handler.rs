@@ -1,4 +1,38 @@
-use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
+use axum::extract::{Host, OriginalUri, Path, Query, State};
+use axum::http::StatusCode;
+use axum::Json;
+
+/// Resolve canonical URL from Host header
+/// kntcrd.com subdomain → https://{tenant}.kntcrd.com/k/{slug}
+/// funnelswift.net → 301 redirect to kntcrd.com (never canonical)
+/// custom domain → https://{domain}/k/{slug}
+/// Resolve canonical URL from Host header with correct prefix
+/// kntcrd.com subdomain → https://{tenant}.kntcrd.com/{prefix}/{slug}
+/// funnelswift.net → redirect to kntcrd.com root
+/// custom domain → https://{domain}/{prefix}/{slug}
+fn resolve_canonical_url(host: &str, prefix: &str, slug: &str) -> String {
+    let host_clean = host.split(':').next().unwrap_or(host).to_lowercase();
+    if host_clean.ends_with("funnelswift.net") {
+        return format!("https://kntcrd.com/{}/{}", prefix, slug);
+    }
+    if host_clean.ends_with("kntcrd.com") {
+        return format!("https://{}/{}/{}", host_clean, prefix, slug);
+    }
+    format!("https://{}/{}/{}", host_clean, prefix, slug)
+}
+
+/// Map URL prefix to branded CTA label + card type label
+fn cta_for_prefix(prefix: &str) -> (&'static str, &'static str) {
+    match prefix {
+        "b" => ("Claim your free Bio Link →", "Bio Link"),
+        "c" => ("Claim your free Digital Business Card →", "Digital Business Card"),
+        "m" => ("Claim your free Micro Page →", "Micro Page"),
+        "f" => ("Claim your free Mini Funnel →", "Mini Funnel"),
+        "h" => ("Claim your free Hero Page →", "Hero Page"),
+        _   => ("Claim your free Kinetic Card →", "Kinetic Card"),
+    }
+}
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -166,18 +200,52 @@ pub async fn set_custom_domain(auth: AuthUser, State(state): State<AppState>, Js
     Ok(Json(json!({"message": "Saved"})))
 }
 
-pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>, State(state): State<AppState>) -> impl axum::response::IntoResponse {
+pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>, axum::extract::Host(host): axum::extract::Host, OriginalUri(uri): OriginalUri, State(state): State<AppState>) -> impl axum::response::IntoResponse {
     use sqlx::Row;
+    // Extract URL prefix (k/b/c/m/f/h) from the request path
+    let path = uri.path().to_string();
+    let prefix = path.split('/').nth(1).unwrap_or("k");
+    let prefix = if prefix.is_empty() || prefix == slug { "k" } else { prefix };
     let row = sqlx::query(
         "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plans tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or(None);
+
+    // ── Load global SEO settings for SSO injection ──
+    let seo_rows: Vec<(String, Value)> = sqlx::query_as(
+        "SELECT key, value FROM site_settings WHERE key LIKE 'seo_%'"
+    ).fetch_all(&state.pool).await.unwrap_or_default();
+    let mut seo_meta = String::new();
+    let mut seo_scripts = String::new();
+    for (k, v) in &seo_rows {
+        let short = k.strip_prefix("seo_").unwrap_or(k);
+        match short {
+            "site_name" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta property=\"og:site_name\" content=\"{}\">\n", s)); } }
+            "description" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"description\" content=\"{}\">\n", s)); seo_meta.push_str(&format!("<meta property=\"og:description\" content=\"{}\">\n", s)); } }
+            "keywords" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"keywords\" content=\"{}\">\n", s)); } }
+            "og_image" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta property=\"og:image\" content=\"{}\">\n", s)); seo_meta.push_str(&format!("<meta property=\"twitter:image\" content=\"{}\">\n", s)); } }
+            "twitter_handle" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"twitter:site\" content=\"{}\">\n", s)); seo_meta.push_str(&format!("<meta name=\"twitter:creator\" content=\"{}\">\n", s)); } }
+            "site_verification" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"google-site-verification\" content=\"{}\">\n", s)); } }
+            "google_analytics" => { if let Some(s) = v.as_str() { seo_scripts.push_str(&format!("<script async src=\"https://www.googletagmanager.com/gtag/js?id={}\"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','{}');</script>\n", s, s)); } }
+            "facebook_pixel" => { if let Some(s) = v.as_str() { seo_scripts.push_str(&format!("<script>!function(f,b,e,v,n,t,s){{if(f.fbq)return;n=f.fbq=function(){{n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)}};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{}');fbq('track','PageView');</script><noscript><img height=\"1\" width=\"1\" src=\"https://www.facebook.com/tr?id={}&ev=PageView&noscript=1\"/></noscript>\n", s, s)); } }
+            "schema_type" => { let schema_json = serde_json::to_string(v).unwrap_or_default(); seo_scripts.push_str(&format!("<script type=\"application/ld+json\">{}</script>\n", schema_json)); }
+            _ => {}
+        }
+    }
+    // Twitter card type always set
+    seo_meta.push_str("<meta property=\"twitter:card\" content=\"summary_large_image\">\n");
+    // Canonical URL — resolves from Host header (tenant.kntcrd.com → canonical, custom domain, or fallback)
+    let canonical = resolve_canonical_url(&host, prefix, &slug);
+    seo_meta.push_str(&format!("<link rel=\"canonical\" href=\"{}\">\n", canonical));
+
+    // Font preconnect for speed
+    seo_meta.push_str("<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
 
     if row.is_none() {
         return axum::response::Html("<html><body style='background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif'><div style='text-align:center'><h1 style='font-size:48px;margin-bottom:8px'>404</h1><p>Card not found</p><a href='https://funnelswift.net/kinetic' style='color:#a855f7'>Create your own →</a></div></body></html>".to_string());
     }
 
     let r = row.unwrap();
-    let template_type: String = r.try_get("template_type").unwrap_or_default();
+    let _template_type: String = r.try_get("template_type").unwrap_or_default();
     // Branding badge logic:
     //   white_label=true + tenant.settings.hide_branding_badge → hidden
     //   Otherwise → always show (free plans forced ON, paid plans can toggle off)
@@ -198,24 +266,18 @@ pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>,
     let avatar: Option<String> = r.try_get("avatar_url").unwrap_or(None);
     let tagline: Option<String> = r.try_get("tagline").unwrap_or(None);
     let meta_desc: Option<String> = r.try_get("meta_description").unwrap_or(None);
-    let video_provider: Option<String> = r.try_get("video_provider").unwrap_or(None);
-    let video_id: Option<String> = r.try_get("video_id").unwrap_or(None);
+    let _video_provider: Option<String> = r.try_get("video_provider").unwrap_or(None);
+    let _video_id: Option<String> = r.try_get("video_id").unwrap_or(None);
 
-    // Dynamic branding badge — "Claim your free {Card Type} →"
+    // Dynamic branding badge — uses prefix to determine card type label
+    let (branding_cta, _card_label) = cta_for_prefix(prefix);
     let (branding_text, branding_url) = if show_branding {
-        let card_label = match template_type.as_str() {
-            "business_card" | "digital_card" => "Digital Business Card",
-            "bio_link" => "Bio Link",
-            "mini_page" => "Mini Page",
-            "mini_funnel" => "Mini Funnel",
-            _ => "Kinetic Card",
-        };
         let url = if let Some(ref code) = affiliate_code {
             format!("https://funnelswift.net/kinetic?ref={}", code)
         } else {
             "https://funnelswift.net/kinetic".to_string()
         };
-        (format!("Claim your free {} →", card_label), url)
+        (branding_cta.to_string(), url)
     } else {
         (String::new(), String::new())
     };
@@ -246,6 +308,8 @@ pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>,
 <meta property="og:title" content="{page_title}">
 <meta property="og:description" content="{meta}">
 <meta property="og:type" content="website">
+<meta property="og:url" content="{canonical}">
+{seo_meta}
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:'Plus Jakarta Sans','Inter',system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px 16px;color:{text};overflow-x:hidden}}
@@ -267,6 +331,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 @keyframes fadeIn{{from{{opacity:0;transform:translateY(16px)}}to{{opacity:1;transform:translateY(0)}}}}
 @keyframes pulse-glow{{0%,100%{{box-shadow:0 0 0 4px {accent},0 0 24px {accent}66}}50%{{box-shadow:0 0 0 5px {accent},0 0 36px {accent}88}}}}
 </style>
+{seo_scripts}
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -286,6 +351,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 </html>"#, 
         page_title = page_title, meta = meta_desc.unwrap_or_default(), text = text, 
         bg_gradient = bg_gradient, accent = accent, title = title,
+        canonical = canonical, seo_meta = seo_meta, seo_scripts = seo_scripts,
         av_html = av_html, tag_html = tag_html, bio_html = bio_html, cta_html = cta_html, social_html = social_html, branding_html = branding_html
     ))
 }
