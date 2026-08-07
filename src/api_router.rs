@@ -26,6 +26,7 @@ use crate::handlers::{
     checkout_handler,
     theme_endpoint,
     funnel_handler,
+    zaarhub_handler,
 };
 use crate::state::AppState;
 
@@ -58,6 +59,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/b/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
+        // ZaarHub public API (no auth — city pages & directory listings)
+        .route("/api/v1/zaarhub/cities", get(zaarhub_handler::list_cities))
+        .route("/api/v1/zaarhub/cities/:slug", get(zaarhub_handler::get_city))
+        .route("/api/v1/zaarhub/cities/:slug/listings", get(zaarhub_handler::list_city_listings))
+        .route("/api/v1/zaarhub/listings/:id", get(zaarhub_handler::get_listing))
+        .route("/api/v1/zaarhub/categories", get(zaarhub_handler::list_categories))
+        .route("/api/v1/zaarhub/search", get(zaarhub_handler::search_listings))
+        .route("/api/v1/zaarhub/featured", get(zaarhub_handler::featured_listings))
         // Default
         .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
         .route("/api/health", get(health))

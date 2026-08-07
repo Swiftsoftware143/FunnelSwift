@@ -16,6 +16,7 @@ pub mod tag_group;
 pub mod user;
 pub mod webhook;
 pub mod workflow;
+pub mod zaarhub;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
