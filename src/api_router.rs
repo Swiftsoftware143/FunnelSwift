@@ -26,7 +26,7 @@ use crate::handlers::{
     checkout_handler,
     theme_endpoint,
     funnel_handler,
-    zaarhub_handler, zaarhub_ssr,
+    zaarhub_handler, zaarhub_ssr, zaarhub_seo,
 };
 use crate::state::AppState;
 
@@ -60,6 +60,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
         // ZaarHub public API (no auth — city pages & directory listings)
+        // ZaarHub SEO
+        .route("/sitemap.xml", get(zaarhub_seo::sitemap_xml))
         // ZaarHub SSR city landing pages (public, SEO-optimized)
         .route("/zaarhub/:slug", get(zaarhub_ssr::render_city_page))
         .route("/zaarhub", get(zaarhub_ssr::render_cities_index))
