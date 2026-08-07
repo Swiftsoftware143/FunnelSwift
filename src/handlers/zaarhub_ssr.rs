@@ -15,6 +15,30 @@ fn h(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Build footer HTML from DB — loads site config + legal pages marked show_in_footer
+async fn footer_html(pool: &sqlx::PgPool) -> String {
+    let (site_name, copyright_year): (String, String) = sqlx::query_as(
+        "SELECT COALESCE(site_name, 'ZaarHub'), COALESCE(copyright_year, '2026') FROM zaarhub_site_config LIMIT 1"
+    ).fetch_optional(pool).await.unwrap_or(None).unwrap_or(("ZaarHub".into(), "2026".into()));
+
+    let rows = sqlx::query(
+        "SELECT slug, title FROM zaarhub_legal_pages WHERE is_published = true AND show_in_footer = true ORDER BY display_order ASC, title ASC"
+    ).fetch_all(pool).await.unwrap_or_default();
+
+    let mut links = String::from("<a href=\"/zaarhub\">Cities</a>");
+    for r in &rows {
+        let slug: String = r.try_get("slug").unwrap_or_default();
+        let title: String = r.try_get("title").unwrap_or_default();
+        links.push_str(&format!("<a href=\"/legal/{}\">{}</a>", h(&slug), h(&title)));
+    }
+
+    format!(
+        "<footer><div class=\"footer-links\">{links}</div><p>&copy; {year} {name}. All rights reserved.</p></footer>",
+        year = h(&copyright_year),
+        name = h(&site_name),
+    )
+}
+
 /// Render a full city landing page (SEO-optimized SSR HTML)
 pub async fn render_city_page(
     Path(slug): Path<String>,
@@ -137,6 +161,7 @@ pub async fn render_city_page(
         h(&city_name), h(&page_desc), h(&slug)
     );
 
+    let footer = footer_html(&state.pool).await;
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -182,7 +207,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 {hero}
 <div class="listing-grid">{listings}</div>
 <div class="load-more"><a href="/zaarhub-city.html?city={slug}">View all {city_name} businesses →</a></div>
-<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
+{footer}
 </body>
 </html>"#,
         title = h(&page_title),
@@ -190,6 +215,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         slug = h(&slug),
         city_name = h(&city_name),
         hero = hero_section,
+        footer = footer,
         listings = listings_html,
         schema = schema,
     ))
@@ -228,6 +254,7 @@ pub async fn render_cities_index(
         ));
     }
 
+    let footer = footer_html(&state.pool).await;
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -263,10 +290,11 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <header><span class="logo">Zaar<span>Hub</span></span></header>
 <div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 9 Florida cities with thousands of listings, reviews, and deals.</p></div>
 <div class="city-grid">{cities}</div>
-<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
+{footer}
 </body>
 </html>"#,
         cities = cities_html,
+        footer = footer,
     ))
 }
 
@@ -353,6 +381,7 @@ pub async fn render_listing_page(
         r#"{{"@context":"https://schema.org","@type":"LocalBusiness","name":"{}","description":"{}","address":{{"@type":"PostalAddress","streetAddress":"{}"}},"aggregateRating":{{"@type":"AggregateRating","ratingValue":"{}","reviewCount":"{}"}},"url":"https://zaarhub.com/zaarhub/{}/{}"}}"#,
         h(&name), h(&desc.clone().unwrap_or_default()), h(&addr.unwrap_or_default()), rv, reviews, h(&slug), listing_id,
     );
+    let footer = footer_html(&state.pool).await;
 
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
@@ -410,7 +439,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 <div class="detail-meta">{addr_html}{phone_html}{web_html}{maps_html}</div>
 {offers_html}
 </div>
-<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/zaarhub/{slug}">{city_name}</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
+{footer}
 </body></html>"#,
         title = h(&page_title), desc = h(&desc.unwrap_or_default()),
         slug = h(&slug), id = listing_id, schema = schema,
@@ -420,6 +449,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         desc_html = desc_html, addr_html = addr_html,
         phone_html = phone_html, web_html = web_html,
         maps_html = maps_html, offers_html = offers_html,
+        footer = footer,
     ))
 }
 
@@ -444,6 +474,7 @@ pub async fn render_legal_page(
         }
     };
 
+    let footer = footer_html(&state.pool).await;
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -476,8 +507,9 @@ footer a{{color:#f27f2f;text-decoration:none}}
 <body>
 <header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
 <div class="page">{content}</div>
-<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
+{footer}
 </body></html>"#,
         title = h(&title), slug = h(&slug), content = content,
+        footer = footer,
     ))
 }

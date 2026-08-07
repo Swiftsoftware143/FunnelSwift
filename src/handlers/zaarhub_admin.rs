@@ -131,6 +131,7 @@ pub struct SiteConfigPayload {
     pub twitter_handle: Option<String>,
     pub contact_email: Option<String>,
     pub contact_phone: Option<String>,
+    pub copyright_year: Option<String>,
 }
 
 /// GET /api/v1/zaarhub/admin/config — get site config
@@ -151,6 +152,7 @@ pub async fn get_site_config(State(state): State<AppState>) -> AppResult<Json<Va
             "twitter_handle": r.try_get::<Option<String>,_>("twitter_handle").unwrap_or_default(),
             "contact_email": r.try_get::<Option<String>,_>("contact_email").unwrap_or_default(),
             "contact_phone": r.try_get::<Option<String>,_>("contact_phone").unwrap_or_default(),
+            "copyright_year": r.try_get::<Option<String>,_>("copyright_year").unwrap_or_default(),
         }))),
         None => Ok(Json(json!({
             "site_name": "ZaarHub",
@@ -174,7 +176,7 @@ pub async fn update_site_config(
                 "UPDATE zaarhub_site_config SET site_name = $1, site_tagline = $2, \
                  primary_color = $3, secondary_color = $4, logo_url = $5, favicon_url = $6, \
                  google_analytics_id = $7, facebook_app_id = $8, twitter_handle = $9, \
-                 contact_email = $10, contact_phone = $11, updated_at = now() WHERE id = $12"
+                 contact_email = $10, contact_phone = $11, copyright_year = $12, updated_at = now() WHERE id = $13"
             )
             .bind(payload.site_name.as_deref().unwrap_or("ZaarHub"))
             .bind(payload.site_tagline.as_deref())
@@ -187,6 +189,7 @@ pub async fn update_site_config(
             .bind(payload.twitter_handle.as_deref())
             .bind(payload.contact_email.as_deref())
             .bind(payload.contact_phone.as_deref())
+            .bind(payload.copyright_year.as_deref())
             .bind(id)
             .execute(&state.pool).await?;
             Ok(Json(json!({ "updated": true })))
@@ -195,8 +198,8 @@ pub async fn update_site_config(
             let id = Uuid::new_v4();
             sqlx::query(
                 "INSERT INTO zaarhub_site_config (id, site_name, site_tagline, primary_color, secondary_color, \
-                 logo_url, favicon_url, google_analytics_id, facebook_app_id, twitter_handle, contact_email, contact_phone) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+                 logo_url, favicon_url, google_analytics_id, facebook_app_id, twitter_handle, contact_email, contact_phone, copyright_year) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
             )
             .bind(id).bind(payload.site_name.as_deref().unwrap_or("ZaarHub"))
             .bind(payload.site_tagline.as_deref()).bind(payload.primary_color.as_deref())
@@ -204,6 +207,7 @@ pub async fn update_site_config(
             .bind(payload.favicon_url.as_deref()).bind(payload.google_analytics_id.as_deref())
             .bind(payload.facebook_app_id.as_deref()).bind(payload.twitter_handle.as_deref())
             .bind(payload.contact_email.as_deref()).bind(payload.contact_phone.as_deref())
+            .bind(payload.copyright_year.as_deref())
             .execute(&state.pool).await?;
             Ok(Json(json!({ "created": true })))
         }
