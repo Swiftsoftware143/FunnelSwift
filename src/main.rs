@@ -87,8 +87,11 @@ fn create_router(state: AppState) -> Router {
         .allow_headers(Any)
         .max_age(std::time::Duration::from_secs(86400));
 
+    let security_mw = axum::middleware::from_fn(app_middleware::security::security_headers);
+
     Router::new()
         .merge(api_router::create_router(state))
+        .layer(security_mw)
         .layer(cors)
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())

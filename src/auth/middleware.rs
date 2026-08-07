@@ -20,6 +20,7 @@ pub struct AuthUser {
     pub role: String,
     pub is_admin: bool,
     pub token: String,
+    pub impersonating: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -85,6 +86,7 @@ where
             is_admin: token_data.claims.role == "admin",
             role: token_data.claims.role,
             token: token_str,
+            impersonating: token_data.claims.impersonating,
         })
     }
 }

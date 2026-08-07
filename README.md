@@ -1,147 +1,185 @@
-# FunnelSwift Rust API
+# FunnelSwift — Lead Capture & Affiliate Hub
 
-Lightweight Rust backend for FunnelSwift — replacing the Next.js API routes with a compiled binary.
+Rust backend for FunnelSwift — multi-tenant lead capture, kinetic cards, funnel builder, affiliate management, checkout, and cross-app provisioning.
 
 ## Architecture
 
-- **Framework:** Axum (Tokio-based web framework)
-- **Database:** PostgreSQL with SQLx (compile-time checked queries)
-- **Auth:** Supabase JWT validation
-- **Memory Usage:** ~50-100MB (vs ~700MB for Next.js)
+- **Framework:** Axum (Tokio-based)
+- **Database:** PostgreSQL with SQLx
+- **Auth:** Local JWT (JWT_SECRET env var)
+- **Deployment:** systemctl via native binary + nginx reverse proxy
+- **Memory:** ~50-100MB
 
 ## Project Structure
 
 ```
-funnelswift-rust/
-├── Cargo.toml           # Dependencies
-├── Dockerfile           # Multi-stage build
+funnelswift/
+├── Cargo.toml
 ├── src/
-│   ├── main.rs          # Entry point, routing
-│   ├── error.rs         # Error handling
-│   ├── db.rs            # Database connection pool
-│   ├── auth.rs          # JWT validation
-│   ├── middleware/      # Auth, CORS, security headers
-│   ├── models/          # Database models
-│   └── routes/          # API handlers
-│       ├── admin.rs
-│       ├── auth.rs
-│       ├── automation.rs
-│       ├── leads.rs
-│       ├── v1/          # API v1 routes
-│       └── webhooks.rs
+│   ├── main.rs              # Entry point, create_router()
+│   ├── api_router.rs        # All /api/v1/ routes (161 endpoints)
+│   ├── db.rs                # PostgreSQL connection pool (AppState)
+│   ├── auth.rs              # JWT validation & AuthUser extractor
+│   ├── middleware/           # Auth, CORS, security headers
+│   ├── handlers/            # Route handlers (50+ modules)
+│   └── models/              # Database models
+├── www/                     # Static HTML guides + admin pages
+├── docs/                    # Markdown documentation
+└── n8n-templates/           # Cross-app workflow templates
 ```
 
 ## Quick Start
 
-### 1. Set Environment Variables
-
 ```bash
+# Set environment
 cp .env.example .env
-# Edit .env with your values
-```
 
-### 2. Build & Run (Development)
-
-```bash
-# Install dependencies
+# Build
 cargo build
 
-# Run with hot reload (install cargo-watch first)
-cargo watch -x run
-
-# Or run directly
+# Run
 cargo run
+# Server starts on port 8080
 ```
 
-### 3. Build Release Binary
+## Core API Endpoints
 
-```bash
-cargo build --release
-# Binary: target/release/funnelswift
-```
+All routes are under `/api/v1/`. 161 endpoints total.
 
-### 4. Docker Build
+### Auth
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/auth/login` | Login |
+| POST | `/api/v1/auth/signup` | Public signup |
+| POST | `/api/v1/auth/register` | Registration |
+| POST | `/api/v1/auth/forgot-password` | Forgot password |
+| POST | `/api/v1/auth/reset-password` | Reset password |
+| GET | `/api/v1/auth/me` | Current user |
+| PUT | `/api/v1/auth/password` | Change password |
+| PUT | `/api/v1/auth/profile` | Update profile |
 
-```bash
-docker build -t funnelswift-rust .
-docker run -p 8080:8080 --env-file .env funnelswift-rust
-```
+### Leads (web-to-lead)
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET/POST | `/api/v1/leads` | List / Create leads |
+| GET/PUT/DELETE | `/api/v1/leads/:id` | Get / Update / Delete lead |
+| POST | `/api/v1/leads/:id/assign` | Assign lead |
+| POST | `/api/v1/leads/:id/stage` | Update stage |
+| POST | `/api/v1/leads/:id/tags` | Assign tags |
+| GET | `/api/v1/leads/export` | Export leads |
+| POST | `/api/v1/web-to-lead` | Public web-to-lead submission |
 
-## API Endpoints
+### Tags & Tag Rules
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET/POST | `/api/v1/tags` | List / Create tags |
+| GET/PUT/DELETE | `/api/v1/tags/:id` | Get / Update / Delete tag |
+| GET/POST | `/api/v1/tag-rules` | Auto-tagging rules |
+| GET/POST | `/api/v1/tag-groups` | Tag groups |
+| GET/POST | `/api/v1/tag-change-log` | Tag change audit log |
 
-### Public
-- `GET /` — API info
-- `GET /health` — Health check
-- `POST /api/auth/login` — Login
-- `POST /api/auth/signup` — Signup
+### Affiliate Hub
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET/POST | `/api/v1/affiliates` | List / Create affiliates |
+| GET/PUT/DELETE | `/api/v1/affiliates/:id` | Get / Update / Delete affiliate |
+| GET | `/api/v1/affiliates/:id/commissions` | Affiliate commissions |
+| GET/POST | `/api/v1/affiliate-products` | Affiliate products |
+| POST | `/api/v1/affiliate/signup` | Affiliate portal signup |
+| POST | `/api/v1/affiliate/login` | Affiliate portal login |
+| POST | `/api/v1/affiliate/dashboard` | Affiliate dashboard |
+| GET/POST | `/api/v1/affiliate-stats` | Affiliate statistics |
+| GET/POST | `/api/v1/affiliate-conversions` | Conversion tracking |
+| POST | `/api/v1/track-click` | Click tracking |
+| POST | `/api/v1/check-affiliate-email` | Check affiliate by email |
+| POST | `/api/v1/log-lead-movement` | Lead movement logging |
 
-### Protected (requires Bearer token)
-- `GET /api/admin/settings` — Get site settings
-- `GET /api/leads` — List leads
-- `POST /api/leads` — Create lead
-- `GET /api/automation/workflows` — List workflows
-- `POST /api/automation/workflows` — Create workflow
+### Checkout & Payments
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/checkout/create` | Create checkout session |
+| GET | `/api/v1/checkout/sessions` | List checkout sessions |
+| POST | `/api/v1/webhooks/stripe` | Stripe webhook |
+| POST | `/api/v1/webhooks/paypal` | PayPal webhook |
+| GET/POST | `/api/v1/payment-providers` | Payment provider config |
 
-### Webhooks
-- `POST /api/webhooks/twilio` — Twilio SMS/voice
-- `POST /api/webhooks/stripe` — Stripe payments
+### Kinetic Cards & Funnels
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET/POST | `/api/v1/kinetic/cards` | List / Create cards |
+| GET/PUT/DELETE | `/api/v1/kinetic/cards/:id` | Get / Update / Delete card |
+| GET/POST | `/api/v1/kinetic/cards/:id/buttons` | Card buttons |
+| GET/POST | `/api/v1/kinetic/cards/:id/sources` | Card traffic sources |
+| GET | `/api/v1/kinetic/metrics` | Card metrics |
+| GET/PUT | `/api/v1/kinetic/subdomain` | Subdomain config |
+| GET/PUT | `/api/v1/kinetic/custom-domain` | Custom domain config |
+| GET/POST | `/api/v1/kinetic/qr` | QR codes |
+| GET | `/api/v1/kinetic/qr/:id/svg` | QR SVG |
+| GET | `/api/v1/kinetic/qr/:id/png` | QR PNG |
+| GET/POST | `/api/v1/funnels` | Funnels CRUD |
+| GET/PUT/DELETE | `/api/v1/funnels/:id` | Get / Update / Delete funnel |
 
-## Database Schema
+### Tenants & Plans (Multi-tenant)
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET/POST | `/api/v1/tenants` | List / Create tenants |
+| GET/PUT/DELETE | `/api/v1/tenants/:id` | Get / Update / Delete tenant |
+| POST | `/api/v1/tenants/:id/credits` | Assign credits |
+| POST | `/api/v1/tenants/:id/plan` | Assign plan |
+| GET/POST | `/api/v1/admin/plans` | Admin plan management |
+| POST | `/api/v1/admin/plans/assign` | Admin assign plan |
 
-Required tables (SQL migrations not included — use your existing Supabase schema):
+### Cross-App Push & Integration
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/push/coreswift` | Push lead to CoreSwift |
+| POST | `/api/v1/push/workflowswift` | Push lead to WorkflowSwift |
+| POST | `/api/v1/push/adaswift` | Push lead to ADASwift |
+| POST | `/api/v1/webhooks/conversion` | Cross-app conversion webhook |
+| POST | `/api/v1/track/lead` | Cross-app lead tracking |
 
-- `users` — User accounts
-- `leads` — Lead management
-- `workflows` — Automation workflows
-- `site_settings` — Configuration
+### Web-to-Lead Configs
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET/POST | `/api/v1/web-to-lead/configs` | List / Create configs |
+| PUT/DELETE | `/api/v1/web-to-lead/configs/:id` | Update / Delete config |
+| GET | `/api/v1/web-to-lead/configs/:id/embed` | Get embed code |
+
+### Public Facing (no auth)
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/` | API status |
+| GET | `/api/health` | Health check |
+| GET | `/api/v1/health` | Health check (v1) |
+| GET | `/api/v1/insights` | Dashboard insights |
+| GET | `/api/v1/campaigns` | Campaign listing |
+| GET | `/api/v1/incentiveswift/config` | IncentiveSwift config |
+| GET | `/funnel/:slug` | Public funnel page |
+| POST | `/k/:slug/lead` | Kinetic card lead submit |
+| GET | `/track/click` | Public click tracking |
 
 ## Deployment
 
-### Hetzner VPS
-
 ```bash
-# Build on server or CI
-cargo build --release
+# Build
+CARGO_BUILD_JOBS=1 cargo build --release
 
-# Copy binary and .env to server
-scp target/release/funnelswift root@your-vps:/opt/funnelswift/
-scp .env root@your-vps:/opt/funnelswift/
+# Deploy
+cp target/release/funnelswift /opt/swift/funnelswift/funnelswift
+systemctl restart funnelswift.service
 
-# Run with systemd or Docker
+# Verify
+curl -s localhost:8080/api/health
 ```
 
-### Docker Compose
+## Documentation
 
-```yaml
-version: '3.8'
-services:
-  funnelswift:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-    restart: unless-stopped
-```
-
-## Migration from Next.js
-
-| Feature | Next.js | Rust |
-|---------|---------|------|
-| Memory | ~700MB | ~75MB |
-| Cold start | 2-5s | <100ms |
-| Runtime | Node.js | Native binary |
-| Type safety | TypeScript | Rust (compile-time) |
-
-## TODO
-
-- [ ] SQL migrations
-- [ ] Complete v1 API routes
-- [ ] n8n integration for workflow execution
-- [ ] Redis caching layer
-- [ ] Rate limiting
-- [ ] Webhook signature verification
+- `www/guide.html` — Full user guide
+- `www/guide-admin.html` — Admin guide
+- `www/guide-affiliate.html` — Affiliate program guide
+- `docs/ADMIN_GUIDE.md` — Admin API reference
+- `ARCHITECTURE.md` — Cross-app architecture
+- `GUARDRAILS.md` — Code quality standards
 
 ## License
 

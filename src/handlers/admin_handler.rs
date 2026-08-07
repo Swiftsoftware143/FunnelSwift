@@ -157,29 +157,54 @@ pub async fn portfolio_sync(
     })))
 }
 
-/// Admin impersonation — generates a FunnelSwift-compatible JWT for the target tenant
+/// Admin impersonation — generates a JWT that impersonates the target tenant account.
+/// Admin's own account_id is stored in the impersonating claim so the UI can show a banner.
 pub async fn impersonate(
     auth: AuthUser,
     State(state): State<AppState>,
-    Json(req): Json<Value>,
+    Json(body): Json<Value>,
 ) -> AppResult<impl IntoResponse> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let target_tenant_id = req.get("tenant_id")
+
+    let account_id = body.get("account_id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::BadRequest("tenant_id is required".into()))?;
+        .ok_or_else(|| AppError::BadRequest("account_id is required".into()))?;
+
+    let tid = Uuid::parse_str(account_id)
+        .map_err(|_| AppError::BadRequest("Invalid account_id format".into()))?;
+
+    // Look up the target tenant
+    let target = sqlx::query_as::<_, crate::auth::models::Tenant>(
+        "SELECT id, name, slug, logo, colors, settings, created_at, updated_at FROM tenants WHERE id = $1"
+    )
+    .bind(tid)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::BadRequest("Tenant not found".into()))?;
+
+    // Get a user for this tenant to use as the impersonated identity
+    let target_user = sqlx::query_as::<_, crate::auth::models::User>(
+        "SELECT id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at FROM users WHERE tenant_id = $1 AND is_active = true LIMIT 1"
+    )
+    .bind(tid)
+    .fetch_optional(&state.pool)
+    .await?;
 
     let now = Utc::now().timestamp() as usize;
+    let exp = now + 3600; // 1 hour
+
     let imp_claims = Claims {
-        sub: Uuid::new_v4().to_string(),
-        tenant_id: target_tenant_id.to_string(),
-        email: format!("impersonated@{}", target_tenant_id),
-        role: "impersonated".to_string(),
-        exp: now + 900,
+        sub: target_user.as_ref().map(|u| u.id.to_string()).unwrap_or_else(|| tid.to_string()),
+        tenant_id: tid.to_string(),
+        email: target_user.as_ref().map(|u| u.email.clone()).unwrap_or_else(|| format!("tenant-{}@funnelswift.internal", account_id)),
+        role: target_user.as_ref().map(|u| u.role.clone()).unwrap_or_else(|| "member".to_string()),
+        exp,
         iat: now,
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
+        impersonating: Some(auth.user_id.clone()),
     };
 
     let token = encode(
@@ -190,10 +215,14 @@ pub async fn impersonate(
     .map_err(|e| AppError::Internal(format!("JWT encode error: {}", e)))?;
 
     Ok(Json(json!({
-        "impersonation_token": token,
-        "expires_in": 900,
-        "token_type": "Bearer",
-        "message": "Full tenant switch. Admin panel disappears."
+        "token": token,
+        "impersonating": {
+            "id": tid.to_string(),
+            "name": target.name,
+            "email": target_user.as_ref().map(|u| u.email.as_str()).unwrap_or("")
+        },
+        "expires_in": 3600,
+        "token_type": "Bearer"
     })))
 }
 
@@ -309,4 +338,43 @@ pub async fn list_tenant_users(
     }).collect();
 
     Ok(Json(json!(result)))
+}
+
+/// List ALL kinetic cards across all tenants (admin only)
+pub async fn admin_list_all_cards(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, String, String, String, Option<String>, Option<String>, bool)>(
+        r#"SELECT kc.id, kc.tenant_id, COALESCE(pc.name, 'Unknown') as tenant_name,
+               kc.title, kc.slug, kc.template_type, kc.theme,
+               kc.subdomain, kc.avatar_url, kc.is_active
+         FROM kinetic_cards kc
+         LEFT JOIN portfolio_companies pc ON pc.tenant_id = kc.tenant_id
+         ORDER BY kc.updated_at DESC
+         LIMIT 200"#
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let cards: Vec<Value> = rows.iter().map(|(id, tid, tenant_name, title, slug, template_type, theme, subdomain, avatar_url, is_active)| {
+        json!({
+            "id": id.to_string(),
+            "tenant_id": tid.to_string(),
+            "tenant_name": tenant_name,
+            "title": title,
+            "slug": slug,
+            "template_type": template_type,
+            "theme": theme,
+            "subdomain": subdomain,
+            "avatar_url": avatar_url,
+            "is_active": is_active,
+        })
+    }).collect();
+
+    Ok(Json(json!({"cards": cards, "total": cards.len()})))
 }

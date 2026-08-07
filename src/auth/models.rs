@@ -38,6 +38,8 @@ pub struct Claims {
     pub iat: usize,
     pub aud: Option<String>,
     pub iss: Option<String>,
+    #[serde(default)]
+    pub impersonating: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -46,6 +48,7 @@ pub struct RegisterRequest {
     pub password: String,
     pub name: String,
     pub tenant_name: Option<String>,
+    pub plan_slug: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,1 +1,0 @@
-// Mintbird handler stub
