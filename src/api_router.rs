@@ -69,6 +69,7 @@ pub fn create_router(state: AppState) -> Router {
         // ZaarHub SEO
         .route("/sitemap.xml", get(zaarhub_seo::sitemap_xml))
         // ZaarHub SSR city landing pages (public, SEO-optimized)
+        .route("/zaarhub/:slug/:id", get(zaarhub_ssr::render_listing_page))
         .route("/zaarhub/:slug", get(zaarhub_ssr::render_city_page))
         .route("/zaarhub", get(zaarhub_ssr::render_cities_index))
         // ZaarHub API endpoints (public, no auth)
