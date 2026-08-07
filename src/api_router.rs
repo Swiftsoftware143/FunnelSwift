@@ -26,7 +26,7 @@ use crate::handlers::{
     checkout_handler,
     theme_endpoint,
     funnel_handler,
-    zaarhub_handler, zaarhub_ssr, zaarhub_seo, zaarhub_analytics,
+    zaarhub_handler, zaarhub_ssr, zaarhub_seo, zaarhub_analytics, zaarhub_admin,
 };
 use crate::state::AppState;
 
@@ -68,6 +68,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/zaarhub/analytics/categories", get(zaarhub_analytics::category_breakdown))
         // ZaarHub SEO
         .route("/sitemap.xml", get(zaarhub_seo::sitemap_xml))
+        // ZaarHub legal pages (public SSR)
+        .route("/legal/:slug", get(zaarhub_ssr::render_legal_page))
+        // ZaarHub admin endpoints
+        .route("/api/v1/zaarhub/admin/legal", get(zaarhub_admin::list_legal_pages).post(zaarhub_admin::save_legal_page))
+        .route("/api/v1/zaarhub/admin/legal/:slug", get(zaarhub_admin::get_legal_page).delete(zaarhub_admin::delete_legal_page))
+        .route("/api/v1/zaarhub/admin/config", get(zaarhub_admin::get_site_config).patch(zaarhub_admin::update_site_config))
         // ZaarHub SSR city landing pages (public, SEO-optimized)
         .route("/zaarhub/:slug/:id", get(zaarhub_ssr::render_listing_page))
         .route("/zaarhub/:slug", get(zaarhub_ssr::render_city_page))

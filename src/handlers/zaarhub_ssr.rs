@@ -182,7 +182,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 {hero}
 <div class="listing-grid">{listings}</div>
 <div class="load-more"><a href="/zaarhub-city.html?city={slug}">View all {city_name} businesses →</a></div>
-<footer><p>Powered by <a href="https://funnelswift.net">FunnelSwift</a> · <a href="/zaarhub">All Cities</a></p></footer>
+<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
 </body>
 </html>"#,
         title = h(&page_title),
@@ -263,7 +263,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <header><span class="logo">Zaar<span>Hub</span></span></header>
 <div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 9 Florida cities with thousands of listings, reviews, and deals.</p></div>
 <div class="city-grid">{cities}</div>
-<footer><p>Powered by <a href="https://funnelswift.net">FunnelSwift</a> · <a href="/zaarhub-city.html">Search All Cities</a></p></footer>
+<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
 </body>
 </html>"#,
         cities = cities_html,
@@ -410,7 +410,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 <div class="detail-meta">{addr_html}{phone_html}{web_html}{maps_html}</div>
 {offers_html}
 </div>
-<footer><p>Powered by <a href="https://funnelswift.net">FunnelSwift</a> · <a href="/zaarhub">All Cities</a> · <a href="/zaarhub/{slug}">{city_name}</a></p></footer>
+<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/zaarhub/{slug}">{city_name}</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
 </body></html>"#,
         title = h(&page_title), desc = h(&desc.unwrap_or_default()),
         slug = h(&slug), id = listing_id, schema = schema,
@@ -420,5 +420,64 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         desc_html = desc_html, addr_html = addr_html,
         phone_html = phone_html, web_html = web_html,
         maps_html = maps_html, offers_html = offers_html,
+    ))
+}
+
+/// SSR — render a legal page (public)
+pub async fn render_legal_page(
+    Path(slug): Path<String>,
+    State(state): State<AppState>,
+) -> impl axum::response::IntoResponse {
+    let row = sqlx::query(
+        "SELECT title, content FROM zaarhub_legal_pages WHERE slug = $1 AND is_published = true"
+    ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or(None);
+
+    let (title, content) = match row {
+        Some(r) => (
+            r.try_get::<String,_>("title").unwrap_or_default(),
+            r.try_get::<String,_>("content").unwrap_or_default(),
+        ),
+        None => {
+            return axum::response::Html(format!(
+                "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Page Not Found | ZaarHub</title><style>body{{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}h1{{font-size:48px;color:#2b3255}}a{{color:#f27f2f}}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Page not found.</p><a href=\"/zaarhub\">← Back to ZaarHub</a></div></body></html>",
+            ));
+        }
+    };
+
+    axum::response::Html(format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{title} | ZaarHub</title>
+<meta name="description" content="{title} — ZaarHub">
+<meta property="og:title" content="{title} | ZaarHub">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://zaarhub.com/legal/{slug}">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:Inter,system-ui,sans-serif;background:#f8f9fc;color:#1a1a2e;line-height:1.7}}
+header{{background:#2b3255;color:white;padding:16px 24px;position:sticky;top:0;z-index:100}}
+header .inner{{max-width:900px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}}
+header .logo{{font-size:20px;font-weight:800;color:white;text-decoration:none}}header .logo span{{color:#f27f2f}}
+header nav a{{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;font-weight:500;margin-left:16px}}
+.page{{max-width:900px;margin:0 auto;padding:40px 20px}}
+.page h2{{font-size:28px;font-weight:800;margin-bottom:24px;color:#2b3255}}
+.page h3{{font-size:18px;font-weight:700;margin:24px 0 8px;color:#1a1a2e}}
+.page p{{margin-bottom:16px;color:#4b5563;font-size:15px}}
+.page a{{color:#f27f2f}}
+footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}
+footer a{{color:#f27f2f;text-decoration:none}}
+.footer-links{{display:flex;gap:20px;justify-content:center;margin-bottom:12px;flex-wrap:wrap}}
+.footer-links a{{font-weight:500}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
+<div class="page">{content}</div>
+<footer><div class="footer-links"><a href="/zaarhub">Cities</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/contact">Contact</a></div><p>&copy; 2026 ZaarHub. All rights reserved.</p></footer>
+</body></html>"#,
+        title = h(&title), slug = h(&slug), content = content,
     ))
 }
