@@ -26,7 +26,6 @@ use crate::handlers::{
     checkout_handler,
     theme_endpoint,
     funnel_handler,
-    zaarhub_handler, zaarhub_ssr, zaarhub_seo, zaarhub_analytics, zaarhub_admin,
 };
 use crate::state::AppState;
 
@@ -59,38 +58,6 @@ pub fn create_router(state: AppState) -> Router {
         .route("/b/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
-        // ZaarHub public API (no auth — city pages & directory listings)
-        // ZaarHub Analytics (public read-only)
-        .route("/api/v1/zaarhub/analytics/overview", get(zaarhub_analytics::overview))
-        .route("/api/v1/zaarhub/analytics/cities", get(zaarhub_analytics::city_performance))
-        .route("/api/v1/zaarhub/analytics/offers", get(zaarhub_analytics::top_offers))
-        .route("/api/v1/zaarhub/analytics/claims", get(zaarhub_analytics::recent_claims))
-        .route("/api/v1/zaarhub/analytics/categories", get(zaarhub_analytics::category_breakdown))
-        // ZaarHub SEO
-        .route("/sitemap.xml", get(zaarhub_seo::sitemap_xml))
-        // ZaarHub legal pages (public SSR)
-        .route("/legal/:slug", get(zaarhub_ssr::render_legal_page))
-        // ZaarHub admin endpoints
-        .route("/api/v1/zaarhub/admin/legal", get(zaarhub_admin::list_legal_pages).post(zaarhub_admin::save_legal_page))
-        .route("/api/v1/zaarhub/admin/legal/:slug", get(zaarhub_admin::get_legal_page).delete(zaarhub_admin::delete_legal_page))
-        .route("/api/v1/zaarhub/admin/config", get(zaarhub_admin::get_site_config).patch(zaarhub_admin::update_site_config))
-        // ZaarHub SSR city landing pages (public, SEO-optimized)
-        .route("/zaarhub/:slug/:id", get(zaarhub_ssr::render_listing_page))
-        .route("/zaarhub/:slug", get(zaarhub_ssr::render_city_page))
-        .route("/zaarhub", get(zaarhub_ssr::render_cities_index))
-        // ZaarHub API endpoints (public, no auth)
-        .route("/api/v1/zaarhub/cities", get(zaarhub_handler::list_cities))
-        .route("/api/v1/zaarhub/cities/:slug", get(zaarhub_handler::get_city))
-        .route("/api/v1/zaarhub/cities/:slug/listings", get(zaarhub_handler::list_city_listings))
-        .route("/api/v1/zaarhub/listings/:id", get(zaarhub_handler::get_listing))
-        .route("/api/v1/zaarhub/categories", get(zaarhub_handler::list_categories))
-        .route("/api/v1/zaarhub/search", get(zaarhub_handler::search_listings))
-        .route("/api/v1/zaarhub/featured", get(zaarhub_handler::featured_listings))
-        // ZaarHub claim/redemption endpoints (public, no auth)
-        .route("/api/v1/zaarhub/listings/:id/offers", get(zaarhub_handler::listing_offers))
-        .route("/api/v1/zaarhub/offers/:id", get(zaarhub_handler::get_offer))
-        .route("/api/v1/zaarhub/offers/:id/claim", post(zaarhub_handler::claim_offer))
-        .route("/api/v1/zaarhub/claims/:visitor_id", get(zaarhub_handler::visitor_claims))
         // Default
         .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
         .route("/api/health", get(health))
