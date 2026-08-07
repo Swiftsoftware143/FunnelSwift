@@ -248,6 +248,95 @@ All templates: `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}`, `{{plan_n
 - **Welcome Email** — credentials + login URL + next steps
 - **Purchase Confirmation** — plan name + thank-you + login link
 
+## Kinetic Cards Management
+
+Kinetic Cards are the digital business cards, bio-links, landing pages, and mini funnels that each tenant creates and manages. As an admin, you can view, create, edit, and delete cards for any tenant.
+
+### Where to Find Kinetic Cards
+
+1. Log into the FunnelSwift admin panel
+2. Click **Kinetic Cards** in the left sidebar
+3. You'll see all cards belonging to your tenant
+
+### Card Management from the UI
+
+- **Create** — Click "+ New Card" to open the template gallery. Choose from 54 templates across 5 card types.
+- **Edit** — Click any card to open the edit modal. Modify the slug, title, description, avatar, buttons, social links, theme, and template.
+- **Delete** — Click the delete button on any card row. This is permanent.
+- **Preview** — Each card has a public URL you can share: `https://funnelswift.net/{prefix}/{slug}`
+
+### Card Types (URL Prefixes)
+
+| Prefix | Card Type |
+|--------|-----------|
+| `/k/` | Kinetic Card (original) |
+| `/b/` | Bio Link |
+| `/c/` | Digital Business Card |
+| `/m/` | Micro Page |
+| `/f/` | Mini Funnel |
+| `/h/` | Hero Page |
+
+### Per-Tenant Card Visibility
+
+Cards are **per-tenant** — each portfolio company has its own set of cards. The `list_cards` endpoint filters by `auth.tenant_id`, so when you're logged in as a tenant (or impersonating one), you'll only see that tenant's cards.
+
+### Card Features by Plan
+
+| Feature | Free | Paid |
+|---------|------|------|
+| Max Cards | 1 | Unlimited |
+| Templates | 8 | 54 |
+| Custom Colors | ❌ | ✅ |
+| Video Embeds | ❌ | ✅ |
+| Source Tracking | ❌ | ✅ |
+| Mini Funnels | ❌ | ✅ |
+| Custom Domain | ❌ | ✅ |
+| Analytics | ❌ | ✅ |
+
+---
+
+## Admin Impersonation
+
+Admins can impersonate any tenant to view and manage that tenant's data as if logged into their account. This is useful for troubleshooting, verifying data, or performing actions on behalf of a tenant.
+
+### How to Impersonate a Tenant
+
+1. Log into FunnelSwift as a **Super Admin**
+2. Go to **Admin** → **Users** in the left sidebar
+3. Find the tenant you want to impersonate
+4. Click the **👤 Login As** button on their row
+5. The page reloads with the impersonated tenant's view
+
+### During Impersonation
+
+- A **red banner** appears at the top of the page: `⚠️ Impersonating: [Company Name] | [Stop]`
+- You can view and manage the tenant's data: **Kinetic Cards, Leads, Tags, Integrations**, and all other tenant-scoped resources
+- The admin sidebar links (Users, Plans, System Tags, etc.) are hidden — you see what the tenant sees
+- **Impersonation expires after 1 hour** (the JWT token has a 1-hour TTL)
+
+### Stopping Impersonation
+
+Click the **Stop** button in the red banner at the top of the page. This:
+1. Restores your original admin token from `localStorage`
+2. Removes the impersonation banner
+3. Reloads the page so you're back to your admin view
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/v1/admin/impersonate` | Admin JWT | Generate an impersonation token. Body: `{"account_id": "..."}` |
+| POST | `/api/v1/admin/stop-impersonation` | Any JWT | Confirms the client should stop impersonating |
+
+### Technical Details
+
+- The impersonation JWT includes an `impersonating` claim set to the admin's `user_id`
+- The `tenant_id` in the JWT is set to the target tenant's ID, so all tenant-scoped queries automatically filter to the impersonated tenant
+- The `sub` claim is set to the target tenant's first active user
+- Kinetic cards, leads, tags, integrations, and all other tenant-scoped resources are filtered by `tenant_id` — they'll show the impersonated tenant's data automatically
+
+---
+
 ## Pending Items
 - iOS mobile app (blocked on Apple Developer account renewal)
 - Field mapping UI (manual override for web-to-lead)
