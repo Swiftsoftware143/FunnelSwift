@@ -71,6 +71,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/zaarhub/categories", get(zaarhub_handler::list_categories))
         .route("/api/v1/zaarhub/search", get(zaarhub_handler::search_listings))
         .route("/api/v1/zaarhub/featured", get(zaarhub_handler::featured_listings))
+        // ZaarHub claim/redemption endpoints (public, no auth)
+        .route("/api/v1/zaarhub/listings/:id/offers", get(zaarhub_handler::listing_offers))
+        .route("/api/v1/zaarhub/offers/:id", get(zaarhub_handler::get_offer))
+        .route("/api/v1/zaarhub/offers/:id/claim", post(zaarhub_handler::claim_offer))
+        .route("/api/v1/zaarhub/claims/:visitor_id", get(zaarhub_handler::visitor_claims))
         // Default
         .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
         .route("/api/health", get(health))
