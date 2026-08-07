@@ -269,3 +269,156 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         cities = cities_html,
     ))
 }
+
+/// Render a single business listing detail page (SSR, SEO-optimized)
+pub async fn render_listing_page(
+    Path((slug, listing_id)): Path<(String, Uuid)>,
+    State(state): State<AppState>,
+) -> impl axum::response::IntoResponse {
+    let row = sqlx::query(
+        "SELECT bl.*, cp.city_name \
+         FROM business_listings bl \
+         JOIN city_pages cp ON bl.city_page_id = cp.id \
+         WHERE cp.city_slug = $1 AND bl.id = $2"
+    ).bind(&slug).bind(listing_id)
+     .fetch_optional(&state.pool).await.unwrap_or(None);
+
+    if row.is_none() {
+        return axum::response::Html(format!(
+            "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Not Found | ZaarHub</title><style>body{{font-family:system-ui,sans-serif;background:#f8f9fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}h1{{font-size:48px;color:#2b3255}}a{{color:#f27f2f}}</style></head><body><div style=\"text-align:center\"><h1>404</h1><p>Business not found.</p><a href=\"/zaarhub/{s}\">← Back to directory</a></div></body></html>",
+            s = h(&slug)
+        ));
+    }
+
+    let r = row.unwrap();
+    let name: String = r.try_get("business_name").unwrap_or_default();
+    let cat: Option<String> = r.try_get("category").unwrap_or(None);
+    let desc: Option<String> = r.try_get("description").unwrap_or(None);
+    let addr: Option<String> = r.try_get("address").unwrap_or(None);
+    let phone: Option<String> = r.try_get("phone").unwrap_or(None);
+    let web: Option<String> = r.try_get("website").unwrap_or(None);
+    let logo: Option<String> = r.try_get("logo_url").unwrap_or(None);
+    let rating: Option<f64> = r.try_get("rating").unwrap_or_default();
+    let reviews: i32 = r.try_get("review_count").unwrap_or(0);
+    let coordinates_lat: Option<f64> = r.try_get("coordinates_lat").unwrap_or_default();
+    let coordinates_lng: Option<f64> = r.try_get("coordinates_lng").unwrap_or_default();
+    let is_featured: bool = r.try_get("is_featured").unwrap_or(false);
+    let city_name: String = r.try_get("city_name").unwrap_or_default();
+
+    let rv = rating.unwrap_or(0.0);
+    let stars = String::from("★".repeat(rv as usize)) + &"☆".repeat(5usize.saturating_sub(rv as usize));
+    let page_title = format!("{} — {} | ZaarHub", name, cat.as_deref().unwrap_or("Business"));
+
+    let logo_html = match &logo {
+        Some(img) if !img.is_empty() => format!("<img src=\"{}\" alt=\"{}\" class=\"detail-logo\" onerror=\"this.style.display='none'\">", h(img), h(&name)),
+        _ => format!("<div class='detail-logo-placeholder'>{}</div>", h(&name[..1.min(name.len())])),
+    };
+    let fb = if is_featured { "<span class=\"featured-badge\">⭐ Featured</span>" } else { "" };
+    let cat_html = cat.as_ref().map(|c| format!("<span class=\"category-tag\">{}</span>", h(c))).unwrap_or_default();
+    let desc_html = desc.as_ref().map(|d| format!("<p class=\"desc\">{}</p>", h(d))).unwrap_or_default();
+    let addr_html = addr.as_ref().map(|a| format!("<div class='meta-row'><span class='icon'>📍</span><span>{}</span></div>", h(a))).unwrap_or_default();
+    let phone_html = phone.as_ref().map(|p| format!("<div class='meta-row'><span class='icon'>📞</span><a href='tel:{}'>{}</a></div>", h(p), h(p))).unwrap_or_default();
+    let web_html = web.as_ref().map(|w| format!("<div class='meta-row'><span class='icon'>🌐</span><a href='{}' target='_blank' rel='noopener'>{}</a></div>", h(w), h(w))).unwrap_or_default();
+    let maps_html = match (coordinates_lat, coordinates_lng) {
+        (Some(lat), Some(lng)) => format!("<div class='meta-row'><span class='icon'>🗺️</span><a href='https://maps.google.com/?q={},{}' target='_blank'>View on Google Maps</a></div>", lat, lng),
+        _ => String::new(),
+    };
+
+    // Offers
+    let offers = sqlx::query(
+        "SELECT offer_title, offer_type, discount_value, offer_description \
+         FROM claim_offers WHERE listing_id = $1 AND is_active = true"
+    ).bind(listing_id).fetch_all(&state.pool).await.unwrap_or_default();
+
+    let offers_html = if offers.is_empty() { String::new() } else {
+        let mut htm = String::new();
+        for o in &offers {
+            let ot: String = o.try_get("offer_title").unwrap_or_default();
+            let od: Option<String> = o.try_get("offer_description").unwrap_or(None);
+            let dv: Option<String> = o.try_get("discount_value").unwrap_or(None);
+            let otype: String = o.try_get("offer_type").unwrap_or_default();
+            htm.push_str(&format!(
+                "<div class=\"offer-card\"><div class=\"offer-type-tag\">{}</div><h3>{}</h3>{}{}<a href=\"/zaarhub-offer.html?listing_id={}\" class=\"claim-btn\">Claim →</a></div>",
+                h(&otype), h(&ot),
+                od.as_ref().map(|d| format!("<p>{}</p>", h(d))).unwrap_or_default(),
+                dv.as_ref().map(|d| format!("<span class=\"discount-value\">{}</span>", h(d))).unwrap_or_default(),
+                listing_id,
+            ));
+        }
+        format!("<div class=\"offers-section\"><h2>🎁 Deals &amp; Offers</h2><div class=\"offer-grid\">{}</div></div>", htm)
+    };
+
+    // JSON-LD
+    let schema = format!(
+        r#"{{"@context":"https://schema.org","@type":"LocalBusiness","name":"{}","description":"{}","address":{{"@type":"PostalAddress","streetAddress":"{}"}},"aggregateRating":{{"@type":"AggregateRating","ratingValue":"{}","reviewCount":"{}"}},"url":"https://zaarhub.com/zaarhub/{}/{}"}}"#,
+        h(&name), h(&desc.clone().unwrap_or_default()), h(&addr.unwrap_or_default()), rv, reviews, h(&slug), listing_id,
+    );
+
+    axum::response::Html(format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{title}</title>
+<meta name="description" content="{desc}">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{desc}">
+<meta property="og:type" content="business.business">
+<meta property="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://zaarhub.com/zaarhub/{slug}/{id}">
+<script type="application/ld+json">{schema}</script>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:Inter,system-ui,sans-serif;background:#f8f9fc;color:#1a1a2e;line-height:1.5}}
+header{{background:#2b3255;color:white;padding:16px 24px;position:sticky;top:0;z-index:100}}
+header .inner{{max-width:1000px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}}
+header .logo{{font-size:20px;font-weight:800;color:white;text-decoration:none}}header .logo span{{color:#f27f2f}}
+header nav a{{color:rgba(255,255,255,.75);text-decoration:none;font-size:13px;font-weight:500}}
+.page{{max-width:1000px;margin:0 auto;padding:32px 20px}}
+.breadcrumb{{font-size:13px;color:#6b7280;margin-bottom:24px}}.breadcrumb a{{color:#f27f2f;text-decoration:none}}
+.detail-header{{display:flex;gap:20px;align-items:flex-start;margin-bottom:32px;flex-wrap:wrap}}
+.detail-logo{{width:96px;height:96px;border-radius:20px;object-fit:cover;flex-shrink:0;background:#f27f2f}}
+.detail-logo-placeholder{{width:96px;height:96px;border-radius:20px;background:#f27f2f;color:white;display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:700;flex-shrink:0}}
+.detail-info{{flex:1;min-width:250px}}
+.detail-info h1{{font-size:28px;font-weight:800;margin-bottom:4px}}
+.featured-badge{{display:inline-block;background:linear-gradient(135deg,#f27f2f,#e06e1a);color:white;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;margin-bottom:8px}}
+.category-tag{{display:inline-block;font-size:11px;font-weight:600;text-transform:uppercase;color:#f27f2f;background:#fff7f0;padding:3px 10px;border-radius:6px;margin-right:8px;margin-bottom:8px}}
+.stars-row{{font-size:16px;margin:8px 0}}.stars-row .stars{{color:#f59e0b;font-size:20px}}
+.desc{{font-size:15px;color:#4b5563;line-height:1.7;margin:16px 0}}
+.detail-meta{{background:white;border-radius:14px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:24px}}
+.meta-row{{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6;font-size:14px}}
+.meta-row:last-child{{border-bottom:none}}.meta-row .icon{{font-size:18px;width:24px;text-align:center}}
+.meta-row a{{color:#f27f2f;text-decoration:none;font-weight:500}}
+.offers-section{{margin-bottom:24px}}.offers-section h2{{font-size:20px;font-weight:700;margin-bottom:16px}}
+.offer-grid{{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}}
+.offer-card{{background:white;border-radius:14px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:3px solid #16a34a}}
+.offer-card h3{{font-size:16px;font-weight:700;margin-bottom:4px}}.offer-card p{{font-size:13px;color:#6b7280;margin-bottom:8px}}
+.offer-type-tag{{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;margin-bottom:6px}}
+.discount-value{{display:inline-block;font-size:18px;font-weight:800;color:#16a34a;margin:4px 0 8px}}
+.claim-btn{{display:inline-block;padding:8px 20px;background:#f27f2f;color:white;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700;transition:all .15s}}
+.claim-btn:hover{{background:#e06e1a;transform:translateY(-1px)}}
+footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{color:#f27f2f;text-decoration:none}}
+@media(max-width:600px){{.detail-header{{flex-direction:column;align-items:center;text-align:center}}.offer-grid{{grid-template-columns:1fr}}}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub/{slug}">← Back to {city_name}</a></nav></div></header>
+<div class="page">
+<div class="breadcrumb"><a href="/zaarhub">Cities</a> › <a href="/zaarhub/{slug}">{city_name}</a> › {name}</div>
+<div class="detail-header">{logo_html}<div class="detail-info">{fb}<h1>{name}</h1>{cat_html}<div class="stars-row"><span class="stars">{stars}</span> {rating:.1} · {reviews} reviews</div>{desc_html}</div></div>
+<div class="detail-meta">{addr_html}{phone_html}{web_html}{maps_html}</div>
+{offers_html}
+</div>
+<footer><p>Powered by <a href="https://funnelswift.net">FunnelSwift</a> · <a href="/zaarhub">All Cities</a> · <a href="/zaarhub/{slug}">{city_name}</a></p></footer>
+</body></html>"#,
+        title = h(&page_title), desc = h(&desc.unwrap_or_default()),
+        slug = h(&slug), id = listing_id, schema = schema,
+        name = h(&name), city_name = h(&city_name),
+        logo_html = logo_html, fb = fb, cat_html = cat_html,
+        stars = stars, rating = rv, reviews = reviews,
+        desc_html = desc_html, addr_html = addr_html,
+        phone_html = phone_html, web_html = web_html,
+        maps_html = maps_html, offers_html = offers_html,
+    ))
+}
