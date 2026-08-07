@@ -42,5 +42,6 @@ pub mod template_gating_handler;
 pub mod theme_endpoint;
 pub mod webhook_handler;
 pub mod zaarhub_handler;
+pub mod zaarhub_ssr;
 pub mod web_to_lead_handler;
 pub mod workflowswift_push;
