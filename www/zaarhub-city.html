@@ -294,6 +294,25 @@ header .nav-links a:hover { color: var(--brand); }
   font-size: 13px;
   white-space: nowrap;
 }
+.view-offers-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--brand);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  margin-top: 10px;
+  text-decoration: none;
+  transition: all .2s;
+}
+.view-offers-btn:hover {
+  background: #e06a1e;
+  transform: translateY(-1px);
+}
+
 .listing-card .deal-badge {
   display: inline-flex;
   align-items: center;
@@ -615,6 +634,7 @@ function listingCard(l) {
           ${l.phone ? `<span>📞 ${escHtml(l.phone)}</span>` : ''}
         </div>
         ${dealBadge}
+        <a href="/zaarhub-offer.html?listing_id=${l.id}" class="view-offers-btn" onclick="event.stopPropagation()">🎁 View Offers</a>
       </div>
     </div>`;
 }
@@ -641,6 +661,7 @@ async function openListing(id) {
         ${l.coordinates_lat ? `<div class="meta-row">🗺️ <span class="label">Map</span> <a href="https://maps.google.com/?q=${l.coordinates_lat},${l.coordinates_lng}" target="_blank">View on Google Maps</a></div>` : ''}
       </div>
       ${l.deal_text ? `<div style="background:#dcfce7;padding:16px;border-radius:10px;margin-top:16px"><strong>🎁 Deal:</strong> ${escHtml(l.deal_text)}${l.deal_url ? `<br><a href="${escHtml(l.deal_url)}" style="color:#166534;font-weight:700">Claim Deal →</a>` : ''}</div>` : ''}
+      <a href="/zaarhub-offer.html?listing_id=${l.id}" style="display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:var(--brand);color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px">🎁 View Offers</a>
     `;
     document.getElementById('modal-overlay').classList.add('active');
   } catch(e) {
