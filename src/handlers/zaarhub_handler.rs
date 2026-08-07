@@ -340,6 +340,174 @@ pub async fn search_listings(
     })))
 }
 
+// ── Phase 5: Claim/Redemption handlers ────────────────────────
+
+#[derive(Deserialize)]
+pub struct ClaimOfferBody {
+    pub visitor_id: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+}
+
+/// Get active offers for a specific listing
+pub async fn listing_offers(
+    State(state): State<AppState>,
+    Path(listing_id): Path<String>,
+) -> AppResult<Json<Value>> {
+    let listing_uuid = Uuid::parse_str(&listing_id)
+        .map_err(|_| AppError::BadRequest("Invalid listing ID".into()))?;
+
+    let rows = sqlx::query(
+        "SELECT co.* \
+         FROM claim_offers co \
+         JOIN business_listings bl ON co.listing_id = bl.id \
+         WHERE co.listing_id = $1 AND co.is_active = true \
+         AND (co.max_claims IS NULL OR co.current_claims < co.max_claims) \
+         AND (co.expires_at IS NULL OR co.expires_at > now()) \
+         ORDER BY co.created_at DESC"
+    )
+    .bind(listing_uuid)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let offers: Vec<Value> = rows.iter().map(offer_json).collect();
+    Ok(Json(json!({ "offers": offers, "total": offers.len() })))
+}
+
+/// Get a single offer by ID
+pub async fn get_offer(
+    State(state): State<AppState>,
+    Path(offer_id): Path<String>,
+) -> AppResult<Json<Value>> {
+    let offer_uuid = Uuid::parse_str(&offer_id)
+        .map_err(|_| AppError::BadRequest("Invalid offer ID".into()))?;
+
+    let row = sqlx::query("SELECT co.* FROM claim_offers co WHERE co.id = $1")
+        .bind(offer_uuid)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Offer not found: {}", offer_id)))?;
+
+    Ok(Json(json!({ "offer": offer_json(&row) })))
+}
+
+/// Claim an offer — increments claim count and returns the promo code/redemption
+pub async fn claim_offer(
+    State(state): State<AppState>,
+    Path(offer_id): Path<String>,
+    Json(body): Json<ClaimOfferBody>,
+) -> AppResult<Json<Value>> {
+    let offer_uuid = Uuid::parse_str(&offer_id)
+        .map_err(|_| AppError::BadRequest("Invalid offer ID".into()))?;
+
+    let visitor_id = body.visitor_id.as_deref().unwrap_or("anonymous").to_string();
+
+    // Fetch the offer and lock it for update to avoid race conditions on max_claims
+    let offer_row = sqlx::query(
+        "SELECT co.* FROM claim_offers co \
+         WHERE co.id = $1 AND co.is_active = true \
+         AND (co.max_claims IS NULL OR co.current_claims < co.max_claims) \
+         AND (co.expires_at IS NULL OR co.expires_at > now()) \
+         FOR UPDATE OF co"
+    )
+    .bind(offer_uuid)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound(
+        "Offer not found, expired, or fully claimed".into()
+    ))?;
+
+    // Increment current_claims
+    sqlx::query("UPDATE claim_offers SET current_claims = current_claims + 1, updated_at = now() WHERE id = $1")
+        .bind(offer_uuid)
+        .execute(&state.pool)
+        .await?;
+
+    let promo_revealed: String = offer_row
+        .try_get::<String, _>("promo_code")
+        .unwrap_or_default();
+    let redemption_url: Option<String> = offer_row.try_get("redemption_url").unwrap_or_default();
+
+    // Insert claim record
+    let _ = sqlx::query(
+        "INSERT INTO offer_claims (offer_id, visitor_id, email, phone, promo_code_revealed, claimed_at) \
+         VALUES ($1, $2, $3, $4, $5, now())"
+    )
+    .bind(offer_uuid)
+    .bind(&visitor_id)
+    .bind(&body.email)
+    .bind(&body.phone)
+    .bind(&promo_revealed)
+    .execute(&state.pool)
+    .await;
+
+    Ok(Json(json!({
+        "success": true,
+        "offer": offer_json(&offer_row),
+        "promo_code": promo_revealed,
+        "redemption_url": redemption_url,
+    })))
+}
+
+/// Get a visitor's claim history
+pub async fn visitor_claims(
+    State(state): State<AppState>,
+    Path(visitor_id): Path<String>,
+) -> AppResult<Json<Value>> {
+    let rows = sqlx::query(
+        "SELECT oc.*, co.offer_title, co.listing_id, bl.business_name \
+         FROM offer_claims oc \
+         JOIN claim_offers co ON oc.offer_id = co.id \
+         JOIN business_listings bl ON co.listing_id = bl.id \
+         WHERE oc.visitor_id = $1 \
+         ORDER BY oc.claimed_at DESC \
+         LIMIT 50"
+    )
+    .bind(&visitor_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let claims: Vec<Value> = rows.iter().map(|r| json!({
+        "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+        "offer_id": r.try_get::<Uuid, _>("offer_id").map(|v| v.to_string()).unwrap_or_default(),
+        "visitor_id": r.try_get::<String, _>("visitor_id").unwrap_or_default(),
+        "email": r.try_get::<Option<String>, _>("email").unwrap_or_default(),
+        "phone": r.try_get::<Option<String>, _>("phone").unwrap_or_default(),
+        "promo_code_revealed": r.try_get::<String, _>("promo_code_revealed").unwrap_or_default(),
+        "claimed_at": r.try_get::<chrono::NaiveDateTime, _>("claimed_at").unwrap_or_default(),
+        "redeemed": r.try_get::<bool, _>("redeemed").unwrap_or(false),
+        "redeemed_at": r.try_get::<Option<chrono::NaiveDateTime>, _>("redeemed_at").unwrap_or_default(),
+        "offer_title": r.try_get::<String, _>("offer_title").unwrap_or_default(),
+        "listing_id": r.try_get::<Uuid, _>("listing_id").map(|v| v.to_string()).unwrap_or_default(),
+        "business_name": r.try_get::<String, _>("business_name").unwrap_or_default(),
+    })).collect();
+
+    Ok(Json(json!({ "claims": claims, "total": claims.len() })))
+}
+
+/// Build offer JSON from a sqlx::Row
+fn offer_json(r: &sqlx::postgres::PgRow) -> Value {
+    json!({
+        "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+        "listing_id": r.try_get::<Uuid, _>("listing_id").map(|v| v.to_string()).unwrap_or_default(),
+        "offer_type": r.try_get::<String, _>("offer_type").unwrap_or_default(),
+        "offer_title": r.try_get::<String, _>("offer_title").unwrap_or_default(),
+        "offer_description": r.try_get::<Option<String>, _>("offer_description").unwrap_or_default(),
+        "promo_code": r.try_get::<Option<String>, _>("promo_code").unwrap_or_default(),
+        "coupon_image_url": r.try_get::<Option<String>, _>("coupon_image_url").unwrap_or_default(),
+        "redemption_url": r.try_get::<Option<String>, _>("redemption_url").unwrap_or_default(),
+        "redemption_phone": r.try_get::<Option<String>, _>("redemption_phone").unwrap_or_default(),
+        "discount_value": r.try_get::<Option<String>, _>("discount_value").unwrap_or_default(),
+        "expires_at": r.try_get::<Option<chrono::NaiveDateTime>, _>("expires_at").unwrap_or_default(),
+        "terms_conditions": r.try_get::<Option<String>, _>("terms_conditions").unwrap_or_default(),
+        "is_active": r.try_get::<bool, _>("is_active").unwrap_or(false),
+        "max_claims": r.try_get::<Option<i32>, _>("max_claims").unwrap_or_default(),
+        "current_claims": r.try_get::<i32, _>("current_claims").unwrap_or(0),
+        "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
+        "updated_at": r.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default(),
+    })
+}
+
 /// Get featured listings across all cities
 pub async fn featured_listings(
     State(state): State<AppState>,
