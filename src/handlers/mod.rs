@@ -45,5 +45,6 @@ pub mod zaarhub_handler;
 pub mod zaarhub_ssr;
 pub mod zaarhub_seo;
 pub mod zaarhub_analytics;
+pub mod zaarhub_admin;
 pub mod web_to_lead_handler;
 pub mod workflowswift_push;
