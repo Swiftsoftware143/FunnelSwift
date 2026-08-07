@@ -39,6 +39,16 @@ async fn footer_html(pool: &sqlx::PgPool) -> String {
     )
 }
 
+/// Cookie consent banner HTML — shown at page bottom until accepted
+const COOKIE_BANNER: &str = r#"<div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:white;padding:20px 24px;z-index:9999;display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,.3);font-size:13px;line-height:1.5">
+<div style="max-width:900px">We use cookies for essential site functionality and analytics to improve your experience. By continuing to use ZaarHub, you accept our <a href="/legal/privacy" style="color:#f27f2f">Privacy Policy</a> and <a href="/legal/terms" style="color:#f27f2f">Terms of Service</a>.</div>
+<div style="display:flex;gap:10px">
+<button onclick="document.getElementById('cookie-banner').style.display='none';localStorage.setItem('zaarhub_cookies_accepted','1')" style="background:#f27f2f;color:white;border:none;padding:10px 24px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">Accept All</button>
+<button onclick="document.getElementById('cookie-banner').style.display='none';localStorage.setItem('zaarhub_cookies_accepted','essential')" style="background:transparent;color:white;border:1px solid rgba(255,255,255,.3);padding:10px 24px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap">Essential Only</button>
+</div>
+</div>
+<script>if(localStorage.getItem('zaarhub_cookies_accepted'))document.getElementById('cookie-banner').style.display='none'</script>"#;
+
 /// Render a full city landing page (SEO-optimized SSR HTML)
 pub async fn render_city_page(
     Path(slug): Path<String>,
@@ -208,7 +218,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <div class="listing-grid">{listings}</div>
 <div class="load-more"><a href="/zaarhub-city.html?city={slug}">View all {city_name} businesses →</a></div>
 {footer}
-</body>
+{cookie_banner}</body>
 </html>"#,
         title = h(&page_title),
         desc = h(&page_desc),
@@ -216,6 +226,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         city_name = h(&city_name),
         hero = hero_section,
         footer = footer,
+        cookie_banner = COOKIE_BANNER,
         listings = listings_html,
         schema = schema,
     ))
@@ -291,10 +302,12 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
 <div class="hero"><h1>Florida <span>Business Directory</span></h1><p>Browse top-rated local businesses across 9 Florida cities with thousands of listings, reviews, and deals.</p></div>
 <div class="city-grid">{cities}</div>
 {footer}
+{cookie_banner}
 </body>
 </html>"#,
         cities = cities_html,
         footer = footer,
+        cookie_banner = COOKIE_BANNER,
     ))
 }
 
@@ -440,6 +453,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
 {offers_html}
 </div>
 {footer}
+{cookie_banner}
 </body></html>"#,
         title = h(&page_title), desc = h(&desc.unwrap_or_default()),
         slug = h(&slug), id = listing_id, schema = schema,
@@ -450,6 +464,7 @@ footer{{text-align:center;padding:32px;color:#6b7280;font-size:13px}}footer a{{c
         phone_html = phone_html, web_html = web_html,
         maps_html = maps_html, offers_html = offers_html,
         footer = footer,
+        cookie_banner = COOKIE_BANNER,
     ))
 }
 
@@ -508,8 +523,10 @@ footer a{{color:#f27f2f;text-decoration:none}}
 <header><div class="inner"><a href="/zaarhub" class="logo">Zaar<span>Hub</span></a><nav><a href="/zaarhub">← All Cities</a></nav></div></header>
 <div class="page">{content}</div>
 {footer}
+{cookie_banner}
 </body></html>"#,
         title = h(&title), slug = h(&slug), content = content,
         footer = footer,
+        cookie_banner = COOKIE_BANNER,
     ))
 }
