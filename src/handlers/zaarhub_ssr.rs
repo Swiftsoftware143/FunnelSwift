@@ -131,6 +131,12 @@ pub async fn render_city_page(
         ),
     };
 
+    // Schema.org JSON-LD for SEO
+    let schema = format!(
+        r#"{{"@context":"https://schema.org","@type":"LocalBusiness","name":"{}","description":"{}","address":{{"@type":"PostalAddress","addressRegion":"FL"}},"aggregateRating":{{"@type":"AggregateRating","bestRating":"5"}},"url":"https://zaarhub.com/{}"}}"#,
+        h(&city_name), h(&page_desc), h(&slug)
+    );
+
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -144,6 +150,7 @@ pub async fn render_city_page(
 <meta property="og:type" content="website">
 <meta property="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://zaarhub.com/{slug}">
+<script type="application/ld+json">{schema}</script>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:Inter,system-ui,sans-serif;background:#f8f9fc;color:#1a1a2e;line-height:1.5}}
@@ -184,6 +191,7 @@ footer{{text-align:center;padding:48px 20px;color:#6b7280;font-size:13px}}footer
         city_name = h(&city_name),
         hero = hero_section,
         listings = listings_html,
+        schema = schema,
     ))
 }
 
