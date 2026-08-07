@@ -142,6 +142,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/admin/tenants/:id/users", post(crate::handlers::admin_handler::list_tenant_users))
         .route("/api/v1/admin/tenants/:id/feature-overrides", get(crate::handlers::admin_handler::get_tenant_feature_overrides))
         .route("/api/v1/admin/tenants/:id/feature-override", post(crate::handlers::admin_handler::set_tenant_feature_override))
+        .route("/api/v1/admin/kinetic-cards", get(crate::handlers::admin_handler::admin_list_all_cards))
         // Bulk operations
         .route("/api/v1/bulk/leads", post(bulk_handler::bulk_delete_leads))
         .route("/api/v1/bulk/affiliates", post(bulk_handler::bulk_delete_affiliates))

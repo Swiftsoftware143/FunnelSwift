@@ -21,7 +21,6 @@ pub mod kinetic_handler;
 pub mod lead_handler;
 pub mod linkedin;
 pub mod linkedin_auth_handler;
-pub mod mintbird_handler;
 pub mod ocr;
 pub mod plan_handler;
 pub mod plan_tag_handler;

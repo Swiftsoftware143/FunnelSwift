@@ -94,6 +94,7 @@ tr:hover{background:#f8fafc}
   <div class="sec" id="adm-sec">Admin</div>
   <div id="adm-links">
   <a data-tab="settings" onclick="S('settings')">Settings</a>
+  <a data-tab="allcards" onclick="S('allcards')">All Cards</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
@@ -178,10 +179,10 @@ function S(t){
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Users",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages"};
+  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Users",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",allcards:"All Cards"};
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC};
   if(L[t]) L[t]();
 }
 
@@ -1242,6 +1243,8 @@ function LN(){
       tr.setAttribute("data-email",t.email||"");
       tr.innerHTML='<td><strong>'+X(t.name||"Unnamed")+'</strong></td><td>'+X(t.email||"-")+'</td><td>'+X(pn)+'</td><td><span style="color:'+(t.status==="active"?"#16a34a":"#64748b")+'">'+X(t.status||"active")+'</span></td><td style="white-space:nowrap"></td>';
       var td=tr.querySelectorAll("td")[4];
+      td.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){impersonateTenant(t.id,X(t.name||"Unnamed"))}},"\u{1F464} Login As"));
+      td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ET(t.id,pn)}},"Plan"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ETN(t.id)}},"Edit"));
@@ -1295,6 +1298,57 @@ function STN(id){
   api(u,{method:mu,body:JSON.stringify(d)}).then(function(){C();S("tenants")}).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
 function DTN(id,name){if(confirm("Delete tenant "+name+"? Cannot undo.")) api("/api/v1/tenants/"+id,{method:"DELETE"}).then(function(){S("tenants")});}
+
+/* === IMPERSONATION === */
+var impressOriginalToken=null;
+function impersonateTenant(id,name){
+  if(!id){alert("Invalid tenant ID");return;}
+  showMsg("Impersonating "+X(name)+"...","mi");
+  api("/api/v1/admin/impersonate",{method:"POST",body:JSON.stringify({account_id:id})}).then(function(r){
+    var token=r.token||r.impersonation_token;
+    if(!token){showMsg("No token returned","me");return;}
+    impressOriginalToken=T;
+    T=token;
+    localStorage.setItem("ws_fs_token",token);
+    localStorage.setItem("ws_fs_original_token",impressOriginalToken);
+    showBanner(name);
+    S("dashboard");
+  }).catch(function(e){showMsg(e.message||"Impersonation failed","me")});
+}
+function showBanner(name){
+  var b=document.getElementById("imp-banner");
+  if(!b){
+    b=document.createElement("div");
+    b.id="imp-banner";
+    b.innerHTML='<div style="background:#e11d48;color:#fff;padding:8px 24px;font-size:13px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:12px">\u26A0\uFE0F Impersonating: <span id="imp-name"></span> <button id="imp-stop" style="background:#fff;color:#e11d48;border:none;border-radius:4px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer">Stop</button></div>';
+    var header=document.querySelector(".header");
+    header.parentNode.insertBefore(b,header);
+  }
+  document.getElementById("imp-name").textContent=name||"Unknown";
+  document.getElementById("imp-stop").onclick=stopImpersonation;
+}
+function stopImpersonation(){
+  var orig=localStorage.getItem("ws_fs_original_token");
+  if(orig){T=orig;localStorage.setItem("ws_fs_token",orig);}
+  localStorage.removeItem("ws_fs_original_token");
+  impressOriginalToken=null;
+  var b=document.getElementById("imp-banner");
+  if(b) b.remove();
+  location.reload();
+}
+// Check for impersonation on page load
+(function(){
+  var tok=localStorage.getItem("ws_fs_token");
+  if(tok){
+    try{
+      var payload=JSON.parse(atob(tok.split(".")[1]));
+      if(payload.impersonating){
+        T=tok;
+        showBanner(payload.email||payload.sub||"Unknown");
+      }
+    }catch(e){}
+  }
+})();
 
 /* === AFFILIATES === */
 function LA(){
@@ -1398,6 +1452,30 @@ function LPA(){
   });
 }
 function MPP(id){if(confirm("Mark payout as paid?")) api("/api/v1/affiliate-payouts/"+id+"/pay",{method:"POST"}).then(function(){S("payouts")});}
+
+/* === ALL CARDS (admin view across all tenants) === */
+function LAC(){
+  if(!U||!U.is_admin) return;
+  api("/api/v1/admin/kinetic-cards").then(function(d){
+    var cards=(d&&d.cards)?d.cards:[];
+    var h='<h4>All Kinetic Cards ('+cards.length+')</h4>';
+    if(!cards.length){ h+='<p>No cards found across tenants.</p>'; M("All Cards",h,false,"allcards"); return; }
+    h+='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #e5e7eb">';
+    h+='<th style="padding:8px 12px">Tenant</th><th style="padding:8px 12px">Title</th><th style="padding:8px 12px">Slug</th><th style="padding:8px 12px">Type</th><th style="padding:8px 12px">Active</th></tr></thead><tbody>';
+    cards.forEach(function(c){
+      var typeLabel={business_card:"Business Card",bio_link:"Bio Link",mini_page:"Mini Page",mini_funnel:"Mini Funnel",hero:"Hero",thank_you:"Thank You",default:"Default"}[c.template_type]||c.template_type||"-";
+      h+='<tr style="border-bottom:1px solid #f3f4f6">';
+      h+='<td style="padding:8px 12px;font-size:13px">'+E(c.tenant_name)+'</td>';
+      h+='<td style="padding:8px 12px"><strong>'+E(c.title)+'</strong></td>';
+      h+='<td style="padding:8px 12px;font-size:13px;color:#6b7280">'+E(c.slug)+'</td>';
+      h+='<td style="padding:8px 12px;font-size:13px">'+typeLabel+'</td>';
+      h+='<td style="padding:8px 12px">'+(c.is_active?'<span style="color:#10b981">●</span>':'<span style="color:#ef4444">○</span>')+'</td>';
+      h+='</tr>';
+    });
+    h+='</tbody></table>';
+    M("All Cards",h,false,"allcards");
+  }).catch(function(e){ M("All Cards",'<p style="color:#ef4444">Failed to load: '+E(e.message||e)+'</p>',false,"allcards"); });
+}
 
 /* === PLANS === */
 function LPLL(){

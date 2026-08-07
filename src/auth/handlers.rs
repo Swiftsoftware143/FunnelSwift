@@ -97,6 +97,28 @@ pub async fn register(
     .execute(&state.pool)
     .await?;
 
+    // Auto-assign plan to new tenant (respects plan from signup request, defaults to 'free')
+    {
+        let plan_slug = req.plan_slug.as_deref().unwrap_or("free");
+        let plan_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM plans WHERE slug = $1 LIMIT 1"
+        )
+        .bind(plan_slug)
+        .fetch_optional(&state.pool)
+        .await?;
+        if let Some(pid) = plan_id {
+            let _ = sqlx::query(
+                r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
+                   VALUES ($1, $2, $3, 'active', NOW())"#
+            )
+            .bind(Uuid::new_v4())
+            .bind(tenant_id)
+            .bind(pid)
+            .execute(&state.pool)
+            .await;
+        }
+    }
+
     // Generate JWT
     let now = Utc::now().timestamp() as usize;
     let claims = Claims {
@@ -108,6 +130,7 @@ pub async fn register(
         iat: now,
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
+        impersonating: None,
     };
 
     let token = encode(
@@ -161,6 +184,7 @@ pub async fn login(
         iat: now,
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
+        impersonating: None,
     };
 
     let token = encode(
@@ -249,6 +273,7 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "username": user_info.as_ref().and_then(|(_,u)| u.clone()).unwrap_or_default(),
         "role": auth.role,
         "is_admin": auth.is_admin,
+        "impersonating": auth.impersonating,
         "api_key": api_key_row.map(|(p, n, fk)| json!({"prefix": p, "name": n, "key": fk.unwrap_or_default()})),
         "available_products": products,
         "current_plan": current_plan
