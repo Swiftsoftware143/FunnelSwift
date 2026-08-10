@@ -184,7 +184,7 @@ pub async fn apply_sold_to_tenant_leads(
             pool,
             tenant_id,
             *lead_id,
-            &[sold_tag_name.clone()],
+            std::slice::from_ref(&sold_tag_name),
             &to_remove,
             "plan_upgrade",
         )

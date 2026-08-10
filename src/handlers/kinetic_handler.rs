@@ -605,7 +605,7 @@ pub async fn render_card(
         .filter(|s| !s.is_empty())
         .map(|s| format!("<meta property=\"og:image\" content=\"{}\">\n<meta property=\"twitter:image\" content=\"{}\">\n", s, s))
         .or_else(|| {
-            let default_img = format!("<meta property=\"og:image\" content=\"https://funnelswift.net/assets/og-funnelswift-card.png\">\n<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n<meta property=\"twitter:image\" content=\"https://funnelswift.net/assets/og-funnelswift-card.png\">\n");
+            let default_img = "<meta property=\"og:image\" content=\"https://funnelswift.net/assets/og-funnelswift-card.png\">\n<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n<meta property=\"twitter:image\" content=\"https://funnelswift.net/assets/og-funnelswift-card.png\">\n".to_string();
             Some(default_img)
         })
         .unwrap_or_default();

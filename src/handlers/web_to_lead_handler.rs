@@ -45,7 +45,7 @@ pub async fn create_web_to_lead_config(
     sqlx::query("INSERT INTO web_to_lead_configs (id, tenant_id, name, form_title, fields, public_key) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(id).bind(tenant_id).bind(&payload.name)
         .bind(payload.form_title.as_deref().unwrap_or("Get Started"))
-        .bind(&fields).bind(&id.to_string()).execute(&state.pool).await?;
+        .bind(&fields).bind(id.to_string()).execute(&state.pool).await?;
     Ok((
         StatusCode::CREATED,
         Json(json!({"id": id.to_string(), "public_key": id.to_string()})),

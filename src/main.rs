@@ -1,5 +1,9 @@
 #![recursion_limit = "512"]
 #![allow(dead_code)]
+#![allow(clippy::vec_init_then_push)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_return)]
 
 use axum::Router;
 use std::net::SocketAddr;
