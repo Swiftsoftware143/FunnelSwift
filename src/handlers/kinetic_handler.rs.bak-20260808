@@ -1,4 +1,4 @@
-use axum::extract::{OriginalUri, Path, Query, State};
+use axum::extract::{Host, OriginalUri, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 
@@ -25,42 +25,26 @@ fn resolve_canonical_url(host: &str, prefix: &str, slug: &str) -> String {
 fn cta_for_prefix(prefix: &str) -> (&'static str, &'static str) {
     match prefix {
         "b" => ("Claim your free Bio Link →", "Bio Link"),
-        "c" => (
-            "Claim your free Digital Business Card →",
-            "Digital Business Card",
-        ),
+        "c" => ("Claim your free Digital Business Card →", "Digital Business Card"),
         "m" => ("Claim your free Micro Page →", "Micro Page"),
         "f" => ("Claim your free Mini Funnel →", "Mini Funnel"),
         "h" => ("Claim your free Hero Page →", "Hero Page"),
-        _ => ("Claim your free Kinetic Card →", "Kinetic Card"),
+        _   => ("Claim your free Kinetic Card →", "Kinetic Card"),
     }
 }
 
-use crate::auth::middleware::AuthUser;
-use crate::error::{AppError, AppResult};
-use crate::features;
-use crate::state::AppState;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
+use crate::auth::middleware::AuthUser;
+use crate::error::{AppError, AppResult};
+use crate::state::AppState;
 
 #[derive(Deserialize)]
-pub struct CardQuery {
-    pub page: Option<i32>,
-    pub per_page: Option<i32>,
-    pub type_: Option<String>,
-}
+pub struct CardQuery { pub page: Option<i32>, pub per_page: Option<i32>, pub type_: Option<String> }
 
-pub async fn list_cards(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Query(_q): Query<CardQuery>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+pub async fn list_cards(auth: AuthUser, State(state): State<AppState>, Query(q): Query<CardQuery>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let rows = sqlx::query(
         "SELECT id, tenant_id, title, slug, bio, bg_color, accent_color, text_color, sub_color, btn_color, card_type, tagline, meta_description, avatar_url, social_links, theme_slug, video_provider, video_id, is_template, template_category, category, cta_text, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
     ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
@@ -93,16 +77,8 @@ pub async fn list_cards(
     Ok(Json(json!({"cards": cards})))
 }
 
-pub async fn create_card(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> AppResult<(StatusCode, Json<Value>)> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+pub async fn create_card(auth: AuthUser, State(state): State<AppState>, Json(body): Json<Value>) -> AppResult<(StatusCode, Json<Value>)> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let id = Uuid::new_v4();
     let title = body["title"].as_str().unwrap_or("New Card");
     let id_str = id.to_string();
@@ -113,10 +89,7 @@ pub async fn create_card(
     let text_color = body["text_color"].as_str().unwrap_or("#ffffff");
     let sub_color = body["sub_color"].as_str().unwrap_or("#94a3b8");
     let btn_color = body["btn_color"].as_str().unwrap_or("#6366f1");
-    let card_type = body["type"]
-        .as_str()
-        .or(body["card_type"].as_str())
-        .unwrap_or("bio-link");
+    let card_type = body["type"].as_str().or(body["card_type"].as_str()).unwrap_or("bio-link");
     let tagline = body["tagline"].as_str().unwrap_or("");
     let meta_desc = body["meta_description"].as_str().unwrap_or("");
     let avatar = body["avatar_url"].as_str();
@@ -132,23 +105,11 @@ pub async fn create_card(
     sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, title, slug, bio, bg_color, accent_color, text_color, sub_color, btn_color, card_type, tagline, meta_description, avatar_url, social_links, theme_slug, video_provider, video_id, is_template, template_category, category, cta_text) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)")
         .bind(id).bind(tenant_id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(card_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id).bind(is_template).bind(template_category).bind(category).bind(cta_text)
         .execute(&state.pool).await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({"id": id, "slug": slug, "message": "Card created"})),
-    ))
+    Ok((StatusCode::CREATED, Json(json!({"id": id, "slug": slug, "message": "Card created"}))))
 }
 
-pub async fn update_card(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(body): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+pub async fn update_card(auth: AuthUser, State(state): State<AppState>, Path(id): Path<Uuid>, Json(body): Json<Value>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let social = body.get("social_links").cloned();
     sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), sub_color=COALESCE($8,sub_color), btn_color=COALESCE($9,btn_color), avatar_url=COALESCE($10,avatar_url), social_links=COALESCE($11,social_links), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), cta_text=COALESCE($16,cta_text), slug=COALESCE($17,slug) WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)
@@ -164,29 +125,13 @@ pub async fn update_card(
     Ok(Json(json!({"message": "Card updated"})))
 }
 
-pub async fn delete_card(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    sqlx::query("DELETE FROM kinetic_cards WHERE id=$1 AND tenant_id=$2")
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+pub async fn delete_card(auth: AuthUser, State(state): State<AppState>, Path(id): Path<Uuid>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    sqlx::query("DELETE FROM kinetic_cards WHERE id=$1 AND tenant_id=$2").bind(id).bind(tenant_id).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Card deleted"})))
 }
 
-pub async fn list_buttons(
-    _auth: AuthUser,
-    State(state): State<AppState>,
-    Path(card_id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
+pub async fn list_buttons(_auth: AuthUser, State(state): State<AppState>, Path(card_id): Path<Uuid>) -> AppResult<Json<Value>> {
     let rows = sqlx::query(
         "SELECT id, card_id, label, url, sort_order, created_at FROM kinetic_buttons WHERE card_id=$1 ORDER BY sort_order"
     ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
@@ -202,178 +147,70 @@ pub async fn list_buttons(
     Ok(Json(json!(buttons)))
 }
 
-pub async fn create_button(
-    _auth: AuthUser,
-    State(state): State<AppState>,
-    Path(card_id): Path<Uuid>,
-    Json(body): Json<Value>,
-) -> AppResult<(StatusCode, Json<Value>)> {
+pub async fn create_button(_auth: AuthUser, State(state): State<AppState>, Path(card_id): Path<Uuid>, Json(body): Json<Value>) -> AppResult<(StatusCode, Json<Value>)> {
     let id = Uuid::new_v4();
     let label = body["label"].as_str().unwrap_or("Button");
     let url = body["url"].as_str().unwrap_or("");
     let sort = body["sort_order"].as_i64().unwrap_or(0) as i32;
-    sqlx::query(
-        "INSERT INTO kinetic_buttons (id, card_id, label, url, sort_order) VALUES ($1,$2,$3,$4,$5)",
-    )
-    .bind(id)
-    .bind(card_id)
-    .bind(label)
-    .bind(url)
-    .bind(sort)
-    .execute(&state.pool)
-    .await?;
+    sqlx::query("INSERT INTO kinetic_buttons (id, card_id, label, url, sort_order) VALUES ($1,$2,$3,$4,$5)").bind(id).bind(card_id).bind(label).bind(url).bind(sort).execute(&state.pool).await?;
     Ok((StatusCode::CREATED, Json(json!({"id": id}))))
 }
 
-pub async fn delete_button(
-    _auth: AuthUser,
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM kinetic_buttons WHERE id=$1")
-        .bind(id)
-        .execute(&state.pool)
-        .await?;
+pub async fn delete_button(_auth: AuthUser, State(state): State<AppState>, Path(id): Path<Uuid>) -> AppResult<Json<Value>> {
+    sqlx::query("DELETE FROM kinetic_buttons WHERE id=$1").bind(id).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Deleted"})))
 }
 
-pub async fn list_sources(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_card_id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
+pub async fn list_sources(_auth: AuthUser, State(_state): State<AppState>, Path(_card_id): Path<Uuid>) -> AppResult<Json<Value>> {
     Ok(Json(json!([])))
 }
-pub async fn create_source(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_card_id): Path<Uuid>,
-    Json(_body): Json<Value>,
-) -> AppResult<(StatusCode, Json<Value>)> {
+pub async fn create_source(_auth: AuthUser, State(_state): State<AppState>, Path(_card_id): Path<Uuid>, Json(_body): Json<Value>) -> AppResult<(StatusCode, Json<Value>)> {
     Ok((StatusCode::CREATED, Json(json!({"id": Uuid::new_v4()}))))
 }
-pub async fn delete_source(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
+pub async fn delete_source(_auth: AuthUser, State(_state): State<AppState>, Path(_id): Path<Uuid>) -> AppResult<Json<Value>> {
     Ok(Json(json!({"message": "Deleted"})))
 }
 
-pub async fn get_metrics(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-) -> AppResult<Json<Value>> {
+pub async fn get_metrics(_auth: AuthUser, State(_state): State<AppState>) -> AppResult<Json<Value>> {
     Ok(Json(json!({"views":0,"clicks":0,"leads":0})))
 }
 
-pub async fn get_subdomain(
-    auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let row = sqlx::query_as::<_, (String,)>(
-        "SELECT value FROM settings WHERE tenant_id=$1 AND key='subdomain'",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
-    Ok(Json(
-        json!({"subdomain": row.map(|r| r.0).unwrap_or_default()}),
-    ))
+pub async fn get_subdomain(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let row = sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE tenant_id=$1 AND key='subdomain'").bind(tenant_id).fetch_optional(&state.pool).await?;
+    Ok(Json(json!({"subdomain": row.map(|r| r.0).unwrap_or_default()})))
 }
-pub async fn set_subdomain(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+pub async fn set_subdomain(auth: AuthUser, State(state): State<AppState>, Json(body): Json<Value>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let val = body["subdomain"].as_str().unwrap_or("ss");
     sqlx::query("INSERT INTO settings (id, tenant_id, key, value) VALUES ($1,$2,'subdomain',$3) ON CONFLICT (tenant_id, key) DO UPDATE SET value=$3")
         .bind(Uuid::new_v4()).bind(tenant_id).bind(val).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Saved"})))
 }
-pub async fn get_custom_domain(
-    auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let row = sqlx::query_as::<_, (String,)>(
-        "SELECT value FROM settings WHERE tenant_id=$1 AND key='custom_domain'",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
-    Ok(Json(
-        json!({"custom_domain": row.map(|r| r.0).unwrap_or_default()}),
-    ))
+pub async fn get_custom_domain(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let row = sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE tenant_id=$1 AND key='custom_domain'").bind(tenant_id).fetch_optional(&state.pool).await?;
+    Ok(Json(json!({"custom_domain": row.map(|r| r.0).unwrap_or_default()})))
 }
-pub async fn set_custom_domain(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+pub async fn set_custom_domain(auth: AuthUser, State(state): State<AppState>, Json(body): Json<Value>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let val = body["custom_domain"].as_str().unwrap_or("");
     sqlx::query("INSERT INTO settings (id, tenant_id, key, value) VALUES ($1,$2,'custom_domain',$3) ON CONFLICT (tenant_id, key) DO UPDATE SET value=$3")
         .bind(Uuid::new_v4()).bind(tenant_id).bind(val).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Saved"})))
 }
 
-pub async fn get_site_meta(
-    auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+pub async fn get_site_meta(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let row = sqlx::query_as::<_, (Value,)>(
-        "SELECT value FROM tenant_settings WHERE tenant_id=$1 AND key='site_meta'",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
+        "SELECT value FROM tenant_settings WHERE tenant_id=$1 AND key='site_meta'"
+    ).bind(tenant_id).fetch_optional(&state.pool).await?;
     Ok(Json(row.map(|r| r.0).unwrap_or(json!({}))))
 }
 
-pub async fn set_site_meta(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let allowed_keys = [
-        "og_title",
-        "og_description",
-        "og_image",
-        "favicon_url",
-        "twitter_handle",
-        "google_analytics_id",
-        "facebook_pixel_id",
-        "theme_color",
-    ];
+pub async fn set_site_meta(auth: AuthUser, State(state): State<AppState>, Json(body): Json<Value>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let allowed_keys = ["og_title","og_description","og_image","favicon_url","twitter_handle","google_analytics_id","facebook_pixel_id","theme_color"];
     let mut cleaned = serde_json::Map::new();
     if let Some(obj) = body.as_object() {
         for k in allowed_keys {
@@ -389,101 +226,34 @@ pub async fn set_site_meta(
     Ok(Json(json!({"message": "Saved"})))
 }
 
-pub async fn render_card(
-    axum::extract::Path(slug): axum::extract::Path<String>,
-    axum::extract::Host(host): axum::extract::Host,
-    OriginalUri(uri): OriginalUri,
-    State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
+pub async fn render_card(axum::extract::Path(slug): axum::extract::Path<String>, axum::extract::Host(host): axum::extract::Host, OriginalUri(uri): OriginalUri, State(state): State<AppState>) -> impl axum::response::IntoResponse {
     use sqlx::Row;
     // Extract URL prefix (k/b/c/m/f/h) from the request path
     let path = uri.path().to_string();
     let prefix = path.split('/').nth(1).unwrap_or("k");
-    let prefix = if prefix.is_empty() || prefix == slug {
-        "k"
-    } else {
-        prefix
-    };
+    let prefix = if prefix.is_empty() || prefix == slug { "k" } else { prefix };
     let row = sqlx::query(
         "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plans tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or(None);
 
     // ── Load global SEO settings for SSO injection ──
-    let seo_rows: Vec<(String, Value)> =
-        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%'")
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default();
+    let seo_rows: Vec<(String, Value)> = sqlx::query_as(
+        "SELECT key, value FROM site_settings WHERE key LIKE 'seo_%'"
+    ).fetch_all(&state.pool).await.unwrap_or_default();
     let mut seo_meta = String::new();
     let mut seo_scripts = String::new();
     for (k, v) in &seo_rows {
         let short = k.strip_prefix("seo_").unwrap_or(k);
         match short {
-            "site_name" => {
-                if let Some(s) = v.as_str() {
-                    seo_meta.push_str(&format!(
-                        "<meta property=\"og:site_name\" content=\"{}\">\n",
-                        s
-                    ));
-                }
-            }
-            "description" => {
-                if let Some(s) = v.as_str() {
-                    seo_meta.push_str(&format!("<meta name=\"description\" content=\"{}\">\n", s));
-                    seo_meta.push_str(&format!(
-                        "<meta property=\"og:description\" content=\"{}\">\n",
-                        s
-                    ));
-                }
-            }
-            "keywords" => {
-                if let Some(s) = v.as_str() {
-                    seo_meta.push_str(&format!("<meta name=\"keywords\" content=\"{}\">\n", s));
-                }
-            }
-            "og_image" => {
-                if let Some(s) = v.as_str() {
-                    seo_meta.push_str(&format!("<meta property=\"og:image\" content=\"{}\">\n", s));
-                    seo_meta.push_str(&format!(
-                        "<meta property=\"twitter:image\" content=\"{}\">\n",
-                        s
-                    ));
-                }
-            }
-            "twitter_handle" => {
-                if let Some(s) = v.as_str() {
-                    seo_meta.push_str(&format!("<meta name=\"twitter:site\" content=\"{}\">\n", s));
-                    seo_meta.push_str(&format!(
-                        "<meta name=\"twitter:creator\" content=\"{}\">\n",
-                        s
-                    ));
-                }
-            }
-            "site_verification" => {
-                if let Some(s) = v.as_str() {
-                    seo_meta.push_str(&format!(
-                        "<meta name=\"google-site-verification\" content=\"{}\">\n",
-                        s
-                    ));
-                }
-            }
-            "google_analytics" => {
-                if let Some(s) = v.as_str() {
-                    seo_scripts.push_str(&format!("<script async src=\"https://www.googletagmanager.com/gtag/js?id={}\"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','{}');</script>\n", s, s));
-                }
-            }
-            "facebook_pixel" => {
-                if let Some(s) = v.as_str() {
-                    seo_scripts.push_str(&format!("<script>!function(f,b,e,v,n,t,s){{if(f.fbq)return;n=f.fbq=function(){{n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)}};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{}');fbq('track','PageView');</script><noscript><img height=\"1\" width=\"1\" src=\"https://www.facebook.com/tr?id={}&ev=PageView&noscript=1\"/></noscript>\n", s, s));
-                }
-            }
-            "schema_type" => {
-                let schema_json = serde_json::to_string(v).unwrap_or_default();
-                seo_scripts.push_str(&format!(
-                    "<script type=\"application/ld+json\">{}</script>\n",
-                    schema_json
-                ));
-            }
+            "site_name" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta property=\"og:site_name\" content=\"{}\">\n", s)); } }
+            "description" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"description\" content=\"{}\">\n", s)); seo_meta.push_str(&format!("<meta property=\"og:description\" content=\"{}\">\n", s)); } }
+            "keywords" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"keywords\" content=\"{}\">\n", s)); } }
+            "og_image" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta property=\"og:image\" content=\"{}\">\n", s)); seo_meta.push_str(&format!("<meta property=\"twitter:image\" content=\"{}\">\n", s)); } }
+            "twitter_handle" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"twitter:site\" content=\"{}\">\n", s)); seo_meta.push_str(&format!("<meta name=\"twitter:creator\" content=\"{}\">\n", s)); } }
+            "site_verification" => { if let Some(s) = v.as_str() { seo_meta.push_str(&format!("<meta name=\"google-site-verification\" content=\"{}\">\n", s)); } }
+            "google_analytics" => { if let Some(s) = v.as_str() { seo_scripts.push_str(&format!("<script async src=\"https://www.googletagmanager.com/gtag/js?id={}\"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','{}');</script>\n", s, s)); } }
+            "facebook_pixel" => { if let Some(s) = v.as_str() { seo_scripts.push_str(&format!("<script>!function(f,b,e,v,n,t,s){{if(f.fbq)return;n=f.fbq=function(){{n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)}};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{}');fbq('track','PageView');</script><noscript><img height=\"1\" width=\"1\" src=\"https://www.facebook.com/tr?id={}&ev=PageView&noscript=1\"/></noscript>\n", s, s)); } }
+            "schema_type" => { let schema_json = serde_json::to_string(v).unwrap_or_default(); seo_scripts.push_str(&format!("<script type=\"application/ld+json\">{}</script>\n", schema_json)); }
             _ => {}
         }
     }
@@ -491,10 +261,7 @@ pub async fn render_card(
     seo_meta.push_str("<meta property=\"twitter:card\" content=\"summary_large_image\">\n");
     // Canonical URL — resolves from Host header (tenant.kntcrd.com → canonical, custom domain, or fallback)
     let canonical = resolve_canonical_url(&host, prefix, &slug);
-    seo_meta.push_str(&format!(
-        "<link rel=\"canonical\" href=\"{}\">\n",
-        canonical
-    ));
+    seo_meta.push_str(&format!("<link rel=\"canonical\" href=\"{}\">\n", canonical));
 
     // Font preconnect for speed
     seo_meta.push_str("<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
@@ -507,14 +274,9 @@ pub async fn render_card(
     // ── Load tenant-level site meta (overrides card-level OG tags for their subdomain) ──
     let tenant_id_for_meta: Uuid = r.try_get::<Uuid, _>("tenant_id").unwrap_or_default();
     let tenant_site_meta: Value = sqlx::query_as::<_, (Value,)>(
-        "SELECT value FROM tenant_settings WHERE tenant_id=$1 AND key='site_meta'",
-    )
-    .bind(tenant_id_for_meta)
-    .fetch_optional(&state.pool)
-    .await
-    .unwrap_or(None)
-    .map(|r| r.0)
-    .unwrap_or(json!({}));
+        "SELECT value FROM tenant_settings WHERE tenant_id=$1 AND key='site_meta'"
+    ).bind(tenant_id_for_meta).fetch_optional(&state.pool).await.unwrap_or(None)
+        .map(|r| r.0).unwrap_or(json!({}));
     let _template_type: String = r.try_get("template_type").unwrap_or_default();
     // Branding badge logic:
     //   white_label=true + tenant.settings.hide_branding_badge → hidden
@@ -522,12 +284,11 @@ pub async fn render_card(
     let is_white_label: String = r.try_get("white_label").unwrap_or_else(|_| "false".into());
     let tenant_settings: Option<Value> = r.try_get("tenant_settings").unwrap_or(None);
     let tenant_hides_badge = is_white_label == "true"
-        && tenant_settings
-            .as_ref()
+        && tenant_settings.as_ref()
             .and_then(|s| s.get("hide_branding_badge"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-    let show_branding = !tenant_hides_badge; // always show unless explicitly hidden
+    let show_branding = !tenant_hides_badge;  // always show unless explicitly hidden
     let affiliate_code: Option<String> = r.try_get("affiliate_code").unwrap_or(None);
     let title: String = r.try_get("title").unwrap_or_default();
     let bio: String = r.try_get("bio").unwrap_or_default();
@@ -553,69 +314,32 @@ pub async fn render_card(
         (String::new(), String::new())
     };
     let branding_html = if !branding_text.is_empty() {
-        format!(
-            "<a href='{}' class='branding-badge'>{}</a>",
-            branding_url, branding_text
-        )
+        format!("<a href='{}' class='branding-badge'>{}</a>", branding_url, branding_text)
     } else {
         String::new()
     };
 
-    let av_html = if let Some(ref a) = avatar {
-        if a.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "<img src='{}' class='av' alt='' onerror=\"this.style.display='none'\">",
-                a
-            )
-        }
-    } else {
-        String::new()
-    };
-    let tag_html = if let Some(ref t) = tagline {
-        if t.is_empty() {
-            String::new()
-        } else {
-            format!("<p class='tag'>{}</p>", t)
-        }
-    } else {
-        String::new()
-    };
-    let bio_html = if !bio.is_empty() {
-        format!("<p class='bio'>{}</p>", bio)
-    } else {
-        String::new()
-    };
+    let av_html = if let Some(ref a) = avatar { if a.is_empty() { String::new() } else { format!("<img src='{}' class='av' alt='' onerror=\"this.style.display='none'\">", a) } } else { String::new() };
+    let tag_html = if let Some(ref t) = tagline { if t.is_empty() { String::new() } else { format!("<p class='tag'>{}</p>", t) } } else { String::new() };
+    let bio_html = if !bio.is_empty() { format!("<p class='bio'>{}</p>", bio) } else { String::new() };
     let cta_html = String::new(); // CTA pulled from layout_blocks by front-end JS
 
-    let bg_gradient = format!(
-        "radial-gradient(circle at 50% 25%, {}44 0%, {} 70%)",
-        accent, bg
-    );
+    let bg_gradient = format!("radial-gradient(circle at 50% 25%, {}44 0%, {} 70%)", accent, bg);
 
     let social_html = String::new(); // social links rendered by front-end JS from layout_blocks
 
     // ── Tenant site meta overrides for OG tags ──
-    let og_title = tenant_site_meta
-        .get("og_title")
+    let og_title = tenant_site_meta.get("og_title")
         .and_then(|v| v.as_str())
         .unwrap_or(&title);
-    let og_desc = tenant_site_meta
-        .get("og_description")
+    let og_desc = tenant_site_meta.get("og_description")
         .and_then(|v| v.as_str())
         .unwrap_or(meta_desc.as_deref().unwrap_or(""));
     let og_image_html = tenant_site_meta.get("og_image")
         .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
         .map(|s| format!("<meta property=\"og:image\" content=\"{}\">\n<meta property=\"twitter:image\" content=\"{}\">\n", s, s))
-        .or_else(|| {
-            let default_img = format!("<meta property=\"og:image\" content=\"https://funnelswift.net/assets/og-funnelswift-card.png\">\n<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n<meta property=\"twitter:image\" content=\"https://funnelswift.net/assets/og-funnelswift-card.png\">\n");
-            Some(default_img)
-        })
         .unwrap_or_default();
-    let favicon_html = tenant_site_meta
-        .get("favicon_url")
+    let favicon_html = tenant_site_meta.get("favicon_url")
         .and_then(|v| v.as_str())
         .map(|s| format!("<link rel=\"icon\" href=\"{}\">\n", s))
         .unwrap_or_default();
@@ -631,16 +355,14 @@ pub async fn render_card(
         .and_then(|v| v.as_str())
         .map(|s| format!("<meta name=\"twitter:site\" content=\"@{}\">\n<meta name=\"twitter:creator\" content=\"@{}\">\n", s, s))
         .unwrap_or_default();
-    let theme_color_meta = tenant_site_meta
-        .get("theme_color")
+    let theme_color_meta = tenant_site_meta.get("theme_color")
         .and_then(|v| v.as_str())
         .map(|s| format!("<meta name=\"theme-color\" content=\"{}\">\n", s))
         .unwrap_or_default();
 
     let page_title_display = og_title.to_string();
 
-    axum::response::Html(format!(
-        r#"<!DOCTYPE html>
+    axum::response::Html(format!(r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -696,35 +418,16 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 {social_html}
 </div>
 </body>
-</html>"#,
-        page_title_display = page_title_display,
-        og_desc = og_desc,
-        text = text,
-        bg_gradient = bg_gradient,
-        accent = accent,
-        title = title,
-        canonical = canonical,
-        seo_meta = seo_meta,
-        seo_scripts = seo_scripts,
-        og_image_html = og_image_html,
-        favicon_html = favicon_html,
-        twitter_site_meta = twitter_site_meta,
-        theme_color_meta = theme_color_meta,
-        ga_html = ga_html,
-        fb_html = fb_html,
-        av_html = av_html,
-        tag_html = tag_html,
-        bio_html = bio_html,
-        cta_html = cta_html,
-        social_html = social_html,
-        branding_html = branding_html
+</html>"#, 
+        page_title_display = page_title_display, og_desc = og_desc, text = text, 
+        bg_gradient = bg_gradient, accent = accent, title = title,
+        canonical = canonical, seo_meta = seo_meta, seo_scripts = seo_scripts,
+        og_image_html = og_image_html, favicon_html = favicon_html, twitter_site_meta = twitter_site_meta, theme_color_meta = theme_color_meta,
+        ga_html = ga_html, fb_html = fb_html,
+        av_html = av_html, tag_html = tag_html, bio_html = bio_html, cta_html = cta_html, social_html = social_html, branding_html = branding_html
     ))
 }
-pub async fn submit_lead(
-    axum::extract::Path(slug): axum::extract::Path<String>,
-    State(_state): State<AppState>,
-    Json(_body): Json<Value>,
-) -> Json<Value> {
+pub async fn submit_lead(axum::extract::Path(slug): axum::extract::Path<String>, State(_state): State<AppState>, Json(_body): Json<Value>) -> Json<Value> {
     Json(json!({"message": "Lead submitted", "slug": slug}))
 }
 pub async fn track_click(State(_state): State<AppState>) -> Json<Value> {

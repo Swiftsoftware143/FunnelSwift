@@ -1,7 +1,7 @@
-use axum::{extract::State, Json};
-use serde_json::{json, Value};
 use crate::error::AppResult;
 use crate::state::AppState;
+use axum::{extract::State, Json};
+use serde_json::{json, Value};
 
 pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value>> {
     Ok(Json(json!([
@@ -155,7 +155,7 @@ pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Va
             "theme_key": "cyber_dark",
             "layout_blocks": [
                 {"type":"avatar","style":"circle_glow","size":"large","catchphrase":"Executive Profile"},
-                {"type":"title_block","headline":"CEO & Founder","subtitle":"@ SwiftSoftware"}, 
+                {"type":"title_block","headline":"CEO & Founder","subtitle":"@ SwiftSoftware"},
                 {"type":"action_grid_2x2","items":[
                     {"icon":"📞","label":"Direct Line","action":"tel:"},
                     {"icon":"📅","label":"Schedule","action":"cal:"},

@@ -1,7 +1,7 @@
-use serde_json::{Value, json};
+use crate::error::AppError;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
-use crate::error::AppError;
 
 // reqwest is used for cross-app sync — already in Cargo.toml dependencies
 
@@ -38,11 +38,12 @@ pub async fn evaluate_tag_rules(
     let mut to_add: Vec<String> = vec![];
 
     // Get current tag names for lookup
-    let current_tag_names: Vec<String> = current_tags.iter()
+    let current_tag_names: Vec<String> = current_tags
+        .iter()
         .filter_map(|t| t.as_str().map(|s| s.to_string()))
         .collect();
 
-    for (action_type, _trigger_name, action_tag_id, action_tag_name) in rules {
+    for (action_type, _trigger_name, _action_tag_id, action_tag_name) in rules {
         match action_type.as_str() {
             "remove_tag" => {
                 if let Some(ref name) = action_tag_name {
@@ -100,37 +101,39 @@ pub async fn apply_sold_to_tenant_leads(
     }
 
     // Verify Sold tag exists
-    let sold_tag_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1::uuid)"
-    )
-    .bind(Uuid::parse_str(SOLD_TAG_ID).expect(" SOLD_TAG_ID is a valid UUID constant"))
-    .fetch_one(pool)
-    .await
-    .unwrap_or(false);
+    let sold_tag_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tags WHERE id = $1::uuid)")
+            .bind(Uuid::parse_str(SOLD_TAG_ID).expect(" SOLD_TAG_ID is a valid UUID constant"))
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
 
     if !sold_tag_exists {
         tracing::warn!(
             "Sold system tag (id={}) not found - skipping auto-apply for tenant {}",
-            SOLD_TAG_ID, tenant_id
+            SOLD_TAG_ID,
+            tenant_id
         );
         return Ok(0);
     }
 
     // Find all leads in this tenant that don't already have Sold
     // and update their tags to include "Sold", then evaluate rules
-    let leads: Vec<(Uuid, Option<Value>)> = sqlx::query_as(
-        "SELECT id, tags FROM leads WHERE tenant_id = $1"
-    )
-    .bind(tenant_id)
-    .fetch_all(pool)
-    .await?;
+    let leads: Vec<(Uuid, Option<Value>)> =
+        sqlx::query_as("SELECT id, tags FROM leads WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_all(pool)
+            .await?;
 
     let mut updated_count = 0u64;
     let sold_tag_name = SOLD_TAG_NAME.to_string();
 
     for (lead_id, tags_val) in &leads {
         let mut current_tags: Vec<String> = match tags_val {
-            Some(Value::Array(arr)) => arr.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+            Some(Value::Array(arr)) => arr
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect(),
             _ => vec![],
         };
 
@@ -142,13 +145,18 @@ pub async fn apply_sold_to_tenant_leads(
         current_tags.push(sold_tag_name.clone());
 
         // Evaluate tag rules (this will auto-remove Qualified if the rule is active)
-        let newly_assigned_ids = vec![Uuid::parse_str(SOLD_TAG_ID).expect(" SOLD_TAG_ID is a valid UUID constant")];
+        let newly_assigned_ids =
+            vec![Uuid::parse_str(SOLD_TAG_ID).expect(" SOLD_TAG_ID is a valid UUID constant")];
         let (to_remove, to_add) = evaluate_tag_rules(
             pool,
             tenant_id,
-            &current_tags.iter().map(|s| Value::String(s.clone())).collect::<Vec<_>>(),
+            &current_tags
+                .iter()
+                .map(|s| Value::String(s.clone()))
+                .collect::<Vec<_>>(),
             &newly_assigned_ids,
-        ).await?;
+        )
+        .await?;
 
         // Apply rule results
         current_tags.retain(|t| !to_remove.contains(t));
@@ -158,8 +166,13 @@ pub async fn apply_sold_to_tenant_leads(
             }
         }
 
-        let tags_json: Value = Value::Array(current_tags.iter().map(|t| Value::String(t.clone())).collect());
-        
+        let tags_json: Value = Value::Array(
+            current_tags
+                .iter()
+                .map(|t| Value::String(t.clone()))
+                .collect(),
+        );
+
         sqlx::query("UPDATE leads SET tags = $1::jsonb, updated_at = NOW() WHERE id = $2")
             .bind(&tags_json)
             .bind(lead_id)
@@ -167,12 +180,24 @@ pub async fn apply_sold_to_tenant_leads(
             .await?;
 
         // Log changes
-        log_tag_change(pool, tenant_id, *lead_id, &[sold_tag_name.clone()], &to_remove, "plan_upgrade").await?;
+        log_tag_change(
+            pool,
+            tenant_id,
+            *lead_id,
+            &[sold_tag_name.clone()],
+            &to_remove,
+            "plan_upgrade",
+        )
+        .await?;
 
         // Fire cross-app sync to CoreSwift
         let cs_url = std::env::var("CORESWIFT_URL").unwrap_or_default();
         let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY").unwrap_or_default();
-        tracing::info!("apply_sold: cross-app sync cs_url='{}' key_len={}", cs_url, internal_sync_key.len());
+        tracing::info!(
+            "apply_sold: cross-app sync cs_url='{}' key_len={}",
+            cs_url,
+            internal_sync_key.len()
+        );
         if !cs_url.is_empty() {
             let lead_info: Option<(String, String, String)> = sqlx::query_as(
                 "SELECT COALESCE(name, ''), COALESCE(email, ''), COALESCE(company, '') FROM leads WHERE id = $1"
@@ -202,7 +227,8 @@ pub async fn apply_sold_to_tenant_leads(
                 let url = format!("{}/api/v1/webhooks/cross-app/tag-sync", cs_url);
                 tokio::spawn(async move {
                     let client = reqwest::Client::new();
-                    let _ = client.post(&url)
+                    let _ = client
+                        .post(&url)
                         .header("x-internal-key", &internal_sync_key)
                         .json(&sync_payload)
                         .timeout(std::time::Duration::from_secs(5))
@@ -217,7 +243,9 @@ pub async fn apply_sold_to_tenant_leads(
 
     tracing::info!(
         "Auto-applied Sold tag to {} leads in tenant {} (upgraded to {})",
-        updated_count, tenant_id, new_plan_slug
+        updated_count,
+        tenant_id,
+        new_plan_slug
     );
 
     Ok(updated_count)
@@ -234,7 +262,7 @@ pub async fn log_tag_change(
 ) -> std::result::Result<(), AppError> {
     sqlx::query(
         r#"INSERT INTO tag_change_log (tenant_id, lead_id, added_tags, removed_tags, triggered_by)
-           VALUES ($1, $2, $3::jsonb, $4::jsonb, $5)"#
+           VALUES ($1, $2, $3::jsonb, $4::jsonb, $5)"#,
     )
     .bind(tenant_id)
     .bind(lead_id)

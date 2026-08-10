@@ -46,15 +46,13 @@ where
                     .into_response()
             })?;
 
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or_else(|| {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({"error": "Invalid authorization format"})),
-                )
-                    .into_response()
-            })?;
+        let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid authorization format"})),
+            )
+                .into_response()
+        })?;
 
         let mut validation = Validation::default();
         validation.set_issuer(&[JWT_ISSUER]);

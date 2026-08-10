@@ -1,4 +1,3 @@
-use sqlx::Row;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
@@ -11,6 +10,7 @@ use axum::{
 use chrono::Utc;
 use rand::Rng;
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
@@ -120,13 +120,11 @@ pub async fn update_api_key(
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant_id".into()))?;
 
-    let existing = sqlx::query(
-        "SELECT id FROM api_keys WHERE id = $1 AND tenant_id = $2"
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let existing = sqlx::query("SELECT id FROM api_keys WHERE id = $1 AND tenant_id = $2")
+        .bind(id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
 
     if existing.is_none() {
         return Err(AppError::NotFound("API key not found".into()));

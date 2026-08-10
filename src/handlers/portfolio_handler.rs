@@ -47,8 +47,12 @@ fn row_to_portfolio_company(row: &sqlx::postgres::PgRow) -> Result<PortfolioComp
         name: row.try_get("name")?,
         slug: row.try_get("slug")?,
         settings: row.try_get("settings")?,
-        created_at: row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")?.to_rfc3339(),
-        updated_at: row.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at")?.to_rfc3339(),
+        created_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")?
+            .to_rfc3339(),
+        updated_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at")?
+            .to_rfc3339(),
     })
 }
 
@@ -56,7 +60,10 @@ pub async fn list_portfolio_companies(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<PortfolioCompany>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let rows = sqlx::query(
         "SELECT id, tenant_id, name, slug, settings, created_at, updated_at FROM portfolio_companies WHERE tenant_id = $1 ORDER BY name",
@@ -65,7 +72,8 @@ pub async fn list_portfolio_companies(
     .fetch_all(&state.pool)
     .await?;
 
-    let companies: Vec<PortfolioCompany> = rows.iter()
+    let companies: Vec<PortfolioCompany> = rows
+        .iter()
         .map(row_to_portfolio_company)
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -77,8 +85,12 @@ pub async fn create_portfolio_company(
     State(state): State<AppState>,
     Json(req): Json<CreatePortfolioCompanyRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    features::enforce_feature_limit(&state, tenant_id, "max_portfolios", "Portfolio companies").await?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_limit(&state, tenant_id, "max_portfolios", "Portfolio companies")
+        .await?;
     let company_id = Uuid::new_v4();
     let settings = req.settings.unwrap_or(json!({}));
     let now = chrono::Utc::now();
@@ -98,7 +110,10 @@ pub async fn create_portfolio_company(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": company_id.to_string(), "message": "Portfolio company created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": company_id.to_string(), "message": "Portfolio company created"})),
+    ))
 }
 
 pub async fn get_portfolio_company(
@@ -106,7 +121,10 @@ pub async fn get_portfolio_company(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<PortfolioCompany>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let row = sqlx::query(
         "SELECT id, tenant_id, name, slug, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
@@ -128,7 +146,10 @@ pub async fn update_portfolio_company(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdatePortfolioCompanyRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     // Fetch existing
     let row = sqlx::query(
@@ -159,7 +180,9 @@ pub async fn update_portfolio_company(
     .execute(&state.pool)
     .await?;
 
-    Ok(Json(json!({"message": "Portfolio company updated", "id": id.to_string()})))
+    Ok(Json(
+        json!({"message": "Portfolio company updated", "id": id.to_string()}),
+    ))
 }
 
 pub async fn delete_portfolio_company(
@@ -167,7 +190,10 @@ pub async fn delete_portfolio_company(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query("DELETE FROM portfolio_companies WHERE id = $1 AND tenant_id = $2")
         .bind(id)

@@ -65,26 +65,31 @@ pub async fn list_affiliate_products(
         "SELECT id, tenant_id, name, description, price, default_commission_rate,
                 is_active, is_third_party, url, category_id,
                 product_type, owner_name, created_at, updated_at
-         FROM affiliate_products ORDER BY created_at DESC"
+         FROM affiliate_products ORDER BY created_at DESC",
     )
     .fetch_all(&state.pool)
     .await?;
 
-    let result: Vec<Value> = products.iter().map(|p| json!({
-        "id": p.id.to_string(),
-        "name": p.name,
-        "description": p.description,
-        "price": p.price.unwrap_or(0.0),
-        "default_commission_rate": p.default_commission_rate.unwrap_or(0.0),
-        "is_active": p.is_active,
-        "is_third_party": p.is_third_party.unwrap_or(false),
-        "url": p.url,
-        "category_id": p.category_id.map(|v| v.to_string()),
-        "product_type": p.product_type.as_deref().unwrap_or("software"),
-        "owner_name": p.owner_name.as_deref().unwrap_or("SwiftSoftware"),
-        "created_at": p.created_at,
-        "updated_at": p.updated_at,
-    })).collect();
+    let result: Vec<Value> = products
+        .iter()
+        .map(|p| {
+            json!({
+                "id": p.id.to_string(),
+                "name": p.name,
+                "description": p.description,
+                "price": p.price.unwrap_or(0.0),
+                "default_commission_rate": p.default_commission_rate.unwrap_or(0.0),
+                "is_active": p.is_active,
+                "is_third_party": p.is_third_party.unwrap_or(false),
+                "url": p.url,
+                "category_id": p.category_id.map(|v| v.to_string()),
+                "product_type": p.product_type.as_deref().unwrap_or("software"),
+                "owner_name": p.owner_name.as_deref().unwrap_or("SwiftSoftware"),
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+            })
+        })
+        .collect();
 
     Ok(Json(json!(result)))
 }
@@ -102,7 +107,8 @@ pub async fn create_affiliate_product(
     Json(req): Json<CreateProductRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let id = Uuid::new_v4();
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query(
         "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name)
@@ -122,7 +128,10 @@ pub async fn create_affiliate_product(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": id.to_string(), "message": "Product created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": id.to_string(), "message": "Product created"})),
+    ))
 }
 
 pub async fn update_affiliate_product(
@@ -131,7 +140,8 @@ pub async fn update_affiliate_product(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateProductRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let existing = sqlx::query_as::<_, (String, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>)>(
         "SELECT name, description, COALESCE(price,0.0), COALESCE(default_commission_rate,0.0), COALESCE(is_third_party,false), url, category_id, product_type, owner_name
@@ -150,8 +160,12 @@ pub async fn update_affiliate_product(
     let is_third_party = req.is_third_party.unwrap_or(existing.4);
     let url = req.url.or(existing.5);
     let category_id = req.category_id.or(existing.6);
-    let product_type = req.product_type.unwrap_or(existing.7.unwrap_or_else(|| "software".to_string()));
-    let owner_name = req.owner_name.unwrap_or(existing.8.unwrap_or_else(|| "SwiftSoftware".to_string()));
+    let product_type = req
+        .product_type
+        .unwrap_or(existing.7.unwrap_or_else(|| "software".to_string()));
+    let owner_name = req
+        .owner_name
+        .unwrap_or(existing.8.unwrap_or_else(|| "SwiftSoftware".to_string()));
 
     sqlx::query(
         "UPDATE affiliate_products SET name=$1, description=$2, price=$3, default_commission_rate=$4,
@@ -180,7 +194,8 @@ pub async fn delete_affiliate_product(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query("DELETE FROM affiliate_products WHERE id = $1 AND tenant_id = $2")
         .bind(id)
@@ -195,22 +210,21 @@ pub async fn admin_sync_affiliate_products(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
-    let plans: Vec<(Uuid, String, Option<f64>)> = sqlx::query_as(
-        "SELECT id, name, price FROM plans LIMIT 50"
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    let plans: Vec<(Uuid, String, Option<f64>)> =
+        sqlx::query_as("SELECT id, name, price FROM plans LIMIT 50")
+            .fetch_all(&state.pool)
+            .await?;
 
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let mut count: i64 = 0;
 
     for (plan_id, plan_name, plan_price) in plans {
-        let exists: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1"
-        )
-        .bind(plan_id)
-        .fetch_one(&state.pool)
-        .await?;
+        let exists: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1")
+                .bind(plan_id)
+                .fetch_one(&state.pool)
+                .await?;
 
         if exists.0 == 0 {
             let id = Uuid::new_v4();
@@ -229,7 +243,9 @@ pub async fn admin_sync_affiliate_products(
         }
     }
 
-    Ok(Json(json!({"synced": count, "message": format!("{} products synced", count)})))
+    Ok(Json(
+        json!({"synced": count, "message": format!("{} products synced", count)}),
+    ))
 }
 
 pub async fn admin_update_affiliate_product(
@@ -251,7 +267,8 @@ pub async fn handle_cross_app_plan_sync(
     let source_app = payload["source_app"].as_str().unwrap_or("unknown");
 
     let plan_id = Uuid::parse_str(plan_id_str).ok();
-    let tenant_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap_or_else(|_| Uuid::new_v4());
+    let tenant_id =
+        Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap_or_else(|_| Uuid::new_v4());
 
     let id = Uuid::new_v4();
     sqlx::query(
@@ -267,5 +284,7 @@ pub async fn handle_cross_app_plan_sync(
     .execute(&state.pool)
     .await?;
 
-    Ok(Json(json!({"status": "synced", "product_id": id.to_string()})))
+    Ok(Json(
+        json!({"status": "synced", "product_id": id.to_string()}),
+    ))
 }

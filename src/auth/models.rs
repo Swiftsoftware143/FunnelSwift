@@ -88,4 +88,3 @@ pub struct ResetPasswordRequest {
     pub token: String,
     pub new_password: String,
 }
-

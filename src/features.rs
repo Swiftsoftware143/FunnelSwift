@@ -1,79 +1,211 @@
 //! Feature limits enforcement for FunnelSwift.
+//! Reads plan limits from the plans table (max_cards, max_leads, etc.).
+//! Falls back to feature_limits table for any custom limits defined there.
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
-use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize)]
-pub struct FeatureLimitResult {
-    pub allowed: bool,
-    pub limit: i32,
-    pub usage: i64,
-    pub feature_key: String,
-}
-
-pub async fn check_feature_limit(
+pub async fn enforce_feature_limit(
     state: &AppState,
     tenant_id: Uuid,
     feature_key: &str,
-) -> AppResult<FeatureLimitResult> {
-    let plan_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT plan_id FROM tenant_plan_subscriptions WHERE tenant_id = $1 AND status = 'active'"
+    label: &str,
+) -> AppResult<()> {
+    // First check the feature_limits table (custom overrides)
+    let fl: Option<i32> = sqlx::query_scalar(
+        "SELECT fl.limit_value FROM feature_limits fl
+         JOIN tenant_plan_subscriptions tps ON tps.plan_id = fl.plan_id
+         WHERE tps.tenant_id = $1 AND tps.status = 'active' AND fl.feature_key = $2
+         ORDER BY tps.start_date DESC LIMIT 1",
     )
     .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .flatten();
-
-    let plan_id = match plan_id {
-        Some(id) => id,
-        None => return Ok(FeatureLimitResult { allowed: false, limit: 0, usage: 0, feature_key: feature_key.to_string() }),
-    };
-
-    let limit_value: Option<i32> = sqlx::query_scalar(
-        "SELECT limit_value FROM feature_limits WHERE plan_id = $1 AND feature_key = $2"
-    )
-    .bind(plan_id)
     .bind(feature_key)
     .fetch_optional(&state.pool)
-    .await?
+    .await
+    .unwrap_or(None)
     .flatten();
 
-    let limit_value = match limit_value {
-        Some(v) => v,
-        None => return Ok(FeatureLimitResult { allowed: false, limit: 0, usage: 0, feature_key: feature_key.to_string() }),
-    };
-
-    if limit_value == -1 {
-        return Ok(FeatureLimitResult { allowed: true, limit: -1, usage: 0, feature_key: feature_key.to_string() });
+    if let Some(val) = fl {
+        if val == -1 {
+            return Ok(());
+        } // unlimited
+        if val == 0 {
+            return Err(AppError::UpgradeRequired(format!(
+                "{} is not available on your current plan. Upgrade to access this feature.",
+                label
+            )));
+        }
+        // Check usage against limit
+        let usage = get_usage_count(state, tenant_id, feature_key).await;
+        if usage >= val as i64 {
+            return Err(AppError::UpgradeRequired(format!(
+                "{} limit reached ({}/{}). Upgrade to increase your limit.",
+                label, usage, val
+            )));
+        }
+        return Ok(());
     }
 
-    let usage: i64 = match feature_key {
-        "max_leads" => sqlx::query_scalar("SELECT COUNT(*) FROM leads WHERE tenant_id = $1").bind(tenant_id).fetch_one(&state.pool).await?,
-        "max_tags" => sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE tenant_id = $1").bind(tenant_id).fetch_one(&state.pool).await?,
-        "max_affiliates" => sqlx::query_scalar("SELECT COUNT(*) FROM affiliates WHERE tenant_id = $1").bind(tenant_id).fetch_one(&state.pool).await?,
-        "team_members" => sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true").bind(tenant_id).fetch_one(&state.pool).await?,
-        _ => 0i64,
+    // Fall back to plans table columns
+    let plan_col = match feature_key {
+        "max_cards" | "max_kinetic_cards" => "max_cards",
+        "max_leads" => "max_leads",
+        "max_tags" => "max_tags",
+        "max_forms" => "max_forms",
+        "max_custom_domains" => "max_domains",
+        "max_team_members" | "team_members" => "max_team_members",
+        "max_webhooks" => "max_webhooks",
+        "max_api_keys" => "max_api_keys",
+        "max_portfolios" => "max_portfolios",
+        "max_affiliates" => "max_affiliates",
+        "max_tag_groups" => "max_tag_groups",
+        "max_routing_targets" => "max_routing_targets",
+        "max_integrations" => "max_integrations",
+        _ => return Ok(()), // unknown feature — allow
     };
 
-    Ok(FeatureLimitResult {
-        allowed: usage < limit_value as i64,
-        limit: limit_value,
-        usage,
-        feature_key: feature_key.to_string(),
-    })
+    let limit_val: Option<i32> = sqlx::query_scalar(&format!(
+        "SELECT p.{} FROM plans p
+         JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
+         WHERE tps.tenant_id = $1 AND tps.status = 'active'
+         ORDER BY tps.start_date DESC LIMIT 1",
+        plan_col
+    ))
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .flatten();
+
+    match limit_val {
+        None => Ok(()), // No plan assigned or no limit set — allow
+        Some(limit) => {
+            if limit == -1 {
+                return Ok(());
+            } // unlimited
+            if limit == 0 {
+                return Err(AppError::UpgradeRequired(format!(
+                    "{} is not available on your current plan. Upgrade to access this feature.",
+                    label
+                )));
+            }
+            let usage = get_usage_count(state, tenant_id, feature_key).await;
+            if usage >= limit as i64 {
+                return Err(AppError::UpgradeRequired(format!(
+                    "{} limit reached ({}/{}). Upgrade to increase your limit.",
+                    label, usage, limit
+                )));
+            }
+            Ok(())
+        }
+    }
 }
 
-pub async fn enforce_feature_limit(state: &AppState, tenant_id: Uuid, feature_key: &str, label: &str) -> AppResult<()> {
-    let result = check_feature_limit(state, tenant_id, feature_key).await?;
-    if !result.allowed {
-        let msg = if result.limit == 0 {
-            format!("{} is not available on your current plan. Upgrade to access this feature.", label)
-        } else {
-            format!("{} limit reached ({}/{})", label, result.usage, result.limit)
-        };
-        return Err(AppError::BadRequest(msg));
+async fn get_usage_count(state: &AppState, tenant_id: Uuid, feature_key: &str) -> i64 {
+    match feature_key {
+        "max_leads" => sqlx::query_scalar("SELECT COUNT(*) FROM leads WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0),
+        "max_tags" => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tags WHERE tenant_id = $1 AND is_system = false",
+        )
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0),
+        "max_affiliates" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM affiliates WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+        }
+        "max_cards" | "max_kinetic_cards" => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id = $1 AND is_template = false",
+        )
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0),
+        "max_forms" => sqlx::query_scalar("SELECT COUNT(*) FROM forms WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0),
+        "max_webhooks" => sqlx::query_scalar("SELECT COUNT(*) FROM webhooks WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0),
+        "max_api_keys" => sqlx::query_scalar("SELECT COUNT(*) FROM api_keys WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0),
+        "max_portfolios" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM portfolios WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+        }
+        "max_tag_groups" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM tag_groups WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+        }
+        "max_routing_targets" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM routing_targets WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+        }
+        "max_integrations" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM integration_targets WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+        }
+        "team_members" | "max_team_members" => sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true",
+        )
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0),
+        "max_custom_domains" | "max_domains" => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM custom_domains WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+        }
+        _ => 0i64,
     }
-    Ok(())
+}
+
+/// Get current tenant's usage counts for plan gating (dashboard display)
+pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Value {
+    let cards = get_usage_count(state, tenant_id, "max_cards").await;
+    let leads = get_usage_count(state, tenant_id, "max_leads").await;
+    let tags = get_usage_count(state, tenant_id, "max_tags").await;
+    let forms = get_usage_count(state, tenant_id, "max_forms").await;
+    let domains = get_usage_count(state, tenant_id, "max_custom_domains").await;
+    let team = get_usage_count(state, tenant_id, "max_team_members").await;
+
+    serde_json::json!({
+        "cards": cards,
+        "leads": leads,
+        "tags": tags,
+        "forms": forms,
+        "domains": domains,
+        "team": team
+    })
 }

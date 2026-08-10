@@ -1,5 +1,10 @@
-use uuid::Uuid;
+use crate::auth::middleware::AuthUser;
+use crate::auth::models::*;
 use crate::email::send_reset_email;
+use crate::error::AppError;
+use crate::error::AppResult;
+use crate::features;
+use crate::state::AppState;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
@@ -7,29 +12,25 @@ use argon2::{
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
-use serde::{Deserialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::env;
-use crate::error::AppResult;
-use crate::error::AppError;
-use crate::auth::models::*;
-use crate::auth::middleware::AuthUser;
-use crate::state::AppState;
+use uuid::Uuid;
 
 pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     // Check if email already exists
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM users WHERE email = $1",
-    )
-    .bind(&req.email)
-    .fetch_one(&state.pool)
-    .await?;
+    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = $1")
+        .bind(&req.email)
+        .fetch_one(&state.pool)
+        .await?;
 
     if existing > 0 {
-        return Err(AppError::Conflict("A user with this email already exists. Try signing in.".into()));
+        return Err(AppError::Conflict(
+            "A user with this email already exists. Try signing in.".into(),
+        ));
     }
 
     // Hash password
@@ -42,15 +43,25 @@ pub async fn register(
 
     // Create tenant
     let tenant_id = Uuid::new_v4();
-    let tenant_slug = format!("{}-{}", req.tenant_name.as_deref().unwrap_or("default").to_lowercase().replace(' ', "-"), Uuid::new_v4().to_string().get(..8).unwrap_or("x"));
-    sqlx::query(
-        "INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)",
-    )
-    .bind(tenant_id)
-    .bind(req.tenant_name.clone().unwrap_or_else(|| "My Workspace".to_string()))
-    .bind(&tenant_slug)
-    .execute(&state.pool)
-    .await?;
+    let tenant_slug = format!(
+        "{}-{}",
+        req.tenant_name
+            .as_deref()
+            .unwrap_or("default")
+            .to_lowercase()
+            .replace(' ', "-"),
+        Uuid::new_v4().to_string().get(..8).unwrap_or("x")
+    );
+    sqlx::query("INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)")
+        .bind(tenant_id)
+        .bind(
+            req.tenant_name
+                .clone()
+                .unwrap_or_else(|| "My Workspace".to_string()),
+        )
+        .bind(&tenant_slug)
+        .execute(&state.pool)
+        .await?;
 
     // Create user
     let user_id = Uuid::new_v4();
@@ -68,9 +79,19 @@ pub async fn register(
 
     // Auto-generate API key for the user
     let api_key_id = Uuid::new_v4();
-    let api_key_raw = format!("fs_{}_{}", 
-        env::var("JWT_SECRET").unwrap_or_default().chars().take(4).collect::<String>(),
-        Uuid::new_v4().to_string().replace("-", "").chars().take(24).collect::<String>()
+    let api_key_raw = format!(
+        "fs_{}_{}",
+        env::var("JWT_SECRET")
+            .unwrap_or_default()
+            .chars()
+            .take(4)
+            .collect::<String>(),
+        Uuid::new_v4()
+            .to_string()
+            .replace("-", "")
+            .chars()
+            .take(24)
+            .collect::<String>()
     );
     let api_key_hash = format!("hash:{}", &api_key_raw);
     sqlx::query(
@@ -99,13 +120,12 @@ pub async fn register(
 
     // Auto-assign plan to new tenant (respects plan from signup request, defaults to 'free')
     {
-        let plan_slug = req.plan_slug.as_deref().unwrap_or("free");
-        let plan_id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM plans WHERE slug = $1 LIMIT 1"
-        )
-        .bind(plan_slug)
-        .fetch_optional(&state.pool)
-        .await?;
+        let plan_slug = req.plan_slug.as_deref().unwrap_or("capture-free");
+        let plan_id: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM plans WHERE slug = $1 LIMIT 1")
+                .bind(plan_slug)
+                .fetch_optional(&state.pool)
+                .await?;
         if let Some(pid) = plan_id {
             let _ = sqlx::query(
                 r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
@@ -159,13 +179,12 @@ pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE email = $1 AND is_active = true",
-    )
-    .bind(&req.email)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
+    let user =
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND is_active = true")
+            .bind(&req.email)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
 
     let parsed_hash = PasswordHash::new(&user.password_hash)
         .map_err(|e| AppError::Internal(format!("Parse hash error: {e}")))?;
@@ -194,17 +213,17 @@ pub async fn login(
     )
     .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))?;
 
-    let cs_pool = state.db.clone();
-    let cs_url = state.coreswift_url.clone();
-    let cs_key = state.internal_sync_key.clone();
-    let cs_lead_id = user.id;
-    let cs_tenant_id = user.tenant_id;
-    tokio::spawn(async move {
-        crate::handlers::coreswift_push::push_to_coreswift(
-            &cs_pool, &cs_url, &cs_key, cs_lead_id, cs_tenant_id,
-        ).await;
-    });
-
+    //     let cs_pool = state.db.clone();
+    //     let cs_url = state.coreswift_url.clone();
+    //     let cs_key = state.internal_sync_key.clone();
+    //     let cs_lead_id = user.id;
+    //     let cs_tenant_id = user.tenant_id;
+    //     tokio::spawn(async move {
+    //         crate::handlers::coreswift_push::push_to_coreswift(
+    //             &cs_pool, &cs_url, &cs_key, cs_lead_id, cs_tenant_id,
+    //         ).await;
+    //     });
+    //
     Ok(Json(json!({
         "token": token,
         "user": {
@@ -219,12 +238,14 @@ pub async fn login(
 
 pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Value> {
     // Get user's name and username
-    let user_info: Option<(String, Option<String>)> = 
-        sqlx::query_as::<_, (String, Option<String>)>("SELECT name, username FROM users WHERE id::text = $1")
-            .bind(&auth.user_id)
-            .fetch_optional(&state.pool)
-            .await
-            .unwrap_or(None);
+    let user_info: Option<(String, Option<String>)> =
+        sqlx::query_as::<_, (String, Option<String>)>(
+            "SELECT name, username FROM users WHERE id::text = $1",
+        )
+        .bind(&auth.user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None);
 
     // Get user's API key
     let api_key_row: Option<(String, String, Option<String>)> = 
@@ -240,30 +261,32 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
             };
 
     // Get integration targets (affiliate products)
-    let products: Vec<serde_json::Value> = 
-        sqlx::query_as::<_, (serde_json::Value,)>(r#"SELECT row_to_json(t.*)::jsonb FROM target_software t ORDER BY t.name"#)
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(r,)| r)
-            .collect();
+    let products: Vec<serde_json::Value> = sqlx::query_as::<_, (serde_json::Value,)>(
+        r#"SELECT row_to_json(t.*)::jsonb FROM target_software t ORDER BY t.name"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(r,)| r)
+    .collect();
 
     // Get current plan subscription
-    let current_plan: Option<serde_json::Value> =
-        sqlx::query_as::<_, (serde_json::Value,)>(r#"
+    let current_plan: Option<serde_json::Value> = sqlx::query_as::<_, (serde_json::Value,)>(
+        r#"
             SELECT row_to_json(p.*)::jsonb
             FROM plans p
             JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
             WHERE tps.tenant_id::text = $1 AND tps.status = 'active'
             ORDER BY tps.start_date DESC
             LIMIT 1
-        "#)
-            .bind(&auth.tenant_id)
-            .fetch_optional(&state.pool)
-            .await
-            .unwrap_or(None)
-            .map(|(r,)| r);
+        "#,
+    )
+    .bind(&auth.tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .map(|(r,)| r);
 
     Json(json!({
         "user_id": auth.user_id,
@@ -308,19 +331,19 @@ pub async fn change_password(
     Json(req): Json<ChangePasswordRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
     if req.new_password.len() < 8 {
-        return Err(AppError::BadRequest("New password must be at least 8 characters".into()));
+        return Err(AppError::BadRequest(
+            "New password must be at least 8 characters".into(),
+        ));
     }
 
     let user_id = uuid::Uuid::parse_str(&auth.user_id)
         .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
 
-    let user = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE id = $1 AND is_active = true",
-    )
-    .bind(user_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1 AND is_active = true")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
 
     // Verify current password
     use argon2::{Argon2, PasswordHash, PasswordVerifier};
@@ -345,19 +368,20 @@ pub async fn change_password(
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(serde_json::json!({"message": "Password updated successfully"})))
+    Ok(Json(
+        serde_json::json!({"message": "Password updated successfully"}),
+    ))
 }
 
 pub async fn forgot_password(
     State(state): State<AppState>,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    if let Some(user) = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE email = $1 AND is_active = true",
-    )
-    .bind(&req.email)
-    .fetch_optional(&state.pool)
-    .await?
+    if let Some(user) =
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND is_active = true")
+            .bind(&req.email)
+            .fetch_optional(&state.pool)
+            .await?
     {
         let token = uuid::Uuid::new_v4().to_string();
         let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
@@ -365,26 +389,31 @@ pub async fn forgot_password(
         sqlx::query("UPDATE password_resets SET used = true WHERE user_id = $1 AND used = false")
             .bind(user.id)
             .execute(&state.pool)
-            .await.ok();
+            .await
+            .ok();
 
-        sqlx::query(
-            "INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)",
-        )
-        .bind(user.id)
-        .bind(&token)
-        .bind(expires_at)
-        .execute(&state.pool)
-        .await?;
+        sqlx::query("INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)")
+            .bind(user.id)
+            .bind(&token)
+            .bind(expires_at)
+            .execute(&state.pool)
+            .await?;
 
         let email_aid = user.tenant_id;
         match send_reset_email(&state.pool, email_aid, &user.email, &token, &user.name).await {
             Ok(_) => tracing::info!("Password reset email sent to {}", user.email),
-            Err(e) => tracing::error!("Failed to send password reset email to {}: {}", user.email, e),
+            Err(e) => tracing::error!(
+                "Failed to send password reset email to {}: {}",
+                user.email,
+                e
+            ),
         }
         // Send password reset email via SMTP
     }
 
-    Ok(Json(serde_json::json!({"message": "If the email exists, a password reset link has been sent"})))
+    Ok(Json(
+        serde_json::json!({"message": "If the email exists, a password reset link has been sent"}),
+    ))
 }
 
 pub async fn reset_password(
@@ -392,7 +421,9 @@ pub async fn reset_password(
     Json(req): Json<ResetPasswordRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
     if req.new_password.len() < 8 {
-        return Err(AppError::BadRequest("New password must be at least 8 characters".into()));
+        return Err(AppError::BadRequest(
+            "New password must be at least 8 characters".into(),
+        ));
     }
 
     let reset = sqlx::query(
@@ -426,6 +457,19 @@ pub async fn reset_password(
         .execute(&state.pool)
         .await?;
 
-    Ok(Json(serde_json::json!({"message": "Password has been reset successfully"})))
+    Ok(Json(
+        serde_json::json!({"message": "Password has been reset successfully"}),
+    ))
 }
 
+pub async fn get_usage(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: uuid::Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let usage = features::get_usage_json(&state, tenant_id).await;
+    Ok(Json(usage))
+}

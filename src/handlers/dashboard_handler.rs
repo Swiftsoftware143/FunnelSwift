@@ -11,14 +11,15 @@ pub async fn get_dashboard_stats(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let total_leads: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1",
-    )
-    .bind(tenant_id)
-    .fetch_one(&state.pool)
-    .await?;
+    let total_leads: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM leads WHERE tenant_id = $1")
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await?;
 
     let leads_by_stage: Vec<StageCount> = sqlx::query_as(
         "SELECT COALESCE(stage, 'Uncategorized') as stage, COUNT(*)::bigint as count FROM leads WHERE tenant_id = $1 GROUP BY stage ORDER BY count DESC",
@@ -84,7 +85,10 @@ pub async fn get_activity_log(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<ActivityLog>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let activities = sqlx::query_as::<_, ActivityLog>(
         "SELECT * FROM activity_log WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 50",

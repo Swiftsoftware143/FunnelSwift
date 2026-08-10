@@ -49,14 +49,19 @@ pub async fn list_categories(
     .fetch_all(&state.pool)
     .await?;
 
-    let result: Vec<Value> = categories.iter().map(|c| json!({
-        "id": c.id.to_string(),
-        "name": c.name,
-        "slug": c.slug,
-        "description": c.description,
-        "sort_order": c.sort_order,
-        "is_active": c.is_active,
-    })).collect();
+    let result: Vec<Value> = categories
+        .iter()
+        .map(|c| {
+            json!({
+                "id": c.id.to_string(),
+                "name": c.name,
+                "slug": c.slug,
+                "description": c.description,
+                "sort_order": c.sort_order,
+                "is_active": c.is_active,
+            })
+        })
+        .collect();
 
     Ok(Json(json!(result)))
 }
@@ -66,9 +71,12 @@ pub async fn create_category(
     State(state): State<AppState>,
     Json(req): Json<CreateCategoryRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let id = Uuid::new_v4();
-    let slug = req.slug.unwrap_or_else(|| req.name.to_lowercase().replace(' ', "-"));
+    let slug = req
+        .slug
+        .unwrap_or_else(|| req.name.to_lowercase().replace(' ', "-"));
 
     sqlx::query(
         "INSERT INTO product_categories (id, tenant_id, name, slug, description) VALUES ($1, $2, $3, $4, $5)"
@@ -81,7 +89,10 @@ pub async fn create_category(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": id.to_string(), "message": "Category created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": id.to_string(), "message": "Category created"})),
+    ))
 }
 
 pub async fn update_category(
@@ -90,11 +101,16 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateCategoryRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let existing: Option<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT name, slug, description FROM product_categories WHERE id = $1 AND tenant_id = $2"
-    ).bind(id).bind(tenant_id).fetch_optional(&state.pool).await?;
+        "SELECT name, slug, description FROM product_categories WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
     let ex = existing.ok_or_else(|| AppError::NotFound("Category not found".into()))?;
 
     let name = req.name.unwrap_or(ex.0);
@@ -113,8 +129,12 @@ pub async fn delete_category(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     sqlx::query("DELETE FROM product_categories WHERE id = $1 AND tenant_id = $2")
-        .bind(id).bind(tenant_id).execute(&state.pool).await?;
+        .bind(id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
     Ok(Json(json!({"message": "Category deleted"})))
 }

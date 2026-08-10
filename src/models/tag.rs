@@ -20,10 +20,10 @@ pub struct Tag {
 pub struct SystemTag {
     pub id: Uuid,
     pub tag_name: String,
-    pub target_software: String,  // 'crm-swift', 'workflowswift', 'adaswift', 'sendiio', 'webhook', etc.
-    pub campaign_id: Option<String>,  // Campaign/list ID in target system
-    pub webhook_url: Option<String>,  // For custom webhooks
-    pub payload_template: Option<serde_json::Value>,  // Template for webhook payload
+    pub target_software: String, // 'crm-swift', 'workflowswift', 'adaswift', 'sendiio', 'webhook', etc.
+    pub campaign_id: Option<String>, // Campaign/list ID in target system
+    pub webhook_url: Option<String>, // For custom webhooks
+    pub payload_template: Option<serde_json::Value>, // Template for webhook payload
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     // pub updated_at: DateTime<Utc>,

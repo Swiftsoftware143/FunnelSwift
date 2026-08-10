@@ -3,29 +3,27 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 
 use askama::Template;
 
-use crate::auth::handlers::{login, me, register, change_password, forgot_password, reset_password, update_profile};
+use crate::auth::handlers::{
+    change_password, forgot_password, get_usage, login, me, register, reset_password,
+    update_profile,
+};
 use crate::handlers::{
-    site_settings_handler, seo_handler,
-    public_signup_handler,
-    coreswift_push, workflowswift_push, adaswift_provision,
-    affiliate_handler, api_key_handler, dashboard_handler, lead_handler, linkedin,
-    ocr, plan_handler, bulk_handler, template_gating_handler,
-    plan_tag_handler, tag_rule_handler, routing_handler, settings_handler, tag_group_handler, tag_handler,
-    sync_plan_tag_handler, linkedin_auth_handler, web_to_lead_handler,
-    webhook_handler, portfolio_handler, integration_target_handler, affiliate_product_handler, affiliate_tracking_handler, affiliate_portal_handler, cross_app_webhook_handler, affiliate_payout_handler,
-    product_category_handler,
-    affiliate_lead_handler,
-    provider_keys_handler, tenant_handler, kinetic_handler, qr_handler, insight_handler,
-    campaigns_handler,
-    incentiveswift_handler,
-    checkout_handler,
-    theme_endpoint,
-    funnel_handler,
+    adaswift_provision, affiliate_handler, affiliate_lead_handler, affiliate_payout_handler,
+    affiliate_portal_handler, affiliate_product_handler, affiliate_tracking_handler,
+    api_key_handler, bulk_handler, campaigns_handler, checkout_handler, coreswift_push,
+    cross_app_webhook_handler, dashboard_handler, email_template_handler, funnel_handler,
+    incentiveswift_handler, insight_handler, integration_target_handler, kinetic_handler,
+    lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler, plan_tag_handler,
+    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
+    qr_handler, routing_handler, seo_handler, settings_handler, site_settings_handler,
+    sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -38,9 +36,11 @@ async fn health() -> axum::Json<serde_json::Value> {
 }
 
 async fn admin_plans_page() -> impl axum::response::IntoResponse {
-    Html(crate::templates::AdminPlansTemplate.render().unwrap_or_else(|e| {
-        format!("<h1>Template error: {}</h1>", e)
-    }))
+    Html(
+        crate::templates::AdminPlansTemplate
+            .render()
+            .unwrap_or_else(|e| format!("<h1>Template error: {}</h1>", e)),
+    )
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -59,179 +59,634 @@ pub fn create_router(state: AppState) -> Router {
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
         // Default
-        .route("/", get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})) }))
+        .route(
+            "/",
+            get(|| async {
+                axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"}))
+            }),
+        )
         .route("/api/health", get(health))
         .route("/api/v1/health", get(health))
         .route("/api/v1/auth/register", post(register))
-        .route("/api/v1/auth/signup", post(public_signup_handler::public_signup))
+        .route(
+            "/api/v1/auth/signup",
+            post(public_signup_handler::public_signup),
+        )
         .route("/api/v1/auth/login", post(login))
         .route("/api/v1/auth/forgot-password", post(forgot_password))
         .route("/api/v1/auth/reset-password", post(reset_password))
         .route("/api/v1/auth/me", get(me))
+        .route("/api/v1/me/usage", get(get_usage))
         .route("/api/v1/auth/password", put(change_password))
         .route("/api/v1/auth/profile", put(update_profile))
-        .route("/api/v1/leads", get(lead_handler::list_leads).post(lead_handler::create_lead))
+        .route(
+            "/api/v1/leads",
+            get(lead_handler::list_leads).post(lead_handler::create_lead),
+        )
         .route("/api/v1/leads/export", get(lead_handler::export_leads))
-        .route("/api/v1/leads/:id", get(lead_handler::get_lead).put(lead_handler::update_lead).delete(lead_handler::delete_lead))
+        .route(
+            "/api/v1/leads/:id",
+            get(lead_handler::get_lead)
+                .put(lead_handler::update_lead)
+                .delete(lead_handler::delete_lead),
+        )
         .route("/api/v1/leads/:id/assign", post(lead_handler::assign_lead))
-        .route("/api/v1/leads/:id/stage", post(lead_handler::update_lead_stage))        .route("/api/v1/leads/:id/tags", post(lead_handler::assign_lead_tags))
-        .route("/api/v1/tags", get(tag_handler::list_tags).post(tag_handler::create_tag))
-        .route("/api/v1/tags/:id", get(tag_handler::get_tag).put(tag_handler::update_tag).delete(tag_handler::delete_tag))
-        .route("/api/v1/tag-rules", get(tag_rule_handler::list_tag_rules).post(tag_rule_handler::create_tag_rule))
-        .route("/api/v1/tag-rules/:id", put(tag_rule_handler::update_tag_rule).delete(tag_rule_handler::delete_tag_rule))
-        .route("/api/v1/tag-change-log", get(tag_rule_handler::list_tag_change_log))
-        .route("/api/v1/tag-groups", get(tag_group_handler::list_tag_groups).post(tag_group_handler::create_tag_group))
-        .route("/api/v1/tag-groups/:id", put(tag_group_handler::update_tag_group).delete(tag_group_handler::delete_tag_group))
-        .route("/api/v1/plan-tag-mappings", get(plan_tag_handler::list_plan_tag_mappings))
-        .route("/api/v1/plan-tag-mappings/sync", post(plan_tag_handler::sync_plan_tag_mappings))
-        .route("/api/v1/affiliates", get(affiliate_handler::list_affiliates).post(affiliate_handler::create_affiliate))
-        .route("/api/v1/affiliates/:id", get(affiliate_handler::get_affiliate).put(affiliate_handler::update_affiliate).delete(affiliate_handler::delete_affiliate))
-        .route("/api/v1/affiliates/:id/commissions", get(affiliate_handler::get_affiliate_commissions))
-        .route("/api/v1/affiliate-products", get(affiliate_product_handler::list_affiliate_products).post(affiliate_product_handler::create_affiliate_product))        .route("/api/v1/affiliate-products/admin", get(affiliate_product_handler::list_all_affiliate_products_admin))
-        .route("/api/v1/affiliate-products/:id", put(affiliate_product_handler::update_affiliate_product).delete(affiliate_product_handler::delete_affiliate_product))
+        .route(
+            "/api/v1/leads/:id/stage",
+            post(lead_handler::update_lead_stage),
+        )
+        .route(
+            "/api/v1/leads/:id/tags",
+            post(lead_handler::assign_lead_tags),
+        )
+        .route(
+            "/api/v1/tags",
+            get(tag_handler::list_tags).post(tag_handler::create_tag),
+        )
+        .route(
+            "/api/v1/tags/:id",
+            get(tag_handler::get_tag)
+                .put(tag_handler::update_tag)
+                .delete(tag_handler::delete_tag),
+        )
+        .route(
+            "/api/v1/tag-rules",
+            get(tag_rule_handler::list_tag_rules).post(tag_rule_handler::create_tag_rule),
+        )
+        .route(
+            "/api/v1/tag-rules/:id",
+            put(tag_rule_handler::update_tag_rule).delete(tag_rule_handler::delete_tag_rule),
+        )
+        .route(
+            "/api/v1/tag-change-log",
+            get(tag_rule_handler::list_tag_change_log),
+        )
+        .route(
+            "/api/v1/tag-groups",
+            get(tag_group_handler::list_tag_groups).post(tag_group_handler::create_tag_group),
+        )
+        .route(
+            "/api/v1/tag-groups/:id",
+            put(tag_group_handler::update_tag_group).delete(tag_group_handler::delete_tag_group),
+        )
+        .route(
+            "/api/v1/plan-tag-mappings",
+            get(plan_tag_handler::list_plan_tag_mappings),
+        )
+        .route(
+            "/api/v1/plan-tag-mappings/sync",
+            post(plan_tag_handler::sync_plan_tag_mappings),
+        )
+        .route(
+            "/api/v1/affiliates",
+            get(affiliate_handler::list_affiliates).post(affiliate_handler::create_affiliate),
+        )
+        .route(
+            "/api/v1/affiliates/:id",
+            get(affiliate_handler::get_affiliate)
+                .put(affiliate_handler::update_affiliate)
+                .delete(affiliate_handler::delete_affiliate),
+        )
+        .route(
+            "/api/v1/affiliates/:id/commissions",
+            get(affiliate_handler::get_affiliate_commissions),
+        )
+        .route(
+            "/api/v1/affiliate-products",
+            get(affiliate_product_handler::list_affiliate_products)
+                .post(affiliate_product_handler::create_affiliate_product),
+        )
+        .route(
+            "/api/v1/affiliate-products/admin",
+            get(affiliate_product_handler::list_all_affiliate_products_admin),
+        )
+        .route(
+            "/api/v1/affiliate-products/:id",
+            put(affiliate_product_handler::update_affiliate_product)
+                .delete(affiliate_product_handler::delete_affiliate_product),
+        )
         // Admin affiliate product endpoints
-        .route("/api/v1/admin/affiliate-products/sync", post(affiliate_product_handler::admin_sync_affiliate_products))
-        .route("/api/v1/admin/affiliate-products/:id", put(affiliate_product_handler::admin_update_affiliate_product))
-        .route("/api/v1/product-categories", get(product_category_handler::list_categories).post(product_category_handler::create_category))
-        .route("/api/v1/product-categories/:id", put(product_category_handler::update_category).delete(product_category_handler::delete_category))
-        .route("/api/v1/affiliate-links", get(affiliate_tracking_handler::list_affiliate_links).post(affiliate_tracking_handler::create_affiliate_link))
-        .route("/api/v1/affiliate-stats", get(affiliate_tracking_handler::get_affiliate_stats))
-        .route("/api/v1/affiliate-conversions", get(affiliate_tracking_handler::list_conversions).post(affiliate_tracking_handler::track_conversion))
-        .route("/api/v1/track-click", get(affiliate_tracking_handler::track_click))
-        .route("/api/v1/affiliate/signup", post(affiliate_portal_handler::affiliate_signup))
-        .route("/api/v1/affiliate/login", post(affiliate_portal_handler::affiliate_login))
-        .route("/api/v1/affiliate/dashboard", post(affiliate_portal_handler::affiliate_portal_dashboard))
-        .route("/api/v1/affiliate/submit-lead", post(affiliate_lead_handler::submit_affiliate_lead))
-        .route("/api/v1/affiliate/leads", post(affiliate_lead_handler::list_affiliate_prospects))
-        .route("/api/v1/affiliate/leads-stats", post(affiliate_lead_handler::get_affiliate_leads_stats))
-        .route("/api/v1/check-affiliate-email", post(affiliate_lead_handler::check_affiliate_for_email))
-        .route("/api/v1/log-lead-movement", post(affiliate_lead_handler::log_lead_movement))
-        .route("/api/v1/webhooks/conversion", post(cross_app_webhook_handler::handle_conversion_webhook))
-        .route("/api/v1/track/lead", post(cross_app_webhook_handler::track_lead_conversion))
-        .route("/api/v1/affiliate-tiers", get(affiliate_payout_handler::list_tiers).post(affiliate_payout_handler::create_tier))
-        .route("/api/v1/affiliate-tiers/:id", put(affiliate_payout_handler::update_tier).delete(affiliate_payout_handler::delete_tier))
-        .route("/api/v1/affiliates/:id/calculate-tier", post(affiliate_payout_handler::calculate_affiliate_tier))
-        .route("/api/v1/affiliate-payouts", get(affiliate_payout_handler::list_payouts).post(affiliate_payout_handler::create_payout))
-        .route("/api/v1/affiliate-payouts/:id/pay", post(affiliate_payout_handler::mark_payout_paid))
-        .route("/api/v1/affiliates/:id/pending-conversions", get(affiliate_payout_handler::get_affiliate_pending_conversions))
-        .route("/api/v1/plans", get(plan_handler::list_plans).post(plan_handler::create_plan))
-        .route("/api/v1/plans/:id", get(plan_handler::get_plan).put(plan_handler::update_plan))
-        .route("/api/v1/dashboard/stats", get(dashboard_handler::get_dashboard_stats))
-        .route("/api/v1/dashboard/activity", get(dashboard_handler::get_activity_log))
-        .route("/api/v1/webhooks", get(webhook_handler::list_webhooks).post(webhook_handler::create_webhook))
-        .route("/api/v1/webhooks/:id", delete(webhook_handler::delete_webhook))
-        .route("/api/v1/webhooks/:id/test", post(webhook_handler::test_webhook))
-        .route("/api/v1/settings", get(settings_handler::get_settings).put(settings_handler::update_settings))
-        .route("/api/v1/target-software", get(routing_handler::list_target_software).post(routing_handler::create_target_software))
-        .route("/api/v1/settings/:key", delete(settings_handler::delete_setting))
-        .route("/api/v1/routing-logs", get(routing_handler::list_routing_logs))
+        .route(
+            "/api/v1/admin/affiliate-products/sync",
+            post(affiliate_product_handler::admin_sync_affiliate_products),
+        )
+        .route(
+            "/api/v1/admin/affiliate-products/:id",
+            put(affiliate_product_handler::admin_update_affiliate_product),
+        )
+        .route(
+            "/api/v1/product-categories",
+            get(product_category_handler::list_categories)
+                .post(product_category_handler::create_category),
+        )
+        .route(
+            "/api/v1/product-categories/:id",
+            put(product_category_handler::update_category)
+                .delete(product_category_handler::delete_category),
+        )
+        .route(
+            "/api/v1/affiliate-links",
+            get(affiliate_tracking_handler::list_affiliate_links)
+                .post(affiliate_tracking_handler::create_affiliate_link),
+        )
+        .route(
+            "/api/v1/affiliate-stats",
+            get(affiliate_tracking_handler::get_affiliate_stats),
+        )
+        .route(
+            "/api/v1/affiliate-conversions",
+            get(affiliate_tracking_handler::list_conversions)
+                .post(affiliate_tracking_handler::track_conversion),
+        )
+        .route(
+            "/api/v1/track-click",
+            get(affiliate_tracking_handler::track_click),
+        )
+        .route(
+            "/api/v1/affiliate/signup",
+            post(affiliate_portal_handler::affiliate_signup),
+        )
+        .route(
+            "/api/v1/affiliate/login",
+            post(affiliate_portal_handler::affiliate_login),
+        )
+        .route(
+            "/api/v1/affiliate/dashboard",
+            post(affiliate_portal_handler::affiliate_portal_dashboard),
+        )
+        .route(
+            "/api/v1/affiliate/submit-lead",
+            post(affiliate_lead_handler::submit_affiliate_lead),
+        )
+        .route(
+            "/api/v1/affiliate/leads",
+            post(affiliate_lead_handler::list_affiliate_prospects),
+        )
+        .route(
+            "/api/v1/affiliate/leads-stats",
+            post(affiliate_lead_handler::get_affiliate_leads_stats),
+        )
+        .route(
+            "/api/v1/check-affiliate-email",
+            post(affiliate_lead_handler::check_affiliate_for_email),
+        )
+        .route(
+            "/api/v1/log-lead-movement",
+            post(affiliate_lead_handler::log_lead_movement),
+        )
+        .route(
+            "/api/v1/webhooks/conversion",
+            post(cross_app_webhook_handler::handle_conversion_webhook),
+        )
+        .route(
+            "/api/v1/track/lead",
+            post(cross_app_webhook_handler::track_lead_conversion),
+        )
+        .route(
+            "/api/v1/affiliate-tiers",
+            get(affiliate_payout_handler::list_tiers).post(affiliate_payout_handler::create_tier),
+        )
+        .route(
+            "/api/v1/affiliate-tiers/:id",
+            put(affiliate_payout_handler::update_tier)
+                .delete(affiliate_payout_handler::delete_tier),
+        )
+        .route(
+            "/api/v1/affiliates/:id/calculate-tier",
+            post(affiliate_payout_handler::calculate_affiliate_tier),
+        )
+        .route(
+            "/api/v1/affiliate-payouts",
+            get(affiliate_payout_handler::list_payouts)
+                .post(affiliate_payout_handler::create_payout),
+        )
+        .route(
+            "/api/v1/affiliate-payouts/:id/pay",
+            post(affiliate_payout_handler::mark_payout_paid),
+        )
+        .route(
+            "/api/v1/affiliates/:id/pending-conversions",
+            get(affiliate_payout_handler::get_affiliate_pending_conversions),
+        )
+        .route(
+            "/api/v1/plans",
+            get(plan_handler::list_plans).post(plan_handler::create_plan),
+        )
+        .route(
+            "/api/v1/plans/:id",
+            get(plan_handler::get_plan).put(plan_handler::update_plan),
+        )
+        .route(
+            "/api/v1/dashboard/stats",
+            get(dashboard_handler::get_dashboard_stats),
+        )
+        .route(
+            "/api/v1/dashboard/activity",
+            get(dashboard_handler::get_activity_log),
+        )
+        .route(
+            "/api/v1/webhooks",
+            get(webhook_handler::list_webhooks).post(webhook_handler::create_webhook),
+        )
+        .route(
+            "/api/v1/webhooks/:id",
+            delete(webhook_handler::delete_webhook),
+        )
+        .route(
+            "/api/v1/webhooks/:id/test",
+            post(webhook_handler::test_webhook),
+        )
+        .route(
+            "/api/v1/settings",
+            get(settings_handler::get_settings).put(settings_handler::update_settings),
+        )
+        .route(
+            "/api/v1/target-software",
+            get(routing_handler::list_target_software)
+                .post(routing_handler::create_target_software),
+        )
+        .route(
+            "/api/v1/settings/:key",
+            delete(settings_handler::delete_setting),
+        )
+        .route(
+            "/api/v1/routing-logs",
+            get(routing_handler::list_routing_logs),
+        )
         // Portfolio companies
-        .route("/api/v1/portfolio-companies", get(portfolio_handler::list_portfolio_companies).post(portfolio_handler::create_portfolio_company))
-        .route("/api/v1/portfolio-companies/:id", get(portfolio_handler::get_portfolio_company).put(portfolio_handler::update_portfolio_company).delete(portfolio_handler::delete_portfolio_company))
+        .route(
+            "/api/v1/portfolio-companies",
+            get(portfolio_handler::list_portfolio_companies)
+                .post(portfolio_handler::create_portfolio_company),
+        )
+        .route(
+            "/api/v1/portfolio-companies/:id",
+            get(portfolio_handler::get_portfolio_company)
+                .put(portfolio_handler::update_portfolio_company)
+                .delete(portfolio_handler::delete_portfolio_company),
+        )
         // Integration targets
-        .route("/api/v1/integration-targets", get(integration_target_handler::list_integration_targets).post(integration_target_handler::create_integration_target))
-        .route("/api/v1/integration-targets/:id", put(integration_target_handler::update_integration_target).delete(integration_target_handler::delete_integration_target))
+        .route(
+            "/api/v1/integration-targets",
+            get(integration_target_handler::list_integration_targets)
+                .post(integration_target_handler::create_integration_target),
+        )
+        .route(
+            "/api/v1/integration-targets/:id",
+            put(integration_target_handler::update_integration_target)
+                .delete(integration_target_handler::delete_integration_target),
+        )
         // API Key management
-        .route("/api/v1/api-keys", post(api_key_handler::create_api_key).get(api_key_handler::list_api_keys))
-        .route("/api/v1/api-keys/:id", put(api_key_handler::update_api_key).delete(api_key_handler::delete_api_key))
-
+        .route(
+            "/api/v1/api-keys",
+            post(api_key_handler::create_api_key).get(api_key_handler::list_api_keys),
+        )
+        .route(
+            "/api/v1/api-keys/:id",
+            put(api_key_handler::update_api_key).delete(api_key_handler::delete_api_key),
+        )
         // Admin endpoints (cross-app portfolio sync + impersonation)
-        .route("/api/v1/admin/portfolio-sync", post(crate::handlers::admin_handler::portfolio_sync))
-        .route("/api/v1/admin/impersonate", post(crate::handlers::admin_handler::impersonate))
-        .route("/api/v1/admin/stop-impersonation", post(crate::handlers::admin_handler::stop_impersonation))
-        .route("/api/v1/admin/tenants/:id/users", post(crate::handlers::admin_handler::list_tenant_users))
-        .route("/api/v1/admin/tenants/:id/feature-overrides", get(crate::handlers::admin_handler::get_tenant_feature_overrides))
-        .route("/api/v1/admin/tenants/:id/feature-override", post(crate::handlers::admin_handler::set_tenant_feature_override))
-        .route("/api/v1/admin/kinetic-cards", get(crate::handlers::admin_handler::admin_list_all_cards))
+        .route(
+            "/api/v1/admin/portfolio-sync",
+            post(crate::handlers::admin_handler::portfolio_sync),
+        )
+        .route(
+            "/api/v1/internal/portfolio-sync",
+            post(crate::handlers::portfolio_sync_handler::portfolio_sync_internal),
+        )
+        .route(
+            "/api/v1/admin/impersonate",
+            post(crate::handlers::admin_handler::impersonate),
+        )
+        .route(
+            "/api/v1/admin/stop-impersonation",
+            post(crate::handlers::admin_handler::stop_impersonation),
+        )
+        .route(
+            "/api/v1/admin/tenants/:id/users",
+            post(crate::handlers::admin_handler::list_tenant_users),
+        )
+        .route(
+            "/api/v1/admin/tenants/:id/feature-overrides",
+            get(crate::handlers::admin_handler::get_tenant_feature_overrides),
+        )
+        .route(
+            "/api/v1/admin/tenants/:id/feature-override",
+            post(crate::handlers::admin_handler::set_tenant_feature_override),
+        )
+        .route(
+            "/api/v1/admin/kinetic-cards",
+            get(crate::handlers::admin_handler::admin_list_all_cards),
+        )
         // Bulk operations
         .route("/api/v1/bulk/leads", post(bulk_handler::bulk_delete_leads))
-        .route("/api/v1/bulk/affiliates", post(bulk_handler::bulk_delete_affiliates))
+        .route(
+            "/api/v1/bulk/affiliates",
+            post(bulk_handler::bulk_delete_affiliates),
+        )
         .route("/api/v1/bulk/users", post(bulk_handler::bulk_delete_users))
-        .route("/api/v1/bulk/products", post(bulk_handler::bulk_delete_products))
+        .route(
+            "/api/v1/bulk/products",
+            post(bulk_handler::bulk_delete_products),
+        )
         // SEO endpoints — public sitemap + robots, admin config
         .route("/api/v1/seo/sitemap.xml", get(seo_handler::sitemap_xml))
         .route("/robots.txt", get(seo_handler::robots_txt))
-        .route("/api/v1/seo/settings", get(seo_handler::get_seo_settings).put(seo_handler::update_seo_settings))
+        .route(
+            "/api/v1/seo/settings",
+            get(seo_handler::get_seo_settings).put(seo_handler::update_seo_settings),
+        )
         .route("/api/v1/seo/inject", get(seo_handler::seo_inject_tags))
         // Site settings management (admin only)
-        .route("/api/v1/admin/sites", get(site_settings_handler::list_site_settings))
-        .route("/api/v1/admin/sites/:slug", get(site_settings_handler::get_site_settings).put(site_settings_handler::update_site_settings))
+        .route(
+            "/api/v1/admin/sites",
+            get(site_settings_handler::list_site_settings),
+        )
+        .route(
+            "/api/v1/admin/sites/:slug",
+            get(site_settings_handler::get_site_settings)
+                .put(site_settings_handler::update_site_settings),
+        )
         // Admin plan management
         .route("/admin/plans", get(admin_plans_page))
-        .route("/api/v1/admin/plans/:id/templates", get(template_gating_handler::get_plan_templates).put(template_gating_handler::update_plan_templates))
-.route("/api/v1/admin/plans", get(crate::handlers::plan_handler::admin_list_all_plans).post(crate::handlers::plan_handler::admin_create_plan_json))
-        .route("/api/v1/admin/plans/assign", post(crate::handlers::plan_handler::admin_assign_plan))
-        .route("/api/v1/admin/plans/:id/features", put(crate::handlers::plan_handler::admin_update_plan_features))
-        .route("/api/v1/admin/plans/:id", get(crate::handlers::plan_handler::get_plan).put(crate::handlers::plan_handler::update_plan).delete(crate::handlers::plan_handler::delete_plan_admin))
+        .route(
+            "/api/v1/admin/plans/:id/templates",
+            get(template_gating_handler::get_plan_templates)
+                .put(template_gating_handler::update_plan_templates),
+        )
+        .route(
+            "/api/v1/admin/plans",
+            get(crate::handlers::plan_handler::admin_list_all_plans)
+                .post(crate::handlers::plan_handler::admin_create_plan_json),
+        )
+        .route(
+            "/api/v1/admin/plans/assign",
+            post(crate::handlers::plan_handler::admin_assign_plan),
+        )
+        .route(
+            "/api/v1/admin/plans/:id/features",
+            put(crate::handlers::plan_handler::admin_update_plan_features),
+        )
+        .route(
+            "/api/v1/admin/plans/:id",
+            get(crate::handlers::plan_handler::get_plan)
+                .put(crate::handlers::plan_handler::update_plan)
+                .delete(crate::handlers::plan_handler::delete_plan_admin),
+        )
         // Provider keys management
-        .route("/api/v1/provider-keys", get(provider_keys_handler::list_provider_keys).post(provider_keys_handler::upsert_provider_key))
-        .route("/api/v1/provider-keys/:provider", delete(provider_keys_handler::delete_provider_key))
-        .route("/api/v1/available-providers", get(provider_keys_handler::list_available_providers))
+        .route(
+            "/api/v1/provider-keys",
+            get(provider_keys_handler::list_provider_keys)
+                .post(provider_keys_handler::upsert_provider_key),
+        )
+        .route(
+            "/api/v1/provider-keys/:provider",
+            delete(provider_keys_handler::delete_provider_key),
+        )
+        .route(
+            "/api/v1/available-providers",
+            get(provider_keys_handler::list_available_providers),
+        )
         // Payment provider & checkout management
-        .route("/api/v1/payment-providers", get(checkout_handler::list_payment_providers).post(checkout_handler::upsert_payment_provider))
-        .route("/api/v1/payment-providers/{provider_type}", delete(checkout_handler::delete_payment_provider))
-        .route("/api/v1/checkout/create", post(checkout_handler::create_checkout_session))
-        .route("/api/v1/checkout/sessions", get(checkout_handler::list_checkout_sessions))
+        .route(
+            "/api/v1/payment-providers",
+            get(checkout_handler::list_payment_providers)
+                .post(checkout_handler::upsert_payment_provider),
+        )
+        .route(
+            "/api/v1/payment-providers/{provider_type}",
+            delete(checkout_handler::delete_payment_provider),
+        )
+        .route(
+            "/api/v1/checkout/create",
+            post(checkout_handler::create_checkout_session),
+        )
+        .route(
+            "/api/v1/checkout/sessions",
+            get(checkout_handler::list_checkout_sessions),
+        )
         // Webhook receivers (no auth — signature-verified)
-        .route("/api/v1/webhooks/stripe", post(checkout_handler::stripe_webhook))
-        .route("/api/v1/webhooks/paypal", post(checkout_handler::paypal_webhook))
+        .route(
+            "/api/v1/webhooks/stripe",
+            post(checkout_handler::stripe_webhook),
+        )
+        .route(
+            "/api/v1/webhooks/paypal",
+            post(checkout_handler::paypal_webhook),
+        )
         // Tenant management
-        .route("/api/v1/tenants", get(tenant_handler::list_tenants).post(tenant_handler::create_tenant))
-        .route("/api/v1/tenants/:id", get(tenant_handler::get_tenant).put(tenant_handler::update_tenant).delete(tenant_handler::delete_tenant))
-        .route("/api/v1/tenants/:id/credits", get(tenant_handler::get_tenant_credits).post(tenant_handler::assign_credits))
-        .route("/api/v1/tenants/:id/plan", post(tenant_handler::assign_plan))
-        .route("/api/v1/internal/sync-plan-tag", post(sync_plan_tag_handler::sync_plan_tag))
-        .route("/api/v1/internal/sync-affiliate-plan", post(affiliate_product_handler::handle_cross_app_plan_sync))
+        .route(
+            "/api/v1/tenants",
+            get(tenant_handler::list_tenants).post(tenant_handler::create_tenant),
+        )
+        .route(
+            "/api/v1/tenants/:id",
+            get(tenant_handler::get_tenant)
+                .put(tenant_handler::update_tenant)
+                .delete(tenant_handler::delete_tenant),
+        )
+        .route(
+            "/api/v1/tenants/:id/credits",
+            get(tenant_handler::get_tenant_credits).post(tenant_handler::assign_credits),
+        )
+        .route(
+            "/api/v1/tenants/:id/plan",
+            post(tenant_handler::assign_plan),
+        )
+        .route(
+            "/api/v1/internal/sync-plan-tag",
+            post(sync_plan_tag_handler::sync_plan_tag),
+        )
+        .route(
+            "/api/v1/internal/sync-affiliate-plan",
+            post(affiliate_product_handler::handle_cross_app_plan_sync),
+        )
+        .route(
+            "/api/v1/admin/email-templates/types",
+            get(email_template_handler::list_template_types),
+        )
+        .route(
+            "/api/v1/admin/email-templates",
+            get(email_template_handler::list_templates)
+                .post(email_template_handler::create_template),
+        )
+        .route(
+            "/api/v1/admin/email-templates/:id",
+            get(email_template_handler::get_template)
+                .put(email_template_handler::update_template)
+                .delete(email_template_handler::delete_template),
+        )
+        .route(
+            "/api/v1/admin/email-config",
+            get(email_template_handler::get_email_config)
+                .post(email_template_handler::update_email_config),
+        )
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
         // LinkedIn - profile lookup
-        .route("/api/v1/leads/linkedin-lookup", post(linkedin::handle_linkedin_lookup))
-        .route("/api/v1/linkedin/auth", post(linkedin_auth_handler::store_linkedin_auth))
-        .route("/api/v1/linkedin/auth/status", get(linkedin_auth_handler::get_linkedin_auth_status))
-        .route("/api/v1/linkedin/auth", delete(linkedin_auth_handler::delete_linkedin_auth))
-        .route("/api/v1/linkedin/cookies/:user_id", get(linkedin_auth_handler::get_linkedin_cookies_for_user))
-        .route("/api/v1/web-to-lead/configs", get(web_to_lead_handler::list_web_to_lead_configs).post(web_to_lead_handler::create_web_to_lead_config))
-        .route("/api/v1/web-to-lead/configs/:id", put(web_to_lead_handler::update_web_to_lead_config).delete(web_to_lead_handler::delete_web_to_lead_config))
-        .route("/api/v1/web-to-lead/configs/:id/embed", get(web_to_lead_handler::get_web_to_lead_embed))
+        .route(
+            "/api/v1/leads/linkedin-lookup",
+            post(linkedin::handle_linkedin_lookup),
+        )
+        .route(
+            "/api/v1/linkedin/auth",
+            post(linkedin_auth_handler::store_linkedin_auth),
+        )
+        .route(
+            "/api/v1/linkedin/auth/status",
+            get(linkedin_auth_handler::get_linkedin_auth_status),
+        )
+        .route(
+            "/api/v1/linkedin/auth",
+            delete(linkedin_auth_handler::delete_linkedin_auth),
+        )
+        .route(
+            "/api/v1/linkedin/cookies/:user_id",
+            get(linkedin_auth_handler::get_linkedin_cookies_for_user),
+        )
+        .route(
+            "/api/v1/web-to-lead/configs",
+            get(web_to_lead_handler::list_web_to_lead_configs)
+                .post(web_to_lead_handler::create_web_to_lead_config),
+        )
+        .route(
+            "/api/v1/web-to-lead/configs/:id",
+            put(web_to_lead_handler::update_web_to_lead_config)
+                .delete(web_to_lead_handler::delete_web_to_lead_config),
+        )
+        .route(
+            "/api/v1/web-to-lead/configs/:id/embed",
+            get(web_to_lead_handler::get_web_to_lead_embed),
+        )
         // Kinetic bio-links
-        .route("/api/v1/kinetic/cards", get(kinetic_handler::list_cards).post(kinetic_handler::create_card))
-        .route("/api/v1/kinetic/cards/:id", put(kinetic_handler::update_card).delete(kinetic_handler::delete_card))
-        .route("/api/v1/kinetic/cards/:id/buttons", get(kinetic_handler::list_buttons).post(kinetic_handler::create_button))
-        .route("/api/v1/kinetic/cards/:id/sources", get(kinetic_handler::list_sources).post(kinetic_handler::create_source))
-        .route("/api/v1/kinetic/buttons/:id", delete(kinetic_handler::delete_button))
-        .route("/api/v1/kinetic/sources/:id", delete(kinetic_handler::delete_source))
+        .route(
+            "/api/v1/kinetic/cards",
+            get(kinetic_handler::list_cards).post(kinetic_handler::create_card),
+        )
+        .route(
+            "/api/v1/kinetic/cards/:id",
+            put(kinetic_handler::update_card).delete(kinetic_handler::delete_card),
+        )
+        .route(
+            "/api/v1/kinetic/cards/:id/buttons",
+            get(kinetic_handler::list_buttons).post(kinetic_handler::create_button),
+        )
+        .route(
+            "/api/v1/kinetic/cards/:id/sources",
+            get(kinetic_handler::list_sources).post(kinetic_handler::create_source),
+        )
+        .route(
+            "/api/v1/kinetic/buttons/:id",
+            delete(kinetic_handler::delete_button),
+        )
+        .route(
+            "/api/v1/kinetic/sources/:id",
+            delete(kinetic_handler::delete_source),
+        )
         .route("/api/v1/kinetic/metrics", get(kinetic_handler::get_metrics))
-        .route("/api/v1/kinetic/subdomain", get(kinetic_handler::get_subdomain).put(kinetic_handler::set_subdomain))
-        .route("/api/v1/kinetic/custom-domain", get(kinetic_handler::get_custom_domain).put(kinetic_handler::set_custom_domain))
+        .route(
+            "/api/v1/kinetic/subdomain",
+            get(kinetic_handler::get_subdomain).put(kinetic_handler::set_subdomain),
+        )
+        .route(
+            "/api/v1/kinetic/custom-domain",
+            get(kinetic_handler::get_custom_domain).put(kinetic_handler::set_custom_domain),
+        )
+        .route(
+            "/api/v1/kinetic/site-meta",
+            get(kinetic_handler::get_site_meta).put(kinetic_handler::set_site_meta),
+        )
         .route("/api/v1/kinetic/themes", get(theme_endpoint::list_themes))
-        .route("/api/v1/kinetic/templates", get(theme_endpoint::list_templates))
+        .route(
+            "/api/v1/kinetic/templates",
+            get(theme_endpoint::list_templates),
+        )
         // Funnel routes
-        .route("/api/v1/funnels", get(funnel_handler::list_funnels).post(funnel_handler::create_funnel))
-        .route("/api/v1/funnels/:id", get(funnel_handler::get_funnel).put(funnel_handler::update_funnel).delete(funnel_handler::delete_funnel))
+        .route(
+            "/api/v1/funnels",
+            get(funnel_handler::list_funnels).post(funnel_handler::create_funnel),
+        )
+        .route(
+            "/api/v1/funnels/:id",
+            get(funnel_handler::get_funnel)
+                .put(funnel_handler::update_funnel)
+                .delete(funnel_handler::delete_funnel),
+        )
         // QR codes for kinetic cards
-        .route("/api/v1/kinetic/qr", get(qr_handler::list_qr_codes).post(qr_handler::create_qr_code))
-        .route("/api/v1/kinetic/qr/:id", put(qr_handler::update_qr_code).delete(qr_handler::delete_qr_code))
+        .route(
+            "/api/v1/kinetic/qr",
+            get(qr_handler::list_qr_codes).post(qr_handler::create_qr_code),
+        )
+        .route(
+            "/api/v1/kinetic/qr/:id",
+            put(qr_handler::update_qr_code).delete(qr_handler::delete_qr_code),
+        )
         .route("/api/v1/kinetic/qr/:id/svg", get(qr_handler::get_qr_svg))
         .route("/api/v1/kinetic/qr/:id/png", get(qr_handler::get_qr_png))
         // Insights / analytics
-        .route("/api/v1/insights", get(insight_handler::get_dashboard_insights))
+        .route(
+            "/api/v1/insights",
+            get(insight_handler::get_dashboard_insights),
+        )
         .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns))
-        .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
-        .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
+        .route(
+            "/api/v1/incentiveswift/config",
+            get(incentiveswift_handler::get_incentiveswift_config),
+        )
+        .route(
+            "/api/v1/web-to-lead",
+            post(web_to_lead_handler::handle_web_to_lead),
+        )
         // Cross-app push routes — FunnelSwift provisions users in sister apps via tags
-        .route("/api/v1/push/coreswift", post(coreswift_push::push_lead_to_coreswift))
-        .route("/api/v1/push/coreswift/user", post(coreswift_push::provision_coreswift_user))
-        .route("/api/v1/push/coreswift/tag", post(coreswift_push::sync_coreswift_tag))
-        .route("/api/v1/push/coreswift/health", get(coreswift_push::coreswift_health))
-        .route("/api/v1/push/workflowswift", post(workflowswift_push::push_lead_to_workflowswift))
-        .route("/api/v1/push/workflowswift/user", post(workflowswift_push::provision_workflowswift_user))
-        .route("/api/v1/push/workflowswift/tag", post(workflowswift_push::sync_workflowswift_tag))
-        .route("/api/v1/push/workflowswift/health", get(workflowswift_push::workflowswift_health))
-        .route("/api/v1/push/adaswift", post(adaswift_provision::push_lead_to_adaswift))
-        .route("/api/v1/push/adaswift/user", post(adaswift_provision::provision_adaswift_user))
-        .route("/api/v1/push/adaswift/health", get(adaswift_provision::adaswift_health))
+        .route(
+            "/api/v1/push/coreswift",
+            post(coreswift_push::push_lead_to_coreswift),
+        )
+        .route(
+            "/api/v1/push/coreswift/user",
+            post(coreswift_push::provision_coreswift_user),
+        )
+        .route(
+            "/api/v1/push/coreswift/tag",
+            post(coreswift_push::sync_coreswift_tag),
+        )
+        .route(
+            "/api/v1/push/coreswift/health",
+            get(coreswift_push::coreswift_health),
+        )
+        .route(
+            "/api/v1/push/workflowswift",
+            post(workflowswift_push::push_lead_to_workflowswift),
+        )
+        .route(
+            "/api/v1/push/workflowswift/user",
+            post(workflowswift_push::provision_workflowswift_user),
+        )
+        .route(
+            "/api/v1/push/workflowswift/tag",
+            post(workflowswift_push::sync_workflowswift_tag),
+        )
+        .route(
+            "/api/v1/push/workflowswift/health",
+            get(workflowswift_push::workflowswift_health),
+        )
+        .route(
+            "/api/v1/push/adaswift",
+            post(adaswift_provision::push_lead_to_adaswift),
+        )
+        .route(
+            "/api/v1/push/adaswift/user",
+            post(adaswift_provision::provision_adaswift_user),
+        )
+        .route(
+            "/api/v1/push/adaswift/health",
+            get(adaswift_provision::adaswift_health),
+        )
         // Serve static files (SPA admin pages)
-        .nest_service("/affiliate-admin.html", ServeDir::new("/var/www/funnelswift/affiliate-admin.html"))
+        .nest_service(
+            "/affiliate-admin.html",
+            ServeDir::new("/var/www/funnelswift/affiliate-admin.html"),
+        )
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }

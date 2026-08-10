@@ -6,8 +6,8 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::error::{AppError, AppResult};
 use crate::auth::middleware::AuthUser;
+use crate::error::{AppError, AppResult};
 use crate::models::plan::*;
 use crate::state::AppState;
 use crate::tag_logic;
@@ -26,7 +26,7 @@ async fn sync_plan_to_affiliate_product(
 ) -> Result<(), crate::error::AppError> {
     // Look up the FunnelSwift Plans category; fall back to any available category
     let category_id: Option<uuid::Uuid> = match sqlx::query_scalar(
-        "SELECT id FROM product_categories WHERE slug = 'funnelswift-plans' LIMIT 1"
+        "SELECT id FROM product_categories WHERE slug = 'funnelswift-plans' LIMIT 1",
     )
     .fetch_optional(pool)
     .await?
@@ -42,22 +42,19 @@ async fn sync_plan_to_affiliate_product(
 
     let effective_tenant_id: uuid::Uuid = match tenant_id {
         Some(tid) => tid,
-        None => {
-            sqlx::query_scalar("SELECT id FROM tenants ORDER BY created_at LIMIT 1")
-                .fetch_optional(pool)
-                .await?
-                .unwrap_or_else(uuid::Uuid::nil)
-        }
+        None => sqlx::query_scalar("SELECT id FROM tenants ORDER BY created_at LIMIT 1")
+            .fetch_optional(pool)
+            .await?
+            .unwrap_or_else(uuid::Uuid::nil),
     };
 
     // Check if affiliate product already exists for this plan
-    let existing: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1"
-    )
-    .bind(plan_id)
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let existing: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1")
+            .bind(plan_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
     let description = format!("{} — FunnelSwift Plan", name);
 
@@ -70,7 +67,7 @@ async fn sync_plan_to_affiliate_product(
                 price = $3,
                 is_active = $4,
                 updated_at = NOW()
-            WHERE plan_id = $5"#
+            WHERE plan_id = $5"#,
         )
         .bind(name)
         .bind(&description)
@@ -115,9 +112,7 @@ async fn deactivate_affiliate_product_for_plan(
     Ok(())
 }
 
-pub async fn list_plans(
-    State(state): State<AppState>,
-) -> AppResult<Json<Vec<Plan>>> {
+pub async fn list_plans(State(state): State<AppState>) -> AppResult<Json<Vec<Plan>>> {
     let plans = sqlx::query_as::<_, Plan>("SELECT * FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
@@ -134,37 +129,50 @@ pub async fn create_plan(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     let plan_id = Uuid::new_v4();
-
     sqlx::query(
-        r#"INSERT INTO plans (id, name, slug, price, purchase_url, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"#,
+        r#"INSERT INTO plans (id, name, slug, price, annual_price, side, billing_cycle, max_custom_domains, max_cards, max_qr_codes, max_action_buttons, max_forms, max_leads, max_tags, max_team_members, max_ocr_scans, has_webhooks, has_api, has_dual_routing, has_mini_funnels, has_card_gating, has_remove_branding, has_white_label, has_multi_tenant, has_analytics, has_import_export, purchase_url, payment_provider, features)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)"#,
     )
     .bind(plan_id)
     .bind(&req.name)
     .bind(&req.slug)
     .bind(req.price)
-    .bind(&req.purchase_url)
+    .bind(req.annual_price)
+    .bind(req.side.as_deref().unwrap_or("main"))
+    .bind(req.billing_cycle.as_deref().unwrap_or("month"))
+    .bind(req.max_custom_domains)
+    .bind(req.max_cards)
+    .bind(req.max_qr_codes)
+    .bind(req.max_action_buttons)
+    .bind(req.max_forms)
     .bind(req.max_leads)
     .bind(req.max_tags)
+    .bind(req.max_team_members)
+    .bind(req.max_ocr_scans)
+    .bind(req.has_webhooks.unwrap_or(false))
+    .bind(req.has_api.unwrap_or(false))
     .bind(req.has_dual_routing.unwrap_or(false))
-    .bind(req.has_multi_tenant.unwrap_or(false))
+    .bind(req.has_mini_funnels.unwrap_or(false))
+    .bind(req.has_card_gating.unwrap_or(false))
+    .bind(req.has_remove_branding.unwrap_or(false))
     .bind(req.has_white_label.unwrap_or(false))
+    .bind(req.has_multi_tenant.unwrap_or(false))
+    .bind(req.has_analytics.unwrap_or(false))
+    .bind(req.has_import_export.unwrap_or(false))
+    .bind(&req.purchase_url)
     .bind(&req.payment_provider)
-    .bind(&req.features)
-    .execute(&state.pool)
+        .bind(&req.features)
+        .execute(&state.pool)
     .await?;
 
     // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(
-        &state.pool,
-        plan_id,
-        &req.name,
-        req.price,
-        None,
-        true,
-    ).await;
+    let _ = sync_plan_to_affiliate_product(&state.pool, plan_id, &req.name, req.price, None, true)
+        .await;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": plan_id, "message": "Plan created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": plan_id, "message": "Plan created"})),
+    ))
 }
 
 pub async fn get_plan(
@@ -220,14 +228,8 @@ pub async fn update_plan(
     .await?;
 
     // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(
-        &state.pool,
-        id,
-        &sync_name,
-        sync_price,
-        None,
-        true,
-    ).await;
+    let _ =
+        sync_plan_to_affiliate_product(&state.pool, id, &sync_name, sync_price, None, true).await;
 
     Ok(Json(json!({"message": "Plan updated"})))
 }
@@ -254,7 +256,6 @@ pub async fn delete_plan_admin(
 
     Ok(Json(json!({"message": "Plan deleted"})))
 }
-
 
 // ── Admin endpoints (follow funnelswift pattern - no auth extractor) ──
 
@@ -298,16 +299,45 @@ pub async fn admin_create_plan_json(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     let plan_id = Uuid::new_v4();
-    let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let slug = req.get("slug").and_then(|v| v.as_str()).unwrap_or(&name.to_lowercase().replace(" ", "-")).to_string();
+    let name = req
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let slug = req
+        .get("slug")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&name.to_lowercase().replace(" ", "-"))
+        .to_string();
     let price = req.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let max_leads = req.get("max_leads").and_then(|v| v.as_i64()).map(|v| v as i32);
-    let max_tags = req.get("max_tags").and_then(|v| v.as_i64()).map(|v| v as i32);
-    let has_dual_routing = req.get("has_dual_routing").and_then(|v| v.as_bool()).unwrap_or(false);
-    let has_multi_tenant = req.get("has_multi_tenant").and_then(|v| v.as_bool()).unwrap_or(false);
-    let has_white_label = req.get("has_white_label").and_then(|v| v.as_bool()).unwrap_or(false);
-    let purchase_url = req.get("purchase_url").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let payment_provider = req.get("payment_provider").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let max_leads = req
+        .get("max_leads")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
+    let max_tags = req
+        .get("max_tags")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32);
+    let has_dual_routing = req
+        .get("has_dual_routing")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let has_multi_tenant = req
+        .get("has_multi_tenant")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let has_white_label = req
+        .get("has_white_label")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let purchase_url = req
+        .get("purchase_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let payment_provider = req
+        .get("payment_provider")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let features = req.get("features").cloned();
 
     if name.is_empty() {
@@ -334,16 +364,12 @@ pub async fn admin_create_plan_json(
     .await?;
 
     // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(
-        &state.pool,
-        plan_id,
-        &name,
-        price,
-        None,
-        true,
-    ).await;
+    let _ = sync_plan_to_affiliate_product(&state.pool, plan_id, &name, price, None, true).await;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": plan_id, "message": "Plan created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": plan_id, "message": "Plan created"})),
+    ))
 }
 
 pub async fn admin_update_plan_features(
@@ -355,7 +381,8 @@ pub async fn admin_update_plan_features(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let features = req.get("features")
+    let features = req
+        .get("features")
         .ok_or_else(|| AppError::BadRequest("features object is required".to_string()))?;
     let features_str = features.to_string();
 
@@ -370,7 +397,10 @@ pub async fn admin_update_plan_features(
     // Also update allowed_template_ids if provided
     if let Some(templates) = req.get("allowed_template_ids") {
         if let Some(arr) = templates.as_array() {
-            let ids: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+            let ids: Vec<String> = arr
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
             sqlx::query("UPDATE plans SET allowed_template_ids = $1 WHERE id = $2")
                 .bind(&ids)
                 .bind(id)
@@ -395,19 +425,23 @@ pub async fn admin_assign_plan(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let tenant_id = req.get("tenant_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok())
+    let tenant_id = req
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("Valid tenant_id is required".into()))?;
-    let plan_id = req.get("plan_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok())
+    let plan_id = req
+        .get("plan_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("Valid plan_id is required".into()))?;
 
     // Get the new plan slug before activating
-    let new_plan_slug: String = sqlx::query_scalar(
-        "SELECT slug FROM plans WHERE id = $1"
-    )
-    .bind(plan_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+    let new_plan_slug: String = sqlx::query_scalar("SELECT slug FROM plans WHERE id = $1")
+        .bind(plan_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
     // Deactivate existing subscription first
     sqlx::query(
@@ -430,11 +464,9 @@ pub async fn admin_assign_plan(
 
     // Auto-apply Sold tag to all leads in this tenant
     // This only applies when upgrading to paid plans (pro/enterprise)
-    tag_logic::apply_sold_to_tenant_leads(
-        &state.pool,
-        tenant_id,
-        &new_plan_slug,
-    ).await?;
+    tag_logic::apply_sold_to_tenant_leads(&state.pool, tenant_id, &new_plan_slug).await?;
 
-    Ok(Json(json!({"message": "Plan assigned to tenant", "subscription_id": subscription_id})))
+    Ok(Json(
+        json!({"message": "Plan assigned to tenant", "subscription_id": subscription_id}),
+    ))
 }

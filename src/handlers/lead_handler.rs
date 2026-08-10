@@ -9,12 +9,12 @@ use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
-use crate::models::lead::*;
-use crate::handlers::workflowswift_push::push_to_workflowswift;
+use crate::features;
 use crate::handlers::adaswift_provision;
 use crate::handlers::coreswift_push;
+use crate::handlers::workflowswift_push::push_to_workflowswift;
+use crate::models::lead::*;
 use crate::state::AppState;
-use crate::features;
 
 #[derive(Deserialize)]
 pub struct LeadQuery {
@@ -42,14 +42,15 @@ pub async fn list_leads(
     let per_page = query.per_page.unwrap_or(20).min(100);
     let offset = (page - 1) * per_page;
 
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1",
-    )
-    .bind(tenant_id)
-    .fetch_one(&state.pool)
-    .await?;
+    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM leads WHERE tenant_id = $1")
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await?;
 
     let leads = sqlx::query_as::<_, Lead>(
         "SELECT * FROM leads WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
@@ -70,11 +71,14 @@ pub async fn list_leads(
 
 pub async fn create_lead(
     auth: AuthUser,
-    
+
     State(state): State<AppState>,
     Json(req): Json<CreateLeadRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
 
     // Check for duplicate email within tenant
@@ -91,7 +95,8 @@ pub async fn create_lead(
 
             if existing {
                 return Err(AppError::BadRequest(format!(
-                    "A lead with email '{}' already exists in this workspace", email
+                    "A lead with email '{}' already exists in this workspace",
+                    email
                 )));
             }
         }
@@ -129,7 +134,6 @@ pub async fn create_lead(
         }
     });
 
-
     // Best-effort check for ADASwift tags and auto-provision
     tokio::spawn({
         let pool = state.pool.clone();
@@ -145,11 +149,32 @@ pub async fn create_lead(
         let cs_url = state.coreswift_url.clone();
         let sync_key = state.internal_sync_key.clone();
         async move {
-            coreswift_push::push_to_coreswift(&pool, &cs_url, &sync_key, lead_id, tenant_id).await;
+            // Look up lead name/email for the push
+            if let Ok(Some((name, email, company))) =
+                sqlx::query_as::<_, (String, String, Option<String>)>(
+                    "SELECT name, email, company FROM leads WHERE id = $1",
+                )
+                .bind(lead_id)
+                .fetch_optional(&pool)
+                .await
+            {
+                let _ = coreswift_push::push_to_coreswift(
+                    &cs_url,
+                    &sync_key,
+                    tenant_id,
+                    &name,
+                    &email,
+                    company.as_deref(),
+                )
+                .await;
+            }
         }
     });
 
-    Ok((StatusCode::CREATED, Json(json!({"id": lead_id, "message": "Lead created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": lead_id, "message": "Lead created"})),
+    ))
 }
 
 pub async fn get_lead(
@@ -157,16 +182,17 @@ pub async fn get_lead(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Lead>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let lead = sqlx::query_as::<_, Lead>(
-        "SELECT * FROM leads WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
+    let lead = sqlx::query_as::<_, Lead>("SELECT * FROM leads WHERE id = $1 AND tenant_id = $2")
+        .bind(id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
 
     Ok(Json(lead))
 }
@@ -177,28 +203,40 @@ pub async fn update_lead(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateLeadRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing = sqlx::query_as::<_, Lead>(
-        "SELECT * FROM leads WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
+    let existing =
+        sqlx::query_as::<_, Lead>("SELECT * FROM leads WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
 
-    let name = req.name.clone().or(existing.name.clone()).unwrap_or_default();
+    let name = req
+        .name
+        .clone()
+        .or(existing.name.clone())
+        .unwrap_or_default();
     let email = req.email.clone().or(existing.email.clone());
     let phone = req.phone.clone().or(existing.phone.clone());
     let company = req.company.clone().or(existing.company.clone());
     let source = req.source.clone().or(existing.source.clone());
-    let status = req.status.clone().or(Some(existing.status.clone())).unwrap_or_else(|| "active".to_string());
+    let status = req
+        .status
+        .clone()
+        .or(Some(existing.status.clone()))
+        .unwrap_or_else(|| "active".to_string());
     let stage = req.stage.clone().or(existing.stage.clone());
     let score = req.score.or(existing.score);
     let notes = req.notes.or(existing.notes);
     let assigned_to = req.assigned_to.or(existing.assigned_to);
-    let tags = req.tags.map(|t| serde_json::Value::Array(t.into_iter().map(serde_json::Value::String).collect()));
+    let tags = req
+        .tags
+        .map(|t| serde_json::Value::Array(t.into_iter().map(serde_json::Value::String).collect()));
     let custom_fields = req.custom_fields.or(existing.custom_fields);
 
     sqlx::query(
@@ -230,7 +268,10 @@ pub async fn delete_lead(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let result = sqlx::query("DELETE FROM leads WHERE id = $1 AND tenant_id = $2")
         .bind(id)
@@ -251,14 +292,19 @@ pub async fn assign_lead(
     Path(id): Path<Uuid>,
     Json(req): Json<AssignRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    sqlx::query("UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3")
-        .bind(req.assigned_to)
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+    sqlx::query(
+        "UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+    )
+    .bind(req.assigned_to)
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
 
     Ok(Json(json!({"message": "Lead assigned"})))
 }
@@ -269,7 +315,10 @@ pub async fn update_lead_stage(
     Path(id): Path<Uuid>,
     Json(req): Json<StageRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query("UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3")
         .bind(&req.stage)
@@ -295,7 +344,24 @@ pub async fn update_lead_stage(
         let cs_url = state.coreswift_url.clone();
         let sync_key = state.internal_sync_key.clone();
         async move {
-            coreswift_push::push_to_coreswift(&pool, &cs_url, &sync_key, id, tenant_id).await;
+            if let Ok(Some((name, email, company))) =
+                sqlx::query_as::<_, (String, String, Option<String>)>(
+                    "SELECT name, email, company FROM leads WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(&pool)
+                .await
+            {
+                let _ = coreswift_push::push_to_coreswift(
+                    &cs_url,
+                    &sync_key,
+                    tenant_id,
+                    &name,
+                    &email,
+                    company.as_deref(),
+                )
+                .await;
+            }
         }
     });
 
@@ -314,29 +380,39 @@ pub async fn assign_lead_tags(
     Path(id): Path<Uuid>,
     Json(req): Json<LeadTagsRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     // Get current lead tags
-    let row = sqlx::query_as::<_, (serde_json::Value,)>("SELECT tags FROM leads WHERE id = $1 AND tenant_id = $2")
-        .bind(id)
-        .bind(tenant_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    let row = sqlx::query_as::<_, (serde_json::Value,)>(
+        "SELECT tags FROM leads WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
 
     let row = row.ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
     let (tag_val,) = row;
     let mut current_tags: Vec<String> = match tag_val {
-        serde_json::Value::Array(ref arr) => arr.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
+        serde_json::Value::Array(ref arr) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
         _ => vec![],
     };
 
     // Determine which tags are new (to evaluate rules against)
     let new_tags: Vec<Uuid> = {
-        let all_tags = sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM tags WHERE tenant_id = $1")
-            .bind(tenant_id)
-            .fetch_all(&state.pool)
-            .await?;
-        all_tags.into_iter()
+        let all_tags =
+            sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM tags WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_all(&state.pool)
+                .await?;
+        all_tags
+            .into_iter()
             .filter(|(_, name)| req.tags.contains(name) && !current_tags.contains(name))
             .map(|(id, _)| id)
             .collect()
@@ -351,10 +427,15 @@ pub async fn assign_lead_tags(
 
     // Evaluate tag rules
     let (to_remove, to_add) = crate::tag_logic::evaluate_tag_rules(
-        &state.pool, tenant_id,
-        &current_tags.iter().map(|s| serde_json::Value::String(s.clone())).collect::<Vec<_>>(),
-        &new_tags
-    ).await?;
+        &state.pool,
+        tenant_id,
+        &current_tags
+            .iter()
+            .map(|s| serde_json::Value::String(s.clone()))
+            .collect::<Vec<_>>(),
+        &new_tags,
+    )
+    .await?;
 
     // Apply rule results
     current_tags.retain(|t| !to_remove.contains(t));
@@ -364,7 +445,12 @@ pub async fn assign_lead_tags(
         }
     }
 
-    let tags_json: serde_json::Value = serde_json::Value::Array(current_tags.iter().map(|t| serde_json::Value::String(t.clone())).collect());
+    let tags_json: serde_json::Value = serde_json::Value::Array(
+        current_tags
+            .iter()
+            .map(|t| serde_json::Value::String(t.clone()))
+            .collect(),
+    );
 
     sqlx::query("UPDATE leads SET tags = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3")
         .bind(&tags_json)
@@ -375,12 +461,20 @@ pub async fn assign_lead_tags(
 
     // Log change
     let triggered_by = req.triggered_by.unwrap_or_else(|| "manual".to_string());
-    crate::tag_logic::log_tag_change(&state.pool, tenant_id, id, &req.tags, &to_remove, &triggered_by).await?;
+    crate::tag_logic::log_tag_change(
+        &state.pool,
+        tenant_id,
+        id,
+        &req.tags,
+        &to_remove,
+        &triggered_by,
+    )
+    .await?;
 
     // Fire cross-app sync to CoreSwift CRM
     if !state.coreswift_url.is_empty() {
         let lead = sqlx::query_as::<_, (String, String, String)>(
-            "SELECT name, email, company FROM leads WHERE id = $1"
+            "SELECT name, email, company FROM leads WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&state.pool)
@@ -408,7 +502,8 @@ pub async fn assign_lead_tags(
             let internal_sync_key = state.internal_sync_key.clone();
             let client = reqwest::Client::new();
             tokio::spawn(async move {
-                let _ = client.post(&url)
+                let _ = client
+                    .post(&url)
                     .header("x-internal-key", &internal_sync_key)
                     .json(&sync_payload)
                     .timeout(std::time::Duration::from_secs(5))
@@ -435,28 +530,36 @@ pub async fn export_leads(
     State(state): State<AppState>,
     Query(query): Query<ExportQuery>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let leads = sqlx::query_as::<_, Lead>("SELECT * FROM leads WHERE tenant_id = $1 ORDER BY created_at DESC")
-        .bind(tenant_id)
-        .fetch_all(&state.pool)
-        .await?;
+    let leads = sqlx::query_as::<_, Lead>(
+        "SELECT * FROM leads WHERE tenant_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
 
-    let csv_leads: Vec<serde_json::Value> = leads.iter().map(|l| {
-        json!({
-            "id": l.id,
-            "name": l.name,
-            "email": l.email,
-            "phone": l.phone,
-            "company": l.company,
-            "source": l.source,
-            "stage": l.stage,
-            "status": l.status,
-            "score": l.score,
-            "notes": l.notes,
-            "created_at": l.created_at,
+    let csv_leads: Vec<serde_json::Value> = leads
+        .iter()
+        .map(|l| {
+            json!({
+                "id": l.id,
+                "name": l.name,
+                "email": l.email,
+                "phone": l.phone,
+                "company": l.company,
+                "source": l.source,
+                "stage": l.stage,
+                "status": l.status,
+                "score": l.score,
+                "notes": l.notes,
+                "created_at": l.created_at,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({
         "format": query.format.as_deref().unwrap_or("json"),

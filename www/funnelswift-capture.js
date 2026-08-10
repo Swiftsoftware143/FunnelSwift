@@ -96,7 +96,7 @@
     // Everything else lands in `extra`
     params.extra = {};
     for (var k in formData) {
-      if (formData.hasOwnProperty(k)) {
+      if (Object.prototype.hasOwnProperty.call(formData, k)) {
         params.extra[k] = formData[k];
       }
     }
