@@ -8,15 +8,15 @@ use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::features;
 use crate::models::tag::*;
 use crate::state::AppState;
-use crate::features;
 
-pub async fn list_tags(
-    auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Vec<Tag>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+pub async fn list_tags(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Vec<Tag>>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let tags = sqlx::query_as::<_, Tag>(
         "SELECT * FROM tags WHERE tenant_id = $1 OR is_system = true ORDER BY name",
@@ -33,7 +33,10 @@ pub async fn get_tag(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Tag>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let tag = sqlx::query_as::<_, Tag>(
         "SELECT * FROM tags WHERE id = $1 AND (tenant_id = $2 OR is_system = true)",
@@ -52,13 +55,18 @@ pub async fn create_tag(
     State(state): State<AppState>,
     Json(req): Json<CreateTagRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_tags", "Tags").await?;
     let tag_id = Uuid::new_v4();
 
     let is_system = req.is_system.unwrap_or(false);
     if is_system && !auth.is_admin {
-        return Err(AppError::Forbidden("Only admins can create system tags".into()));
+        return Err(AppError::Forbidden(
+            "Only admins can create system tags".into(),
+        ));
     }
 
     sqlx::query(
@@ -74,7 +82,10 @@ pub async fn create_tag(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": tag_id, "message": "Tag created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": tag_id, "message": "Tag created"})),
+    ))
 }
 
 pub async fn update_tag(
@@ -83,17 +94,24 @@ pub async fn update_tag(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTagRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let tag = sqlx::query_as::<_, Tag>("SELECT * FROM tags WHERE id = $1 AND (tenant_id = $2 OR is_system = true)")
-        .bind(id)
-        .bind(tenant_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tag not found".into()))?;
+    let tag = sqlx::query_as::<_, Tag>(
+        "SELECT * FROM tags WHERE id = $1 AND (tenant_id = $2 OR is_system = true)",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Tag not found".into()))?;
 
     if tag.is_system && !auth.is_admin {
-        return Err(AppError::Forbidden("Only admins can modify system tags".into()));
+        return Err(AppError::Forbidden(
+            "Only admins can modify system tags".into(),
+        ));
     }
     // Admin CAN modify system tags — but only on system tags, not tenant-scoped
     let update_query = if tag.is_system && auth.is_admin {
@@ -136,17 +154,24 @@ pub async fn delete_tag(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let tag = sqlx::query_as::<_, Tag>("SELECT * FROM tags WHERE id = $1 AND (tenant_id = $2 OR is_system = true)")
-        .bind(id)
-        .bind(tenant_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tag not found".into()))?;
+    let tag = sqlx::query_as::<_, Tag>(
+        "SELECT * FROM tags WHERE id = $1 AND (tenant_id = $2 OR is_system = true)",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Tag not found".into()))?;
 
     if tag.is_system && !auth.is_admin {
-        return Err(AppError::Forbidden("Only admins can delete system tags".into()));
+        return Err(AppError::Forbidden(
+            "Only admins can delete system tags".into(),
+        ));
     }
     // System tags can be deleted by admins
 

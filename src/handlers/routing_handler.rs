@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -16,7 +12,10 @@ pub async fn list_target_software(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<TargetSoftware>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let targets = sqlx::query_as::<_, TargetSoftware>(
         "SELECT * FROM target_software WHERE tenant_id = $1 ORDER BY name",
@@ -33,8 +32,12 @@ pub async fn create_target_software(
     State(state): State<AppState>,
     Json(req): Json<CreateTargetSoftwareRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    features::enforce_feature_limit(&state, tenant_id, "max_routing_targets", "Routing targets").await?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_limit(&state, tenant_id, "max_routing_targets", "Routing targets")
+        .await?;
     let target_id = Uuid::new_v4();
 
     sqlx::query(
@@ -48,14 +51,20 @@ pub async fn create_target_software(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": target_id, "message": "Target software created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": target_id, "message": "Target software created"})),
+    ))
 }
 
 pub async fn list_routing_logs(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<RoutingLog>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let logs = sqlx::query_as::<_, RoutingLog>(
         "SELECT * FROM routing_log WHERE source_tenant = $1 ORDER BY created_at DESC LIMIT 100",

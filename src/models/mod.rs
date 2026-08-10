@@ -1,13 +1,13 @@
 pub mod activity;
 pub mod affiliate;
+pub mod affiliate_portal;
+pub mod affiliate_product;
+pub mod affiliate_tracking;
 pub mod api_key;
 pub mod dashboard;
 pub mod lead;
 pub mod plan;
 pub mod plan_tag_mapping;
-pub mod affiliate_product;
-pub mod affiliate_tracking;
-pub mod affiliate_portal;
 pub mod routing;
 pub mod setting;
 pub mod settings;

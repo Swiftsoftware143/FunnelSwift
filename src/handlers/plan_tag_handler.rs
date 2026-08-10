@@ -1,20 +1,18 @@
-use axum::{
-    extract::State,
-    Json,
-};
-use serde_json::json;
 use crate::auth::middleware::AuthUser;
 use crate::error::AppResult;
 use crate::models::plan_tag_mapping::*;
 use crate::state::AppState;
+use axum::{extract::State, Json};
+use serde_json::json;
 
 pub async fn list_plan_tag_mappings(
     _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<PlanTagMapping>>> {
-    let mappings = sqlx::query_as::<_, PlanTagMapping>("SELECT * FROM plan_tag_mappings ORDER BY created_at")
-        .fetch_all(&state.pool)
-        .await?;
+    let mappings =
+        sqlx::query_as::<_, PlanTagMapping>("SELECT * FROM plan_tag_mappings ORDER BY created_at")
+            .fetch_all(&state.pool)
+            .await?;
 
     Ok(Json(mappings))
 }

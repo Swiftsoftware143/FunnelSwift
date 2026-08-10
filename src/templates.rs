@@ -30,9 +30,7 @@ pub enum LayoutBlock {
         gradient_colors: Option<String>,
     },
     /// Features grid (3-col desktop, 1-col mobile)
-    Features {
-        items: Vec<FeatureItem>,
-    },
+    Features { items: Vec<FeatureItem> },
     /// Digital business card — rich schema: multi-contact, actions, geo, QR
     BusinessCard {
         name: String,
@@ -133,7 +131,7 @@ pub enum LayoutBlock {
     },
     /// Rich text / HTML content block
     RichText {
-        content: String, // HTML allowed
+        content: String,       // HTML allowed
         align: Option<String>, // "left" | "center" | "right"
     },
     /// Divider / spacer

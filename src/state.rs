@@ -12,7 +12,22 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(pool: PgPool, jwt_secret: String, internal_sync_key: String, workflowswift_url: String, adaswift_url: String, coreswift_url: String) -> Self {
-        Self { db: pool.clone(), pool, jwt_secret, internal_sync_key, workflowswift_url, adaswift_url, coreswift_url }
+    pub fn new(
+        pool: PgPool,
+        jwt_secret: String,
+        internal_sync_key: String,
+        workflowswift_url: String,
+        adaswift_url: String,
+        coreswift_url: String,
+    ) -> Self {
+        Self {
+            db: pool.clone(),
+            pool,
+            jwt_secret,
+            internal_sync_key,
+            workflowswift_url,
+            adaswift_url,
+            coreswift_url,
+        }
     }
 }

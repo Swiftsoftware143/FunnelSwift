@@ -50,7 +50,9 @@ pub struct IntegrationTargetQuery {
     pub portfolio_company_id: Option<Uuid>,
 }
 
-fn row_to_integration_target(row: &sqlx::postgres::PgRow) -> Result<IntegrationTarget, sqlx::Error> {
+fn row_to_integration_target(
+    row: &sqlx::postgres::PgRow,
+) -> Result<IntegrationTarget, sqlx::Error> {
     Ok(IntegrationTarget {
         id: row.try_get("id")?,
         tenant_id: row.try_get("tenant_id")?,
@@ -60,7 +62,9 @@ fn row_to_integration_target(row: &sqlx::postgres::PgRow) -> Result<IntegrationT
         api_key: row.try_get("api_key")?,
         events: row.try_get::<Vec<String>, _>("events").unwrap_or_default(),
         is_active: row.try_get("is_active")?,
-        created_at: row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")?.to_rfc3339(),
+        created_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")?
+            .to_rfc3339(),
     })
 }
 
@@ -69,7 +73,10 @@ pub async fn list_integration_targets(
     State(state): State<AppState>,
     Query(query): Query<IntegrationTargetQuery>,
 ) -> AppResult<Json<Vec<IntegrationTarget>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let rows = if let Some(company_id) = query.portfolio_company_id {
         sqlx::query(
@@ -88,7 +95,8 @@ pub async fn list_integration_targets(
         .await?
     };
 
-    let targets: Vec<IntegrationTarget> = rows.iter()
+    let targets: Vec<IntegrationTarget> = rows
+        .iter()
         .map(row_to_integration_target)
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -100,8 +108,12 @@ pub async fn create_integration_target(
     State(state): State<AppState>,
     Json(req): Json<CreateIntegrationTargetRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    features::enforce_feature_limit(&state, tenant_id, "max_integrations", "Integration targets").await?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_limit(&state, tenant_id, "max_integrations", "Integration targets")
+        .await?;
     let target_id = Uuid::new_v4();
     let events = req.events.unwrap_or_default();
 
@@ -118,7 +130,10 @@ pub async fn create_integration_target(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": target_id.to_string(), "message": "Integration target created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": target_id.to_string(), "message": "Integration target created"})),
+    ))
 }
 
 pub async fn update_integration_target(
@@ -127,7 +142,10 @@ pub async fn update_integration_target(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateIntegrationTargetRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     // Fetch existing
     let row = sqlx::query(
@@ -162,7 +180,9 @@ pub async fn update_integration_target(
     .execute(&state.pool)
     .await?;
 
-    Ok(Json(json!({"message": "Integration target updated", "id": id.to_string()})))
+    Ok(Json(
+        json!({"message": "Integration target updated", "id": id.to_string()}),
+    ))
 }
 
 pub async fn delete_integration_target(
@@ -170,7 +190,10 @@ pub async fn delete_integration_target(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query("DELETE FROM target_software WHERE id = $1 AND tenant_id = $2")
         .bind(id)

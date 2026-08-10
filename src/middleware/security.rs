@@ -5,10 +5,7 @@ use axum::{
     response::Response,
 };
 
-pub async fn security_headers(
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn security_headers(request: Request, next: Next) -> Result<Response, StatusCode> {
     let mut response = next.run(request).await;
 
     let headers = response.headers_mut();
@@ -54,7 +51,9 @@ pub async fn security_headers(
     // Permissions policy
     headers.insert(
         header::HeaderName::from_static("permissions-policy"),
-        header::HeaderValue::from_static("camera=(), microphone=(), geolocation=(), interest-cohort=()"),
+        header::HeaderValue::from_static(
+            "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+        ),
     );
 
     // Remove server headers that leak info

@@ -11,19 +11,19 @@ use tower_http::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api_router;
+#[path = "middleware/mod.rs"]
+mod app_middleware;
 mod auth;
 mod db;
 mod email;
 mod error;
-mod tag_logic;
 mod features;
 mod handlers;
-#[path = "middleware/mod.rs"]
-mod app_middleware;
 mod models;
-mod templates;
 mod security;
 mod state;
+mod tag_logic;
+mod templates;
 
 use crate::db::Database;
 use crate::error::Result;
@@ -52,15 +52,22 @@ async fn main() -> Result<()> {
     let pool = database.pool().clone();
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| std::io::Error::other("JWT_SECRET must be set in environment"))?;
-    let internal_sync_key = std::env::var("INTERNAL_SYNC_KEY")
-        .expect("INTERNAL_SYNC_KEY must be set in environment");
-    let workflowswift_url = std::env::var("WORKFLOWSWIFT_URL")
-        .unwrap_or_else(|_| "http://localhost:8085".to_string());
-    let adaswift_url = std::env::var("ADASWIFT_URL")
-        .unwrap_or_else(|_| "http://localhost:8087".to_string());
-    let coreswift_url = std::env::var("CORESWIFT_URL")
-        .unwrap_or_else(|_| "http://localhost:8084".to_string());
-    let app_state = AppState::new(pool, jwt_secret, internal_sync_key, workflowswift_url, adaswift_url, coreswift_url);
+    let internal_sync_key =
+        std::env::var("INTERNAL_SYNC_KEY").expect("INTERNAL_SYNC_KEY must be set in environment");
+    let workflowswift_url =
+        std::env::var("WORKFLOWSWIFT_URL").unwrap_or_else(|_| "http://localhost:8085".to_string());
+    let adaswift_url =
+        std::env::var("ADASWIFT_URL").unwrap_or_else(|_| "http://localhost:8087".to_string());
+    let coreswift_url =
+        std::env::var("CORESWIFT_URL").unwrap_or_else(|_| "http://localhost:8084".to_string());
+    let app_state = AppState::new(
+        pool,
+        jwt_secret,
+        internal_sync_key,
+        workflowswift_url,
+        adaswift_url,
+        coreswift_url,
+    );
 
     // Build router
     let app = create_router(app_state);

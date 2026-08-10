@@ -1,3 +1,6 @@
+use crate::auth::middleware::AuthUser;
+use crate::error::{AppError, AppResult};
+use crate::state::AppState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -5,9 +8,6 @@ use axum::{
 };
 use serde_json::json;
 use uuid::Uuid;
-use crate::auth::middleware::AuthUser;
-use crate::error::{AppError, AppResult};
-use crate::state::AppState;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateTierRequest {
@@ -28,7 +28,7 @@ pub struct UpdateTierRequest {
 }
 
 pub async fn list_tiers(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
     let rows: Vec<(Uuid, String, f64, i32, f64, Option<String>, chrono::NaiveDateTime)> = sqlx::query_as(
@@ -42,7 +42,7 @@ pub async fn list_tiers(
 }
 
 pub async fn create_tier(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateTierRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
@@ -63,17 +63,20 @@ pub async fn create_tier(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": id, "message": "Tier created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": id, "message": "Tier created"})),
+    ))
 }
 
 pub async fn update_tier(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTierRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
     let existing = sqlx::query_as::<_, (String, f64, i32, f64)>(
-        "SELECT name, commission_rate, min_sales, min_revenue FROM affiliate_tiers WHERE id = $1"
+        "SELECT name, commission_rate, min_sales, min_revenue FROM affiliate_tiers WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -100,7 +103,7 @@ pub async fn update_tier(
 }
 
 pub async fn delete_tier(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
@@ -112,7 +115,7 @@ pub async fn delete_tier(
 }
 
 pub async fn list_payouts(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
     let rows: Vec<(Uuid, String, f64, String, Option<String>, chrono::NaiveDateTime, Option<String>)> = sqlx::query_as(
@@ -126,7 +129,7 @@ pub async fn list_payouts(
 }
 
 pub async fn create_payout(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
@@ -147,11 +150,14 @@ pub async fn create_payout(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": id, "message": "Payout created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": id, "message": "Payout created"})),
+    ))
 }
 
 pub async fn mark_payout_paid(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
@@ -163,18 +169,18 @@ pub async fn mark_payout_paid(
 }
 
 pub async fn calculate_affiliate_tier(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    _auth: AuthUser,
+    State(_state): State<AppState>,
+    Path(_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
     // Return the current tier for the affiliate based on their stats
     Ok(Json(json!({"tier": "Bronze", "commission_rate": 10.0})))
 }
 
 pub async fn get_affiliate_pending_conversions(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    _auth: AuthUser,
+    State(_state): State<AppState>,
+    Path(_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
     Ok(Json(json!([])))
 }

@@ -1,12 +1,12 @@
-use axum::{extract::State, http::StatusCode, Json};
-use serde_json::{json, Value};
-use uuid::Uuid;
+use crate::error::{AppError, AppResult};
+use crate::state::AppState;
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
-use crate::error::{AppResult, AppError};
-use crate::state::AppState;
+use axum::{extract::State, http::StatusCode, Json};
+use serde_json::{json, Value};
+use uuid::Uuid;
 
 /// POST /api/v1/auth/signup — Public signup (used by Kinetic Cards landing page).
 /// Creates tenant + user, assigns plan from request body (defaults to 'free').
@@ -17,30 +17,37 @@ pub async fn public_signup(
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
     let password = payload["password"].as_str().unwrap_or("").to_string();
     let name = payload["name"].as_str().unwrap_or("").trim().to_string();
-    let plan_slug = payload["plan"].as_str().unwrap_or("free").to_string();
+    let plan_slug = payload["plan"]
+        .as_str()
+        .unwrap_or("kinetic-free")
+        .to_string();
     let source = payload["source"].as_str().unwrap_or("").to_string();
     let affiliate_code = payload["affiliate_code"].as_str().map(|s| s.to_string());
 
     if email.is_empty() || password.is_empty() || name.is_empty() {
-        return Err(AppError::BadRequest("Name, email, and password are required".into()));
+        return Err(AppError::BadRequest(
+            "Name, email, and password are required".into(),
+        ));
     }
     if password.len() < 6 {
-        return Err(AppError::BadRequest("Password must be at least 6 characters".into()));
+        return Err(AppError::BadRequest(
+            "Password must be at least 6 characters".into(),
+        ));
     }
     if !email.contains('@') {
         return Err(AppError::BadRequest("Invalid email format".into()));
     }
 
     // Check for duplicate email
-    let existing = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM users WHERE email = $1",
-    )
-    .bind(&email)
-    .fetch_one(&state.pool)
-    .await?;
+    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = $1")
+        .bind(&email)
+        .fetch_one(&state.pool)
+        .await?;
 
     if existing > 0 {
-        return Err(AppError::Conflict("An account with this email already exists".into()));
+        return Err(AppError::Conflict(
+            "An account with this email already exists".into(),
+        ));
     }
 
     // Hash password
@@ -53,18 +60,21 @@ pub async fn public_signup(
 
     // Create tenant
     let tenant_id = Uuid::new_v4();
-    let tenant_slug = format!("{}-{}", 
+    let tenant_slug = format!(
+        "{}-{}",
         name.to_lowercase().replace(' ', "-"),
-        Uuid::new_v4().to_string().chars().take(8).collect::<String>()
+        Uuid::new_v4()
+            .to_string()
+            .chars()
+            .take(8)
+            .collect::<String>()
     );
-    sqlx::query(
-        "INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)",
-    )
-    .bind(tenant_id)
-    .bind(format!("{}'s Workspace", name))
-    .bind(&tenant_slug)
-    .execute(&state.pool)
-    .await?;
+    sqlx::query("INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)")
+        .bind(tenant_id)
+        .bind(format!("{}'s Workspace", name))
+        .bind(&tenant_slug)
+        .execute(&state.pool)
+        .await?;
 
     // Create user
     let user_id = Uuid::new_v4();
@@ -91,16 +101,14 @@ pub async fn public_signup(
     .await?;
 
     // Assign plan (respects plan from signup request, defaults to 'free')
-    let plan_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM plans WHERE slug = $1 LIMIT 1"
-    )
-    .bind(&plan_slug)
-    .fetch_optional(&state.pool)
-    .await?;
+    let plan_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM plans WHERE slug = $1 LIMIT 1")
+        .bind(&plan_slug)
+        .fetch_optional(&state.pool)
+        .await?;
     if let Some(pid) = plan_id {
         let _ = sqlx::query(
             r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
-               VALUES ($1, $2, $3, 'active', NOW())"#
+               VALUES ($1, $2, $3, 'active', NOW())"#,
         )
         .bind(Uuid::new_v4())
         .bind(tenant_id)
@@ -135,9 +143,12 @@ pub async fn public_signup(
         }
     }
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "message": "Account created successfully",
-        "email": email,
-        "plan": plan_slug,
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "message": "Account created successfully",
+            "email": email,
+            "plan": plan_slug,
+        })),
+    ))
 }

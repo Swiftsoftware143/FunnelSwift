@@ -1,15 +1,18 @@
-use axum::{extract::{Path, State, Json}, response::IntoResponse};
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHasher};
+use axum::{
+    extract::{Json, Path, State},
+    response::IntoResponse,
+};
+use chrono::Utc;
+use jsonwebtoken::{encode, EncodingKey, Header};
+use rand::rngs::OsRng;
 use serde_json::{json, Value};
 use uuid::Uuid;
-use jsonwebtoken::{encode, Header, EncodingKey};
-use argon2::{Argon2, PasswordHasher};
-use argon2::password_hash::SaltString;
-use rand::rngs::OsRng;
-use chrono::Utc;
 
-use crate::error::{AppError, AppResult};
-use crate::auth::models::Claims;
 use crate::auth::middleware::AuthUser;
+use crate::auth::models::Claims;
+use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 /// Admin-only sync endpoint called by CoreSwift to create portfolio company with user account
@@ -21,13 +24,31 @@ pub async fn portfolio_sync(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let sync_id = req.get("id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()).unwrap_or_else(Uuid::new_v4);
-    let name = req.get("name").and_then(|v| v.as_str()).unwrap_or("Company").to_string();
-    let email = req.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let description = req.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let sync_id = req
+        .get("id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or_else(Uuid::new_v4);
+    let name = req
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Company")
+        .to_string();
+    let email = req
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let description = req
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     if email.is_empty() {
-        return Err(AppError::BadRequest("email is required for portfolio sync".into()));
+        return Err(AppError::BadRequest(
+            "email is required for portfolio sync".into(),
+        ));
     }
 
     // Check email uniqueness
@@ -38,7 +59,10 @@ pub async fn portfolio_sync(
         .unwrap_or(0_i64);
 
     if existing > 0 {
-        return Err(AppError::Conflict(format!("A user with email {} already exists", email)));
+        return Err(AppError::Conflict(format!(
+            "A user with email {} already exists",
+            email
+        )));
     }
 
     // Create tenant
@@ -53,11 +77,12 @@ pub async fn portfolio_sync(
         .await?;
 
     // Assign Enterprise plan
-    let plan_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM plans WHERE name = 'Enterprise' LIMIT 1")
-        .fetch_optional(&state.pool)
-        .await
-        .ok()
-        .flatten();
+    let plan_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM plans WHERE name = 'Enterprise' LIMIT 1")
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
 
     if let Some(pid) = plan_id {
         sqlx::query(
@@ -73,7 +98,12 @@ pub async fn portfolio_sync(
 
     // Create user
     let user_id = Uuid::new_v4();
-    let generated_password = Uuid::new_v4().to_string().replace("-", "").chars().take(12).collect::<String>();
+    let generated_password = Uuid::new_v4()
+        .to_string()
+        .replace("-", "")
+        .chars()
+        .take(12)
+        .collect::<String>();
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
@@ -118,11 +148,26 @@ pub async fn portfolio_sync(
     });
     let key = &state.internal_sync_key;
     let apps = [
-        ("http://localhost:8087/api/v1/internal/portfolio-companies", "ADASwift"),
-        ("http://localhost:8088/api/v1/internal/portfolio-companies", "MissedCall"),
-        ("http://localhost:8085/api/v1/internal/portfolio-companies", "WorkflowSwift"),
-        ("http://localhost:8084/api/portfolio/internal", "CoreSwift CRM"),
-        ("http://localhost:8083/api/internal/portfolio-companies", "IncentiveSwift"),
+        (
+            "http://localhost:8087/api/v1/internal/portfolio-companies",
+            "ADASwift",
+        ),
+        (
+            "http://localhost:8088/api/v1/internal/portfolio-companies",
+            "MissedCall",
+        ),
+        (
+            "http://localhost:8085/api/v1/internal/portfolio-companies",
+            "WorkflowSwift",
+        ),
+        (
+            "http://localhost:8084/api/portfolio/internal",
+            "CoreSwift CRM",
+        ),
+        (
+            "http://localhost:8083/api/internal/portfolio-companies",
+            "IncentiveSwift",
+        ),
     ];
     for (url, app_name) in apps {
         match reqwest::Client::new()
@@ -168,7 +213,8 @@ pub async fn impersonate(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
 
-    let account_id = body.get("account_id")
+    let account_id = body
+        .get("account_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("account_id is required".into()))?;
 
@@ -196,10 +242,19 @@ pub async fn impersonate(
     let exp = now + 3600; // 1 hour
 
     let imp_claims = Claims {
-        sub: target_user.as_ref().map(|u| u.id.to_string()).unwrap_or_else(|| tid.to_string()),
+        sub: target_user
+            .as_ref()
+            .map(|u| u.id.to_string())
+            .unwrap_or_else(|| tid.to_string()),
         tenant_id: tid.to_string(),
-        email: target_user.as_ref().map(|u| u.email.clone()).unwrap_or_else(|| format!("tenant-{}@funnelswift.internal", account_id)),
-        role: target_user.as_ref().map(|u| u.role.clone()).unwrap_or_else(|| "member".to_string()),
+        email: target_user
+            .as_ref()
+            .map(|u| u.email.clone())
+            .unwrap_or_else(|| format!("tenant-{}@funnelswift.internal", account_id)),
+        role: target_user
+            .as_ref()
+            .map(|u| u.role.clone())
+            .unwrap_or_else(|| "member".to_string()),
         exp,
         iat: now,
         aud: Some("funnelswift-api".to_string()),
@@ -227,9 +282,7 @@ pub async fn impersonate(
 }
 
 /// Stop impersonation
-pub async fn stop_impersonation(
-    auth: AuthUser,
-) -> AppResult<impl IntoResponse> {
+pub async fn stop_impersonation(auth: AuthUser) -> AppResult<impl IntoResponse> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
@@ -253,11 +306,13 @@ pub async fn set_tenant_feature_override(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
 
-    let feature_key = req.get("feature_key")
+    let feature_key = req
+        .get("feature_key")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("feature_key is required".into()))?;
 
-    let limit_value = req.get("limit_value")
+    let limit_value = req
+        .get("limit_value")
         .and_then(|v| v.as_i64())
         .ok_or_else(|| AppError::BadRequest("limit_value is required".into()))?;
 
@@ -317,25 +372,28 @@ pub async fn list_tenant_users(
     }
     let tid = tenant_id;
 
-    let users = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, String, bool)>( 
+    let users = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, String, bool)>(
         r#"SELECT id, email, first_name, last_name, role, is_active
            FROM users WHERE tenant_id = $1
-           ORDER BY created_at DESC"#
+           ORDER BY created_at DESC"#,
     )
     .bind(tid)
     .fetch_all(&state.pool)
     .await?;
 
-    let result: Vec<Value> = users.into_iter().map(|(id, email, first_name, last_name, role, is_active)| {
-        json!({
-            "id": id.to_string(),
-            "email": email,
-            "first_name": first_name,
-            "last_name": last_name,
-            "role": role,
-            "is_active": is_active,
+    let result: Vec<Value> = users
+        .into_iter()
+        .map(|(id, email, first_name, last_name, role, is_active)| {
+            json!({
+                "id": id.to_string(),
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": role,
+                "is_active": is_active,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!(result)))
 }
@@ -349,32 +407,62 @@ pub async fn admin_list_all_cards(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
 
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, String, String, String, Option<String>, Option<String>, bool)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            bool,
+        ),
+    >(
         r#"SELECT kc.id, kc.tenant_id, COALESCE(pc.name, 'Unknown') as tenant_name,
                kc.title, kc.slug, kc.template_type, kc.theme,
                kc.subdomain, kc.avatar_url, kc.is_active
          FROM kinetic_cards kc
          LEFT JOIN portfolio_companies pc ON pc.tenant_id = kc.tenant_id
          ORDER BY kc.updated_at DESC
-         LIMIT 200"#
+         LIMIT 200"#,
     )
     .fetch_all(&state.pool)
     .await?;
 
-    let cards: Vec<Value> = rows.iter().map(|(id, tid, tenant_name, title, slug, template_type, theme, subdomain, avatar_url, is_active)| {
-        json!({
-            "id": id.to_string(),
-            "tenant_id": tid.to_string(),
-            "tenant_name": tenant_name,
-            "title": title,
-            "slug": slug,
-            "template_type": template_type,
-            "theme": theme,
-            "subdomain": subdomain,
-            "avatar_url": avatar_url,
-            "is_active": is_active,
-        })
-    }).collect();
+    let cards: Vec<Value> = rows
+        .iter()
+        .map(
+            |(
+                id,
+                tid,
+                tenant_name,
+                title,
+                slug,
+                template_type,
+                theme,
+                subdomain,
+                avatar_url,
+                is_active,
+            )| {
+                json!({
+                    "id": id.to_string(),
+                    "tenant_id": tid.to_string(),
+                    "tenant_name": tenant_name,
+                    "title": title,
+                    "slug": slug,
+                    "template_type": template_type,
+                    "theme": theme,
+                    "subdomain": subdomain,
+                    "avatar_url": avatar_url,
+                    "is_active": is_active,
+                })
+            },
+        )
+        .collect();
 
     Ok(Json(json!({"cards": cards, "total": cards.len()})))
 }

@@ -1,14 +1,14 @@
 use axum::{
     extract::State,
     http::{header, StatusCode},
-    response::{IntoResponse, Response},
+    response::Response,
     Json,
 };
 use serde_json::{json, Value};
 use sqlx::Row;
 
 use crate::auth::middleware::AuthUser;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::state::AppState;
 
 /// GET /api/v1/seo/sitemap.xml — dynamic sitemap
@@ -68,7 +68,13 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
         .unwrap()
 }
 
-fn xml_url(base: &str, path: &str, changefreq: &str, priority: &str, lastmod: Option<String>) -> String {
+fn xml_url(
+    base: &str,
+    path: &str,
+    changefreq: &str,
+    priority: &str,
+    lastmod: Option<String>,
+) -> String {
     format!(
         r#"  <url>
     <loc>{}{}</loc>
@@ -91,7 +97,7 @@ pub async fn robots_txt(State(state): State<AppState>) -> Response {
 
     // Load crawl-delay from tenant_settings (global key)
     let crawl_delay = sqlx::query_scalar::<_, String>(
-        "SELECT value->>'crawl_delay' FROM site_settings WHERE key = 'seo_robots'"
+        "SELECT value->>'crawl_delay' FROM site_settings WHERE key = 'seo_robots'",
     )
     .fetch_optional(&state.pool)
     .await
@@ -129,12 +135,11 @@ pub async fn get_seo_settings(
     _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
-    let rows: Vec<(String, Value)> = sqlx::query_as(
-        "SELECT key, value FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key"
-    )
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let rows: Vec<(String, Value)> =
+        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     let mut settings = serde_json::Map::new();
     for (key, value) in rows {
@@ -168,12 +173,11 @@ pub async fn update_seo_settings(
 
 /// GET /api/v1/seo/inject — return meta/script tags for SSR injection
 pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Value>> {
-    let rows: Vec<(String, Value)> = sqlx::query_as(
-        "SELECT key, value FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key"
-    )
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let rows: Vec<(String, Value)> =
+        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     let mut meta_tags = Vec::new();
     let mut script_tags = Vec::new();
@@ -183,13 +187,19 @@ pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Va
         match short {
             "site_name" => {
                 if let Some(v) = value.as_str() {
-                    meta_tags.push(format!("<meta property=\"og:site_name\" content=\"{}\">", v));
+                    meta_tags.push(format!(
+                        "<meta property=\"og:site_name\" content=\"{}\">",
+                        v
+                    ));
                 }
             }
             "description" => {
                 if let Some(v) = value.as_str() {
                     meta_tags.push(format!("<meta name=\"description\" content=\"{}\">", v));
-                    meta_tags.push(format!("<meta property=\"og:description\" content=\"{}\">", v));
+                    meta_tags.push(format!(
+                        "<meta property=\"og:description\" content=\"{}\">",
+                        v
+                    ));
                 }
             }
             "keywords" => {
@@ -200,7 +210,10 @@ pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Va
             "og_image" => {
                 if let Some(v) = value.as_str() {
                     meta_tags.push(format!("<meta property=\"og:image\" content=\"{}\">", v));
-                    meta_tags.push(format!("<meta property=\"twitter:image\" content=\"{}\">", v));
+                    meta_tags.push(format!(
+                        "<meta property=\"twitter:image\" content=\"{}\">",
+                        v
+                    ));
                 }
             }
             "twitter_handle" => {
@@ -227,13 +240,19 @@ pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Va
             }
             "site_verification" => {
                 if let Some(v) = value.as_str() {
-                    meta_tags.push(format!("<meta name=\"google-site-verification\" content=\"{}\">", v));
+                    meta_tags.push(format!(
+                        "<meta name=\"google-site-verification\" content=\"{}\">",
+                        v
+                    ));
                 }
             }
             "schema_type" => {
                 // Stored as JSON: {"type":"Organization","name":"...",...}
                 let schema_json = serde_json::to_string(&value).unwrap_or_default();
-                script_tags.push(format!("<script type=\"application/ld+json\">{}</script>", schema_json));
+                script_tags.push(format!(
+                    "<script type=\"application/ld+json\">{}</script>",
+                    schema_json
+                ));
             }
             _ => {}
         }

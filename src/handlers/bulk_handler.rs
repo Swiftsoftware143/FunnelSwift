@@ -18,7 +18,8 @@ pub async fn bulk_delete_leads(
     State(state): State<AppState>,
     Json(req): Json<BulkDeleteRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let mut count: i64 = 0;
     for id_str in &req.ids {
@@ -32,7 +33,9 @@ pub async fn bulk_delete_leads(
         }
     }
 
-    Ok(Json(json!({"deleted": count, "message": format!("{} leads deleted", count)})))
+    Ok(Json(
+        json!({"deleted": count, "message": format!("{} leads deleted", count)}),
+    ))
 }
 
 pub async fn bulk_delete_affiliates(
@@ -40,7 +43,8 @@ pub async fn bulk_delete_affiliates(
     State(state): State<AppState>,
     Json(req): Json<BulkDeleteRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let mut count: i64 = 0;
     for id_str in &req.ids {
@@ -52,11 +56,13 @@ pub async fn bulk_delete_affiliates(
         count += result.rows_affected() as i64;
     }
 
-    Ok(Json(json!({"deleted": count, "message": format!("{} affiliates deleted", count)})))
+    Ok(Json(
+        json!({"deleted": count, "message": format!("{} affiliates deleted", count)}),
+    ))
 }
 
 pub async fn bulk_delete_users(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<BulkDeleteRequest>,
 ) -> AppResult<Json<Value>> {
@@ -71,7 +77,9 @@ pub async fn bulk_delete_users(
         }
     }
 
-    Ok(Json(json!({"deleted": count, "message": format!("{} users deleted", count)})))
+    Ok(Json(
+        json!({"deleted": count, "message": format!("{} users deleted", count)}),
+    ))
 }
 
 pub async fn bulk_delete_products(
@@ -79,19 +87,23 @@ pub async fn bulk_delete_products(
     State(state): State<AppState>,
     Json(req): Json<BulkDeleteRequest>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let mut count: i64 = 0;
     for id_str in &req.ids {
         if let Ok(id) = Uuid::parse_str(id_str) {
-            let result = sqlx::query("DELETE FROM affiliate_products WHERE id = $1 AND tenant_id = $2")
-                .bind(id)
-                .bind(tenant_id)
-                .execute(&state.pool)
-                .await?;
+            let result =
+                sqlx::query("DELETE FROM affiliate_products WHERE id = $1 AND tenant_id = $2")
+                    .bind(id)
+                    .bind(tenant_id)
+                    .execute(&state.pool)
+                    .await?;
             count += result.rows_affected() as i64;
         }
     }
 
-    Ok(Json(json!({"deleted": count, "message": format!("{} products deleted", count)})))
+    Ok(Json(
+        json!({"deleted": count, "message": format!("{} products deleted", count)}),
+    ))
 }

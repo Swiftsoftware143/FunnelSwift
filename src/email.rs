@@ -4,9 +4,9 @@
 //! Falls back to hardcoded inline templates when DB template not found.
 //! Direct API send (no queue) — uses EMAIL_API_URL / EMAIL_API_KEY / EMAIL_FROM env vars.
 
-use std::env;
 use serde_json::json;
 use sqlx::PgPool;
+use std::env;
 use uuid::Uuid;
 
 /// Render a template string by replacing {{key}} placeholders
@@ -27,15 +27,16 @@ pub async fn send_template_email(
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
 ) -> Result<(), String> {
-    let (final_subject, final_body, final_html) = match get_db_template(pool, aid, template_type).await {
-        Ok(Some((subject, body, html_body))) => {
-            let subject = render(&subject, vars);
-            let body = body.map(|b| render(&b, vars));
-            let html = html_body.map(|h| render(&h, vars));
-            (subject, body, html)
-        }
-        _ => get_inline(template_type, vars),
-    };
+    let (final_subject, final_body, final_html) =
+        match get_db_template(pool, aid, template_type).await {
+            Ok(Some((subject, body, html_body))) => {
+                let subject = render(&subject, vars);
+                let body = body.map(|b| render(&b, vars));
+                let html = html_body.map(|h| render(&h, vars));
+                (subject, body, html)
+            }
+            _ => get_inline(template_type, vars),
+        };
 
     let api_url = env::var("EMAIL_API_URL").map_err(|_| "EMAIL_API_URL not set".to_string())?;
     let api_key = env::var("EMAIL_API_KEY").map_err(|_| "EMAIL_API_KEY not set".to_string())?;
@@ -48,10 +49,16 @@ pub async fn send_template_email(
     });
 
     if let Some(html) = &final_html {
-        payload.as_object_mut().unwrap().insert("html".into(), json!(html));
+        payload
+            .as_object_mut()
+            .unwrap()
+            .insert("html".into(), json!(html));
     }
     if let Some(text) = &final_body {
-        payload.as_object_mut().unwrap().insert("text".into(), json!(text));
+        payload
+            .as_object_mut()
+            .unwrap()
+            .insert("text".into(), json!(text));
     }
 
     let client = reqwest::Client::new();
@@ -84,7 +91,7 @@ async fn get_db_template(
            FROM email_templates
            WHERE template_type = $1 AND (aid = $2 OR is_default = true)
            ORDER BY is_default ASC, created_at DESC
-           LIMIT 1"#
+           LIMIT 1"#,
     )
     .bind(template_type)
     .bind(aid)
@@ -96,13 +103,18 @@ async fn get_db_template(
 }
 
 /// Fallback hardcoded templates
-fn get_inline(template_type: &str, vars: &std::collections::HashMap<&str, &str>) -> (String, Option<String>, Option<String>) {
+fn get_inline(
+    template_type: &str,
+    vars: &std::collections::HashMap<&str, &str>,
+) -> (String, Option<String>, Option<String>) {
     let name = vars.get("name").unwrap_or(&"there");
     let email = vars.get("email").unwrap_or(&"");
     let password = vars.get("password").unwrap_or(&"");
     let token = vars.get("token").unwrap_or(&"");
     let plan_name = vars.get("plan_name").unwrap_or(&"a plan");
-    let app_url = vars.get("app_url").unwrap_or(&"https://app.funnelswift.net");
+    let app_url = vars
+        .get("app_url")
+        .unwrap_or(&"https://app.funnelswift.net");
 
     match template_type {
         "welcome" => {
@@ -137,7 +149,13 @@ fn get_inline(template_type: &str, vars: &std::collections::HashMap<&str, &str>)
 }
 
 // Convenience wrappers for backwards compatibility
-pub async fn send_welcome_email(pool: &PgPool, aid: Uuid, to: &str, name: &str, password: &str) -> Result<(), String> {
+pub async fn send_welcome_email(
+    pool: &PgPool,
+    aid: Uuid,
+    to: &str,
+    name: &str,
+    password: &str,
+) -> Result<(), String> {
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("email", to);
@@ -146,7 +164,13 @@ pub async fn send_welcome_email(pool: &PgPool, aid: Uuid, to: &str, name: &str, 
     send_template_email(pool, aid, to, "welcome", &vars).await
 }
 
-pub async fn send_purchase_confirmed_email(pool: &PgPool, aid: Uuid, to: &str, name: &str, plan_name: &str) -> Result<(), String> {
+pub async fn send_purchase_confirmed_email(
+    pool: &PgPool,
+    aid: Uuid,
+    to: &str,
+    name: &str,
+    plan_name: &str,
+) -> Result<(), String> {
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
@@ -154,7 +178,13 @@ pub async fn send_purchase_confirmed_email(pool: &PgPool, aid: Uuid, to: &str, n
     send_template_email(pool, aid, to, "purchase_confirmed", &vars).await
 }
 
-pub async fn send_reset_email(pool: &PgPool, aid: Uuid, to: &str, token: &str, name: &str) -> Result<(), String> {
+pub async fn send_reset_email(
+    pool: &PgPool,
+    aid: Uuid,
+    to: &str,
+    token: &str,
+    name: &str,
+) -> Result<(), String> {
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("token", token);

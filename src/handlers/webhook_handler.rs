@@ -16,7 +16,10 @@ pub async fn list_webhooks(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<Webhook>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let webhooks = sqlx::query_as::<_, Webhook>(
         "SELECT * FROM webhooks WHERE tenant_id = $1 ORDER BY created_at DESC",
@@ -33,7 +36,10 @@ pub async fn create_webhook(
     State(state): State<AppState>,
     Json(req): Json<CreateWebhookRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_webhooks", "Webhooks").await?;
     let webhook_id = Uuid::new_v4();
 
@@ -49,7 +55,10 @@ pub async fn create_webhook(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": webhook_id, "message": "Webhook created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": webhook_id, "message": "Webhook created"})),
+    ))
 }
 
 pub async fn delete_webhook(
@@ -57,7 +66,10 @@ pub async fn delete_webhook(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query("DELETE FROM webhooks WHERE id = $1 AND tenant_id = $2")
         .bind(id)
@@ -73,25 +85,23 @@ pub async fn test_webhook(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let webhook = sqlx::query_as::<_, Webhook>(
-        "SELECT * FROM webhooks WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Webhook not found".into()))?;
+    let webhook =
+        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Webhook not found".into()))?;
 
     let client = reqwest::Client::new();
     let payload = json!({"event": "test", "message": "This is a test webhook from FunnelSwift"});
 
-    let result = client
-        .post(&webhook.url)
-        .json(&payload)
-        .send()
-        .await;
+    let result = client.post(&webhook.url).json(&payload).send().await;
 
     match result {
         Ok(resp) => {
@@ -103,12 +113,10 @@ pub async fn test_webhook(
                 "message": "Webhook test completed"
             })))
         }
-        Err(e) => {
-            Ok(Json(json!({
-                "status": "error",
-                "error": e.to_string(),
-                "message": "Webhook test failed"
-            })))
-        }
+        Err(e) => Ok(Json(json!({
+            "status": "error",
+            "error": e.to_string(),
+            "message": "Webhook test failed"
+        }))),
     }
 }

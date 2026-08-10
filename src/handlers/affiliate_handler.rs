@@ -8,17 +8,23 @@ use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::features;
 use crate::models::affiliate::*;
 use crate::state::AppState;
-use crate::features;
 
 fn generate_affiliate_id() -> String {
     let now = chrono::Utc::now();
     let date_part = now.format("%m%d%Y").to_string();
-    let random_part: String = (0..5).map(|_| {
-        let n = rand::random::<u8>() % 36;
-        if n < 10 { (b'0' + n) as char } else { (b'A' + n - 10) as char }
-    }).collect();
+    let random_part: String = (0..5)
+        .map(|_| {
+            let n = rand::random::<u8>() % 36;
+            if n < 10 {
+                (b'0' + n) as char
+            } else {
+                (b'A' + n - 10) as char
+            }
+        })
+        .collect();
     format!("AFF-{}-{}", date_part, random_part)
 }
 
@@ -26,7 +32,10 @@ pub async fn list_affiliates(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<Affiliate>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let affiliates = sqlx::query_as::<_, Affiliate>(
         "SELECT * FROM affiliates WHERE tenant_id = $1 ORDER BY created_at DESC",
@@ -43,7 +52,10 @@ pub async fn create_affiliate(
     State(state): State<AppState>,
     Json(req): Json<CreateAffiliateRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_affiliates", "Affiliates").await?;
 
     // Check for duplicate email within tenant
@@ -51,18 +63,19 @@ pub async fn create_affiliate(
         let existing: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM affiliates WHERE email = $1 AND tenant_id = $2)",
         )
-    .bind(&req.email)
-    .bind(tenant_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(false);
+        .bind(&req.email)
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(false);
 
-    if existing {
-        return Err(AppError::BadRequest(format!(
-            "An affiliate with email '{}' already exists in this workspace", req.email
-        )));
+        if existing {
+            return Err(AppError::BadRequest(format!(
+                "An affiliate with email '{}' already exists in this workspace",
+                req.email
+            )));
+        }
     }
-}
 
     let aff_id = generate_affiliate_id();
 
@@ -79,7 +92,10 @@ pub async fn create_affiliate(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": aff_id, "message": "Affiliate created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": aff_id, "message": "Affiliate created"})),
+    ))
 }
 
 pub async fn get_affiliate(
@@ -87,16 +103,18 @@ pub async fn get_affiliate(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Json<Affiliate>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let affiliate = sqlx::query_as::<_, Affiliate>(
-        "SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let affiliate =
+        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
+            .bind(&id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     Ok(Json(affiliate))
 }
@@ -107,16 +125,18 @@ pub async fn update_affiliate(
     Path(id): Path<String>,
     Json(req): Json<UpdateAffiliateRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing = sqlx::query_as::<_, Affiliate>(
-        "SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let existing =
+        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
+            .bind(&id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     sqlx::query(
         "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, updated_at=NOW() WHERE id=$9 AND tenant_id=$10",
@@ -140,17 +160,19 @@ pub async fn get_affiliate_commissions(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Json<Vec<AffiliateCommission>>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     // Verify affiliate exists and belongs to tenant
-    let _ = sqlx::query_as::<_, Affiliate>(
-        "SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let _ =
+        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
+            .bind(&id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     let commissions = sqlx::query_as::<_, AffiliateCommission>(
         "SELECT * FROM affiliate_commissions WHERE affiliate_id = $1 ORDER BY created_at DESC",
@@ -166,16 +188,18 @@ pub async fn delete_affiliate(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing = sqlx::query_as::<_, Affiliate>(
-        "SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let _existing =
+        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
+            .bind(&id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     sqlx::query("DELETE FROM affiliates WHERE id = $1 AND tenant_id = $2")
         .bind(&id)
