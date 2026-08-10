@@ -38,7 +38,6 @@ fn cta_for_prefix(prefix: &str) -> (&'static str, &'static str) {
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
-use crate::features;
 use crate::state::AppState;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -62,7 +61,7 @@ pub async fn list_cards(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let rows = sqlx::query(
-        "SELECT id, tenant_id, title, slug, bio, bg_color, accent_color, text_color, sub_color, btn_color, card_type, tagline, meta_description, avatar_url, social_links, theme_slug, video_provider, video_id, is_template, template_category, category, cta_text, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
+        "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
     ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     use sqlx::Row;
     let cards: Vec<Value> = rows.iter().map(|r| json!({
@@ -70,23 +69,22 @@ pub async fn list_cards(
         "title": r.try_get::<String, _>("title").unwrap_or_default(),
         "slug": r.try_get::<String, _>("slug").unwrap_or_default(),
         "bio": r.try_get::<Option<String>, _>("bio").unwrap_or_default(),
-        "bg_color": r.try_get::<String, _>("bg_color").unwrap_or_default(),
-        "accent_color": r.try_get::<String, _>("accent_color").unwrap_or_default(),
-        "text_color": r.try_get::<String, _>("text_color").unwrap_or_default(),
-        "sub_color": r.try_get::<String, _>("sub_color").unwrap_or_default(),
-        "btn_color": r.try_get::<String, _>("btn_color").unwrap_or_default(),
-        "card_type": r.try_get::<String, _>("card_type").unwrap_or_default(),
+        "bg_color": r.try_get::<Option<String>, _>("bg_color").unwrap_or_default(),
+        "accent_color": r.try_get::<Option<String>, _>("accent_color").unwrap_or_default(),
+        "text_color": r.try_get::<Option<String>, _>("text_color").unwrap_or_default(),
+        "button_bg_color": r.try_get::<Option<String>, _>("button_bg_color").unwrap_or_default(),
+        "button_text_color": r.try_get::<Option<String>, _>("button_text_color").unwrap_or_default(),
+        "template_type": r.try_get::<Option<String>, _>("template_type").unwrap_or_default(),
         "tagline": r.try_get::<Option<String>, _>("tagline").unwrap_or_default(),
         "meta_description": r.try_get::<Option<String>, _>("meta_description").unwrap_or_default(),
         "avatar_url": r.try_get::<Option<String>, _>("avatar_url").unwrap_or_default(),
-        "social_links": r.try_get::<Option<Value>, _>("social_links").unwrap_or_default(),
-        "theme_slug": r.try_get::<Option<String>, _>("theme_slug").unwrap_or_default(),
+        "layout_blocks": r.try_get::<Option<Value>, _>("layout_blocks").unwrap_or_default(),
+        "theme": r.try_get::<Option<String>, _>("theme").unwrap_or_default(),
         "video_provider": r.try_get::<Option<String>, _>("video_provider").unwrap_or_default(),
         "video_id": r.try_get::<Option<String>, _>("video_id").unwrap_or_default(),
         "is_template": r.try_get::<bool, _>("is_template").unwrap_or(false),
         "template_category": r.try_get::<Option<String>, _>("template_category").unwrap_or_default(),
         "category": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
-        "cta_text": r.try_get::<Option<String>, _>("cta_text").unwrap_or_default(),
         "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
         "updated_at": r.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default()
     })).collect();
@@ -124,13 +122,9 @@ pub async fn create_card(
     let theme = body["theme_slug"].as_str();
     let video_provider = body["video_provider"].as_str();
     let video_id = body["video_id"].as_str();
-    let is_template = body["is_template"].as_bool().unwrap_or(false);
-    let template_category = body["template_category"].as_str();
-    let category = body["category"].as_str();
-    let cta_text = body["cta_text"].as_str();
 
-    sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, title, slug, bio, bg_color, accent_color, text_color, sub_color, btn_color, card_type, tagline, meta_description, avatar_url, social_links, theme_slug, video_provider, video_id, is_template, template_category, category, cta_text) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)")
-        .bind(id).bind(tenant_id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(card_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id).bind(is_template).bind(template_category).bind(category).bind(cta_text)
+    sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)")
+        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(card_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
         .execute(&state.pool).await?;
     Ok((
         StatusCode::CREATED,
@@ -150,7 +144,7 @@ pub async fn update_card(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let social = body.get("social_links").cloned();
-    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), sub_color=COALESCE($8,sub_color), btn_color=COALESCE($9,btn_color), avatar_url=COALESCE($10,avatar_url), social_links=COALESCE($11,social_links), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), cta_text=COALESCE($16,cta_text), slug=COALESCE($17,slug) WHERE id=$1 AND tenant_id=$2")
+    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), cta_text=COALESCE($16,cta_text), slug=COALESCE($17,slug), theme=COALESCE($18,theme) WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
@@ -160,6 +154,7 @@ pub async fn update_card(
         .bind(body["tagline"].as_str()).bind(body["meta_description"].as_str())
         .bind(body["video_provider"].as_str()).bind(body["video_id"].as_str())
         .bind(body["cta_text"].as_str()).bind(body["slug"].as_str())
+        .bind(body["theme"].as_str())
         .execute(&state.pool).await?;
     Ok(Json(json!({"message": "Card updated"})))
 }
