@@ -89,6 +89,8 @@ pub async fn create_affiliate(
     .bind(&req.industry)
     .bind(req.commission_rate)
     .bind(&req.tax_docs)
+    .bind(&req.tags)
+    .bind(req.is_visible)
     .execute(&state.pool)
     .await?;
 
@@ -138,6 +140,9 @@ pub async fn update_affiliate(
             .await?
             .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
+    let tags_val = req.tags.or(existing.tags);
+    let visible_val = req.is_visible.or(existing.is_visible);
+
     sqlx::query(
         "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, updated_at=NOW() WHERE id=$9 AND tenant_id=$10",
     )
@@ -147,6 +152,8 @@ pub async fn update_affiliate(
     .bind(req.commission_rate.or(existing.commission_rate))
     .bind(req.tax_docs.or(existing.tax_docs))
     .bind(req.is_active.unwrap_or(existing.is_active))
+    .bind(tags_val)
+    .bind(visible_val)
     .bind(&id)
     .bind(tenant_id)
     .execute(&state.pool)

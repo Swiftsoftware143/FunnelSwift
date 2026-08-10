@@ -624,19 +624,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/kinetic/qr/:id/svg", get(qr_handler::get_qr_svg))
         .route("/api/v1/kinetic/qr/:id/png", get(qr_handler::get_qr_png))
         // Insights / analytics
-        .route(
-            "/api/v1/insights",
-            get(insight_handler::get_dashboard_insights),
-        )
-        .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns))
-        .route(
-            "/api/v1/incentiveswift/config",
-            get(incentiveswift_handler::get_incentiveswift_config),
-        )
-        .route(
-            "/api/v1/web-to-lead",
-            post(web_to_lead_handler::handle_web_to_lead),
-        )
+        .route("/api/v1/insights", get(insight_handler::get_dashboard_insights))
+        .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns).post(campaigns_handler::create_campaign))
+        .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
+        .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
         // Cross-app push routes — FunnelSwift provisions users in sister apps via tags
         .route(
             "/api/v1/push/coreswift",
