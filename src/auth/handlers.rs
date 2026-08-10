@@ -248,7 +248,7 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         .unwrap_or(None);
 
     // Get user's API key
-    let api_key_row: Option<(String, String, Option<String>)> = 
+    let api_key_row: Option<(String, String, Option<String>)> =
         match sqlx::query_as::<_, (String, String, Option<String>)>("SELECT prefix, name, full_key FROM api_keys WHERE user_id::text = $1 AND name = 'Auto-generated' LIMIT 1")
             .bind(&auth.user_id)
             .fetch_optional(&state.pool)
