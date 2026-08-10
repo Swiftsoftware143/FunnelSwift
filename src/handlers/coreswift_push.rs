@@ -70,14 +70,14 @@ pub async fn push_to_coreswift(
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
-                return Ok(());
+                Ok(())
             } else {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(format!("CoreSwift returned {}: {}", status, body));
+                Err(format!("CoreSwift returned {}: {}", status, body))
             }
         }
         Err(e) => {
-            return Err(format!("Failed to reach CoreSwift: {}", e));
+            Err(format!("Failed to reach CoreSwift: {}", e))
         }
     }
 }

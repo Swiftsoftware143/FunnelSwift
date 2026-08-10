@@ -93,7 +93,7 @@ pub async fn register(
             .take(24)
             .collect::<String>()
     );
-    let api_key_hash = format!("hash:{}", &api_key_raw);
+    let api_key_hash = format!("hash:{}", api_key_raw);
     sqlx::query(
         "INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash, prefix, permissions, full_key) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
