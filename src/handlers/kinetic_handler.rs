@@ -532,6 +532,7 @@ pub async fn render_card(
     let avatar: Option<String> = r.try_get("avatar_url").unwrap_or(None);
     let tagline: Option<String> = r.try_get("tagline").unwrap_or(None);
     let meta_desc: Option<String> = r.try_get("meta_description").unwrap_or(None);
+    let card_id: Uuid = r.try_get("id").unwrap_or_default();
     let _video_provider: Option<String> = r.try_get("video_provider").unwrap_or(None);
     let _video_id: Option<String> = r.try_get("video_id").unwrap_or(None);
 
@@ -690,6 +691,9 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 {cta_html}
 {social_html}
 </div>
+<script>
+(function(){{try{{var c="{card_id_tracker}";if(!c||c.length<10)return;var a="https://funnelswift.net";var u=navigator.userAgent||"";if(/bot|crawler|spider/i.test(u))return;function t(e,x){{var b={{event_type:e||"view",user_agent:u.substring(0,500),referrer_url:document.referrer||"",device_type:screen.width<768?"mobile":screen.width<1024?"tablet":"desktop",screen_size:(screen.width||0)+"x"+(screen.height||0)}};var p=new URLSearchParams(location.search);["utm_source","utm_medium","utm_campaign","utm_content","utm_term"].forEach(function(k){{var v=p.get(k);if(v)b[k]=v}});if(x)Object.assign(b,x);var r=new XMLHttpRequest();r.open("POST",a+"/card/"+c+"/track",!0);r.setRequestHeader("Content-Type","application/json");r.send(JSON.stringify(b))}}setTimeout(function(){{t("view")}},100);document.addEventListener("visibilitychange",function(){{document.visibilityState==="hidden"&&t("leave")}});document.querySelectorAll("a[href]").forEach(function(e){{e.addEventListener("click",function(){{t("click",{{click_label:(e.textContent||"").trim().substring(0,100),click_url:e.getAttribute("href")||""}})}})}})}}catch(e){{}})}})();
+</script>
 </body>
 </html>"#,
         page_title_display = page_title_display,
@@ -698,6 +702,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
         bg_gradient = bg_gradient,
         accent = accent,
         title = title,
+        card_id_tracker = card_id.to_string(),
         canonical = canonical,
         seo_meta = seo_meta,
         seo_scripts = seo_scripts,
