@@ -363,7 +363,17 @@ pub async fn get_card_tracking_url(
     let (slug, utm_source, utm_medium, utm_campaign, utm_content, utm_term) = row
         .ok_or_else(|| AppError::NotFound("Card not found".into()))?;
 
-    let mut url = format!("https://funnelswift.net/k/{}", slug);
+    // Resolve correct domain: user slug on kntcrd.com, custom domain, or funnelswift redirect
+    let tenant_slug: Option<String> = sqlx::query_scalar(
+        "SELECT slug FROM tenants WHERE id = $1"
+    ).bind(tenant_id).fetch_optional(&state.pool).await.unwrap_or(None);
+    
+    let base_url = if let Some(ref ts) = tenant_slug {
+        format!("https://{}.kntcrd.com", ts)
+    } else {
+        format!("https://funnelswift.net")
+    };
+    let mut url = format!("{}/k/{}", base_url, slug);
     let mut params = vec![];
     if let Some(ref s) = utm_source { params.push(format!("utm_source={}", s)); }
     if let Some(ref s) = utm_medium { params.push(format!("utm_medium={}", s)); }
