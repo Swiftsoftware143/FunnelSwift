@@ -20,8 +20,8 @@ use crate::handlers::{
     incentiveswift_handler, insight_handler, integration_target_handler, kinetic_handler,
     lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler, plan_tag_handler,
     portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, routing_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
-    sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    qr_handler, routing_handler, seo_handler, settings_handler, site_handler,
+    site_settings_handler, sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
     template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
     workflowswift_push,
 };
@@ -54,7 +54,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/h/:slug", get(kinetic_handler::render_card))
         .route("/thank/:slug", get(kinetic_handler::render_card))
         .route("/funnel/:slug", get(funnel_handler::render_funnel))
-        .route("/card/:id/track", post(crate::handlers::card_analytics_handler::track_card_event))
+        .route(
+            "/card/:id/track",
+            post(crate::handlers::card_analytics_handler::track_card_event),
+        )
         .route("/k/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/b/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
@@ -630,15 +633,39 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/kinetic/qr/:id/svg", get(qr_handler::get_qr_svg))
         .route("/api/v1/kinetic/qr/:id/png", get(qr_handler::get_qr_png))
         // Analytics + UTM
-        .route("/api/v1/card-analytics/:card_id", get(crate::handlers::card_analytics_handler::get_card_analytics))
-        .route("/api/v1/card-analytics/:card_id/utm", put(crate::handlers::card_analytics_handler::update_card_utm))
-        .route("/api/v1/card-analytics/:card_id/tracking-url", get(crate::handlers::card_analytics_handler::get_card_tracking_url))
-        .route("/api/v1/analytics/overview", get(crate::handlers::card_analytics_handler::get_tenant_analytics))
+        .route(
+            "/api/v1/card-analytics/:card_id",
+            get(crate::handlers::card_analytics_handler::get_card_analytics),
+        )
+        .route(
+            "/api/v1/card-analytics/:card_id/utm",
+            put(crate::handlers::card_analytics_handler::update_card_utm),
+        )
+        .route(
+            "/api/v1/card-analytics/:card_id/tracking-url",
+            get(crate::handlers::card_analytics_handler::get_card_tracking_url),
+        )
+        .route(
+            "/api/v1/analytics/overview",
+            get(crate::handlers::card_analytics_handler::get_tenant_analytics),
+        )
         // Insights / analytics
-        .route("/api/v1/insights", get(insight_handler::get_dashboard_insights))
-        .route("/api/v1/campaigns", get(campaigns_handler::list_campaigns).post(campaigns_handler::create_campaign))
-        .route("/api/v1/incentiveswift/config", get(incentiveswift_handler::get_incentiveswift_config))
-        .route("/api/v1/web-to-lead", post(web_to_lead_handler::handle_web_to_lead))
+        .route(
+            "/api/v1/insights",
+            get(insight_handler::get_dashboard_insights),
+        )
+        .route(
+            "/api/v1/campaigns",
+            get(campaigns_handler::list_campaigns).post(campaigns_handler::create_campaign),
+        )
+        .route(
+            "/api/v1/incentiveswift/config",
+            get(incentiveswift_handler::get_incentiveswift_config),
+        )
+        .route(
+            "/api/v1/web-to-lead",
+            post(web_to_lead_handler::handle_web_to_lead),
+        )
         // Cross-app push routes — FunnelSwift provisions users in sister apps via tags
         .route(
             "/api/v1/push/coreswift",

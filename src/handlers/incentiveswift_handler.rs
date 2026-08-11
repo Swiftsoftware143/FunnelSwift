@@ -18,8 +18,8 @@ pub async fn get_incentiveswift_config(
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid tenant".into()))?;
 
-    let base_url = std::env::var("IS_BASE_URL")
-        .unwrap_or_else(|_| "https://incentiveswift.com".to_string());
+    let base_url =
+        std::env::var("IS_BASE_URL").unwrap_or_else(|_| "https://incentiveswift.com".to_string());
 
     // Look up the tenant's IncentiveSwift integration target
     let row = sqlx::query(
@@ -36,7 +36,11 @@ pub async fn get_incentiveswift_config(
         let campaigns = format!("{}/api/v1/campaigns", base_url);
         (key.unwrap_or_default(), campaigns, has_key && is_active)
     } else {
-        (String::new(), format!("{}/api/v1/campaigns", base_url), false)
+        (
+            String::new(),
+            format!("{}/api/v1/campaigns", base_url),
+            false,
+        )
     };
 
     Ok(Json(json!({

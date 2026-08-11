@@ -32,7 +32,10 @@ pub async fn list_campaigns(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let campaigns = sqlx::query_as::<_, Campaign>(
         "SELECT * FROM campaigns WHERE tenant_id = $1 ORDER BY created_at DESC",
@@ -49,7 +52,10 @@ pub async fn create_campaign(
     State(state): State<AppState>,
     Json(req): Json<CreateCampaignRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let campaign_id = Uuid::new_v4().to_string();
 
@@ -65,5 +71,8 @@ pub async fn create_campaign(
     .execute(&state.pool)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(json!({"id": campaign_id, "message": "Campaign created"}))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": campaign_id, "message": "Campaign created"})),
+    ))
 }
