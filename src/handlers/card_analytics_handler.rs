@@ -1,10 +1,12 @@
 // ── Card Analytics + UTM Handler ──
-use axum::{extract::{Path, Query, State}, Json};
-use uuid::Uuid;
-use serde::{Deserialize, Serialize};
-use sqlx::Row;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+use axum::{
+    extract::{Path, State},
+    Json,
+};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
 pub struct TrackQuery {
@@ -48,16 +50,20 @@ pub async fn track_card_event(
     Json(payload): Json<TrackCardEventRequest>,
 ) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     // Find tenant from card
-    let row: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT tenant_id FROM kinetic_cards WHERE id = $1"
-    )
-    .bind(card_id)
-    .fetch_optional(&state.pool)
-    .await.unwrap_or_default();
+    let row: Option<(Uuid,)> = sqlx::query_as("SELECT tenant_id FROM kinetic_cards WHERE id = $1")
+        .bind(card_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or_default();
 
     let tenant_id = match row {
         Some((tid,)) => tid,
-        None => return (axum::http::StatusCode::OK, Json(serde_json::json!({"status":"ignored","reason":"card_not_found"}))),
+        None => {
+            return (
+                axum::http::StatusCode::OK,
+                Json(serde_json::json!({"status":"ignored","reason":"card_not_found"})),
+            )
+        }
     };
 
     let event_id = Uuid::new_v4();
@@ -103,7 +109,8 @@ pub async fn track_card_event(
     // Upsert daily stats
     let today = chrono::Utc::now().date_naive();
     let is_view = event_type == "view";
-    let is_click = event_type == "click" || event_type == "button_click" || event_type == "link_click";
+    let is_click =
+        event_type == "click" || event_type == "button_click" || event_type == "link_click";
     let is_share = event_type == "share";
 
     sqlx::query(
@@ -118,7 +125,10 @@ pub async fn track_card_event(
     .execute(&state.pool)
     .await.unwrap_or_default();
 
-    (axum::http::StatusCode::OK, Json(serde_json::json!({"status":"ok","event_id":event_id.to_string()})))
+    (
+        axum::http::StatusCode::OK,
+        Json(serde_json::json!({"status":"ok","event_id":event_id.to_string()})),
+    )
 }
 
 // ── Get card-specific analytics ──
@@ -173,25 +183,34 @@ pub async fn get_card_analytics(
     State(state): State<AppState>,
 ) -> AppResult<Json<CardAnalyticsResponse>> {
     // Verify card exists
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id=$1)"
-    ).bind(card_id).fetch_one(&state.pool).await?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id=$1)")
+        .bind(card_id)
+        .fetch_one(&state.pool)
+        .await?;
 
     if !exists {
         return Err(AppError::NotFound("Card not found".into()));
     }
 
     let total_views: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='view'"
-    ).bind(card_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='view'",
+    )
+    .bind(card_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let total_clicks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type IN ('click','button_click','link_click')"
     ).bind(card_id).fetch_one(&state.pool).await.unwrap_or(0);
 
     let total_shares: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='share'"
-    ).bind(card_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='share'",
+    )
+    .bind(card_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let unique_visitors: i64 = sqlx::query_scalar(
         "SELECT COUNT(DISTINCT session_id) FROM kinetic_card_events WHERE card_id=$1 AND session_id IS NOT NULL"
@@ -268,23 +287,41 @@ pub async fn get_tenant_analytics(
     State(state): State<AppState>,
     auth: crate::auth::middleware::AuthUser,
 ) -> AppResult<Json<TenantAnalyticsSummary>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let total_cards: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id=$1"
-    ).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(0);
+    let total_cards: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id=$1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let active_cards: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id=$1 AND is_active=true"
-    ).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id=$1 AND is_active=true",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let total_views: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(views), 0) FROM kinetic_card_daily_stats WHERE tenant_id=$1"
-    ).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COALESCE(SUM(views), 0) FROM kinetic_card_daily_stats WHERE tenant_id=$1",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let total_clicks: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(clicks), 0) FROM kinetic_card_daily_stats WHERE tenant_id=$1"
-    ).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COALESCE(SUM(clicks), 0) FROM kinetic_card_daily_stats WHERE tenant_id=$1",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let unique_visitors: i64 = sqlx::query_scalar(
         "SELECT COUNT(DISTINCT session_id) FROM kinetic_card_events WHERE tenant_id=$1 AND session_id IS NOT NULL"
@@ -327,7 +364,10 @@ pub async fn update_card_utm(
     auth: crate::auth::middleware::AuthUser,
     Json(payload): Json<UpdateCardUtmRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query(
         "UPDATE kinetic_cards SET utm_source=$3, utm_medium=$4, utm_campaign=$5, utm_content=$6, utm_term=$7 WHERE id=$1 AND tenant_id=$2"
@@ -350,7 +390,10 @@ pub async fn get_card_tracking_url(
     State(state): State<AppState>,
     auth: crate::auth::middleware::AuthUser,
 ) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth.tenant_id.parse().map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT slug, utm_source, utm_medium, utm_campaign, utm_content, utm_term FROM kinetic_cards WHERE id=$1 AND tenant_id=$2"
@@ -360,26 +403,38 @@ pub async fn get_card_tracking_url(
     .fetch_optional(&state.pool)
     .await?;
 
-    let (slug, utm_source, utm_medium, utm_campaign, utm_content, utm_term) = row
-        .ok_or_else(|| AppError::NotFound("Card not found".into()))?;
+    let (slug, utm_source, utm_medium, utm_campaign, utm_content, utm_term) =
+        row.ok_or_else(|| AppError::NotFound("Card not found".into()))?;
 
     // Resolve correct domain: user slug on kntcrd.com, custom domain, or funnelswift redirect
-    let tenant_slug: Option<String> = sqlx::query_scalar(
-        "SELECT slug FROM tenants WHERE id = $1"
-    ).bind(tenant_id).fetch_optional(&state.pool).await.unwrap_or(None);
-    
+    let tenant_slug: Option<String> = sqlx::query_scalar("SELECT slug FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None);
+
     let base_url = if let Some(ref ts) = tenant_slug {
         format!("https://{}.kntcrd.com", ts)
     } else {
-        format!("https://funnelswift.net")
+        "https://funnelswift.net".to_string()
     };
     let mut url = format!("{}/k/{}", base_url, slug);
     let mut params = vec![];
-    if let Some(ref s) = utm_source { params.push(format!("utm_source={}", s)); }
-    if let Some(ref s) = utm_medium { params.push(format!("utm_medium={}", s)); }
-    if let Some(ref s) = utm_campaign { params.push(format!("utm_campaign={}", s)); }
-    if let Some(ref s) = utm_content { params.push(format!("utm_content={}", s)); }
-    if let Some(ref s) = utm_term { params.push(format!("utm_term={}", s)); }
+    if let Some(ref s) = utm_source {
+        params.push(format!("utm_source={}", s));
+    }
+    if let Some(ref s) = utm_medium {
+        params.push(format!("utm_medium={}", s));
+    }
+    if let Some(ref s) = utm_campaign {
+        params.push(format!("utm_campaign={}", s));
+    }
+    if let Some(ref s) = utm_content {
+        params.push(format!("utm_content={}", s));
+    }
+    if let Some(ref s) = utm_term {
+        params.push(format!("utm_term={}", s));
+    }
     if !params.is_empty() {
         url.push('?');
         url.push_str(&params.join("&"));
@@ -391,19 +446,33 @@ pub async fn get_card_tracking_url(
 // ── Helpers ──
 fn parse_user_agent(ua: &str) -> (Option<String>, Option<String>) {
     let ua_lower = ua.to_lowercase();
-    let browser = if ua_lower.contains("firefox") { Some("Firefox".into()) }
-    else if ua_lower.contains("edg") { Some("Edge".into()) }
-    else if ua_lower.contains("chrome") && !ua_lower.contains("edg") { Some("Chrome".into()) }
-    else if ua_lower.contains("safari") && !ua_lower.contains("chrome") { Some("Safari".into()) }
-    else if ua_lower.contains("opera") { Some("Opera".into()) }
-    else { None };
+    let browser = if ua_lower.contains("firefox") {
+        Some("Firefox".into())
+    } else if ua_lower.contains("edg") {
+        Some("Edge".into())
+    } else if ua_lower.contains("chrome") && !ua_lower.contains("edg") {
+        Some("Chrome".into())
+    } else if ua_lower.contains("safari") && !ua_lower.contains("chrome") {
+        Some("Safari".into())
+    } else if ua_lower.contains("opera") {
+        Some("Opera".into())
+    } else {
+        None
+    };
 
-    let os = if ua_lower.contains("windows") { Some("Windows".into()) }
-    else if ua_lower.contains("mac os") || ua_lower.contains("macos") { Some("macOS".into()) }
-    else if ua_lower.contains("linux") && !ua_lower.contains("android") { Some("Linux".into()) }
-    else if ua_lower.contains("android") { Some("Android".into()) }
-    else if ua_lower.contains("iphone") || ua_lower.contains("ipad") || ua_lower.contains("ios") { Some("iOS".into()) }
-    else { None };
+    let os = if ua_lower.contains("windows") {
+        Some("Windows".into())
+    } else if ua_lower.contains("mac os") || ua_lower.contains("macos") {
+        Some("macOS".into())
+    } else if ua_lower.contains("linux") && !ua_lower.contains("android") {
+        Some("Linux".into())
+    } else if ua_lower.contains("android") {
+        Some("Android".into())
+    } else if ua_lower.contains("iphone") || ua_lower.contains("ipad") || ua_lower.contains("ios") {
+        Some("iOS".into())
+    } else {
+        None
+    };
 
     (browser, os)
 }

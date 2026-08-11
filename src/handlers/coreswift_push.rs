@@ -76,9 +76,7 @@ pub async fn push_to_coreswift(
                 Err(format!("CoreSwift returned {}: {}", status, body))
             }
         }
-        Err(e) => {
-            Err(format!("Failed to reach CoreSwift: {}", e))
-        }
+        Err(e) => Err(format!("Failed to reach CoreSwift: {}", e)),
     }
 }
 

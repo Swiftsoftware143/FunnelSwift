@@ -702,7 +702,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
         bg_gradient = bg_gradient,
         accent = accent,
         title = title,
-        card_id_tracker = card_id.to_string(),
+        card_id_tracker = card_id,
         canonical = canonical,
         seo_meta = seo_meta,
         seo_scripts = seo_scripts,
