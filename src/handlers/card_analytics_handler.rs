@@ -43,7 +43,113 @@ pub struct UpdateCardUtmRequest {
     pub utm_term: Option<String>,
 }
 
-/// POST /card/:id/track — PUBLIC, no auth (called from rendered card pages)
+/// Classify a referrer URL into UTM source/medium when no UTMs are present.
+/// Returns None if the referrer doesn't match any known pattern.
+fn classify_referrer(referrer: &str, device_type: &Option<String>) -> Option<(String, String)> {
+    let is_mobile = device_type.as_deref() == Some("mobile");
+    let ref_lower = referrer.to_lowercase();
+
+    if ref_lower.is_empty() {
+        // No referrer at all — mobile = likely shared via AirDrop/text/QR
+        if is_mobile {
+            return Some(("direct".into(), "mobile-share".into()));
+        }
+        // Desktop with no referrer = typed URL, bookmark, or email client
+        return Some(("direct".into(), "none".into()));
+    }
+
+    // Search engines
+    if ref_lower.contains("google.com/search") || ref_lower.contains("google.co") {
+        return Some(("google".into(), "organic".into()));
+    }
+    if ref_lower.contains("bing.com/search") {
+        return Some(("bing".into(), "organic".into()));
+    }
+    if ref_lower.contains("duckduckgo.com") {
+        return Some(("duckduckgo".into(), "organic".into()));
+    }
+    if ref_lower.contains("yahoo.com/search") {
+        return Some(("yahoo".into(), "organic".into()));
+    }
+    if ref_lower.contains("yandex.") {
+        return Some(("yandex".into(), "organic".into()));
+    }
+
+    // Social media
+    if ref_lower.contains("facebook.com") || ref_lower.contains("fb.com") {
+        return Some(("facebook".into(), "social".into()));
+    }
+    if ref_lower.contains("instagram.com") {
+        return Some(("instagram".into(), "social".into()));
+    }
+    if ref_lower.contains("linkedin.com") {
+        return Some(("linkedin".into(), "social".into()));
+    }
+    if ref_lower.contains("twitter.com")
+        || ref_lower.contains("t.co")
+        || ref_lower.contains("x.com")
+    {
+        return Some(("twitter".into(), "social".into()));
+    }
+    if ref_lower.contains("tiktok.com") {
+        return Some(("tiktok".into(), "social".into()));
+    }
+    if ref_lower.contains("reddit.com") {
+        return Some(("reddit".into(), "social".into()));
+    }
+    if ref_lower.contains("pinterest.com") || ref_lower.contains("pin.it") {
+        return Some(("pinterest".into(), "social".into()));
+    }
+    if ref_lower.contains("youtube.com") {
+        return Some(("youtube".into(), "social".into()));
+    }
+    if ref_lower.contains("snapchat.com") {
+        return Some(("snapchat".into(), "social".into()));
+    }
+    if ref_lower.contains("whatsapp.com") {
+        return Some(("whatsapp".into(), "social".into()));
+    }
+    if ref_lower.contains("telegram.org") || ref_lower.contains("t.me") {
+        return Some(("telegram".into(), "social".into()));
+    }
+    if ref_lower.contains("discord.com") || ref_lower.contains("discord.gg") {
+        return Some(("discord".into(), "social".into()));
+    }
+    if ref_lower.contains("slack.com") {
+        return Some(("slack".into(), "social".into()));
+    }
+
+    // Email clients (webmail referrers)
+    if ref_lower.contains("mail.google.com")
+        || ref_lower.contains("mail.yahoo.com")
+        || ref_lower.contains("outlook.live.com")
+        || ref_lower.contains("outlook.office.com")
+        || ref_lower.contains("mail.proton")
+    {
+        return Some(("email".into(), "email".into()));
+    }
+
+    // Known sites — use domain as source
+    if let Some(domain) = extract_domain_from_url(referrer) {
+        return Some((domain, "referral".into()));
+    }
+
+    None
+}
+
+/// Extract a clean domain from a URL string for referral attribution.
+fn extract_domain_from_url(url: &str) -> Option<String> {
+    let without_proto = url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("www.");
+    let domain = without_proto.split('/').next().unwrap_or(without_proto);
+    if domain.is_empty() || domain.contains(' ') {
+        return None;
+    }
+    Some(domain.to_string())
+}
+
 pub async fn track_card_event(
     Path(card_id): Path<Uuid>,
     State(state): State<AppState>,
@@ -70,11 +176,26 @@ pub async fn track_card_event(
     let event_type = payload.event_type.clone();
 
     // Use UTM from payload (JS tracker parses URL params)
-    let utm_source = payload.utm_source.clone();
-    let utm_medium = payload.utm_medium.clone();
+    let mut utm_source = payload.utm_source.clone();
+    let mut utm_medium = payload.utm_medium.clone();
     let utm_campaign = payload.utm_campaign.clone();
     let utm_content = payload.utm_content.clone();
     let utm_term = payload.utm_term.clone();
+
+    // Referrer-based attribution fallback — when no UTMs are present,
+    // classify traffic by referrer URL so mobile shares and direct links
+    // still show up as attributed traffic in analytics.
+    if utm_source.is_none() {
+        let ref_url = payload
+            .referrer_url
+            .clone()
+            .unwrap_or_default()
+            .to_lowercase();
+        if let Some((src, med)) = classify_referrer(&ref_url, &payload.device_type) {
+            utm_source = Some(src);
+            utm_medium = Some(med);
+        }
+    }
 
     // Parse browser/OS from user agent
     let ua = payload.user_agent.clone().unwrap_or_default();
