@@ -58,6 +58,16 @@ fn classify_referrer(referrer: &str, device_type: &Option<String>) -> Option<(St
         return Some(("direct".into(), "none".into()));
     }
 
+    // Email clients — check BEFORE search engines (mail.google.com vs google.com/search)
+    if ref_lower.contains("mail.google.com")
+        || ref_lower.contains("mail.yahoo.com")
+        || ref_lower.contains("outlook.live.com")
+        || ref_lower.contains("outlook.office.com")
+        || ref_lower.contains("mail.proton")
+    {
+        return Some(("email".into(), "email".into()));
+    }
+
     // Search engines
     if ref_lower.contains("google.com/search") || ref_lower.contains("google.co") {
         return Some(("google".into(), "organic".into()));
@@ -117,16 +127,6 @@ fn classify_referrer(referrer: &str, device_type: &Option<String>) -> Option<(St
     }
     if ref_lower.contains("slack.com") {
         return Some(("slack".into(), "social".into()));
-    }
-
-    // Email clients (webmail referrers)
-    if ref_lower.contains("mail.google.com")
-        || ref_lower.contains("mail.yahoo.com")
-        || ref_lower.contains("outlook.live.com")
-        || ref_lower.contains("outlook.office.com")
-        || ref_lower.contains("mail.proton")
-    {
-        return Some(("email".into(), "email".into()));
     }
 
     // Known sites — use domain as source
@@ -191,6 +191,10 @@ pub async fn track_card_event(
             .clone()
             .unwrap_or_default()
             .to_lowercase();
+        eprintln!(
+            "DEBUG classify_referrer called with: '{}' device={:?}",
+            ref_url, payload.device_type
+        );
         if let Some((src, med)) = classify_referrer(&ref_url, &payload.device_type) {
             utm_source = Some(src);
             utm_medium = Some(med);
@@ -225,7 +229,9 @@ pub async fn track_card_event(
     .bind(Option::<String>::None) // ip_address — skip for privacy
     .bind(Option::<String>::None) // session_id
     .execute(&state.pool)
-    .await.unwrap_or_default();
+    .await
+    .map_err(|e| eprintln!("track_card_event insert error: {:?}", e))
+    .unwrap_or_default();
 
     // Upsert daily stats
     let today = chrono::Utc::now().date_naive();
@@ -235,7 +241,7 @@ pub async fn track_card_event(
     let is_share = event_type == "share";
 
     sqlx::query(
-        "INSERT INTO kinetic_card_daily_stats (id, card_id, tenant_id, stat_date, views, clicks, shares) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6) ON CONFLICT (card_id, stat_date) DO UPDATE SET views = kinetic_card_daily_stats.views + $4, clicks = kinetic_card_daily_stats.clicks + $5, shares = kinetic_card_daily_stats.shares + $6"
+        "INSERT INTO kinetic_card_daily_stats (id, card_id, tenant_id, stat_date, views, clicks, shares, utm_source, utm_medium, utm_campaign) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (card_id, stat_date, utm_source, utm_medium, utm_campaign) DO UPDATE SET views = kinetic_card_daily_stats.views + $4, clicks = kinetic_card_daily_stats.clicks + $5, shares = kinetic_card_daily_stats.shares + $6"
     )
     .bind(card_id)
     .bind(tenant_id)
@@ -243,8 +249,13 @@ pub async fn track_card_event(
     .bind(if is_view { 1 } else { 0 })
     .bind(if is_click { 1 } else { 0 })
     .bind(if is_share { 1 } else { 0 })
+    .bind(&utm_source)
+    .bind(&utm_medium)
+    .bind(&utm_campaign)
     .execute(&state.pool)
-    .await.unwrap_or_default();
+    .await
+    .map_err(|e| eprintln!("daily_stats insert error: {:?}", e))
+    .unwrap_or_default();
 
     (
         axum::http::StatusCode::OK,
