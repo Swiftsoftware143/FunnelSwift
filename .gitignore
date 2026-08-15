@@ -28,3 +28,7 @@ Thumbs.db
 *.tmp
 *.temp.env.openai
 .env.openai
+
+# Build artifacts / binaries
+funnelswift
+funnelswift-api
