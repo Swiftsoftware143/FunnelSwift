@@ -30,15 +30,16 @@ impl Database {
     }
 
     pub async fn migrate(&self) -> Result<()> {
-        // Migrations are applied out-of-band via psql. The migrations/ directory documents
-        // the intended schema but is not yet runnable via sqlx::migrate!() because it has
-        // duplicate version prefixes (000001, 0012, 028 appear twice) and data-seeding
-        // statements that would conflict with the live schema. Clean those up before
-        // enabling auto-migration here.
-        tracing::warn!(
-            "Migrations are managed out-of-band; embedded migrations are not auto-run \
-             (migrations/ needs version de-dup + idempotency cleanup first)"
-        );
+        tracing::info!("Running database migrations...");
+        match sqlx::migrate!("./migrations").run(&self.pool).await {
+            Ok(_) => tracing::info!("Database migrations applied successfully"),
+            Err(e) => {
+                // Non-fatal by design: schema changes are also applied out-of-band, so the
+                // live DB is authoritative. Log the failure loudly so drift is visible, but
+                // never take the service down on a migration error.
+                tracing::error!("Database migration error (continuing startup): {e}");
+            }
+        }
         Ok(())
     }
 }

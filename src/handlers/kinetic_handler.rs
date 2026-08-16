@@ -311,6 +311,27 @@ pub async fn set_subdomain(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let val = body["subdomain"].as_str().unwrap_or("ss");
+    if val.len() < 3
+        || val.len() > 63
+        || !val
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(AppError::BadRequest(
+            "Subdomain must be 3-63 chars of lowercase letters, numbers, or hyphens".into(),
+        ));
+    }
+    // Reject if another tenant already claimed this subdomain.
+    let taken: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM settings WHERE key = 'subdomain' AND value = $1 AND tenant_id != $2)",
+    )
+    .bind(val)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if taken {
+        return Err(AppError::Conflict("Subdomain already in use".into()));
+    }
     sqlx::query("INSERT INTO settings (id, tenant_id, key, value) VALUES ($1,$2,'subdomain',$3) ON CONFLICT (tenant_id, key) DO UPDATE SET value=$3")
         .bind(Uuid::new_v4()).bind(tenant_id).bind(val).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Saved"})))
@@ -345,6 +366,15 @@ pub async fn set_custom_domain(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let val = body["custom_domain"].as_str().unwrap_or("");
+    if !val.is_empty()
+        && (val.contains("://")
+            || val.contains('/')
+            || !val.contains('.')
+            || val.starts_with('.')
+            || val.ends_with('.'))
+    {
+        return Err(AppError::BadRequest("Invalid custom domain".into()));
+    }
     sqlx::query("INSERT INTO settings (id, tenant_id, key, value) VALUES ($1,$2,'custom_domain',$3) ON CONFLICT (tenant_id, key) DO UPDATE SET value=$3")
         .bind(Uuid::new_v4()).bind(tenant_id).bind(val).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Saved"})))

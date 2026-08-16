@@ -16,6 +16,19 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
+/// Lazily-generated dummy Argon2 hash used to equalize login timing for unknown
+/// email addresses (prevents account-enumeration timing attacks).
+fn dummy_password_hash() -> &'static str {
+    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DUMMY.get_or_init(|| {
+        let salt = SaltString::generate(&mut OsRng);
+        Argon2::default()
+            .hash_password(b"funnelswift-timing-equalizer", &salt)
+            .map(|h| h.to_string())
+            .unwrap_or_default()
+    })
+}
+
 pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
@@ -180,15 +193,21 @@ pub async fn login(
         sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND is_active = true")
             .bind(&req.email)
             .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
+            .await?;
 
-    let parsed_hash = PasswordHash::new(&user.password_hash)
+    // Always run an Argon2 verification (even for unknown emails) so response timing
+    // does not reveal whether an account exists.
+    let hash_to_check = match &user {
+        Some(u) => u.password_hash.clone(),
+        None => dummy_password_hash().to_string(),
+    };
+    let parsed_hash = PasswordHash::new(&hash_to_check)
         .map_err(|e| AppError::Internal(format!("Parse hash error: {e}")))?;
-
     Argon2::default()
         .verify_password(req.password.as_bytes(), &parsed_hash)
         .map_err(|_| AppError::Unauthorized("Invalid email or password".into()))?;
+
+    let user = user.ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
 
     let now = Utc::now().timestamp() as usize;
     let claims = Claims {

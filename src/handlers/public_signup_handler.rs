@@ -17,10 +17,8 @@ pub async fn public_signup(
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
     let password = payload["password"].as_str().unwrap_or("").to_string();
     let name = payload["name"].as_str().unwrap_or("").trim().to_string();
-    let plan_slug = payload["plan"]
-        .as_str()
-        .unwrap_or("kinetic-free")
-        .to_string();
+    // Always start on the free tier — never honour a caller-supplied plan slug.
+    let plan_slug = "kinetic-free".to_string();
     let source = payload["source"].as_str().unwrap_or("").to_string();
     let affiliate_code = payload["affiliate_code"].as_str().map(|s| s.to_string());
 
@@ -29,9 +27,9 @@ pub async fn public_signup(
             "Name, email, and password are required".into(),
         ));
     }
-    if password.len() < 6 {
+    if password.len() < 8 {
         return Err(AppError::BadRequest(
-            "Password must be at least 6 characters".into(),
+            "Password must be at least 8 characters".into(),
         ));
     }
     if !email.contains('@') {

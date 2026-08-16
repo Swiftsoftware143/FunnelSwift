@@ -188,7 +188,7 @@ pub async fn get_template(
 /// GET /api/v1/admin/email-templates/types
 pub async fn list_template_types() -> Json<Vec<serde_json::Value>> {
     Json(vec![
-        serde_json::json!({"type": "welcome", "description": "Sent after user registration", "merge_fields": ["name", "email", "password", "login_url", "app_name"]}),
+        serde_json::json!({"type": "welcome", "description": "Sent after user registration", "merge_fields": ["name", "email", "login_url", "app_name"]}),
         serde_json::json!({"type": "password_reset", "description": "Sent when user requests password reset", "merge_fields": ["name", "token", "app_name"]}),
         serde_json::json!({"type": "purchase_confirmed", "description": "Sent after successful payment", "merge_fields": ["name", "plan_name", "login_url", "app_name"]}),
     ])
@@ -207,23 +207,13 @@ pub async fn get_email_config() -> Json<serde_json::Value> {
 /// POST /api/v1/admin/email-config
 pub async fn update_email_config(Json(req): Json<serde_json::Value>) -> Json<serde_json::Value> {
     let provider = req["provider"].as_str().unwrap_or("mailgun");
-    let api_url = req["api_url"].as_str().unwrap_or("");
-    let api_key = req["api_key"].as_str().unwrap_or("");
-    let from_address = req["from_address"].as_str().unwrap_or("");
-
-    if !api_url.is_empty() {
-        std::env::set_var("EMAIL_API_URL", api_url);
-    }
-    if !api_key.is_empty() {
-        std::env::set_var("EMAIL_API_KEY", api_key);
-    }
-    if !from_address.is_empty() {
-        std::env::set_var("EMAIL_FROM", from_address);
-    }
-
+    // We intentionally do NOT mutate process env vars here: `std::env::set_var` from an async
+    // handler in a multi-threaded runtime is a data race (and unsafe on modern Rust). Email
+    // configuration is environment-managed — set EMAIL_API_URL / EMAIL_API_KEY / EMAIL_FROM in
+    // /etc/swift/env/funnelswift.env and restart the service to apply.
     Json(serde_json::json!({
-        "status": "configured",
+        "status": "acknowledged",
         "provider": provider,
-        "note": "For permanent changes, update /etc/swift/env/funnelswift.env and restart the service"
+        "note": "Email config is environment-managed. Update /etc/swift/env/funnelswift.env (EMAIL_API_URL, EMAIL_API_KEY, EMAIL_FROM) and restart the service."
     }))
 }
