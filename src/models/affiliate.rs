@@ -46,7 +46,7 @@ pub struct UpdateAffiliateRequest {
 pub struct AffiliateCommission {
     pub id: Uuid,
     pub affiliate_id: String,
-    pub lead_id: Uuid,
+    pub lead_id: Option<Uuid>,
     pub amount: f64,
     pub status: String,
     pub paid_at: Option<NaiveDateTime>,
