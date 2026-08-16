@@ -33,11 +33,14 @@ pub async fn get_site_settings(
     Ok(Json(json!({"key": r.1, "value": r.2})))
 }
 pub async fn update_site_settings(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     sqlx::query("INSERT INTO site_settings (id, key, value) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $3")
         .bind(Uuid::new_v4()).bind(&slug).bind(&payload).execute(&state.pool).await?;
     Ok(Json(json!({"message": "Settings updated"})))
