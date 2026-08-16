@@ -274,3 +274,78 @@ pub async fn log_tag_change(
 
     Ok(())
 }
+
+/// Attribute affiliate commissions when a lead is tagged with a system tag that is
+/// linked to an affiliate product (the tag-based routing signal).
+///
+/// David's model: affiliate products = the Swift products; a system tag points at one.
+/// When a lead flowing through FunnelSwift gets that tag, record a pending commission
+/// linking the referring affiliate → lead → product. The actual amount is filled in
+/// later when the upsell happens inside the respective app (the tag is always the
+/// free-plan connection).
+pub async fn attribute_affiliate_on_tags(
+    pool: &PgPool,
+    lead_id: Uuid,
+    newly_assigned_tag_ids: &[Uuid],
+) -> std::result::Result<(), AppError> {
+    if newly_assigned_tag_ids.is_empty() {
+        return Ok(());
+    }
+
+    // Resolve the user account the lead flowed through (the affiliate attribution anchor).
+    let created_by: Option<Uuid> = sqlx::query_scalar("SELECT created_by FROM leads WHERE id = $1")
+        .bind(lead_id)
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+    let Some(user_id) = created_by else {
+        return Ok(());
+    };
+
+    // Resolve the affiliate for that user account — only if they signed up for the
+    // affiliate program (admin / non-affiliate users have no affiliate record → no attribution).
+    let affiliate_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM affiliates WHERE user_id = $1 AND is_active = true LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(affiliate_id) = affiliate_id else {
+        return Ok(());
+    };
+
+    // Find active affiliate products linked to any of the newly-assigned tags.
+    let product_ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM affiliate_products WHERE system_tag_id = ANY($1) AND is_active = true",
+    )
+    .bind(newly_assigned_tag_ids)
+    .fetch_all(pool)
+    .await?;
+
+    for product_id in product_ids {
+        // Idempotent: at most one commission per lead per product.
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM affiliate_commissions WHERE lead_id = $1 AND product_id = $2)",
+        )
+        .bind(lead_id)
+        .bind(product_id)
+        .fetch_one(pool)
+        .await?;
+        if exists {
+            continue;
+        }
+
+        sqlx::query(
+            "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, product_id, amount, status)
+             VALUES ($1, $2, $3, $4, 0, 'pending')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(&affiliate_id)
+        .bind(lead_id)
+        .bind(product_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}

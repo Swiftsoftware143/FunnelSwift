@@ -1,4 +1,7 @@
 // Affiliate product handler - full CRUD with admin variants
+// David's model: affiliate products = the Swift products (CoreSwift, FunnelSwift,
+// IncentiveSwift, MultiDirectory, etc.). Admin adds products and assigns a system
+// tag to each. When a lead gets that system tag, the affiliate system records attribution.
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -23,6 +26,7 @@ pub struct CreateProductRequest {
     pub is_third_party: Option<bool>,
     pub product_type: Option<String>,
     pub owner_name: Option<String>,
+    pub system_tag_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +41,7 @@ pub struct UpdateProductRequest {
     pub is_third_party: Option<bool>,
     pub product_type: Option<String>,
     pub owner_name: Option<String>,
+    pub system_tag_id: Option<Uuid>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -53,6 +58,8 @@ struct AffiliateProductRow {
     pub category_id: Option<Uuid>,
     pub product_type: Option<String>,
     pub owner_name: Option<String>,
+    pub system_tag_id: Option<Uuid>,
+    pub system_tag_name: Option<String>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -63,10 +70,13 @@ pub async fn list_affiliate_products(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let products: Vec<AffiliateProductRow> = sqlx::query_as(
-        "SELECT id, tenant_id, name, description, price, default_commission_rate,
-                is_active, is_third_party, url, category_id,
-                product_type, owner_name, created_at, updated_at
-         FROM affiliate_products WHERE tenant_id = $1 ORDER BY created_at DESC",
+        "SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.price, ap.default_commission_rate,
+                ap.is_active, ap.is_third_party, ap.url, ap.category_id,
+                ap.product_type, ap.owner_name, ap.system_tag_id,
+                t.name AS system_tag_name, ap.created_at, ap.updated_at
+         FROM affiliate_products ap
+         LEFT JOIN tags t ON t.id = ap.system_tag_id
+         WHERE ap.tenant_id = $1 ORDER BY ap.created_at DESC",
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
@@ -87,6 +97,8 @@ pub async fn list_affiliate_products(
                 "category_id": p.category_id.map(|v| v.to_string()),
                 "product_type": p.product_type.as_deref().unwrap_or("software"),
                 "owner_name": p.owner_name.as_deref().unwrap_or("SwiftSoftware"),
+                "system_tag_id": p.system_tag_id.map(|v| v.to_string()),
+                "system_tag_name": p.system_tag_name,
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
             })
@@ -106,18 +118,41 @@ pub async fn list_all_affiliate_products_admin(
     list_affiliate_products(auth, State(state)).await
 }
 
+/// List system tags available for assignment to affiliate products (admin dropdown).
+pub async fn list_system_tags(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let tags: Vec<(Uuid, String, Option<String>)> =
+        sqlx::query_as("SELECT id, name, color FROM tags WHERE is_system = true ORDER BY name")
+            .fetch_all(&state.pool)
+            .await?;
+    let result: Vec<Value> = tags
+        .iter()
+        .map(|(id, name, color)| json!({ "id": id.to_string(), "name": name, "color": color }))
+        .collect();
+    Ok(Json(json!(result)))
+}
+
 pub async fn create_affiliate_product(
     auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateProductRequest>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
     let id = Uuid::new_v4();
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     sqlx::query(
-        "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name)
-         VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, $11)"
+        "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name, system_tag_id)
+         VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, $11, $12)"
     )
     .bind(id)
     .bind(tenant_id)
@@ -130,6 +165,7 @@ pub async fn create_affiliate_product(
     .bind(req.category_id)
     .bind(req.product_type.unwrap_or_else(|| "software".to_string()))
     .bind(req.owner_name.unwrap_or_else(|| "SwiftSoftware".to_string()))
+    .bind(req.system_tag_id)
     .execute(&state.pool)
     .await?;
 
@@ -148,8 +184,8 @@ pub async fn update_affiliate_product(
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing = sqlx::query_as::<_, (String, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>)>(
-        "SELECT name, description, COALESCE(price,0.0), COALESCE(default_commission_rate,0.0), COALESCE(is_third_party,false), url, category_id, product_type, owner_name
+    let existing = sqlx::query_as::<_, (String, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<Uuid>)>(
+        "SELECT name, description, COALESCE(price,0.0), COALESCE(default_commission_rate,0.0), COALESCE(is_third_party,false), url, category_id, product_type, owner_name, system_tag_id
          FROM affiliate_products WHERE id = $1 AND tenant_id = $2"
     )
     .bind(id)
@@ -171,11 +207,16 @@ pub async fn update_affiliate_product(
     let owner_name = req
         .owner_name
         .unwrap_or(existing.8.unwrap_or_else(|| "SwiftSoftware".to_string()));
+    // system_tag_id: explicit Some(null) clears the tag, None leaves it unchanged.
+    let system_tag_id = match req.system_tag_id {
+        Some(v) => Some(v),
+        None => existing.9,
+    };
 
     sqlx::query(
         "UPDATE affiliate_products SET name=$1, description=$2, price=$3, default_commission_rate=$4,
-         is_third_party=$5, url=$6, category_id=$7, product_type=$8, owner_name=$9, updated_at=NOW()
-         WHERE id=$10 AND tenant_id=$11"
+         is_third_party=$5, url=$6, category_id=$7, product_type=$8, owner_name=$9, system_tag_id=$10, updated_at=NOW()
+         WHERE id=$11 AND tenant_id=$12"
     )
     .bind(&name)
     .bind(&description)
@@ -186,6 +227,7 @@ pub async fn update_affiliate_product(
     .bind(category_id)
     .bind(&product_type)
     .bind(&owner_name)
+    .bind(system_tag_id)
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
@@ -199,6 +241,9 @@ pub async fn delete_affiliate_product(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 

@@ -179,6 +179,10 @@ pub fn create_router(state: AppState) -> Router {
             put(affiliate_product_handler::admin_update_affiliate_product),
         )
         .route(
+            "/api/v1/admin/system-tags",
+            get(affiliate_product_handler::list_system_tags),
+        )
+        .route(
             "/api/v1/product-categories",
             get(product_category_handler::list_categories)
                 .post(product_category_handler::create_category),
