@@ -14,7 +14,6 @@ use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::Deserialize;
 use serde_json::json;
-use std::env;
 use uuid::Uuid;
 
 pub async fn register(
@@ -77,25 +76,23 @@ pub async fn register(
     .execute(&state.pool)
     .await?;
 
-    // Auto-generate API key for the user
+    // Auto-generate a secure, random API key (NOT derived from JWT_SECRET, never stored in cleartext).
     let api_key_id = Uuid::new_v4();
+    let random_bytes: [u8; 24] = rand::random();
     let api_key_raw = format!(
-        "fs_{}_{}",
-        env::var("JWT_SECRET")
-            .unwrap_or_default()
-            .chars()
-            .take(4)
-            .collect::<String>(),
-        Uuid::new_v4()
-            .to_string()
-            .replace("-", "")
-            .chars()
-            .take(24)
+        "fs_{}",
+        random_bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
             .collect::<String>()
     );
-    let api_key_hash = format!("hash:{}", api_key_raw);
+    let api_key_salt = SaltString::generate(&mut OsRng);
+    let api_key_hash = Argon2::default()
+        .hash_password(api_key_raw.as_bytes(), &api_key_salt)
+        .map_err(|e| AppError::Internal(format!("API key hash error: {e}")))?
+        .to_string();
     sqlx::query(
-        "INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash, prefix, permissions, full_key) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash, prefix, permissions) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(api_key_id)
     .bind(tenant_id)
@@ -104,7 +101,6 @@ pub async fn register(
     .bind(&api_key_hash)
     .bind(api_key_raw.chars().take(8).collect::<String>())
     .bind(serde_json::json!(["read", "write"]))
-    .bind(&api_key_raw)
     .execute(&state.pool)
     .await?;
 
@@ -120,7 +116,8 @@ pub async fn register(
 
     // Auto-assign plan to new tenant (respects plan from signup request, defaults to 'free')
     {
-        let plan_slug = req.plan_slug.as_deref().unwrap_or("capture-free");
+        // Always start on the free tier — never honour a caller-supplied plan slug.
+        let plan_slug = "capture-free";
         let plan_id: Option<Uuid> =
             sqlx::query_scalar("SELECT id FROM plans WHERE slug = $1 LIMIT 1")
                 .bind(plan_slug)
@@ -297,7 +294,7 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "role": auth.role,
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
-        "api_key": api_key_row.map(|(p, n, fk)| json!({"prefix": p, "name": n, "key": fk.unwrap_or_default()})),
+        "api_key": api_key_row.map(|(p, n, _fk)| json!({"prefix": p, "name": n})),
         "available_products": products,
         "current_plan": current_plan
     }))
