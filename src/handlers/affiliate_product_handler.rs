@@ -58,15 +58,17 @@ struct AffiliateProductRow {
 }
 
 pub async fn list_affiliate_products(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let products: Vec<AffiliateProductRow> = sqlx::query_as(
         "SELECT id, tenant_id, name, description, price, default_commission_rate,
                 is_active, is_third_party, url, category_id,
                 product_type, owner_name, created_at, updated_at
-         FROM affiliate_products ORDER BY created_at DESC",
+         FROM affiliate_products WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
 
@@ -98,6 +100,9 @@ pub async fn list_all_affiliate_products_admin(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     list_affiliate_products(auth, State(state)).await
 }
 
@@ -210,6 +215,9 @@ pub async fn admin_sync_affiliate_products(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let plans: Vec<(Uuid, String, Option<f64>)> =
         sqlx::query_as("SELECT id, name, price FROM plans LIMIT 50")
             .fetch_all(&state.pool)
@@ -254,21 +262,36 @@ pub async fn admin_update_affiliate_product(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateProductRequest>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     update_affiliate_product(auth, State(state), Path(id), Json(req)).await
 }
 
 pub async fn handle_cross_app_plan_sync(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
+    // Internal endpoint — verify x-internal-key before doing anything.
+    let key = headers
+        .get("x-internal-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if key != state.internal_sync_key {
+        return Err(AppError::Forbidden("Invalid internal key".into()));
+    }
+
     let plan_name = payload["plan_name"].as_str().unwrap_or("Unknown Plan");
     let plan_price = payload["price"].as_f64().unwrap_or(0.0);
     let plan_id_str = payload["plan_id"].as_str().unwrap_or("");
     let source_app = payload["source_app"].as_str().unwrap_or("unknown");
 
     let plan_id = Uuid::parse_str(plan_id_str).ok();
-    let tenant_id =
-        Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap_or_else(|_| Uuid::new_v4());
+    let tenant_id = payload["tenant_id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
 
     let id = Uuid::new_v4();
     sqlx::query(
