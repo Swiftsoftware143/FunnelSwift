@@ -125,3 +125,116 @@ pub async fn track_click(
 ) -> AppResult<Json<Value>> {
     Ok(Json(json!({"tracked": true})))
 }
+
+/// Cross-app affiliate upgrade event (internal, x-internal-key).
+///
+/// Called by the other Swift apps (WorkflowSwift, CoreSwift, IncentiveSwift, etc.) when a
+/// user — who was originally a FunnelSwift lead provisioned a free account via a system
+/// tag — upgrades to a paid plan. Credits the referring affiliate PERMANENTLY: there is no
+/// cookie/attribution expiry, so every upgrade (today, a year from now, after a downgrade
+/// and re-upgrade) credits the same affiliate, resolved via the lead's originating user
+/// account (leads.created_by -> affiliates.user_id).
+pub async fn handle_affiliate_upgrade_event(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<Value>,
+) -> AppResult<Json<Value>> {
+    let key = headers
+        .get("x-internal-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if key != state.internal_sync_key {
+        return Err(AppError::Forbidden("Invalid internal key".into()));
+    }
+
+    let email = payload["email"].as_str().unwrap_or("");
+    let source_app = payload["source_app"].as_str().unwrap_or("");
+    let plan_name = payload["plan_name"].as_str().unwrap_or("");
+    let plan_price = payload["plan_price"].as_f64().unwrap_or(0.0);
+    let event_id = payload["event_id"].as_str().map(|s| s.to_string());
+
+    if email.is_empty() || source_app.is_empty() {
+        return Err(AppError::BadRequest(
+            "email and source_app are required".into(),
+        ));
+    }
+
+    // Idempotency: skip if this exact upgrade event was already credited.
+    if let Some(ref eid) = event_id {
+        let already: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM affiliate_commissions WHERE metadata->>'event_id' = $1)",
+        )
+        .bind(eid)
+        .fetch_one(&state.pool)
+        .await?;
+        if already {
+            return Ok(Json(json!({"status": "already-credited", "event_id": eid})));
+        }
+    }
+
+    // Resolve the lead by email — the join key captured when the free account was provisioned.
+    let lead: Option<(Uuid, Option<Uuid>)> = sqlx::query_as(
+        "SELECT id, created_by FROM leads WHERE email = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(email)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((lead_id, created_by)) = lead else {
+        return Ok(Json(json!({"status": "no-lead", "email": email})));
+    };
+
+    // Resolve the affiliate from the lead's originating user account (permanent link).
+    let Some(user_id) = created_by else {
+        return Ok(Json(json!({"status": "no-affiliate", "email": email})));
+    };
+    let affiliate: Option<(String, Option<f64>)> = sqlx::query_as(
+        "SELECT id, commission_rate FROM affiliates WHERE user_id = $1 AND is_active = true LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((affiliate_id, rate)) = affiliate else {
+        return Ok(Json(json!({"status": "no-affiliate", "email": email})));
+    };
+
+    // Resolve the affiliate product by source app.
+    let product_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM affiliate_products WHERE source_app = $1 AND is_active = true LIMIT 1",
+    )
+    .bind(source_app)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    // Commission = upgrade price x the affiliate's plan-derived rate (percentage).
+    let commission = plan_price * rate.unwrap_or(0.0) / 100.0;
+
+    let id = Uuid::new_v4();
+    let metadata = json!({
+        "source_app": source_app,
+        "plan_name": plan_name,
+        "plan_price": plan_price,
+        "event_id": event_id,
+    });
+    sqlx::query(
+        "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, product_id, amount, status, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6)",
+    )
+    .bind(id)
+    .bind(&affiliate_id)
+    .bind(lead_id)
+    .bind(product_id)
+    .bind(commission)
+    .bind(&metadata)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(json!({
+        "status": "credited",
+        "id": id.to_string(),
+        "affiliate_id": affiliate_id,
+        "product_id": product_id.map(|v| v.to_string()),
+        "plan_name": plan_name,
+        "plan_price": plan_price,
+        "commission": commission,
+    })))
+}
