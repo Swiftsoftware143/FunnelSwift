@@ -381,7 +381,7 @@ pub async fn forgot_password(
             .await?
     {
         let token = uuid::Uuid::new_v4().to_string();
-        let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
+        let expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
 
         sqlx::query("UPDATE password_resets SET used = true WHERE user_id = $1 AND used = false")
             .bind(user.id)
