@@ -3,6 +3,23 @@
 use askama::Template;
 use serde::{Deserialize, Serialize};
 
+/// Minimal HTML-escape for values interpolated into SSR pages. Prevents stored XSS
+/// from tenant-controlled fields (names, bios, avatar URLs, titles, slugs).
+pub fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Dynamic layout blocks that power both bio-link and mini-page layouts.
 /// Uses serde tag for JSON (de)serialization matching the DB layout_blocks column.
 #[derive(Debug, Deserialize, Serialize, Clone)]

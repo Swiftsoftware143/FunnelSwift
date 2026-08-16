@@ -10,12 +10,13 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub async fn list_qr_codes(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, String, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, COALESCE(title,''), COALESCE(slug,''), created_at FROM qr_codes ORDER BY created_at DESC"
-    ).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT id, COALESCE(title,''), COALESCE(slug,''), created_at FROM qr_codes WHERE tenant_id = $1 ORDER BY created_at DESC"
+    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     Ok(Json(json!(rows)))
 }
 pub async fn create_qr_code(
@@ -50,12 +51,14 @@ pub async fn update_qr_code(
     Ok(Json(json!({"message": "QR code updated"})))
 }
 pub async fn delete_qr_code(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM qr_codes WHERE id = $1")
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    sqlx::query("DELETE FROM qr_codes WHERE id = $1 AND tenant_id = $2")
         .bind(id)
+        .bind(tenant_id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({"message": "QR code deleted"})))
