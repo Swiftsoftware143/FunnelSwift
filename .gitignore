@@ -5,6 +5,12 @@ Cargo.lock
 # Environment
 .env
 .env.local
+.env.*
+.env.bak
+*.env.bak
+*.bak
+*.temp
+.env.openai
 
 # IDE
 .idea/
@@ -26,8 +32,6 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.temp.env.openai
-.env.openai
 
 # Build artifacts / binaries
 funnelswift
