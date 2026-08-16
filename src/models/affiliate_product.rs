@@ -15,6 +15,7 @@ pub struct AffiliateProduct {
     pub is_third_party: Option<bool>,
     pub url: Option<String>,
     pub category_id: Option<Uuid>,
+    pub system_tag_id: Option<Uuid>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -28,6 +29,7 @@ pub struct CreateAffiliateProductRequest {
     pub category_id: Option<Uuid>,
     pub url: Option<String>,
     pub is_third_party: Option<bool>,
+    pub system_tag_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,4 +42,5 @@ pub struct UpdateAffiliateProductRequest {
     pub category_id: Option<Uuid>,
     pub url: Option<String>,
     pub is_third_party: Option<bool>,
+    pub system_tag_id: Option<Uuid>,
 }

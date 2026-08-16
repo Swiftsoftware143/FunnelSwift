@@ -44,14 +44,17 @@ pub async fn affiliate_signup(
     let commission_rate = plan_rate.unwrap_or(20.0);
 
     let affiliate_id = Uuid::new_v4().to_string().replace('-', "")[..8].to_uppercase();
+    // Link the affiliate record to the user account (commission is tracked on the user account).
+    let user_id = Uuid::parse_str(&auth.user_id).ok();
     sqlx::query(
-        "INSERT INTO affiliates (id, tenant_id, name, email, commission_rate, is_active) VALUES ($1, $2, $3, $4, $5, true)",
+        "INSERT INTO affiliates (id, tenant_id, name, email, commission_rate, is_active, user_id) VALUES ($1, $2, $3, $4, $5, true, $6)",
     )
     .bind(&affiliate_id)
     .bind(tenant_id)
     .bind(&auth.email)
     .bind(&auth.email)
     .bind(commission_rate)
+    .bind(user_id)
     .execute(&state.pool)
     .await?;
 

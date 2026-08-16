@@ -103,10 +103,12 @@ pub async fn create_lead(
     }
 
     let lead_id = Uuid::new_v4();
+    // The user account this lead flows through — the affiliate attribution anchor.
+    let created_by = Uuid::parse_str(&auth.user_id).ok();
 
     sqlx::query(
-        r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company, source, stage, tags, custom_fields, notes, assigned_to)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"#,
+        r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company, source, stage, tags, custom_fields, notes, assigned_to, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)"#,
     )
     .bind(lead_id)
     .bind(tenant_id)
@@ -122,6 +124,7 @@ pub async fn create_lead(
     .bind(&req.custom_fields)
     .bind(&req.notes)
     .bind(req.assigned_to)
+    .bind(created_by)
     .execute(&state.pool)
     .await?;
 
@@ -470,6 +473,21 @@ pub async fn assign_lead_tags(
         &triggered_by,
     )
     .await?;
+
+    // Attribute affiliate commissions for any product-linked system tags just applied.
+    // Combines directly-assigned new tags + rule-driven added tags, resolved to tag IDs.
+    let mut all_new_tag_ids = new_tags.clone();
+    if !to_add.is_empty() {
+        let rule_tag_ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM tags WHERE name = ANY($1) AND (tenant_id = $2 OR is_system = true)",
+        )
+        .bind(&to_add)
+        .bind(tenant_id)
+        .fetch_all(&state.pool)
+        .await?;
+        all_new_tag_ids.extend(rule_tag_ids);
+    }
+    crate::tag_logic::attribute_affiliate_on_tags(&state.pool, id, &all_new_tag_ids).await?;
 
     // Fire cross-app sync to CoreSwift CRM
     if !state.coreswift_url.is_empty() {
