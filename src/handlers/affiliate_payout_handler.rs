@@ -188,11 +188,24 @@ pub async fn mark_payout_paid(
 
 pub async fn calculate_affiliate_tier(
     _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
-    // Return the current tier for the affiliate based on their stats
-    Ok(Json(json!({"tier": "Bronze", "commission_rate": 10.0})))
+    // Return the affiliate's actual payout rate (plan-derived) plus accrued earnings.
+    let row: Option<(Option<f64>, Option<f64>)> = sqlx::query_as(
+        "SELECT commission_rate, (SELECT SUM(amount) FROM affiliate_commissions WHERE affiliate_id = $1) FROM affiliates WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?;
+    match row {
+        Some((rate, earned)) => Ok(Json(json!({
+            "affiliate_id": id,
+            "commission_rate": rate.unwrap_or(0.0),
+            "total_earned": earned.unwrap_or(0.0),
+        }))),
+        None => Err(AppError::NotFound("Affiliate not found".into())),
+    }
 }
 
 pub async fn get_affiliate_pending_conversions(

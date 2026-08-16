@@ -1,5 +1,5 @@
 use crate::auth::middleware::AuthUser;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::{
     extract::{Query, State},
@@ -25,18 +25,37 @@ pub async fn list_affiliate_links(
     Ok(Json(json!(links)))
 }
 pub async fn create_affiliate_link(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // Resolve the affiliate from the authenticated user — never trust a body affiliate_id.
+    let (affiliate_id, commission_rate): (String, Option<f64>) = sqlx::query_as(
+        "SELECT id, commission_rate FROM affiliates WHERE email = $1 AND tenant_id = $2",
+    )
+    .bind(&auth.email)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate account not found".into()))?;
+
+    let target_software = payload["target_software"].as_str().unwrap_or("");
     let id = Uuid::new_v4();
     let code = format!("TRACK{}", &id.to_string().replace("-", "")[..12]);
     sqlx::query("INSERT INTO affiliate_links (id, affiliate_id, target_software, tracking_code, commission_rate) VALUES ($1, $2, $3, $4, $5)")
-        .bind(id).bind(payload["affiliate_id"].as_str().unwrap_or("")).bind(payload["target_software"].as_str().unwrap_or(""))
-        .bind(&code).bind(payload["commission_rate"].as_f64().unwrap_or(10.0)).execute(&state.pool).await?;
+        .bind(id)
+        .bind(&affiliate_id)
+        .bind(target_software)
+        .bind(&code)
+        .bind(commission_rate)
+        .execute(&state.pool)
+        .await?;
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id": id.to_string(), "tracking_code": code})),
+        Json(
+            json!({"id": id.to_string(), "tracking_code": code, "commission_rate": commission_rate}),
+        ),
     ))
 }
 pub async fn get_affiliate_stats(
@@ -60,11 +79,45 @@ pub async fn list_conversions(
     Ok(Json(json!(items)))
 }
 pub async fn track_conversion(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Json(_payload): Json<Value>,
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
-    Ok(Json(json!({"message": "Conversion tracked"})))
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // Resolve the affiliate from the authenticated user (their plan-derived rate is used).
+    let (affiliate_id, rate): (String, Option<f64>) = sqlx::query_as(
+        "SELECT id, commission_rate FROM affiliates WHERE email = $1 AND tenant_id = $2",
+    )
+    .bind(&auth.email)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate account not found".into()))?;
+
+    let amount = payload["amount"].as_f64().unwrap_or(0.0);
+    let commission = amount * rate.unwrap_or(0.0) / 100.0;
+    let lead_id = payload["lead_id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, amount, status) VALUES ($1, $2, $3, $4, 'pending')",
+    )
+    .bind(id)
+    .bind(&affiliate_id)
+    .bind(lead_id)
+    .bind(commission)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(json!({
+        "id": id.to_string(),
+        "affiliate_id": affiliate_id,
+        "sale_amount": amount,
+        "commission": commission,
+        "status": "pending",
+    })))
 }
 pub async fn track_click(
     Query(_params): Query<HashMap<String, String>>,
