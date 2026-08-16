@@ -39,6 +39,7 @@ fn cta_for_prefix(prefix: &str) -> (&'static str, &'static str) {
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+use crate::templates::html_escape;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -178,13 +179,14 @@ pub async fn delete_card(
 }
 
 pub async fn list_buttons(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(card_id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows = sqlx::query(
-        "SELECT id, card_id, label, url, sort_order, created_at FROM kinetic_buttons WHERE card_id=$1 ORDER BY sort_order"
-    ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT b.id, b.card_id, b.label, b.url, b.sort_order, b.created_at FROM kinetic_buttons b JOIN kinetic_cards c ON c.id = b.card_id WHERE b.card_id=$1 AND c.tenant_id=$2 ORDER BY b.sort_order"
+    ).bind(card_id).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     use sqlx::Row;
     let buttons: Vec<Value> = rows.iter().map(|r| json!({
         "id": r.try_get::<Uuid, _>("id").unwrap_or_default().to_string(),
@@ -198,11 +200,24 @@ pub async fn list_buttons(
 }
 
 pub async fn create_button(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(card_id): Path<Uuid>,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // Verify the card belongs to this tenant before attaching a button.
+    let owns_card: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id = $1 AND tenant_id = $2)",
+    )
+    .bind(card_id)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+    if !owns_card {
+        return Err(AppError::NotFound("Card not found".into()));
+    }
     let id = Uuid::new_v4();
     let label = body["label"].as_str().unwrap_or("Button");
     let url = body["url"].as_str().unwrap_or("");
@@ -221,14 +236,18 @@ pub async fn create_button(
 }
 
 pub async fn delete_button(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM kinetic_buttons WHERE id=$1")
-        .bind(id)
-        .execute(&state.pool)
-        .await?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    sqlx::query(
+        "DELETE FROM kinetic_buttons b USING kinetic_cards c WHERE b.id=$1 AND b.card_id = c.id AND c.tenant_id=$2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
     Ok(Json(json!({"message": "Deleted"})))
 }
 
@@ -485,7 +504,7 @@ pub async fn render_card(
     // Twitter card type always set
     seo_meta.push_str("<meta property=\"twitter:card\" content=\"summary_large_image\">\n");
     // Canonical URL — resolves from Host header (tenant.kntcrd.com → canonical, custom domain, or fallback)
-    let canonical = resolve_canonical_url(&host, prefix, &slug);
+    let canonical = html_escape(&resolve_canonical_url(&host, prefix, &slug));
     seo_meta.push_str(&format!(
         "<link rel=\"canonical\" href=\"{}\">\n",
         canonical
@@ -524,14 +543,23 @@ pub async fn render_card(
             .unwrap_or(false);
     let show_branding = !tenant_hides_badge; // always show unless explicitly hidden
     let affiliate_code: Option<String> = r.try_get("affiliate_code").unwrap_or(None);
-    let title: String = r.try_get("title").unwrap_or_default();
-    let bio: String = r.try_get("bio").unwrap_or_default();
+    let title: String = html_escape(&r.try_get::<String, _>("title").unwrap_or_default());
+    let bio: String = html_escape(&r.try_get::<String, _>("bio").unwrap_or_default());
     let bg: String = r.try_get("bg_color").unwrap_or_default();
     let accent: String = r.try_get("accent_color").unwrap_or_default();
     let text: String = r.try_get("text_color").unwrap_or_default();
-    let avatar: Option<String> = r.try_get("avatar_url").unwrap_or(None);
-    let tagline: Option<String> = r.try_get("tagline").unwrap_or(None);
-    let meta_desc: Option<String> = r.try_get("meta_description").unwrap_or(None);
+    let avatar: Option<String> = r
+        .try_get::<Option<String>, _>("avatar_url")
+        .unwrap_or(None)
+        .map(|a| html_escape(&a));
+    let tagline: Option<String> = r
+        .try_get::<Option<String>, _>("tagline")
+        .unwrap_or(None)
+        .map(|t| html_escape(&t));
+    let meta_desc: Option<String> = r
+        .try_get::<Option<String>, _>("meta_description")
+        .unwrap_or(None)
+        .map(|d| html_escape(&d));
     let card_id: Uuid = r.try_get("id").unwrap_or_default();
     let _video_provider: Option<String> = r.try_get("video_provider").unwrap_or(None);
     let _video_id: Option<String> = r.try_get("video_id").unwrap_or(None);
@@ -593,14 +621,18 @@ pub async fn render_card(
     let social_html = String::new(); // social links rendered by front-end JS from layout_blocks
 
     // ── Tenant site meta overrides for OG tags ──
-    let og_title = tenant_site_meta
-        .get("og_title")
-        .and_then(|v| v.as_str())
-        .unwrap_or(&title);
-    let og_desc = tenant_site_meta
-        .get("og_description")
-        .and_then(|v| v.as_str())
-        .unwrap_or(meta_desc.as_deref().unwrap_or(""));
+    let og_title = html_escape(
+        tenant_site_meta
+            .get("og_title")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&title),
+    );
+    let og_desc = html_escape(
+        tenant_site_meta
+            .get("og_description")
+            .and_then(|v| v.as_str())
+            .unwrap_or(meta_desc.as_deref().unwrap_or("")),
+    );
     let og_image_html = tenant_site_meta.get("og_image")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
