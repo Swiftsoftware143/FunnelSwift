@@ -1,6 +1,7 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+use crate::templates::html_escape;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -9,13 +10,16 @@ use axum::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub async fn list_funnels(
-    _auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Value>> {
+fn tenant_of(auth: &AuthUser) -> Uuid {
+    Uuid::parse_str(&auth.tenant_id).unwrap_or_default()
+}
+
+pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id = tenant_of(&auth);
     let rows: Vec<(Uuid, String, String, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, name, COALESCE(slug,''), created_at FROM funnels ORDER BY created_at DESC",
+        "SELECT id, name, COALESCE(slug,''), created_at FROM funnels WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
@@ -42,13 +46,15 @@ pub async fn create_funnel(
     ))
 }
 pub async fn get_funnel(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = tenant_of(&auth);
     let row: Option<(Uuid, String, String, chrono::NaiveDateTime)> =
-        sqlx::query_as("SELECT id, name, COALESCE(slug,''), created_at FROM funnels WHERE id = $1")
+        sqlx::query_as("SELECT id, name, COALESCE(slug,''), created_at FROM funnels WHERE id = $1 AND tenant_id = $2")
             .bind(id)
+            .bind(tenant_id)
             .fetch_optional(&state.pool)
             .await?;
     let r = row.ok_or_else(|| AppError::NotFound("Funnel not found".into()))?;
@@ -57,27 +63,31 @@ pub async fn get_funnel(
     ))
 }
 pub async fn update_funnel(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = tenant_of(&auth);
     if let Some(name) = payload["name"].as_str() {
-        sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2")
+        sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2 AND tenant_id=$3")
             .bind(name)
             .bind(id)
+            .bind(tenant_id)
             .execute(&state.pool)
             .await?;
     }
     Ok(Json(json!({"message": "Funnel updated"})))
 }
 pub async fn delete_funnel(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM funnels WHERE id = $1")
+    let tenant_id = tenant_of(&auth);
+    sqlx::query("DELETE FROM funnels WHERE id = $1 AND tenant_id = $2")
         .bind(id)
+        .bind(tenant_id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({"message": "Funnel deleted"})))
@@ -87,7 +97,6 @@ pub async fn render_funnel(
     State(state): State<AppState>,
 ) -> axum::response::Html<String> {
     // Load SEO settings for injection
-
     let seo_rows: Vec<(String, Value)> =
         sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%'")
             .fetch_all(&state.pool)
@@ -113,7 +122,7 @@ pub async fn render_funnel(
     }
     seo_meta.push_str(&format!(
         "<link rel=\"canonical\" href=\"https://funnelswift.net/funnel/{}\">\n",
-        slug
+        html_escape(&slug)
     ));
     seo_meta.push_str("<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
 
@@ -124,6 +133,7 @@ pub async fn render_funnel(
         .await
         .unwrap_or(None)
         .unwrap_or_else(|| slug.clone());
+    let funnel_name = html_escape(&funnel_name);
 
     axum::response::Html(format!(
         r#"<!DOCTYPE html>

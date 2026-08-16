@@ -10,12 +10,14 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub async fn list_tag_rules(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, COALESCE(name,''), created_at FROM tag_rules ORDER BY created_at DESC",
+        "SELECT id, COALESCE(name,''), created_at FROM tag_rules WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
@@ -40,12 +42,14 @@ pub async fn update_tag_rule(
     Ok(Json(json!({"message": "Tag rule updated"})))
 }
 pub async fn delete_tag_rule(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM tag_rules WHERE id = $1")
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    sqlx::query("DELETE FROM tag_rules WHERE id = $1 AND tenant_id = $2")
         .bind(id)
+        .bind(tenant_id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({"message": "Tag rule deleted"})))

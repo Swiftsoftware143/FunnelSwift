@@ -20,12 +20,14 @@ pub struct CreateWebToLeadConfig {
 }
 
 pub async fn list_web_to_lead_configs(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, Option<String>, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, name, form_title, created_at FROM web_to_lead_configs ORDER BY created_at DESC",
+        "SELECT id, name, form_title, created_at FROM web_to_lead_configs WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
+    .bind(tenant_id)
     .fetch_all(&state.pool)
     .await
     .unwrap_or_default();
@@ -60,12 +62,14 @@ pub async fn update_web_to_lead_config(
     Ok(Json(json!({"message": "Config updated"})))
 }
 pub async fn delete_web_to_lead_config(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM web_to_lead_configs WHERE id = $1")
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    sqlx::query("DELETE FROM web_to_lead_configs WHERE id = $1 AND tenant_id = $2")
         .bind(id)
+        .bind(tenant_id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({"message": "Config deleted"})))
@@ -83,9 +87,17 @@ pub async fn handle_web_to_lead(
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    // Resolve the tenant from the config's public_key — never hardcode or trust a body tenant_id.
+    let public_key = payload["public_key"].as_str().unwrap_or("");
+    let tenant_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT tenant_id FROM web_to_lead_configs WHERE public_key = $1")
+            .bind(public_key)
+            .fetch_optional(&state.pool)
+            .await?;
+    let tenant_id = tenant_id.ok_or_else(|| AppError::BadRequest("Invalid public_key".into()))?;
     let id = Uuid::new_v4();
     sqlx::query("INSERT INTO leads (id, tenant_id, name, email, source, status) VALUES ($1, $2, $3, $4, 'web', 'new')")
-        .bind(id).bind(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap_or_default())
+        .bind(id).bind(tenant_id)
         .bind(payload["name"].as_str().unwrap_or("")).bind(payload["email"].as_str().unwrap_or(""))
         .execute(&state.pool).await?;
     Ok((

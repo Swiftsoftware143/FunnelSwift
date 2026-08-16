@@ -211,10 +211,6 @@ pub fn create_router(state: AppState) -> Router {
             post(affiliate_portal_handler::affiliate_signup),
         )
         .route(
-            "/api/v1/affiliate/login",
-            post(affiliate_portal_handler::affiliate_login),
-        )
-        .route(
             "/api/v1/affiliate/dashboard",
             post(affiliate_portal_handler::affiliate_portal_dashboard),
         )

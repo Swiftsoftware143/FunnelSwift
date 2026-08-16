@@ -42,10 +42,13 @@ pub async fn list_tiers(
 }
 
 pub async fn create_tier(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateTierRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let id = Uuid::new_v4();
     let commission_rate = req.commission_rate.unwrap_or(10.0);
     let min_sales = req.min_sales.unwrap_or(0);
@@ -70,11 +73,14 @@ pub async fn create_tier(
 }
 
 pub async fn update_tier(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTierRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let existing = sqlx::query_as::<_, (String, f64, i32, f64)>(
         "SELECT name, commission_rate, min_sales, min_revenue FROM affiliate_tiers WHERE id = $1",
     )
@@ -103,10 +109,13 @@ pub async fn update_tier(
 }
 
 pub async fn delete_tier(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     sqlx::query("DELETE FROM affiliate_tiers WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
@@ -115,9 +124,12 @@ pub async fn delete_tier(
 }
 
 pub async fn list_payouts(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let rows: Vec<(Uuid, String, f64, String, Option<String>, chrono::NaiveDateTime, Option<String>)> = sqlx::query_as(
         "SELECT p.id, p.affiliate_id, p.amount, p.status, p.period, p.created_at, a.name as affiliate_name FROM affiliate_payouts p LEFT JOIN affiliates a ON p.affiliate_id = a.id ORDER BY p.created_at DESC"
     )
@@ -129,10 +141,13 @@ pub async fn list_payouts(
 }
 
 pub async fn create_payout(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     let id = Uuid::new_v4();
     let affiliate_id = req["affiliate_id"].as_str().unwrap_or("");
     let amount = req["amount"].as_f64().unwrap_or(0.0);
@@ -157,10 +172,13 @@ pub async fn create_payout(
 }
 
 pub async fn mark_payout_paid(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     sqlx::query("UPDATE affiliate_payouts SET status = 'paid', paid_at = NOW() WHERE id = $1")
         .bind(id)
         .execute(&state.pool)

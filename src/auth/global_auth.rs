@@ -23,15 +23,8 @@ const PUBLIC_EXACT: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
-    // Affiliate portal (its own auth is handled separately; kept public here)
-    "/api/v1/affiliate/signup",
-    "/api/v1/affiliate/login",
-    "/api/v1/affiliate/dashboard",
+    // Public affiliate lead capture (tenant resolved server-side from the affiliate id)
     "/api/v1/affiliate/submit-lead",
-    "/api/v1/affiliate/leads",
-    "/api/v1/affiliate/leads-stats",
-    "/api/v1/check-affiliate-email",
-    "/api/v1/log-lead-movement",
     // Cross-app webhooks + tracking
     "/api/v1/webhooks/conversion",
     "/api/v1/track/lead",

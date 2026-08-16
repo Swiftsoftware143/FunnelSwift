@@ -10,17 +10,31 @@ pub async fn submit_affiliate_lead(
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    // Resolve the tenant from the affiliate record — never trust a body-supplied tenant_id.
+    let affiliate_id = payload["affiliate_id"]
+        .as_str()
+        .or_else(|| payload["ref"].as_str())
+        .ok_or_else(|| AppError::BadRequest("affiliate_id required".into()))?;
+
+    let tenant_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT tenant_id FROM affiliates WHERE id = $1")
+            .bind(affiliate_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let tenant_id = tenant_id.ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+
     let id = Uuid::new_v4();
-    let tenant_id = Uuid::parse_str(
-        payload["tenant_id"]
-            .as_str()
-            .unwrap_or("00000000-0000-0000-0000-000000000001"),
+    sqlx::query(
+        "INSERT INTO leads (id, tenant_id, name, email, phone, source, status, custom_fields) VALUES ($1, $2, $3, $4, $5, 'affiliate', 'new', $6)",
     )
-    .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    sqlx::query("INSERT INTO leads (id, tenant_id, name, email, phone, source, status, custom_fields) VALUES ($1, $2, $3, $4, $5, 'affiliate', 'new', $6)")
-        .bind(id).bind(tenant_id).bind(payload["name"].as_str().unwrap_or(""))
-        .bind(payload["email"].as_str().unwrap_or("")).bind(payload["phone"].as_str().unwrap_or(""))
-        .bind(&payload["custom_fields"]).execute(&state.pool).await?;
+    .bind(id)
+    .bind(tenant_id)
+    .bind(payload["name"].as_str().unwrap_or(""))
+    .bind(payload["email"].as_str().unwrap_or(""))
+    .bind(payload["phone"].as_str().unwrap_or(""))
+    .bind(&payload["custom_fields"])
+    .execute(&state.pool)
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(json!({"id": id.to_string(), "message": "Lead submitted"})),
@@ -50,29 +64,40 @@ pub async fn get_affiliate_leads_stats(
 }
 
 pub async fn check_affiliate_for_email(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
-    let email = payload["email"].as_str().unwrap_or("");
-    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM affiliates WHERE email = $1")
-        .bind(email)
-        .fetch_optional(&state.pool)
-        .await?;
+    let email = payload["email"].as_str().unwrap_or(auth.email.as_str());
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM affiliates WHERE email = $1 AND tenant_id = $2")
+            .bind(email)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
     Ok(Json(json!({"exists": row.is_some()})))
 }
 
 pub async fn log_lead_movement(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
     let lead_id_str = payload["lead_id"].as_str().unwrap_or("");
     let to_stage = payload["to_stage"].as_str().unwrap_or("");
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     if let Ok(lead_id) = Uuid::parse_str(lead_id_str) {
-        sqlx::query("UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2")
-            .bind(to_stage)
-            .bind(lead_id)
-            .execute(&state.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        )
+        .bind(to_stage)
+        .bind(lead_id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
     }
     Ok(Json(json!({"message": "Movement logged"})))
 }
