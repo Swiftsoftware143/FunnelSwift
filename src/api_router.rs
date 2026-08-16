@@ -716,6 +716,10 @@ pub fn create_router(state: AppState) -> Router {
             "/affiliate-admin.html",
             ServeDir::new("/var/www/funnelswift/affiliate-admin.html"),
         )
-        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::global_auth::require_auth,
+        ))
         .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }
