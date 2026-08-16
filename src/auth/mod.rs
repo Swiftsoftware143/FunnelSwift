@@ -1,3 +1,4 @@
+pub mod global_auth;
 pub mod handlers;
 pub mod middleware;
 pub mod models;
