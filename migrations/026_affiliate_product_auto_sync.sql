@@ -14,6 +14,11 @@ ALTER TABLE affiliate_products ADD COLUMN IF NOT EXISTS plan_id UUID REFERENCES 
 -- Add source_app tracking (which app the plan belongs to)
 ALTER TABLE affiliate_products ADD COLUMN IF NOT EXISTS source_app VARCHAR(100);
 
+-- Reconcile drift: live product_categories (from 022) lacks tenant_id/slug/is_active
+ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS tenant_id UUID;
+ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS slug VARCHAR(255);
+ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
 -- Seed default product categories if table is empty, using a selector that works
 -- with or without existing data. We INSERT per-name with NOT EXISTS guard.
 

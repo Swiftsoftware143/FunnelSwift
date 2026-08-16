@@ -244,10 +244,10 @@ VALUES
     ('f0000000-0000-0000-0000-000000000002', 'Starter', 'starter', 29, 1000, 50, true, false, false, '{"max_users": 3, "import_export": true, "analytics": true}'::jsonb),
     ('f0000000-0000-0000-0000-000000000003', 'Pro', 'pro', 79, 10000, 200, true, true, false, '{"max_users": 10, "import_export": true, "analytics": true, "api_access": true}'::jsonb),
     ('f0000000-0000-0000-0000-000000000004', 'Enterprise', 'enterprise', 199, -1, -1, true, true, true, '{"max_users": -1, "import_export": true, "analytics": true, "api_access": true, "white_label": true, "dedicated_support": true}'::jsonb)
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- First, create an admin tenant that will own the system tags
-INSERT INTO tenants (id, name, slug) VALUES ('00000000-0000-0000-0000-000000000001', 'System', 'system') ON CONFLICT (slug) DO NOTHING;
+INSERT INTO tenants (id, name, slug) VALUES ('00000000-0000-0000-0000-000000000001', 'System', 'system') ON CONFLICT DO NOTHING;
 
 -- Seed Tag Groups (belong to the admin user's tenant, referenced as system groups)
 INSERT INTO tag_groups (id, tenant_id, name, is_collapsible, sort_order) VALUES 

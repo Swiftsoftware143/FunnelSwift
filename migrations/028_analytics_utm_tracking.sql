@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS kinetic_card_locations (
   region TEXT,
   city TEXT,
   view_count INT NOT NULL DEFAULT 1,
-  last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
-  
-  UNIQUE(card_id, country, COALESCE(region,''), COALESCE(city,''))
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_card_locations_unique ON kinetic_card_locations(card_id, country, COALESCE(region,''), COALESCE(city,''));

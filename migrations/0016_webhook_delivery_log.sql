@@ -17,6 +17,14 @@ CREATE TABLE IF NOT EXISTS webhook_delivery_log (
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
+-- Reconcile drift with the live table (created earlier by 000001 with a simpler schema)
+ALTER TABLE webhook_delivery_log ADD COLUMN IF NOT EXISTS tenant_id UUID;
+ALTER TABLE webhook_delivery_log ADD COLUMN IF NOT EXISTS status_code INT;
+ALTER TABLE webhook_delivery_log ADD COLUMN IF NOT EXISTS attempt INT NOT NULL DEFAULT 1;
+ALTER TABLE webhook_delivery_log ADD COLUMN IF NOT EXISTS max_attempts INT NOT NULL DEFAULT 3;
+ALTER TABLE webhook_delivery_log ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ;
+ALTER TABLE webhook_delivery_log ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_webhook_delivery_log_webhook ON webhook_delivery_log(webhook_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_delivery_log_retry ON webhook_delivery_log(next_retry_at) WHERE status = 'failed' AND next_retry_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_webhook_delivery_log_tenant ON webhook_delivery_log(tenant_id);
