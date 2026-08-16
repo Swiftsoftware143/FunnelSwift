@@ -12,6 +12,69 @@ use crate::features;
 use crate::models::webhook::*;
 use crate::state::AppState;
 
+/// SSRF guard: webhook URLs must be http(s), must not target loopback/private/link-local
+/// addresses, the cloud metadata endpoint, or internal hostnames, and must be resolvable.
+fn validate_webhook_url(url: &str) -> AppResult<()> {
+    use std::net::ToSocketAddrs;
+
+    let parsed =
+        reqwest::Url::parse(url).map_err(|_| AppError::BadRequest("Invalid webhook URL".into()))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err(AppError::BadRequest(
+                "Webhook URL must use http or https".into(),
+            ))
+        }
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| AppError::BadRequest("Webhook URL is missing a host".into()))?;
+    let host_lower = host.to_ascii_lowercase();
+    if host_lower == "localhost"
+        || host_lower.ends_with(".localhost")
+        || host_lower.ends_with(".internal")
+        || host_lower == "metadata.google.internal"
+    {
+        return Err(AppError::BadRequest(
+            "Webhook URL points to a forbidden host".into(),
+        ));
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    let mut resolved_any = false;
+    if let Ok(addrs) = (host, port).to_socket_addrs() {
+        for addr in addrs {
+            resolved_any = true;
+            match addr.ip() {
+                std::net::IpAddr::V4(v4)
+                    if v4.is_private()
+                        || v4.is_loopback()
+                        || v4.is_link_local()
+                        || v4.is_unspecified()
+                        || v4.is_broadcast() =>
+                {
+                    return Err(AppError::BadRequest(
+                        "Webhook URL resolves to a private/loopback address".into(),
+                    ))
+                }
+                std::net::IpAddr::V6(v6) if v6.is_loopback() || v6.is_unspecified() => {
+                    return Err(AppError::BadRequest(
+                        "Webhook URL resolves to a private/loopback address".into(),
+                    ))
+                }
+                _ => {}
+            }
+        }
+    }
+    if !resolved_any {
+        return Err(AppError::BadRequest(
+            "Webhook URL could not be resolved".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn list_webhooks(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -40,6 +103,7 @@ pub async fn create_webhook(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    validate_webhook_url(&req.url)?;
     features::enforce_feature_limit(&state, tenant_id, "max_webhooks", "Webhooks").await?;
     let webhook_id = Uuid::new_v4();
 
@@ -98,18 +162,21 @@ pub async fn test_webhook(
             .await?
             .ok_or_else(|| AppError::NotFound("Webhook not found".into()))?;
 
-    let client = reqwest::Client::new();
+    validate_webhook_url(&webhook.url)?;
+
+    // Disable redirects so a public URL can't bounce to an internal address.
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| AppError::Internal(format!("HTTP client error: {e}")))?;
     let payload = json!({"event": "test", "message": "This is a test webhook from FunnelSwift"});
 
-    let result = client.post(&webhook.url).json(&payload).send().await;
-
-    match result {
+    match client.post(&webhook.url).json(&payload).send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            let body = resp.text().await.unwrap_or_default();
+            // Never echo the response body back to the caller (SSRF data-exfil guard).
             Ok(Json(json!({
                 "status": status,
-                "response": body,
                 "message": "Webhook test completed"
             })))
         }

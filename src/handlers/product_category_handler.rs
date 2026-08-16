@@ -40,12 +40,14 @@ struct CategoryRow {
 }
 
 pub async fn list_categories(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let categories: Vec<CategoryRow> = sqlx::query_as(
-        "SELECT id, tenant_id, name, slug, description, sort_order, is_active, created_at FROM product_categories ORDER BY sort_order ASC"
+        "SELECT id, tenant_id, name, slug, description, sort_order, is_active, created_at FROM product_categories WHERE tenant_id = $1 ORDER BY sort_order ASC"
     )
+    .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
 

@@ -1,5 +1,5 @@
 use crate::auth::middleware::AuthUser;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::plan_tag_mapping::*;
 use crate::state::AppState;
 use axum::{extract::State, Json};
@@ -18,10 +18,14 @@ pub async fn list_plan_tag_mappings(
 }
 
 pub async fn sync_plan_tag_mappings(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<SyncTagMappingRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
     // Delete existing mappings for this plan
     sqlx::query("DELETE FROM plan_tag_mappings WHERE plan_id = $1")
         .bind(req.plan_id)

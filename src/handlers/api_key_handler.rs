@@ -130,33 +130,30 @@ pub async fn update_api_key(
         return Err(AppError::NotFound("API key not found".into()));
     }
 
-    let mut set_parts = Vec::new();
-    if let Some(ref name) = req.name {
-        let safe = name.replace('\'', "''");
-        set_parts.push(format!("name = '{}'", safe));
+    // Bind-parameter UPDATE (no string concatenation — closes the SQL-injection path).
+    let mut qb: sqlx::QueryBuilder<'_, sqlx::Postgres> =
+        sqlx::QueryBuilder::new("UPDATE api_keys SET ");
+    {
+        let mut sep = qb.separated(", ");
+        if let Some(ref name) = req.name {
+            sep.push("name = ").push_bind(name);
+        }
+        if let Some(ref url) = req.target_url {
+            sep.push("target_url = ").push_bind(url);
+        }
+        if let Some(ref perms) = req.permissions {
+            sep.push("permissions = ").push_bind(perms);
+        }
+        if let Some(active) = req.is_active {
+            sep.push("is_active = ").push_bind(active);
+        }
+        sep.push("updated_at = NOW()");
     }
-    if let Some(ref url) = req.target_url {
-        let safe = url.replace('\'', "''");
-        set_parts.push(format!("target_url = '{}'", safe));
-    }
-    if let Some(ref perms) = req.permissions {
-        let s = perms.to_string().replace('\'', "''");
-        set_parts.push(format!("permissions = '{}'::jsonb", s));
-    }
-    if let Some(active) = req.is_active {
-        set_parts.push(format!("is_active = {}", active));
-    }
-    set_parts.push("updated_at = NOW()".into());
-
-    if !set_parts.is_empty() {
-        let sql = format!(
-            "UPDATE api_keys SET {} WHERE id = '{}' AND tenant_id = '{}'",
-            set_parts.join(", "),
-            id,
-            tenant_id
-        );
-        sqlx::query(&sql).execute(&state.pool).await?;
-    }
+    qb.push(" WHERE id = ")
+        .push_bind(id)
+        .push(" AND tenant_id = ")
+        .push_bind(tenant_id);
+    qb.build().execute(&state.pool).await?;
 
     Ok(Json(json!({ "message": "API key updated", "id": id })))
 }
