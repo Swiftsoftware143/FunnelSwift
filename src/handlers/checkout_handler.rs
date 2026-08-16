@@ -10,12 +10,13 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub async fn list_payment_providers(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, Option<Uuid>, String, String, bool, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, tenant_id, provider_type, COALESCE(api_key,''), is_active, created_at FROM payment_providers ORDER BY created_at"
-    ).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT id, tenant_id, provider_type, COALESCE(api_key,''), is_active, created_at FROM payment_providers WHERE tenant_id = $1 ORDER BY created_at"
+    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     Ok(Json(json!(rows)))
 }
 pub async fn upsert_payment_provider(
@@ -33,12 +34,14 @@ pub async fn upsert_payment_provider(
     Ok((StatusCode::OK, Json(json!({"message": "Provider saved"}))))
 }
 pub async fn delete_payment_provider(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(provider_type): Path<String>,
 ) -> AppResult<Json<Value>> {
-    sqlx::query("DELETE FROM payment_providers WHERE provider_type = $1")
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    sqlx::query("DELETE FROM payment_providers WHERE provider_type = $1 AND tenant_id = $2")
         .bind(&provider_type)
+        .bind(tenant_id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({"message": "Provider deleted"})))
