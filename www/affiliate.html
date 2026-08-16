@@ -245,7 +245,6 @@ async function handleSubmitLead(e){
   const custom = { notes: fd.elements['lead_notes'].value || null };
   try{
     await affApi('POST','/affiliate/submit-lead',{
-      affiliate_id: (S.dashboard && S.dashboard.affiliate_id) || null,
       name: fd.elements['lead_name'].value,
       email: fd.elements['lead_email'].value || null,
       phone: fd.elements['lead_phone'].value || null,
