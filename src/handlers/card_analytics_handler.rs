@@ -69,7 +69,7 @@ fn classify_referrer(referrer: &str, device_type: &Option<String>) -> Option<(St
     }
 
     // Search engines
-    if ref_lower.contains("google.com/search") || ref_lower.contains("google.co") {
+    if ref_lower.contains("google.com/search") || ref_has_domain(&ref_lower, "google.co") {
         return Some(("google".into(), "organic".into()));
     }
     if ref_lower.contains("bing.com/search") {
@@ -95,9 +95,9 @@ fn classify_referrer(referrer: &str, device_type: &Option<String>) -> Option<(St
     if ref_lower.contains("linkedin.com") {
         return Some(("linkedin".into(), "social".into()));
     }
-    if ref_lower.contains("twitter.com")
-        || ref_lower.contains("t.co")
-        || ref_lower.contains("x.com")
+    if ref_has_domain(&ref_lower, "twitter.com")
+        || ref_has_domain(&ref_lower, "t.co")
+        || ref_has_domain(&ref_lower, "x.com")
     {
         return Some(("twitter".into(), "social".into()));
     }
@@ -554,19 +554,19 @@ pub async fn get_card_tracking_url(
     let mut url = format!("{}/k/{}", base_url, slug);
     let mut params = vec![];
     if let Some(ref s) = utm_source {
-        params.push(format!("utm_source={}", s));
+        params.push(format!("utm_source={}", pct_encode(s)));
     }
     if let Some(ref s) = utm_medium {
-        params.push(format!("utm_medium={}", s));
+        params.push(format!("utm_medium={}", pct_encode(s)));
     }
     if let Some(ref s) = utm_campaign {
-        params.push(format!("utm_campaign={}", s));
+        params.push(format!("utm_campaign={}", pct_encode(s)));
     }
     if let Some(ref s) = utm_content {
-        params.push(format!("utm_content={}", s));
+        params.push(format!("utm_content={}", pct_encode(s)));
     }
     if let Some(ref s) = utm_term {
-        params.push(format!("utm_term={}", s));
+        params.push(format!("utm_term={}", pct_encode(s)));
     }
     if !params.is_empty() {
         url.push('?');
@@ -577,6 +577,27 @@ pub async fn get_card_tracking_url(
 }
 
 // ── Helpers ──
+fn pct_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
+/// Domain-boundary match — avoids substring false-positives like "x.com" matching "netflix.com".
+fn ref_has_domain(ref_lower: &str, domain: &str) -> bool {
+    ref_lower == domain
+        || ref_lower.ends_with(&format!(".{domain}"))
+        || ref_lower.contains(&format!("//{domain}"))
+        || ref_lower.contains(&format!("{domain}/"))
+}
+
 fn parse_user_agent(ua: &str) -> (Option<String>, Option<String>) {
     let ua_lower = ua.to_lowercase();
     let browser = if ua_lower.contains("firefox") {

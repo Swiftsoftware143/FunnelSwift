@@ -9,6 +9,17 @@ use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+/// Constant-time string comparison — avoids leaking the internal key via early exit.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let mut diff = a.len() ^ b.len();
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= (x ^ y) as usize;
+    }
+    diff == 0
+}
+
 /// POST /api/v1/internal/portfolio-sync
 /// Accepts x-internal-key header for authentication.
 pub async fn portfolio_sync_internal(
@@ -20,7 +31,7 @@ pub async fn portfolio_sync_internal(
         .get("x-internal-key")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if key != state.internal_sync_key {
+    if !ct_eq(key, &state.internal_sync_key) {
         return Err(AppError::Forbidden("Invalid internal key".into()));
     }
 
