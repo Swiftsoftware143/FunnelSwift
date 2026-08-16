@@ -1,7 +1,5 @@
 -- provider_keys table for FunnelSwift
-DROP TABLE IF EXISTS provider_keys CASCADE;
-
-CREATE TABLE provider_keys (
+CREATE TABLE IF NOT EXISTS provider_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id),
     provider VARCHAR(64) NOT NULL,
