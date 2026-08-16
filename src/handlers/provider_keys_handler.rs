@@ -10,12 +10,13 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub async fn list_provider_keys(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(String, String, Option<String>, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT provider, COALESCE(api_key,''), base_url, created_at FROM provider_keys ORDER BY provider"
-    ).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT provider, COALESCE(api_key,''), base_url, created_at FROM provider_keys WHERE tenant_id = $1 ORDER BY provider"
+    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     Ok(Json(json!(rows)))
 }
 pub async fn upsert_provider_key(

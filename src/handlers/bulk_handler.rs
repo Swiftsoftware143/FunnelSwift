@@ -62,15 +62,22 @@ pub async fn bulk_delete_affiliates(
 }
 
 pub async fn bulk_delete_users(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<BulkDeleteRequest>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
     let mut count: i64 = 0;
     for id_str in &req.ids {
         if let Ok(id) = Uuid::parse_str(id_str) {
-            let result = sqlx::query("DELETE FROM users WHERE id = $1")
+            let result = sqlx::query("DELETE FROM users WHERE id = $1 AND tenant_id = $2")
                 .bind(id)
+                .bind(tenant_id)
                 .execute(&state.pool)
                 .await?;
             count += result.rows_affected() as i64;
