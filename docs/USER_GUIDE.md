@@ -81,31 +81,13 @@ Admins can edit these templates in the admin panel — modify subject lines, HTM
 
 ## Affiliate Program
 
-### Become an Affiliate
-Affiliates are regular FunnelSwift users — there is **no separate login**. To opt in:
+Earn a commission by referring people to the Swift products. When a lead that flows through your account upgrades to a paid plan in any Swift product, you're credited — every upgrade, forever, no expiry.
 
-1. Log in to your normal account.
-2. Go to **Affiliate** in the portal and click **Become an Affiliate**.
-3. Accept the terms — your account is **auto-approved** (no manual review).
-4. The affiliate dashboard (links, leads, earnings) unlocks in your portal.
+- **No separate login** — your existing account is your affiliate account.
+- **Opt in** from the Affiliate section of your portal, accept the terms, and you're auto-approved.
+- **Payout rate** is tied to your plan (Free 20% → Agency 50%).
 
-### Your Payout Rate
-Your payout % is tied to the plan your account is on:
-
-| Plan | Payout % |
-|---|---|
-| Free (Capture / Kinetic) | 20% |
-| Starter / Pro | 30% |
-| Suite | 40% |
-| Agency | 50% |
-
-Upgrade your plan and your payout rate follows automatically.
-
-### Promote Products
-1. Browse available products (each Swift plan is a commissionable product).
-2. Pick one and generate a **tracking link**.
-3. Share the link — leads and conversions from it are attributed to you.
-4. Track leads and earnings from your affiliate dashboard.
+For the full, plain-language guide see **AFFILIATE_GUIDE.md**.
 
 ## Tags & Tag Groups
 Organize leads by categories. Tags can be grouped into: Source, Status, Events, Services, Engagement, Custom.

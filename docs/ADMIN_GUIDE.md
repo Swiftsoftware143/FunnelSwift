@@ -65,71 +65,59 @@ systemctl restart funnelswift
 ### JS Snippet
 Update `/var/www/funnelswift/funnelswift-capture.js` and reference from HTTPS.
 
-## Affiliate Product Auto-Sync
+## Affiliate System (Tag-Based)
 
-FunnelSwift is the central hub for affiliate product management. Plans from all Swift apps are automatically synced into `affiliate_products` so they appear as commissionable products.
+FunnelSwift is the affiliate hub. Affiliate products represent the Swift products (FunnelSwift, CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, MissedCallRespondr, MultiDirectory). Each product is linked to a **system tag**, and attribution is tracked on the **user account** a lead flows through — not on a cookie.
 
-### Product Categories
+### The Model
 
-Each source app maps to a product category:
+1. **Admin adds an affiliate product** and assigns it a **system tag** (each Swift product = one affiliate product).
+2. The system tag is the signal that a lead has acquired the **free plan** of that product (free-account provisioning already happens on tag assignment).
+3. When a lead — created under a user account — is tagged, a pending $0 commission is recorded (the free-plan attribution anchor).
+4. When that lead later **upgrades to a paid plan** in the product, the other app fires an upgrade event back to FunnelSwift, and the referring affiliate is credited. **No expiry — every upgrade, forever.**
 
-| Source App | Category Slug | Category Name |
+### Data Model
+
+| Table / Column | Purpose |
+|---|---|
+| `affiliate_products.system_tag_id` | Links an affiliate product to its system tag |
+| `leads.created_by` | The user account a lead flowed through (the affiliate anchor) |
+| `affiliates.user_id` | First-class link: which user account an affiliate is |
+| `affiliate_commissions.product_id` | Which product a commission is for |
+| `affiliate_commissions.metadata` | Upgrade-event traceability + idempotency key (`event_id`) |
+
+Attribution resolution: `leads.created_by` → `affiliates.user_id`. Admin / non-affiliate users resolve to no affiliate.
+
+### Admin Endpoints
+
+| Method | Path | Description |
 |---|---|---|
-| FunnelSwift | `funnelswift-plans` | FunnelSwift Plans |
-| Kinetic Cards | `kinetic-cards` | Kinetic Cards |
-| IncentiveSwift | `incentiveswift-plans` | IncentiveSwift Plans |
-| MultiDirectory | `multidirectory-plans` | MultiDirectory Plans |
-| CoreSwift | `coreswift-plans` | CoreSwift Plans |
-| WorkflowSwift | `workflowswift-plans` | WorkflowSwift Plans |
-| AdaSwift | `adaswift-plans` | AdaSwift Plans |
+| POST | `/api/v1/affiliate-products` | Create a product (admin), accepts `system_tag_id` |
+| PUT | `/api/v1/affiliate-products/:id` | Update a product (admin), incl. `system_tag_id` |
+| DELETE | `/api/v1/affiliate-products/:id` | Delete a product (admin) |
+| GET | `/api/v1/admin/system-tags` | List system tags for the product → tag dropdown |
 
-Categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
+### Cross-App Upgrade Event
 
-### Cross-App Sync Endpoint
+`POST /api/v1/internal/affiliate/upgrade-event` (protected by `x-internal-key`)
 
-`POST /api/v1/internal/sync-affiliate-plan`
+Every other Swift app calls this when a user upgrades to a paid plan:
 
-Internal endpoint called by other Swift apps to sync plan changes. Protected by the `x-internal-key` header matching `INTERNAL_SYNC_KEY`.
-
-**Payload:**
 ```json
 {
-  "action": "create|update|deactivate",
-  "plan_name": "Pro Plan",
-  "plan_price": 29.99,
-  "source_app": "coreswift",
-  "is_active": true,
-  "owner_name": "SwiftSoftware",
-  "product_type": "software",
-  "api_key": "..."
+  "source_app": "workflowswift",
+  "email": "lead@example.com",
+  "plan_name": "Pro",
+  "plan_price": 79.0,
+  "event_id": "unique-per-upgrade"
 }
 ```
 
-**Behavior:**
-- `create`/`update` — upserts an `affiliate_products` record by `source_app` + `plan_name`
-- `deactivate` — sets `is_active = false` on the matching affiliate product
+FunnelSwift resolves the lead by email → `leads.created_by` → affiliate, and records `commission = plan_price × affiliate_rate / 100`. `event_id` makes it idempotent (replays return `already-credited`).
 
-### Admin Sync Endpoints
+### Per-Plan Payout
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/v1/admin/affiliate-products/sync` | POST | Manually syncs all FunnelSwift plans to affiliate_products |
-| `/api/v1/admin/affiliate-products/:id` | PUT | Super admin only — update owner_name and product_type |
-
-### Which Apps Sync Automatically
-
-All 5 apps now fire async sync events on plan create/update/delete:
-- FunnelSwift (own plans)
-- CoreSwift (`source_app: coreswift`)
-- WorkflowSwift (`source_app: workflowswift`)
-- AdaSwift (`source_app: adaswift`)
-- IncentiveSwift (`source_app: incentiveswift`)
-
-Each app needs `FUNNELSWIFT_URL` set in its environment (default `http://localhost:8080`).
-
-## Per-Plan Affiliate Payout
-
-Each plan carries a `commission_rate` — the payout % an affiliate earns on a sale. This is **admin-adjustable per plan**.
+Each plan carries a `commission_rate` — the payout % an affiliate earns. Admin-adjustable per plan:
 
 | Plan | Default Payout % |
 |---|---|
@@ -138,9 +126,19 @@ Each plan carries a `commission_rate` — the payout % an affiliate earns on a s
 | Suite | 40% |
 | Agency / Scale | 50% |
 
-**To change a plan's payout:** set the plan's `commission_rate` (e.g. `PUT /api/v1/plans/:id` with `{"commission_rate": 50}`). The rate flows to `affiliate_products` on sync, and an affiliate's effective payout is stamped from their plan's rate at signup — change the plan's rate and every affiliate on that plan inherits it.
+Set a plan's rate via `PUT /api/v1/plans/:id` with `{"commission_rate": 50}`. An affiliate's effective rate is stamped from their plan at signup; upgrade the affiliate's plan and their rate follows.
 
-> **Note:** the `affiliate_tiers` table (name/rate/min-sales thresholds) is a separate legacy concept. Payout is driven by the plan's `commission_rate`, not tiers.
+### Plan Sync (unchanged)
+
+Plans from all Swift apps still auto-sync into `affiliate_products` via `POST /api/v1/internal/sync-affiliate-plan` (each app fires it on plan create/update/delete with its `source_app`):
+
+- CoreSwift (`source_app: coreswift`)
+- WorkflowSwift (`source_app: workflowswift`)
+- AdaSwift (`source_app: adaswift`)
+- IncentiveSwift (`source_app: incentiveswift`)
+- MissedCallRespondr (`source_app: missedcallrespondr`)
+
+Products are then linked to system tags by the admin. Product categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
 
 ## MultiDirectory Integration (CTA Slots)
 
