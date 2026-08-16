@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 
 use crate::auth::middleware::AuthUser;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 /// GET /api/v1/seo/sitemap.xml — dynamic sitemap
@@ -151,10 +151,13 @@ pub async fn get_seo_settings(
 
 /// PUT /api/v1/seo/settings — update SEO settings
 pub async fn update_seo_settings(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
     if let Value::Object(obj) = &payload {
         for (k, v) in obj {
             let key = format!("seo_{}", k);
