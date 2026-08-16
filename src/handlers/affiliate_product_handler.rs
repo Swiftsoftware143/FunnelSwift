@@ -70,13 +70,14 @@ pub async fn list_affiliate_products(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let products: Vec<AffiliateProductRow> = sqlx::query_as(
-        "SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.price, ap.default_commission_rate,
+        "SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.price::float8, ap.default_commission_rate::float8,
                 ap.is_active, ap.is_third_party, ap.url, ap.category_id,
                 ap.product_type, ap.owner_name, ap.system_tag_id,
-                t.name AS system_tag_name, ap.created_at, ap.updated_at
+                t.name AS system_tag_name, ap.created_at::timestamp, ap.updated_at::timestamp
          FROM affiliate_products ap
          LEFT JOIN tags t ON t.id = ap.system_tag_id
-         WHERE ap.tenant_id = $1 ORDER BY ap.created_at DESC",
+         WHERE (ap.tenant_id = $1 OR ap.tenant_id = '00000000-0000-0000-0000-000000000001')
+         ORDER BY ap.created_at DESC",
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
