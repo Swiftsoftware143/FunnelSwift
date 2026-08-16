@@ -74,225 +74,237 @@ a{color:#2563eb;text-decoration:none}
 window.appGuidePages = {
   "dashboard": {
     title: "Affiliate Dashboard",
-    desc: "Your affiliate performance at a glance — clicks, conversions, and commissions earned.",
-    actions: ["See total clicks and conversion rates", "Track commissions earned this month", "View your personalized affiliate links"]
+    desc: "Your affiliate performance at a glance — leads and commissions earned.",
+    actions: ["See total leads attributed to you", "Track total commissions earned", "Read the full guide from the sidebar"]
   },
   "leads": {
     title: "Leads",
-    desc: "People who've signed up or converted through your affiliate links.",
-    actions: ["View all leads attributed to you", "See conversion status and dates", "Copy referral links for specific campaigns"]
+    desc: "People who've come through your affiliate links.",
+    actions: ["View all leads attributed to you", "See conversion status and dates", "Submit a lead manually"]
   },
   "earnings": {
     title: "Earnings",
-    desc: "Your commission history — what you've earned, what's pending, and what's been paid out.",
-    actions: ["View earnings broken down by product", "See pending vs. paid commissions", "Track payout history and status"]
+    desc: "Your commission summary.",
+    actions: ["See total commissions earned", "Track pending vs. paid", "Read how payouts work in the guide"]
   },
-  "settings": {
-    title: "Settings",
-    desc: "Your affiliate account settings. Update profile, payment info, and notification preferences.",
-    actions: ["Update your profile and contact info", "Configure payout method", "View your affiliate agreement terms"]
+  "guide": {
+    title: "Affiliate Guide",
+    desc: "How the FunnelSwift affiliate program works, in plain language.",
+    actions: ["Learn how you earn", "See payout rates by plan", "Understand commission attribution"]
   }
 };
 </script>
 <script src="/inline-guide-widget.js"></script>
 <script>
-const API=window.location.origin+'/api/v1';
-const AFF_KEY='aff_token';
-let S={user:null,view:'login',prospects:[],leadsStats:null,earnings:null,payouts:[],links:[],selections:[]};
-function $(id){return document.getElementById(id)}
-function esc(s){if(s===null||s===void 0)return'-';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
-function dstr(d){if(!d)return'-';try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch(e){return String(d)}}
-function money(n){return'$'+Number(n||0).toFixed(2)}
-function toast(msg,t){t=t||'success';const c=$('toast-container'),e=document.createElement('div');e.className='toast toast-'+t;e.textContent=msg;c.appendChild(e);setTimeout(()=>e.remove(),3500)}
-function showModal(h,w){$('modal').innerHTML='<div class="modal-scrim" onclick="if(event.target===this)closeModal()"><div class="modal'+(w?' wide-modal':'')+' fade-in">'+h+'</div></div>'}
-function closeModal(){$('modal').innerHTML=''}
+const API = window.location.origin + '/api/v1';
+const TOKEN_KEY = 'ws_fs_token';
+function getToken(){ return localStorage.getItem(TOKEN_KEY) || ''; }
+let S = { user:null, isAffiliate:false, view:'dashboard', dashboard:null, prospects:[], loading:false };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ if(s===null||s===void 0) return '-'; const d=document.createElement('div'); d.textContent=String(s); return d.innerHTML; }
+function dstr(d){ if(!d) return '-'; try{ return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return String(d); } }
+function money(n){ return '$' + Number(n||0).toFixed(2); }
+function toast(msg,t){ t=t||'success'; const c=$('toast-container'), e=document.createElement('div'); e.className='toast toast-'+t; e.textContent=msg; c.appendChild(e); setTimeout(function(){ e.remove(); },3500); }
+function showModal(h,w){ $('modal').innerHTML='<div class="modal-scrim" onclick="if(event.target===this)closeModal()"><div class="modal'+(w?' wide-modal':'')+' fade-in">'+h+'</div></div>'; }
+function closeModal(){ $('modal').innerHTML=''; }
+
 async function affApi(m,p,b){
-  const o={method:m,headers:{'Content-Type':'application/json'}};
-  const t=localStorage.getItem(AFF_KEY);if(t)o.headers['X-Affiliate-Token']=t;if(b)o.body=JSON.stringify(b);
-  const r=await fetch(API+p,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.message);return d;
+  const o={ method:m, headers:{'Content-Type':'application/json'} };
+  const t=getToken(); if(t) o.headers['Authorization']='Bearer '+t;
+  if(b) o.body=JSON.stringify(b);
+  const r=await fetch(API+p,o);
+  const ct=r.headers.get('content-type')||'';
+  const d = ct.indexOf('application/json')>=0 ? await r.json().catch(function(){return{};}) : await r.text();
+  if(!r.ok) throw new Error((d&&d.error)||(d&&d.message)||('Request failed ('+r.status+')'));
+  return d;
 }
-function affLogout(){localStorage.removeItem(AFF_KEY);S.user=null;S.view='login';render()}
-async function handleAffLogin(e){
-  e.preventDefault();const el=$('aff-login-error');el.classList.add('hidden');
+
+function affLogout(){ localStorage.removeItem(TOKEN_KEY); S.user=null; S.isAffiliate=false; S.view='dashboard'; render(); }
+function navigate(v){ S.view=v; window.location.hash=v; render(); }
+
+// ── bootstrap: determine auth + affiliate status ──────────────────────────
+async function bootstrap(){
+  if(!getToken()){ render(); return; }
   try{
-    const r=await fetch(API+'/affiliate/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('aff-login-email').value,password:$('aff-login-pass').value})});
-    const d=await r.json();if(!r.ok)throw new Error(d.error||d.message);
-    localStorage.setItem(AFF_KEY,d.token);S.user=d.user;toast('Welcome!');navigate('dashboard');
-  }catch(e){el.textContent=e.message;el.classList.remove('hidden')}
+    S.user = await affApi('GET','/me');
+    const chk = await affApi('POST','/check-affiliate-email',{});
+    S.isAffiliate = !!chk.exists;
+    if(S.isAffiliate){
+      try{ S.dashboard = await affApi('POST','/affiliate/dashboard',{}); }catch(e){ S.dashboard=null; }
+    }
+  }catch(e){
+    localStorage.removeItem(TOKEN_KEY);
+    S.user=null; S.isAffiliate=false;
+  }
+  render();
 }
-async function handleAffSignup(e){
-  e.preventDefault();const el=$('aff-signup-error');el.classList.add('hidden');
+
+async function becomeAffiliate(){
   try{
-    const fd=e.target;const apps=[];
-    if(fd.elements['app_workflowswift']&&fd.elements['app_workflowswift'].checked)apps.push('workflowswift');
-    if(fd.elements['app_incentiveswift']&&fd.elements['app_incentiveswift'].checked)apps.push('incentiveswift');
-    if(fd.elements['app_coreswift']&&fd.elements['app_coreswift'].checked)apps.push('coreswift');
-    if(fd.elements['app_adaswift']&&fd.elements['app_adaswift'].checked)apps.push('adaswift');
-    if(fd.elements['app_missedcall']&&fd.elements['app_missedcall'].checked)apps.push('missedcall');
-    if(fd.elements['app_funnelswift']&&fd.elements['app_funnelswift'].checked)apps.push('funnelswift');
-    const r=await fetch(API+'/affiliate/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({first_name:fd.elements['first_name'].value,last_name:fd.elements['last_name'].value,email:fd.elements['signup-email'].value,password:fd.elements['signup-pass'].value,selected_apps:apps,commission_rate:15})});
-    const d=await r.json();if(!r.ok)throw new Error(d.error||d.message);
-    toast('Account created! ID: '+d.affiliate_id);navigate('login');
-  }catch(e){el.textContent=e.message;el.classList.remove('hidden')}
+    const d = await affApi('POST','/affiliate/signup',{});
+    toast(d.message || 'You\'re now an affiliate!');
+    S.isAffiliate = true;
+    try{ S.dashboard = await affApi('POST','/affiliate/dashboard',{}); }catch(e){ S.dashboard=null; }
+    navigate('dashboard');
+  }catch(e){ toast(e.message,'error'); }
 }
-async function handleSubmitLead(e){
-  e.preventDefault();const el=$('lead-submit-error');if(el)el.classList.add('hidden');
-  const fd=e.target;
-  try{
-    await affApi('POST','/affiliate/submit-lead',{token:localStorage.getItem(AFF_KEY),name:fd.elements['lead_name'].value,email:fd.elements['lead_email'].value||null,phone:fd.elements['lead_phone'].value||null,company:fd.elements['lead_company'].value||null,target_app_slug:fd.elements['lead_target_app'].value,source:'manual_entry',notes:fd.elements['lead_notes'].value||null});
-    toast('Lead submitted!');closeModal();render();
-  }catch(e){if(el){el.textContent=e.message;el.classList.remove('hidden')}else{toast(e.message,'error')}}
-}
-function navigate(v){S.view=v;window.location.hash=v;render()}
+
+// ── render ────────────────────────────────────────────────────────────────
 function render(){
   if(!S.user){
-    if(S.view==='signup'){$('app').innerHTML=signupView();return}
-    $('app').innerHTML=loginView();return
+    $('app').innerHTML = signInView();
+    return;
   }
-  $('app').innerHTML=portalLayout();renderView();
+  if(!S.isAffiliate){
+    $('app').innerHTML = becomeAffiliateView();
+    return;
+  }
+  $('app').innerHTML = portalLayout();
+  renderView();
 }
 function renderView(){
-  const c=$('view-content');if(!c)return;
-  const m={dashboard:renderDashboard,leads:renderLeads,earnings:renderEarnings,settings:renderSettings};
+  const c=$('view-content'); if(!c) return;
+  const m={ dashboard:renderDashboard, leads:renderLeads, earnings:renderEarnings, guide:renderGuide };
   (m[S.view]||renderDashboard)(c);
 }
-function loginView(){
+
+function signInView(){
+  const loginUrl = window.location.origin + '/login';
   return '<div class="auth-page"><div class="auth-card fade-in"><h1>FunnelSwift</h1><p>Affiliate Portal</p>'+
-    '<form onsubmit="handleAffLogin(event)">'+
-    '<div class="form-group"><label>Email</label><input type="email" id="aff-login-email" placeholder="your@email.com" required></div>'+
-    '<div class="form-group"><label>Password</label><input type="password" id="aff-login-pass" required></div>'+
-    '<p id="aff-login-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:12px"></p>'+
-    '<button type="submit" class="btn btn-primary w-full" style="justify-content:center;padding:10px;font-size:14px">Sign In</button></form>'+
-    '<div class="links"><a href="#" onclick="navigate('signup');return false" style="font-size:13px">Become an Affiliate</a>'+
-    '<a href="'+window.location.origin+'" style="font-size:12px;color:#94a3b8">Back to FunnelSwift</a></div></div></div>';
+    '<p style="margin-bottom:20px">Sign in to your FunnelSwift account to access the affiliate portal. There is no separate affiliate login.</p>'+
+    '<a class="btn btn-primary w-full" href="'+loginUrl+'" style="justify-content:center;padding:10px;font-size:14px">Sign in to FunnelSwift</a>'+
+    '<div class="links"><a href="'+window.location.origin+'" style="font-size:12px;color:#94a3b8">Back to FunnelSwift</a></div></div></div>';
 }
-function signupView(){
+
+function becomeAffiliateView(){
+  const un = (S.user && (S.user.name || S.user.email)) || 'you';
   return '<div class="auth-page"><div class="auth-card fade-in"><h1>FunnelSwift</h1><p>Become an Affiliate Partner</p>'+
-    '<form onsubmit="handleAffSignup(event)">'+
-    '<div class="form-row"><div class="form-group"><label>First Name</label><input name="first_name" required></div>'+
-    '<div class="form-group"><label>Last Name</label><input name="last_name" required></div></div>'+
-    '<div class="form-group"><label>Email</label><input name="signup-email" type="email" required></div>'+
-    '<div class="form-group"><label>Password</label><input name="signup-pass" type="password" required minlength="6"></div>'+
-    '<div class="form-group"><label>Choose Apps to Market</label>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">'+
-    '<label><input type="checkbox" name="app_workflowswift" checked> WorkflowSwift</label>'+
-    '<label><input type="checkbox" name="app_incentiveswift" checked> IncentiveSwift</label>'+
-    '<label><input type="checkbox" name="app_coreswift" checked> CoreSwift CRM</label>'+
-    '<label><input type="checkbox" name="app_adaswift" checked> ADASwift</label>'+
-    '<label><input type="checkbox" name="app_missedcall" checked> MissedCall Respondr</label>'+
-    '<label><input type="checkbox" name="app_funnelswift" checked> FunnelSwift</label></div></div>'+
-    '<p id="aff-signup-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:12px"></p>'+
-    '<button type="submit" class="btn btn-primary w-full" style="justify-content:center;padding:10px;font-size:14px">Create Account</button></form>'+
-    '<div class="links"><a href="#" onclick="navigate('login');return false" style="font-size:12px;color:#94a3b8">Already have an account? Sign in</a></div></div></div>';
+    '<p style="margin-bottom:20px">Welcome, '+esc(un)+'. Request affiliate status to start earning a commission on the leads you refer to any Swift product. Approval is automatic.</p>'+
+    '<button class="btn btn-primary w-full" onclick="becomeAffiliate()" style="justify-content:center;padding:10px;font-size:14px">Become an Affiliate</button>'+
+    '<div class="links"><button onclick="affLogout()" style="background:0;border:none;color:#2563eb;cursor:pointer;font-size:13px">Sign out</button></div></div></div>';
 }
+
 function portalLayout(){
-  const n=[{id:'dashboard',label:'Dashboard'},{id:'leads',label:'Submit Leads'},{id:'earnings',label:'Earnings'},{id:'settings',label:'Settings'}];
-  const nh=n.map(i=>'<a class="'+(S.view===i.id?'active':'')+'" onclick="navigate(''+i.id+'')"><span>'+i.label+'</span></a>').join('');
-  const un=S.user?.first_name?S.user.first_name+' '+(S.user.last_name||''):(S.user?.email||'Affiliate');
+  const n=[
+    {id:'dashboard',label:'Dashboard'},
+    {id:'leads',label:'Leads'},
+    {id:'earnings',label:'Earnings'},
+    {id:'guide',label:'Guide'}
+  ];
+  const nh=n.map(function(i){ return '<a class="'+(S.view===i.id?'active':'')+'" onclick="navigate(\''+i.id+'\')"><span>'+i.label+'</span></a>'; }).join('');
+  const un = S.user && S.user.name ? S.user.name : (S.user && S.user.email || 'Affiliate');
   return '<div class="portal"><div class="sidebar"><div class="sidebar-header"><h1>FunnelSwift</h1><div class="sub">Affiliate Portal</div></div>'+
     '<div class="sidebar-nav">'+nh+'</div>'+
     '<div class="sidebar-footer"><span>'+esc(un)+'</span><button onclick="affLogout()">Sign out</button></div></div>'+
     '<div class="main fade-in" id="view-content"></div></div>';
 }
-async function renderDashboard(el){
-  el.innerHTML='<p style="color:#64748b">Loading...</p>';
-  try{
-    const t=localStorage.getItem(AFF_KEY);
-    const [dash,stats]=await Promise.all([affApi('POST','/affiliate/dashboard',{token:t}),affApi('POST','/affiliate/leads-stats',{token:t})]);
-    S.earnings=dash.stats||{};S.payouts=dash.payouts||[];S.links=dash.links||[];S.selections=dash.selections||[];S.leadsStats=stats;
-  }catch(e){toast(e.message,'error')}
-  const s=S.leadsStats||{};const e=S.earnings||{};
-  el.innerHTML='<div class="page-header"><div><h2>Affiliate Dashboard</h2><p>Your performance overview</p></div></div>'+
+
+// ── views ─────────────────────────────────────────────────────────────────
+function renderDashboard(el){
+  const d = S.dashboard || {};
+  el.innerHTML =
+    '<div class="page-header"><div><h2>Affiliate Dashboard</h2><p>Your performance overview</p></div></div>'+
     '<div class="stat-grid">'+
-    '<div class="stat-card"><div class="label">Prospects Submitted</div><div class="value">'+(s.total_prospects||0)+'</div><div class="sub">across all apps</div></div>'+
-    '<div class="stat-card"><div class="label">Total Earned</div><div class="value">'+money(e.total_earned)+'</div><div class="sub">'+money(e.total_pending)+' pending</div></div>'+
-    '<div class="stat-card"><div class="label">Conversions</div><div class="value">'+(e.total_conversions||0)+'</div><div class="sub">'+(e.conversion_rate||'0')+'% rate</div></div>'+
-    '<div class="stat-card"><div class="label">Clicks</div><div class="value">'+(e.total_clicks||0)+'</div></div></div>'+
-    '<div class="card"><h3>Prospects by App</h3>'+
-    (s.by_app&&s.by_app.length?s.by_app.map(a=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9"><span>'+esc(a.app)+'</span><span style="font-weight:600">'+a.count+'</span></div>').join(''):'<p class="text-muted text-sm">No prospects yet</p>')+'</div>'+
-    '<div class="card"><h3>Recent Activity</h3>'+
-    (s.recent_activity&&s.recent_activity.length?s.recent_activity.slice(0,10).map(a=>'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px"><span>'+esc(a.action)+' -> '+esc(a.target||'-')+'</span><span class="text-muted text-sm">'+(a.email?esc(a.email):'')+' '+dstr(a.created_at)+'</span></div>').join(''):'<p class="text-muted text-sm">No recent activity</p>')+'</div>';
+    '<div class="stat-card"><div class="label">Leads Attributed</div><div class="value">'+(d.total_leads||0)+'</div><div class="sub">across all apps</div></div>'+
+    '<div class="stat-card"><div class="label">Total Earned</div><div class="value">'+money(d.total_earnings)+'</div><div class="sub">commissions</div></div>'+
+    '<div class="stat-card"><div class="label">Affiliate ID</div><div class="value" style="font-size:16px">'+esc(d.affiliate_id)+'</div><div class="sub">your referral code</div></div>'+
+    '</div>'+
+    '<div class="card"><h3>About the program</h3>'+
+    '<p class="text-sm" style="color:#475569;line-height:1.6">You earn a commission every time a lead that came through your account upgrades to a paid plan in any Swift product — with no expiry. See the <a onclick="navigate(\'guide\')" style="cursor:pointer;font-weight:600">Guide</a> for full details.</p></div>';
 }
+
 function renderLeads(el){
-  el.innerHTML='<div class="page-header"><div><h2>Submit Leads</h2><p>Capture prospects and route to any SwiftSoftware app</p></div>'+
+  el.innerHTML =
+    '<div class="page-header"><div><h2>Leads</h2><p>Prospects attributed to your account</p></div>'+
     '<div><button class="btn btn-primary" onclick="showLeadForm()">+ New Lead</button></div></div>'+
-    '<div class="card"><h3>Quick Submit</h3><form onsubmit="handleSubmitLead(event)">'+
-    '<div class="form-row"><div class="form-group"><label>Full Name *</label><input name="lead_name" required></div>'+
-    '<div class="form-group"><label>Email</label><input name="lead_email" type="email"></div></div>'+
-    '<div class="form-row"><div class="form-group"><label>Phone</label><input name="lead_phone"></div>'+
-    '<div class="form-group"><label>Company</label><input name="lead_company"></div></div>'+
-    '<div class="form-group"><label>Target App *</label><select name="lead_target_app" required>'+
-    '<option value="">Select app...</option>'+
-    '<option value="workflowswift">WorkflowSwift</option><option value="incentiveswift">IncentiveSwift</option>'+
-    '<option value="coreswift">CoreSwift CRM</option><option value="adaswift">ADASwift</option>'+
-    '<option value="missedcall">MissedCall Respondr</option><option value="funnelswift">FunnelSwift</option></select></div>'+
-    '<div class="form-group"><label>Notes</label><textarea name="lead_notes" rows="2"></textarea></div>'+
-    '<p id="lead-submit-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:8px"></p>'+
-    '<button type="submit" class="btn btn-success">Submit Lead</button></form></div>'+
-    '<div class="card"><h3>Your Submitted Prospects</h3><div id="prospects-list"><p class="text-muted text-sm">Loading...</p></div></div>';
+    '<div class="card"><h3>Your Leads</h3><div id="prospects-list"><p class="text-muted text-sm">Loading...</p></div></div>';
   loadProspects();
 }
+
 function showLeadForm(){
   const a=['workflowswift','incentiveswift','coreswift','adaswift','missedcall','funnelswift'];
-  const o=a.map(x=>'<option value="'+x+'">'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>').join('');
-  showModal('<div class="modal-header"><h2>Submit New Lead</h2><button class="btn btn-secondary btn-sm" onclick="closeModal()">X</button></div>'+
+  const o=a.map(function(x){ return '<option value="'+x+'">'+x.charAt(0).toUpperCase()+x.slice(1)+'</option>'; }).join('');
+  showModal(
+    '<div class="modal-header"><h2>Submit New Lead</h2><button class="btn btn-secondary btn-sm" onclick="closeModal()">X</button></div>'+
     '<div class="modal-body"><form onsubmit="handleSubmitLead(event)">'+
     '<div class="form-group"><label>Full Name *</label><input name="lead_name" required></div>'+
     '<div class="form-row"><div class="form-group"><label>Email</label><input name="lead_email" type="email"></div>'+
     '<div class="form-group"><label>Phone</label><input name="lead_phone"></div></div>'+
-    '<div class="form-row"><div class="form-group"><label>Company</label><input name="lead_company"></div>'+
-    '<div class="form-group"><label>Target App *</label><select name="lead_target_app" required><option value="">Select...</option>'+o+'</select></div></div>'+
     '<div class="form-group"><label>Notes</label><textarea name="lead_notes" rows="2"></textarea></div>'+
     '<p id="lead-submit-error" class="hidden" style="color:#ef4444;font-size:13px;margin-bottom:8px"></p>'+
     '<div class="modal-footer" style="padding:0;padding-top:14px;border-top:1px solid #e2e8f0">'+
     '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>'+
-    '<button type="submit" class="btn btn-success">Submit Lead</button></div></form></div>');
+    '<button type="submit" class="btn btn-success">Submit Lead</button></div></form></div>'
+  );
 }
+
+async function handleSubmitLead(e){
+  e.preventDefault(); const el=$('lead-submit-error'); if(el) el.classList.add('hidden');
+  const fd=e.target;
+  const custom = { notes: fd.elements['lead_notes'].value || null };
+  try{
+    await affApi('POST','/affiliate/submit-lead',{
+      affiliate_id: (S.dashboard && S.dashboard.affiliate_id) || null,
+      name: fd.elements['lead_name'].value,
+      email: fd.elements['lead_email'].value || null,
+      phone: fd.elements['lead_phone'].value || null,
+      custom_fields: custom
+    });
+    toast('Lead submitted!'); closeModal(); navigate('leads');
+  }catch(err){ if(el){ el.textContent=err.message; el.classList.remove('hidden'); } else { toast(err.message,'error'); } }
+}
+
 async function loadProspects(){
   try{
-    const r=await affApi('POST','/affiliate/leads',{token:localStorage.getItem(AFF_KEY)});
-    S.prospects=r.prospects||[];const el=$('prospects-list');
-    if(!el)return;
-    if(!S.prospects.length){el.innerHTML='<p class="text-muted text-sm" style="padding:16px;text-align:center">No prospects yet.</p>';return}
-    el.innerHTML=S.prospects.map(p=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">'+
-      '<div><strong>'+esc(p.name)+'</strong><br><span class="text-muted text-sm">'+esc(p.email||'')+' '+(p.phone?esc(p.phone):'')+'</span></div>'+
-      '<div style="text-align:right"><span class="badge badge-blue">'+esc(p.target_app_slug)+'</span><br><span class="badge '+(p.status==='pending'?'badge-yellow':'badge-green')+'">'+esc(p.status)+'</span></div></div>').join('');
-  }catch(e){toast(e.message,'error')}
+    const r = await affApi('POST','/affiliate/leads',{});
+    S.prospects = Array.isArray(r) ? r : (r.leads || []);
+    const el=$('prospects-list'); if(!el) return;
+    if(!S.prospects.length){ el.innerHTML='<p class="text-muted text-sm" style="padding:16px;text-align:center">No leads yet.</p>'; return; }
+    el.innerHTML = S.prospects.map(function(p){
+      const st = p.status==='converted' ? 'badge-green' : (p.status==='new' ? 'badge-blue' : 'badge-yellow');
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">'+
+        '<div><strong>'+esc(p.name)+'</strong><br><span class="text-muted text-sm">'+esc(p.email||'')+' '+(p.phone?esc(p.phone):'')+'</span></div>'+
+        '<div style="text-align:right"><span class="badge '+st+'">'+esc(p.status)+'</span><br><span class="text-muted text-sm">'+dstr(p.created_at)+'</span></div></div>';
+    }).join('');
+  }catch(e){ toast(e.message,'error'); }
 }
-function renderEarnings(el){
-  const e=S.earnings||{};
-  el.innerHTML='<div class="page-header"><div><h2>Earnings and Payouts</h2></div></div>'+
-    '<div class="stat-grid">'+
-    '<div class="stat-card"><div class="label">Earned</div><div class="value">'+money(e.total_earned)+'</div></div>'+
-    '<div class="stat-card"><div class="label">Pending</div><div class="value">'+money(e.total_pending)+'</div></div>'+
-    '<div class="stat-card"><div class="label">Paid Out</div><div class="value">'+money(e.total_paid)+'</div></div>'+
-    '<div class="stat-card"><div class="label">Conversions</div><div class="value">'+(e.total_conversions||0)+'</div></div></div>'+
-    '<div class="card"><h3>Payout History</h3>'+
-    (S.payouts&&S.payouts.length?S.payouts.map(p=>'<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9"><span>'+money(p.amount)+'</span><span class="badge '+(p.status==='paid'?'badge-green':'badge-yellow')+'">'+esc(p.status)+'</span><span class="text-muted text-sm">'+(p.paid_at?dstr(p.paid_at):'-')+'</span></div>').join(''):'<p class="text-muted text-sm">No payouts yet</p>')+'</div>';
-}
-function renderSettings(el){
-  el.innerHTML='<div class="page-header"><div><h2>Settings</h2><p>Your affiliate profile</p></div></div>'+
-    (S.user?'<div class="card"><h3>Account Info</h3>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
-    '<div><span class="text-muted text-sm">Affiliate ID</span><div style="font-weight:600">'+esc(S.user.affiliate_id)+'</div></div>'+
-    '<div><span class="text-muted text-sm">Email</span><div>'+esc(S.user.email)+'</div></div>'+
-    '<div><span class="text-muted text-sm">Name</span><div>'+esc(S.user.first_name+' '+S.user.last_name)+'</div></div>'+
-    '<div><span class="text-muted text-sm">Min Payout</span><div>'+money(S.user.min_payout)+'</div></div></div></div>':'')+
-    '<div class="card"><h3>Marketing Selections</h3>'+
-    '<div id="app-selections">'+
-    (S.selections&&S.selections.length?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+S.selections.map(s=>'<span class="badge badge-blue">'+esc(s)+'</span>').join('')+'</div>':'<p class="text-muted text-sm">None selected</p>')+
-    '</div></div>';
-}
-window.addEventListener('DOMContentLoaded',function(){
-  var h=window.location.hash.replace('#','');
-  if(h&&h!=='login')S.view=h;
-  render();
-});
-window.addEventListener('hashchange',function(){
-  var h=window.location.hash.replace('#','');
-  if(h&&h!==S.view)navigate(h);
-});
 
+function renderEarnings(el){
+  const d = S.dashboard || {};
+  el.innerHTML =
+    '<div class="page-header"><div><h2>Earnings</h2><p>Your commission summary</p></div></div>'+
+    '<div class="stat-grid">'+
+    '<div class="stat-card"><div class="label">Total Earned</div><div class="value">'+money(d.total_earnings)+'</div><div class="sub">all-time commissions</div></div>'+
+    '<div class="stat-card"><div class="label">Leads</div><div class="value">'+(d.total_leads||0)+'</div><div class="sub">attributed to you</div></div>'+
+    '</div>'+
+    '<div class="card"><h3>How you get paid</h3>'+
+    '<p class="text-sm" style="color:#475569;line-height:1.6">Commissions are credited automatically when a lead upgrades to a paid plan. Payouts are processed on the admin side. See the <a onclick="navigate(\'guide\')" style="cursor:pointer;font-weight:600">Guide</a> for payout rates and how commission works.</p></div>';
+}
+
+async function renderGuide(el){
+  el.innerHTML='<div class="page-header"><div><h2>Affiliate Guide</h2><p>How the program works</p></div></div><div id="guide-body"><p style="color:#64748b">Loading guide...</p></div>';
+  try{
+    const t=getToken();
+    const r=await fetch(API+'/affiliate/guide',{method:'GET',headers:t?{'Authorization':'Bearer '+t}:{}});
+    if(!r.ok){ const d=await r.json().catch(function(){return{};}); throw new Error(d.error||d.message||'Forbidden'); }
+    const html=await r.text();
+    $('guide-body').innerHTML=html;
+  }catch(e){
+    $('guide-body').innerHTML='<div class="card"><p style="color:#ef4444">'+esc(e.message)+'</p></div>';
+  }
+}
+
+// ── init ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', function(){
+  var h=window.location.hash.replace('#','');
+  if(h && ['dashboard','leads','earnings','guide'].indexOf(h)>=0) S.view=h;
+  bootstrap();
+});
+window.addEventListener('hashchange', function(){
+  var h=window.location.hash.replace('#','');
+  if(h && ['dashboard','leads','earnings','guide'].indexOf(h)>=0 && h!==S.view) navigate(h);
+});
 </script>
 </body>
 </html>
