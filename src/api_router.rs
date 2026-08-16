@@ -511,6 +511,10 @@ pub fn create_router(state: AppState) -> Router {
             post(affiliate_product_handler::handle_cross_app_plan_sync),
         )
         .route(
+            "/api/v1/internal/affiliate/upgrade-event",
+            post(affiliate_tracking_handler::handle_affiliate_upgrade_event),
+        )
+        .route(
             "/api/v1/admin/email-templates/types",
             get(email_template_handler::list_template_types),
         )
