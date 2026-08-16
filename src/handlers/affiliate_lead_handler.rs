@@ -7,25 +7,32 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub async fn submit_affiliate_lead(
+    auth: AuthUser,
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    // Resolve the tenant from the affiliate record — never trust a body-supplied tenant_id.
-    let affiliate_id = payload["affiliate_id"]
-        .as_str()
-        .or_else(|| payload["ref"].as_str())
-        .ok_or_else(|| AppError::BadRequest("affiliate_id required".into()))?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let tenant_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT tenant_id FROM affiliates WHERE id = $1")
-            .bind(affiliate_id)
+    // Attribution anchor is the authenticated user account. Resolve the affiliate
+    // from the user — never trust a body-supplied affiliate_id.
+    let affiliate: Option<String> =
+        sqlx::query_scalar("SELECT id FROM affiliates WHERE email = $1 AND tenant_id = $2")
+            .bind(&auth.email)
+            .bind(tenant_id)
             .fetch_optional(&state.pool)
             .await?;
-    let tenant_id = tenant_id.ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    if affiliate.is_none() {
+        return Err(AppError::Forbidden(
+            "Request affiliate status before submitting leads".into(),
+        ));
+    }
 
+    // Tag the lead with the referring user account so attribution resolves.
+    let created_by = Uuid::parse_str(&auth.user_id).ok();
     let id = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO leads (id, tenant_id, name, email, phone, source, status, custom_fields) VALUES ($1, $2, $3, $4, $5, 'affiliate', 'new', $6)",
+        "INSERT INTO leads (id, tenant_id, name, email, phone, source, status, custom_fields, created_by) VALUES ($1, $2, $3, $4, $5, 'affiliate', 'new', $6, $7)",
     )
     .bind(id)
     .bind(tenant_id)
@@ -33,6 +40,7 @@ pub async fn submit_affiliate_lead(
     .bind(payload["email"].as_str().unwrap_or(""))
     .bind(payload["phone"].as_str().unwrap_or(""))
     .bind(&payload["custom_fields"])
+    .bind(created_by)
     .execute(&state.pool)
     .await?;
     Ok((
