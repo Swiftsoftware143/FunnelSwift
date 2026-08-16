@@ -459,7 +459,7 @@ pub fn create_router(state: AppState) -> Router {
                 .post(checkout_handler::upsert_payment_provider),
         )
         .route(
-            "/api/v1/payment-providers/{provider_type}",
+            "/api/v1/payment-providers/:provider_type",
             delete(checkout_handler::delete_payment_provider),
         )
         .route(

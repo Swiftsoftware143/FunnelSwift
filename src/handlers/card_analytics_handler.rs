@@ -311,14 +311,19 @@ pub struct EventTypeRow {
 }
 
 pub async fn get_card_analytics(
+    auth: crate::auth::middleware::AuthUser,
     Path(card_id): Path<Uuid>,
     State(state): State<AppState>,
 ) -> AppResult<Json<CardAnalyticsResponse>> {
-    // Verify card exists
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id=$1)")
-        .bind(card_id)
-        .fetch_one(&state.pool)
-        .await?;
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // Verify the card exists AND belongs to the caller's tenant
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id=$1 AND tenant_id=$2)",
+    )
+    .bind(card_id)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await?;
 
     if !exists {
         return Err(AppError::NotFound("Card not found".into()));

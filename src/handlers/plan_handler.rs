@@ -456,7 +456,7 @@ pub async fn admin_update_plan_features(
                 .execute(&state.pool)
                 .await?;
         } else if templates.is_null() {
-            sqlx::query("UPDATE plans SET allowed_template_ids = NULL WHERE id = $2")
+            sqlx::query("UPDATE plans SET allowed_template_ids = NULL WHERE id = $1")
                 .bind(id)
                 .execute(&state.pool)
                 .await?;

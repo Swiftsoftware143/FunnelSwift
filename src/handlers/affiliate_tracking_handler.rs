@@ -11,12 +11,13 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 pub async fn list_affiliate_links(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, Option<String>, String, Option<f64>, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, affiliate_id, target_software, tracking_code, commission_rate, created_at FROM affiliate_links ORDER BY created_at DESC"
-    ).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT al.id, al.affiliate_id, al.target_software, al.tracking_code, al.commission_rate, al.created_at FROM affiliate_links al JOIN affiliates a ON a.id = al.affiliate_id WHERE a.tenant_id = $1 ORDER BY al.created_at DESC"
+    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     let links: Vec<Value> = rows
         .iter()
         .map(|r| json!({"id": r.0.to_string(), "affiliate_id": r.1, "tracking_code": r.3}))
@@ -45,12 +46,13 @@ pub async fn get_affiliate_stats(
     Ok(Json(json!({"total_clicks": 0, "total_conversions": 0})))
 }
 pub async fn list_conversions(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, Option<Uuid>, Option<String>, Option<Uuid>, Option<f64>, Option<f64>, Option<String>, Option<chrono::NaiveDateTime>)> = sqlx::query_as(
-        "SELECT id, click_id, affiliate_user_id, customer_id, amount, commission, status, converted_at FROM affiliate_conversions ORDER BY converted_at DESC LIMIT 50"
-    ).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT ac.id, ac.click_id, ac.affiliate_user_id, ac.customer_id, ac.amount, ac.commission, ac.status, ac.converted_at FROM affiliate_conversions ac JOIN affiliate_users au ON au.user_id = ac.affiliate_user_id WHERE au.tenant_id = $1 ORDER BY ac.converted_at DESC LIMIT 50"
+    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     let items: Vec<Value> = rows
         .iter()
         .map(|r| json!({"id": r.0.to_string(), "amount": r.4, "commission": r.5, "status": r.6}))
