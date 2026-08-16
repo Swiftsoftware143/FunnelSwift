@@ -191,10 +191,6 @@ pub async fn track_card_event(
             .clone()
             .unwrap_or_default()
             .to_lowercase();
-        eprintln!(
-            "DEBUG classify_referrer called with: '{}' device={:?}",
-            ref_url, payload.device_type
-        );
         if let Some((src, med)) = classify_referrer(&ref_url, &payload.device_type) {
             utm_source = Some(src);
             utm_medium = Some(med);
@@ -230,7 +226,7 @@ pub async fn track_card_event(
     .bind(Option::<String>::None) // session_id
     .execute(&state.pool)
     .await
-    .map_err(|e| eprintln!("track_card_event insert error: {:?}", e))
+    .map_err(|e| tracing::error!("track_card_event insert error: {:?}", e))
     .unwrap_or_default();
 
     // Upsert daily stats
@@ -254,7 +250,7 @@ pub async fn track_card_event(
     .bind(&utm_campaign)
     .execute(&state.pool)
     .await
-    .map_err(|e| eprintln!("daily_stats insert error: {:?}", e))
+    .map_err(|e| tracing::error!("daily_stats insert error: {:?}", e))
     .unwrap_or_default();
 
     (

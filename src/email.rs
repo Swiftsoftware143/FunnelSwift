@@ -109,7 +109,6 @@ fn get_inline(
 ) -> (String, Option<String>, Option<String>) {
     let name = vars.get("name").unwrap_or(&"there");
     let email = vars.get("email").unwrap_or(&"");
-    let password = vars.get("password").unwrap_or(&"");
     let token = vars.get("token").unwrap_or(&"");
     let plan_name = vars.get("plan_name").unwrap_or(&"a plan");
     let app_url = vars
@@ -120,8 +119,8 @@ fn get_inline(
         "welcome" => {
             let subject = "Welcome to FunnelSwift!".to_string();
             let text = format!(
-                "Welcome to FunnelSwift, {0}!\n\nYour account has been created successfully.\n\nHere are your login credentials:\n\nEmail: {1}\nPassword: {2}\n\nLogin at: {3}/login\n\nNext steps:\n- Create your first funnel\n- Set up your pages\n- Connect your domain\n- Launch your campaign\n\nBest regards,\nThe FunnelSwift Team",
-                name, email, password, app_url
+                "Welcome to FunnelSwift, {0}!\n\nYour account has been created successfully.\n\nEmail: {1}\n\nLogin at: {2}/login\n\nNext steps:\n- Create your first funnel\n- Set up your pages\n- Connect your domain\n- Launch your campaign\n\nBest regards,\nThe FunnelSwift Team",
+                name, email, app_url
             );
             (subject, Some(text), None)
         }
@@ -154,12 +153,10 @@ pub async fn send_welcome_email(
     aid: Uuid,
     to: &str,
     name: &str,
-    password: &str,
 ) -> Result<(), String> {
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("email", to);
-    vars.insert("password", password);
     vars.insert("app_url", "https://app.funnelswift.net");
     send_template_email(pool, aid, to, "welcome", &vars).await
 }

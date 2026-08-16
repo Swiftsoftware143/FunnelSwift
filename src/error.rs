@@ -58,7 +58,6 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             AppError::Database(e) => {
                 tracing::error!("Database error: {}", e);
-                let _ = std::fs::write("/tmp/funnel_error.log", format!("DB ERROR: {}\n", e));
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Database error".to_string(),
