@@ -74,10 +74,38 @@ Transactional emails (welcome, purchase confirmation) use database-stored templa
 
 | Template Type | When Sent | Merge Fields |
 |---|---|---|
-| `welcome` | Account created | `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}` |
+| `welcome` | Account created | `{{name}}`, `{{email}}`, `{{app_url}}` |
 | `purchase_confirmed` | Payment confirmed | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
 
 Admins can edit these templates in the admin panel — modify subject lines, HTML body, or plain text fallback. Merge field buttons insert placeholders automatically.
+
+## Affiliate Program
+
+### Become an Affiliate
+Affiliates are regular FunnelSwift users — there is **no separate login**. To opt in:
+
+1. Log in to your normal account.
+2. Go to **Affiliate** in the portal and click **Become an Affiliate**.
+3. Accept the terms — your account is **auto-approved** (no manual review).
+4. The affiliate dashboard (links, leads, earnings) unlocks in your portal.
+
+### Your Payout Rate
+Your payout % is tied to the plan your account is on:
+
+| Plan | Payout % |
+|---|---|
+| Free (Capture / Kinetic) | 20% |
+| Starter / Pro | 30% |
+| Suite | 40% |
+| Agency | 50% |
+
+Upgrade your plan and your payout rate follows automatically.
+
+### Promote Products
+1. Browse available products (each Swift plan is a commissionable product).
+2. Pick one and generate a **tracking link**.
+3. Share the link — leads and conversions from it are attributed to you.
+4. Track leads and earnings from your affiliate dashboard.
 
 ## Tags & Tag Groups
 Organize leads by categories. Tags can be grouped into: Source, Status, Events, Services, Engagement, Custom.
