@@ -30,14 +30,28 @@ pub async fn affiliate_signup(
         ));
     }
 
+    // Effective payout = the user's active plan's commission_rate (admin-adjustable per plan).
+    let plan_rate: Option<f64> = sqlx::query_scalar(
+        "SELECT p.commission_rate FROM plans p
+         JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
+         WHERE tps.tenant_id = $1 AND tps.status = 'active'
+         ORDER BY tps.start_date DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+    let commission_rate = plan_rate.unwrap_or(20.0);
+
     let affiliate_id = Uuid::new_v4().to_string().replace('-', "")[..8].to_uppercase();
     sqlx::query(
-        "INSERT INTO affiliates (id, tenant_id, name, email, commission_rate, is_active) VALUES ($1, $2, $3, $4, 10.0, true)",
+        "INSERT INTO affiliates (id, tenant_id, name, email, commission_rate, is_active) VALUES ($1, $2, $3, $4, $5, true)",
     )
     .bind(&affiliate_id)
     .bind(tenant_id)
     .bind(&auth.email)
     .bind(&auth.email)
+    .bind(commission_rate)
     .execute(&state.pool)
     .await?;
 

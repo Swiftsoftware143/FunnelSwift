@@ -23,6 +23,7 @@ async fn sync_plan_to_affiliate_product(
     price: f64,
     tenant_id: Option<uuid::Uuid>,
     is_active: bool,
+    commission_rate: f64,
 ) -> Result<(), crate::error::AppError> {
     // Look up the FunnelSwift Plans category; fall back to any available category
     let category_id: Option<uuid::Uuid> = match sqlx::query_scalar(
@@ -65,20 +66,21 @@ async fn sync_plan_to_affiliate_product(
                 name = $1,
                 description = $2,
                 price = $3,
-                is_active = $4,
+                default_commission_rate = $4,
+                is_active = $5,
                 updated_at = NOW()
-            WHERE plan_id = $5"#,
+            WHERE plan_id = $6"#,
         )
         .bind(name)
         .bind(&description)
         .bind(price)
+        .bind(commission_rate)
         .bind(is_active)
         .bind(plan_id)
         .execute(pool)
         .await?;
     } else {
         // Insert new
-        let default_commission: f64 = 20.0; // 20% default
         sqlx::query(
             r#"INSERT INTO affiliate_products
                 (tenant_id, name, description, price, default_commission_rate, is_active, category_id, plan_id, owner_name, product_type, source_app)
@@ -88,7 +90,7 @@ async fn sync_plan_to_affiliate_product(
         .bind(name)
         .bind(&description)
         .bind(price)
-        .bind(default_commission)
+        .bind(commission_rate)
         .bind(category_id)
         .bind(plan_id)
         .execute(pool)
@@ -165,9 +167,25 @@ pub async fn create_plan(
         .execute(&state.pool)
     .await?;
 
+    if let Some(rate) = req.commission_rate {
+        sqlx::query("UPDATE plans SET commission_rate = $1 WHERE id = $2")
+            .bind(rate)
+            .bind(plan_id)
+            .execute(&state.pool)
+            .await?;
+    }
+
     // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(&state.pool, plan_id, &req.name, req.price, None, true)
-        .await;
+    let _ = sync_plan_to_affiliate_product(
+        &state.pool,
+        plan_id,
+        &req.name,
+        req.price,
+        None,
+        true,
+        req.commission_rate.unwrap_or(20.0),
+    )
+    .await;
 
     Ok((
         StatusCode::CREATED,
@@ -207,10 +225,11 @@ pub async fn update_plan(
     let sync_price = req.price.unwrap_or(existing.price);
     let sync_slug = req.slug.clone().unwrap_or_else(|| existing.slug.clone());
 
+    let sync_rate = req.commission_rate.unwrap_or(20.0);
     sqlx::query(
         r#"UPDATE plans SET name=$1, slug=$2, price=$3, purchase_url=$4, max_leads=$5, max_tags=$6,
-           has_dual_routing=$7, has_multi_tenant=$8, has_white_label=$9, payment_provider=$10, features=$11, updated_at=NOW()
-           WHERE id=$12"#,
+           has_dual_routing=$7, has_multi_tenant=$8, has_white_label=$9, payment_provider=$10, features=$11, commission_rate=$12, updated_at=NOW()
+           WHERE id=$13"#,
     )
     .bind(&sync_name)
     .bind(&sync_slug)
@@ -223,13 +242,22 @@ pub async fn update_plan(
     .bind(req.has_white_label.unwrap_or(existing.has_white_label))
     .bind(req.payment_provider.or(existing.payment_provider))
     .bind(req.features.or(existing.features))
+    .bind(sync_rate)
     .bind(id)
     .execute(&state.pool)
     .await?;
 
     // Auto-sync to affiliate products
-    let _ =
-        sync_plan_to_affiliate_product(&state.pool, id, &sync_name, sync_price, None, true).await;
+    let _ = sync_plan_to_affiliate_product(
+        &state.pool,
+        id,
+        &sync_name,
+        sync_price,
+        None,
+        true,
+        sync_rate,
+    )
+    .await;
 
     Ok(Json(json!({"message": "Plan updated"})))
 }
@@ -339,6 +367,10 @@ pub async fn admin_create_plan_json(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let features = req.get("features").cloned();
+    let commission_rate = req
+        .get("commission_rate")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(20.0);
 
     if name.is_empty() {
         return Err(AppError::BadRequest("Plan name is required".into()));
@@ -363,8 +395,25 @@ pub async fn admin_create_plan_json(
     .execute(&state.pool)
     .await?;
 
+    if let Some(rate) = req.get("commission_rate").and_then(|v| v.as_f64()) {
+        sqlx::query("UPDATE plans SET commission_rate = $1 WHERE id = $2")
+            .bind(rate)
+            .bind(plan_id)
+            .execute(&state.pool)
+            .await?;
+    }
+
     // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(&state.pool, plan_id, &name, price, None, true).await;
+    let _ = sync_plan_to_affiliate_product(
+        &state.pool,
+        plan_id,
+        &name,
+        price,
+        None,
+        true,
+        commission_rate,
+    )
+    .await;
 
     Ok((
         StatusCode::CREATED,
