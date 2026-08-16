@@ -89,7 +89,7 @@ Categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
 
 `POST /api/v1/internal/sync-affiliate-plan`
 
-Internal endpoint called by other Swift apps to sync plan changes. Protected by `api_key` field matching `INTERNAL_SYNC_KEY`.
+Internal endpoint called by other Swift apps to sync plan changes. Protected by the `x-internal-key` header matching `INTERNAL_SYNC_KEY`.
 
 **Payload:**
 ```json
@@ -126,6 +126,21 @@ All 5 apps now fire async sync events on plan create/update/delete:
 - IncentiveSwift (`source_app: incentiveswift`)
 
 Each app needs `FUNNELSWIFT_URL` set in its environment (default `http://localhost:8080`).
+
+## Per-Plan Affiliate Payout
+
+Each plan carries a `commission_rate` — the payout % an affiliate earns on a sale. This is **admin-adjustable per plan**.
+
+| Plan | Default Payout % |
+|---|---|
+| Capture Free / Kinetic Free | 20% |
+| Capture Starter / Kinetic Pro | 30% |
+| Suite | 40% |
+| Agency / Scale | 50% |
+
+**To change a plan's payout:** set the plan's `commission_rate` (e.g. `PUT /api/v1/plans/:id` with `{"commission_rate": 50}`). The rate flows to `affiliate_products` on sync, and an affiliate's effective payout is stamped from their plan's rate at signup — change the plan's rate and every affiliate on that plan inherits it.
+
+> **Note:** the `affiliate_tiers` table (name/rate/min-sales thresholds) is a separate legacy concept. Payout is driven by the plan's `commission_rate`, not tiers.
 
 ## MultiDirectory Integration (CTA Slots)
 
