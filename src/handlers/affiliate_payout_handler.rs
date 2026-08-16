@@ -193,7 +193,7 @@ pub async fn calculate_affiliate_tier(
 ) -> AppResult<Json<serde_json::Value>> {
     // Return the affiliate's actual payout rate (plan-derived) plus accrued earnings.
     let row: Option<(Option<f64>, Option<f64>)> = sqlx::query_as(
-        "SELECT commission_rate, (SELECT SUM(amount) FROM affiliate_commissions WHERE affiliate_id = $1) FROM affiliates WHERE id = $1",
+        "SELECT commission_rate::float8, (SELECT SUM(amount)::float8 FROM affiliate_commissions WHERE affiliate_id = $1) FROM affiliates WHERE id = $1",
     )
     .bind(&id)
     .fetch_optional(&state.pool)

@@ -32,7 +32,7 @@ pub async fn affiliate_signup(
 
     // Effective payout = the user's active plan's commission_rate (admin-adjustable per plan).
     let plan_rate: Option<f64> = sqlx::query_scalar(
-        "SELECT p.commission_rate FROM plans p
+        "SELECT p.commission_rate::float8 FROM plans p
          JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
          WHERE tps.tenant_id = $1 AND tps.status = 'active'
          ORDER BY tps.start_date DESC LIMIT 1",
@@ -81,7 +81,7 @@ pub async fn affiliate_portal_dashboard(
             .ok_or_else(|| AppError::NotFound("Affiliate account not found".into()))?;
 
     let row: (i64, Option<f64>) = sqlx::query_as(
-        "SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM affiliate_commissions WHERE affiliate_id = $1",
+        "SELECT COUNT(*), COALESCE(SUM(amount), 0)::float8 FROM affiliate_commissions WHERE affiliate_id = $1",
     )
     .bind(&affiliate_id)
     .fetch_one(&state.pool)

@@ -16,7 +16,7 @@ pub async fn list_affiliate_links(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, Option<String>, String, Option<f64>, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT al.id, al.affiliate_id, al.target_software, al.tracking_code, al.commission_rate, al.created_at FROM affiliate_links al JOIN affiliates a ON a.id = al.affiliate_id WHERE a.tenant_id = $1 ORDER BY al.created_at DESC"
+        "SELECT al.id, al.affiliate_id, al.target_software, al.tracking_code, al.commission_rate::float8, al.created_at FROM affiliate_links al JOIN affiliates a ON a.id = al.affiliate_id WHERE a.tenant_id = $1 ORDER BY al.created_at DESC"
     ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     let links: Vec<Value> = rows
         .iter()
@@ -32,7 +32,7 @@ pub async fn create_affiliate_link(
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     // Resolve the affiliate from the authenticated user — never trust a body affiliate_id.
     let (affiliate_id, commission_rate): (String, Option<f64>) = sqlx::query_as(
-        "SELECT id, commission_rate FROM affiliates WHERE email = $1 AND tenant_id = $2",
+        "SELECT id, commission_rate::float8 FROM affiliates WHERE email = $1 AND tenant_id = $2",
     )
     .bind(&auth.email)
     .bind(tenant_id)
@@ -86,7 +86,7 @@ pub async fn track_conversion(
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     // Resolve the affiliate from the authenticated user (their plan-derived rate is used).
     let (affiliate_id, rate): (String, Option<f64>) = sqlx::query_as(
-        "SELECT id, commission_rate FROM affiliates WHERE email = $1 AND tenant_id = $2",
+        "SELECT id, commission_rate::float8 FROM affiliates WHERE email = $1 AND tenant_id = $2",
     )
     .bind(&auth.email)
     .bind(tenant_id)
@@ -188,7 +188,7 @@ pub async fn handle_affiliate_upgrade_event(
         return Ok(Json(json!({"status": "no-affiliate", "email": email})));
     };
     let affiliate: Option<(String, Option<f64>)> = sqlx::query_as(
-        "SELECT id, commission_rate FROM affiliates WHERE user_id = $1 AND is_active = true LIMIT 1",
+        "SELECT id, commission_rate::float8 FROM affiliates WHERE user_id = $1 AND is_active = true LIMIT 1",
     )
     .bind(user_id)
     .fetch_optional(&state.pool)
