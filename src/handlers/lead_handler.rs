@@ -552,6 +552,7 @@ pub async fn export_leads(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_flag(&state, tenant_id, "has_import_export", "Lead export").await?;
 
     let leads = sqlx::query_as::<_, Lead>(
         "SELECT * FROM leads WHERE tenant_id = $1 ORDER BY created_at DESC",

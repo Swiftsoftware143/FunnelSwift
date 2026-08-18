@@ -116,6 +116,16 @@ pub async fn create_card(
         .as_str()
         .or(body["card_type"].as_str())
         .unwrap_or("bio-link");
+    // Mini funnels are a plan-gated card type (has_mini_funnels).
+    if card_type == "mini_funnel" {
+        crate::features::enforce_feature_flag(
+            &state,
+            tenant_id,
+            "has_mini_funnels",
+            "Mini funnels",
+        )
+        .await?;
+    }
     let tagline = body["tagline"].as_str().unwrap_or("");
     let meta_desc = body["meta_description"].as_str().unwrap_or("");
     let avatar = body["avatar_url"].as_str();
@@ -218,6 +228,7 @@ pub async fn create_button(
     if !owns_card {
         return Err(AppError::NotFound("Card not found".into()));
     }
+    crate::features::enforce_action_button_limit(&state, tenant_id, card_id).await?;
     let id = Uuid::new_v4();
     let label = body["label"].as_str().unwrap_or("Button");
     let url = body["url"].as_str().unwrap_or("");
@@ -364,7 +375,13 @@ pub async fn set_custom_domain(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+    crate::features::enforce_feature_limit(
+        &state,
+        tenant_id,
+        "max_custom_domains",
+        "Custom domains",
+    )
+    .await?;
     let val = body["custom_domain"].as_str().unwrap_or("");
     if !val.is_empty()
         && (val.contains("://")

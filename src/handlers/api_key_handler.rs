@@ -50,6 +50,7 @@ pub async fn create_api_key(
         .map_err(|_| AppError::BadRequest("Invalid user_id in token".into()))?;
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant_id in token".into()))?;
+    features::enforce_feature_flag(&state, tenant_id, "has_api", "API access").await?;
     features::enforce_feature_limit(&state, tenant_id, "max_api_keys", "API keys").await?;
 
     let name = req.name.clone().unwrap_or_else(|| "default".into());

@@ -104,6 +104,7 @@ pub async fn create_webhook(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     validate_webhook_url(&req.url)?;
+    features::enforce_feature_flag(&state, tenant_id, "has_webhooks", "Webhooks").await?;
     features::enforce_feature_limit(&state, tenant_id, "max_webhooks", "Webhooks").await?;
     let webhook_id = Uuid::new_v4();
 
