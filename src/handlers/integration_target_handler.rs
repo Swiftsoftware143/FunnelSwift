@@ -112,8 +112,18 @@ pub async fn create_integration_target(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    features::enforce_feature_limit(&state, tenant_id, "max_integrations", "Integration targets")
+    // Admin/owner bypass: the tenant admin configuring the Integration Center must always be
+    // able to create the core connection (e.g. Mailgun), even on a plan with max_integrations=0.
+    // Regular users remain gated by `max_integrations`.
+    if !auth.is_admin {
+        features::enforce_feature_limit(
+            &state,
+            tenant_id,
+            "max_integrations",
+            "Integration targets",
+        )
         .await?;
+    }
     let target_id = Uuid::new_v4();
     let events = req.events.unwrap_or_default();
 
