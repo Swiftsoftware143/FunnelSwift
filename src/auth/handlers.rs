@@ -415,8 +415,7 @@ pub async fn forgot_password(
             .execute(&state.pool)
             .await?;
 
-        let email_aid = user.tenant_id;
-        match send_reset_email(&state.pool, email_aid, &user.email, &token, &user.name).await {
+        match send_reset_email(&state.pool, user.tenant_id, &user.email, &token, &user.name).await {
             Ok(_) => tracing::info!("Password reset email sent to {}", user.email),
             Err(e) => tracing::error!(
                 "Failed to send password reset email to {}: {}",

@@ -2,12 +2,27 @@
 //!
 //! Templates are stored in `email_templates` with html_body (HTML) and body (plain text).
 //! Falls back to hardcoded inline templates when DB template not found.
-//! Direct API send (no queue) — uses EMAIL_API_URL / EMAIL_API_KEY / EMAIL_FROM env vars.
+//!
+//! Provider resolution (per-tenant → env fallback):
+//!   - `send_template_email_for_tenant` resolves the tenant's Mailgun/SMTP/email config from
+//!     the Integration Center (`target_software`), reading `webhook_url` as the Mailgun API
+//!     base and `api_key` as the key. Falls back to EMAIL_API_URL / EMAIL_API_KEY / EMAIL_FROM
+//!     env vars when the tenant has no active email-provider row.
+//!   - `send_template_email` is the env-only path for system emails with no tenant context.
+//!
+//! Direct API send (no queue).
 
 use serde_json::json;
 use sqlx::PgPool;
 use std::env;
 use uuid::Uuid;
+
+/// Resolved email provider config (API base + key + from address).
+struct ProviderConfig {
+    api_url: String,
+    api_key: String,
+    from: String,
+}
 
 /// Render a template string by replacing {{key}} placeholders
 fn render(template: &str, vars: &std::collections::HashMap<&str, &str>) -> String {
@@ -18,58 +33,88 @@ fn render(template: &str, vars: &std::collections::HashMap<&str, &str>) -> Strin
     result
 }
 
-/// Fetch a template from the DB and send the email.
-/// Falls back to inline hardcoded content.
-pub async fn send_template_email(
+/// Resolve the tenant's Mailgun/SMTP/email provider config from the Integration Center
+/// (`target_software`). Returns `None` when the tenant has no active email-provider row,
+/// in which case the caller falls back to the env-var provider.
+async fn resolve_tenant_provider(
     pool: &PgPool,
-    aid: Uuid,
-    to: &str,
-    template_type: &str,
-    vars: &std::collections::HashMap<&str, &str>,
-) -> Result<(), String> {
-    let (final_subject, final_body, final_html) =
-        match get_db_template(pool, aid, template_type).await {
-            Ok(Some((subject, body, html_body))) => {
-                let subject = render(&subject, vars);
-                let body = body.map(|b| render(&b, vars));
-                let html = html_body.map(|h| render(&h, vars));
-                (subject, body, html)
-            }
-            _ => get_inline(template_type, vars),
-        };
+    tenant_id: Uuid,
+) -> Result<Option<ProviderConfig>, String> {
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT webhook_url, api_key
+           FROM target_software
+           WHERE tenant_id = $1
+             AND (LOWER(name) LIKE '%mailgun%' OR LOWER(name) LIKE '%smtp%' OR LOWER(name) LIKE '%email%')
+             AND is_active = true
+           ORDER BY created_at ASC
+           LIMIT 1"#,
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("Failed to resolve email provider: {e}"))?;
 
+    let Some((api_url, api_key)) = row else {
+        return Ok(None);
+    };
+
+    if api_url.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let from = env::var("EMAIL_FROM").unwrap_or_else(|_| "swiftsoftware143@yahoo.com".to_string());
+
+    Ok(Some(ProviderConfig {
+        api_url,
+        api_key: api_key.unwrap_or_default(),
+        from,
+    }))
+}
+
+/// System-wide provider config from env vars (no tenant context).
+fn env_provider() -> Result<ProviderConfig, String> {
     let api_url = env::var("EMAIL_API_URL").map_err(|_| "EMAIL_API_URL not set".to_string())?;
     let api_key = env::var("EMAIL_API_KEY").map_err(|_| "EMAIL_API_KEY not set".to_string())?;
     let from = env::var("EMAIL_FROM").unwrap_or_else(|_| "swiftsoftware143@yahoo.com".to_string());
+    Ok(ProviderConfig {
+        api_url,
+        api_key,
+        from,
+    })
+}
 
+/// Send an already-rendered email through the given provider.
+async fn dispatch(
+    config: &ProviderConfig,
+    to: &str,
+    subject: &str,
+    body: Option<&str>,
+    html: Option<&str>,
+) -> Result<(), String> {
     let mut payload = json!({
-        "from": from,
+        "from": config.from,
         "to": to,
-        "subject": final_subject,
+        "subject": subject,
     });
 
-    if let Some(html) = &final_html {
-        payload
-            .as_object_mut()
-            .unwrap()
-            .insert("html".into(), json!(html));
-    }
-    if let Some(text) = &final_body {
-        payload
-            .as_object_mut()
-            .unwrap()
-            .insert("text".into(), json!(text));
+    if let Some(obj) = payload.as_object_mut() {
+        if let Some(html) = html {
+            obj.insert("html".into(), json!(html));
+        }
+        if let Some(text) = body {
+            obj.insert("text".into(), json!(text));
+        }
     }
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(&api_url)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .post(&config.api_url)
+        .header("Authorization", format!("Bearer {}", config.api_key))
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Failed to send email: {}", e))?;
+        .map_err(|e| format!("Failed to send email: {e}"))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -78,6 +123,76 @@ pub async fn send_template_email(
     }
 
     Ok(())
+}
+
+/// Look up + render a template (DB-backed, falling back to inline hardcoded content).
+async fn render_template(
+    pool: &PgPool,
+    aid: Uuid,
+    template_type: &str,
+    vars: &std::collections::HashMap<&str, &str>,
+) -> (String, Option<String>, Option<String>) {
+    match get_db_template(pool, aid, template_type).await {
+        Ok(Some((subject, body, html_body))) => {
+            let subject = render(&subject, vars);
+            let body = body.map(|b| render(&b, vars));
+            let html = html_body.map(|h| render(&h, vars));
+            (subject, body, html)
+        }
+        _ => get_inline(template_type, vars),
+    }
+}
+
+/// Send a template email for a specific tenant, resolving the Mailgun/SMTP config from the
+/// Integration Center (`target_software`) first, falling back to env vars when absent.
+pub async fn send_template_email_for_tenant(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    aid: Uuid,
+    to: &str,
+    template_type: &str,
+    vars: &std::collections::HashMap<&str, &str>,
+) -> Result<(), String> {
+    let (final_subject, final_body, final_html) =
+        render_template(pool, aid, template_type, vars).await;
+
+    let provider = match resolve_tenant_provider(pool, tenant_id).await? {
+        Some(p) => p,
+        None => env_provider()?,
+    };
+
+    dispatch(
+        &provider,
+        to,
+        &final_subject,
+        final_body.as_deref(),
+        final_html.as_deref(),
+    )
+    .await
+}
+
+/// Fetch a template from the DB and send the email using env-var provider config (system emails
+/// with no tenant context). Prefer `send_template_email_for_tenant` when a tenant_id is known.
+pub async fn send_template_email(
+    pool: &PgPool,
+    aid: Uuid,
+    to: &str,
+    template_type: &str,
+    vars: &std::collections::HashMap<&str, &str>,
+) -> Result<(), String> {
+    let (final_subject, final_body, final_html) =
+        render_template(pool, aid, template_type, vars).await;
+
+    let provider = env_provider()?;
+
+    dispatch(
+        &provider,
+        to,
+        &final_subject,
+        final_body.as_deref(),
+        final_html.as_deref(),
+    )
+    .await
 }
 
 /// Look up a template from `email_templates` — prefer account-specific, fall back to default
@@ -97,7 +212,7 @@ async fn get_db_template(
     .bind(aid)
     .fetch_optional(pool)
     .await
-    .map_err(|e| format!("Failed to query templates: {}", e))?;
+    .map_err(|e| format!("Failed to query templates: {e}"))?;
 
     Ok(result)
 }
@@ -177,7 +292,7 @@ pub async fn send_purchase_confirmed_email(
 
 pub async fn send_reset_email(
     pool: &PgPool,
-    aid: Uuid,
+    tenant_id: Uuid,
     to: &str,
     token: &str,
     name: &str,
@@ -186,5 +301,5 @@ pub async fn send_reset_email(
     vars.insert("name", name);
     vars.insert("token", token);
     vars.insert("app_url", "https://app.funnelswift.net");
-    send_template_email(pool, aid, to, "password_reset", &vars).await
+    send_template_email_for_tenant(pool, tenant_id, tenant_id, to, "password_reset", &vars).await
 }
