@@ -36,6 +36,7 @@ pub async fn create_target_software(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_flag(&state, tenant_id, "has_dual_routing", "Dual routing").await?;
     features::enforce_feature_limit(&state, tenant_id, "max_routing_targets", "Routing targets")
         .await?;
     let target_id = Uuid::new_v4();

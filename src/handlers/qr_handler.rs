@@ -1,5 +1,6 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::AppResult;
+use crate::features;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -27,6 +28,7 @@ pub async fn create_qr_code(
     let id = Uuid::new_v4();
     let title = payload["title"].as_str().unwrap_or("QR Code");
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    features::enforce_feature_limit(&state, tenant_id, "max_qr_codes", "QR codes").await?;
     sqlx::query(
         "INSERT INTO qr_codes (id, tenant_id, title, slug, target_url) VALUES ($1, $2, $3, $4, $5)",
     )

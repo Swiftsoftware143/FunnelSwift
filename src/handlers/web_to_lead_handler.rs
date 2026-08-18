@@ -1,5 +1,6 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::features;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -41,6 +42,7 @@ pub async fn create_web_to_lead_config(
     let id = Uuid::new_v4();
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_limit(&state, tenant_id, "max_forms", "Web-to-lead forms").await?;
     let fields = payload
         .fields
         .unwrap_or_else(|| vec!["name".to_string(), "email".to_string()]);

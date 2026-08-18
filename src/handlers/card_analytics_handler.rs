@@ -1,5 +1,6 @@
 // ── Card Analytics + UTM Handler ──
 use crate::error::{AppError, AppResult};
+use crate::features;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -312,6 +313,7 @@ pub async fn get_card_analytics(
     State(state): State<AppState>,
 ) -> AppResult<Json<CardAnalyticsResponse>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    features::enforce_feature_flag(&state, tenant_id, "has_analytics", "Analytics").await?;
     // Verify the card exists AND belongs to the caller's tenant
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id=$1 AND tenant_id=$2)",
@@ -424,6 +426,7 @@ pub async fn get_tenant_analytics(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    features::enforce_feature_flag(&state, tenant_id, "has_analytics", "Analytics").await?;
 
     let total_cards: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id=$1")
