@@ -261,6 +261,29 @@ All templates: `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}`, `{{plan_n
 - **Welcome Email** — credentials + login URL + next steps
 - **Purchase Confirmation** — plan name + thank-you + login link
 
+## Per-Tenant Email (Mailgun) Resolution
+
+Transactional email delivery can be **resolved per tenant** through the Integration Center (`target_software`), enabling each tenant to send from its own configured email/Mailgun/SMTP identity instead of the platform default.
+
+### How Resolution Works
+
+1. When sending a transactional email, `send_template_email_for_tenant` resolves the tenant's configured email provider from `target_software` rows where the **name matches** `mailgun`, `smtp`, or `email` and the row is `is_active = true` (oldest row wins).
+2. If the tenant has **no** matching active provider (or an empty `webhook_url`), it falls back to the **env-var provider** (`EMAIL_API_URL` / `EMAIL_API_KEY` / `EMAIL_FROM`).
+3. The `webhook_url` in the tenant row is used as the dispatch endpoint with the `api_key` sent as a Bearer token.
+
+### Admin Bypass
+
+For system/platform emails with no tenant context (e.g. admin-triggered sends), `send_template_email` uses the **env-var provider directly**, bypassing tenant resolution. This is the admin/system path.
+
+### Admin UI
+
+The FunnelSwift admin SPA exposes email/Integration configuration (search **Mailgun** / **Integration** in the admin panel) for configuring a tenant's sender in the Integration Center. No platform-wide email config change is needed per tenant.
+
+### API Notes
+
+- No new public endpoint is required — resolution happens inside the transactional send path.
+- Templates still prioritize account-specific templates, then defaults, then inline fallback, before dispatch.
+
 ## Kinetic Cards Management
 
 Kinetic Cards are the digital business cards, bio-links, landing pages, and mini funnels that each tenant creates and manages. As an admin, you can view, create, edit, and delete cards for any tenant.
