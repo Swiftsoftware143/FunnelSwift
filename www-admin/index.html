@@ -302,6 +302,7 @@ function buildNav() {
   sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='integrations'?'active':''}" data-view="integrations"><span class="icon">🔌</span><span class="nav-text">Integrations</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></div>`);
 
   // Super Admin (divider + admin-only)
   if (isSuperAdmin()) {
@@ -336,6 +337,7 @@ const viewRenderers = {
   campaigns: renderCampaigns,
   webhooks: renderWebhooks,
   integrations: renderIntegrations,
+  providerKeys: renderProviderKeys,
   superAdmin: renderSuperAdmin,
   systemTags: renderSystemTags,
   tagGroups: renderTagGroups,
@@ -383,6 +385,7 @@ function bindView(view) {
     case 'campaigns': bindCampaigns(); break;
     case 'webhooks': bindWebhooks(); break;
     case 'integrations': bindIntegrations(); break;
+    case 'providerKeys': bindProviderKeys(); break;
     case 'superAdmin': bindSuperAdmin(); break;
     case 'systemTags': bindSystemTags(); break;
     case 'tagGroups': bindTagGroups(); break;
@@ -1210,6 +1213,141 @@ function openIntegrationModal(id) {
       } catch(e) { showToast(e.message, 'error'); }
     });
   }, 100);
+}
+
+// ── PROVIDER KEYS + PAYMENT PROVIDERS (DB-backed, admin-entered — nothing hardwired) ──
+let _providerCatalog = [];
+
+function _rowField(row, name, idx) {
+  if (row && !Array.isArray(row) && row[name] !== undefined) return row[name];
+  return Array.isArray(row) ? row[idx] : undefined;
+}
+
+async function renderProviderKeys() {
+  let keys = [], payments = [], catalog = [];
+  try { keys = await api('/provider-keys'); } catch(e) { keys = []; }
+  if (!Array.isArray(keys)) keys = keys.items || keys.data || [];
+  try { payments = await api('/payment-providers'); } catch(e) { payments = []; }
+  if (!Array.isArray(payments)) payments = payments.items || [];
+  try { catalog = await api('/available-providers'); } catch(e) { catalog = []; }
+  if (!Array.isArray(catalog)) catalog = [];
+  _providerCatalog = catalog.filter(p => typeof p === 'string');
+  if (_providerCatalog.length === 0) _providerCatalog = ['stripe','paypal','openai','gemini','anthropic','sendgrid','twilio','mailgun'];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:8px">
+      <h1 style="font-size:22px;font-weight:700">🔑 Provider Keys</h1>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Credentials for third-party providers (AI, email, SMS, payments) are stored per tenant in the database and read at call time — no provider is hardwired. Keys are shown masked.</p>
+
+    <div class="card" style="margin-bottom:20px">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Provider credentials</h2>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Provider</th><th>Base URL</th><th>Key</th><th>Added</th><th>Actions</th></tr></thead>
+        <tbody>${keys.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">No provider keys configured</td></tr>`
+          : keys.map(k => {
+            const prov = _rowField(k, 'provider', 0);
+            const base = _rowField(k, 'base_url', 2);
+            const key = _rowField(k, 'api_key', 1);
+            const created = (_rowField(k, 'created_at', 3) || '').toString().slice(0, 10);
+            return `<tr>
+              <td><span class="badge badge-blue">${x(prov)}</span></td>
+              <td><code style="font-size:11px">${x(base || '—')}</code></td>
+              <td><code style="font-size:11px">${maskKey(key)}</code></td>
+              <td style="font-size:12px;color:var(--muted)">${x(created || '—')}</td>
+              <td><button class="btn btn-danger btn-xs" onclick="window._deleteProviderKey('${x(prov)}')">Delete</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+      </table></div>
+      <form id="provider-key-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
+        <div class="form-group" style="margin:0;min-width:170px">
+          <label class="form-label">Provider</label>
+          <input class="input" name="provider" list="provider-catalog" placeholder="e.g. openai" required>
+          <datalist id="provider-catalog">${_providerCatalog.map(p => `<option value="${x(p)}">`).join('')}</datalist>
+        </div>
+        <div class="form-group" style="margin:0;min-width:220px;flex:1">
+          <label class="form-label">API Key</label>
+          <input class="input" name="api_key" type="password" placeholder="paste the provider key" autocomplete="off" required>
+        </div>
+        <div class="form-group" style="margin:0;min-width:200px;flex:1">
+          <label class="form-label">Base URL (optional)</label>
+          <input class="input" name="base_url" placeholder="https://api.example.com">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Save Key</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Payment providers</h2>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Provider</th><th>Key</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${payments.length === 0 ? `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No payment provider configured</td></tr>`
+          : payments.map(p => {
+            const ptype = _rowField(p, 'provider_type', 2);
+            const key = _rowField(p, 'api_key', 3);
+            const active = _rowField(p, 'is_active', 4);
+            return `<tr>
+              <td><span class="badge badge-blue">${x(ptype)}</span></td>
+              <td><code style="font-size:11px">${maskKey(key)}</code></td>
+              <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Inactive'}</span></td>
+              <td><button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+      </table></div>
+      <form id="payment-provider-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
+        <div class="form-group" style="margin:0;min-width:170px">
+          <label class="form-label">Provider type</label>
+          <input class="input" name="provider_type" list="payment-catalog" placeholder="e.g. stripe" required>
+          <datalist id="payment-catalog"><option value="stripe"><option value="paypal"><option value="mintbird"><option value="groovesell"></datalist>
+        </div>
+        <div class="form-group" style="margin:0;min-width:260px;flex:1">
+          <label class="form-label">Secret key</label>
+          <input class="input" name="api_key" type="password" placeholder="paste the payment secret key" autocomplete="off" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Save Provider</button>
+      </form>
+    </div>
+  </div>`;
+}
+
+window._deleteProviderKey = async function(provider) {
+  if (!confirm('Delete the ' + provider + ' key?')) return;
+  try { await api('/provider-keys/' + encodeURIComponent(provider), { method: 'DELETE' }); showToast('Provider key deleted', 'success'); renderView(); }
+  catch(e) { showToast(e.message, 'error'); }
+};
+
+window._deletePaymentProvider = async function(ptype) {
+  if (!confirm('Delete the ' + ptype + ' payment provider?')) return;
+  try { await api('/payment-providers/' + encodeURIComponent(ptype), { method: 'DELETE' }); showToast('Payment provider deleted', 'success'); renderView(); }
+  catch(e) { showToast(e.message, 'error'); }
+};
+
+function bindProviderKeys() {
+  const kf = document.getElementById('provider-key-form');
+  if (kf) kf.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    if (!data.base_url) delete data.base_url;
+    try {
+      // upsert semantics: the endpoint appends, so clear the provider's row first
+      await api('/provider-keys/' + encodeURIComponent(data.provider), { method: 'DELETE' }).catch(() => {});
+      await api('/provider-keys', { method: 'POST', body: JSON.stringify(data) });
+      showToast('Provider key saved', 'success');
+      renderView();
+    } catch(err) { showToast(err.message, 'error'); }
+  });
+
+  const pf = document.getElementById('payment-provider-form');
+  if (pf) pf.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    try {
+      await api('/payment-providers/' + encodeURIComponent(data.provider_type), { method: 'DELETE' }).catch(() => {});
+      await api('/payment-providers', { method: 'POST', body: JSON.stringify(data) });
+      showToast('Payment provider saved', 'success');
+      renderView();
+    } catch(err) { showToast(err.message, 'error'); }
+  });
 }
 
 // ── SUPER ADMIN DASHBOARD ──
