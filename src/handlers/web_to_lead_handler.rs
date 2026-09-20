@@ -189,6 +189,34 @@ pub async fn handle_web_to_lead(
         .bind(id).bind(tenant_id)
         .bind(payload["name"].as_str().unwrap_or("")).bind(payload["email"].as_str().unwrap_or(""))
         .execute(&state.pool).await?;
+
+    // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be
+    // able to land in CoreSwift as a contact. Fire-and-forget: the visitor's submission above
+    // already succeeded, and this is a no-op when the tenant has no `coreswift` BYOK key.
+    crate::coreswift::spawn_lead_push(
+        state.pool.clone(),
+        tenant_id,
+        crate::coreswift::LeadPayload {
+            email: payload
+                .get("email")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            phone: payload
+                .get("phone")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            name: payload
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            company: payload
+                .get("company")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            source: Some("web_to_lead".to_string()),
+            ..Default::default()
+        },
+    );
     Ok((
         StatusCode::CREATED,
         Json(json!({"id": id.to_string(), "message": "Lead captured"})),

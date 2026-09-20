@@ -174,33 +174,21 @@ pub async fn create_lead(
         }
     });
 
-    // Best-effort push to CoreSwift CRM
-    tokio::spawn({
-        let pool = state.pool.clone();
-        let cs_url = state.coreswift_url.clone();
-        let sync_key = state.internal_sync_key.clone();
-        async move {
-            // Look up lead name/email for the push
-            if let Ok(Some((name, email, company))) =
-                sqlx::query_as::<_, (String, String, Option<String>)>(
-                    "SELECT name, email, company FROM leads WHERE id = $1",
-                )
-                .bind(lead_id)
-                .fetch_optional(&pool)
-                .await
-            {
-                let _ = coreswift_push::push_to_coreswift(
-                    &cs_url,
-                    &sync_key,
-                    tenant_id,
-                    &name,
-                    &email,
-                    company.as_deref(),
-                )
-                .await;
-            }
-        }
-    });
+    // Best-effort push to CoreSwift CRM — the ONE CoreSwift path is the tenant BYOK client in
+    // `crate::coreswift` (fleet standard 2026-09-20). The previous env/internal-shared-key push
+    // was replaced: credentials belong to the tenant, not to a global paste.
+    crate::coreswift::spawn_lead_push(
+        state.pool.clone(),
+        tenant_id,
+        crate::coreswift::LeadPayload {
+            email: req.email.as_deref().map(str::to_string),
+            phone: req.phone.as_deref().map(str::to_string),
+            name: Some(display_name.clone()),
+            company: req.company.as_deref().map(str::to_string),
+            source: req.source.as_deref().map(str::to_string),
+            ..Default::default()
+        },
+    );
 
     Ok((
         StatusCode::CREATED,

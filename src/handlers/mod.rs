@@ -11,6 +11,7 @@ pub mod bulk_handler;
 pub mod campaigns_handler;
 pub mod card_analytics_handler;
 pub mod checkout_handler;
+pub mod coreswift_integration_handler;
 pub mod coreswift_push;
 pub mod cross_app_webhook_handler;
 pub mod dashboard_handler;

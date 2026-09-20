@@ -15,15 +15,15 @@ use crate::auth::handlers::{
 use crate::handlers::{
     adaswift_provision, affiliate_handler, affiliate_lead_handler, affiliate_payout_handler,
     affiliate_portal_handler, affiliate_product_handler, affiliate_tracking_handler,
-    api_key_handler, bulk_handler, campaigns_handler, checkout_handler, coreswift_push,
-    cross_app_webhook_handler, dashboard_handler, email_template_handler, funnel_handler,
-    incentiveswift_handler, insight_handler, integration_target_handler, kinetic_handler,
-    lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler, plan_tag_handler,
-    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, routing_handler, seo_handler, settings_handler, site_handler,
-    site_settings_handler, sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
-    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
-    workflowswift_push,
+    api_key_handler, bulk_handler, campaigns_handler, checkout_handler,
+    coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
+    email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
+    integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
+    ocr, plan_handler, plan_tag_handler, portfolio_handler, product_category_handler,
+    provider_keys_handler, public_signup_handler, qr_handler, routing_handler, seo_handler,
+    settings_handler, site_handler, site_settings_handler, sync_plan_tag_handler,
+    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
+    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -473,6 +473,23 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/available-providers",
             get(provider_keys_handler::list_available_providers),
+        )
+        .route(
+            "/api/v1/provider-keys/:provider/test",
+            post(coreswift_integration_handler::test_provider_connection),
+        )
+        // Canonical CoreSwift spoke endpoints (fleet standard 2026-09-20)
+        .route(
+            "/api/v1/integrations/coreswift/status",
+            get(coreswift_integration_handler::coreswift_status),
+        )
+        .route(
+            "/api/v1/integrations/coreswift/lists",
+            get(coreswift_integration_handler::coreswift_lists),
+        )
+        .route(
+            "/api/v1/integrations/coreswift/push",
+            post(coreswift_integration_handler::coreswift_push),
         )
         // Payment provider & checkout management
         .route(

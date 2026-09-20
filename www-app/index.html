@@ -156,7 +156,7 @@ var helpContent={
   "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> that trigger actions in other Swift apps.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are controlled by admins — they auto-provision accounts</li></ul>',
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
-  "integrations":'<h4>Integrations Center</h4><p>Connect FunnelSwift to other tools. Manage API keys for Web-to-Lead forms, Stripe for payments, and cross-app sync.</p><ul><li><strong>API Keys</strong> — Create keys for programmatic access</li><li><strong>Stripe</strong> — Connect to process plan payments</li></ul>',
+  "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own API key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Email</strong> — SMTP / Mailgun / SendGrid / Sendiio sending</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
   "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
   "stags":'<h4>System Tags</h4><p>Special tags that <strong>do something</strong> when applied — like creating a free ADASwift account or adding a contact to CoreSwift CRM.</p><ul><li><strong>Target:</strong> adaswift, coreswift, workflowswift, incentiveswift, missedcall</li><li><strong>Toggle ON/OFF</strong> — Disable without deleting</li></ul>',
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
@@ -1174,11 +1174,101 @@ function LG(){
 }
 
 /* === INTEGRATIONS (DOM-based) === */
+/* ═══ INTEGRATION CENTER (fleet standard 2026-09-20) ═══
+   Cards come from the LIVE available_providers catalogue — never a hardcoded provider array.
+   CoreSwift is pinned first, carries the cross-sell CTA, and its card reflects the real
+   /api/v1/integrations/coreswift/status state (inbound: FunnelSwift opt-ins -> CoreSwift). */
+function ICC(p){ /* Connect = store the tenant BYOK key */
+  var el=$("ick-"+p), k=el?(el.value||"").trim():"";
+  if(!k){KCUP("Enter an API key first");return;}
+  var body={provider:p,api_key:k};
+  var u=$("icu-"+p); if(u&&u.value.trim()) body.base_url=u.value.trim();
+  api("/api/v1/provider-keys",{method:"POST",body:JSON.stringify(body)}).then(function(){
+    KCUP(p+" connected"); LI();
+  }).catch(function(e){KCUP("Could not connect "+p+": "+e.message)});
+}
+function ICT(p){ /* Test connection — live provider probe */
+  api("/api/v1/provider-keys/"+encodeURIComponent(p)+"/test",{method:"POST",body:"{}"}).then(function(r){
+    var msg=(r.valid?"PASS — ":"FAIL — ")+(r.detail||"")+(r.base_url?"  ("+r.base_url+")":"");
+    O("Test connection — "+p,function(){
+      $("mb").innerHTML='<p style="font-size:13px">'+X(msg)+'</p>';
+      $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
+    });
+  }).catch(function(e){KCUP("Test failed: "+e.message)});
+}
+function ICD(p){ /* Disconnect = delete the tenant BYOK key */
+  if(!confirm("Disconnect "+p+" for this workspace?"))return;
+  api("/api/v1/provider-keys/"+encodeURIComponent(p),{method:"DELETE"}).then(function(){
+    KCUP(p+" disconnected"); LI();
+  }).catch(function(e){KCUP("Disconnect failed: "+e.message)});
+}
+function ICLS(){ /* CoreSwift lists proxy (the standard's picker endpoint) */
+  api("/api/v1/integrations/coreswift/lists").then(function(r){
+    var l=(r.lists&&r.lists.lists)?r.lists.lists:(Array.isArray(r.lists)?r.lists:[]);
+    O("CoreSwift lists",function(){
+      $("mb").innerHTML='<p style="font-size:13px">'+l.length+' list(s) visible to your key.</p><pre style="font-size:11px;white-space:pre-wrap;max-height:240px;overflow:auto">'+X(JSON.stringify(l,null,1).slice(0,1500))+'</pre>';
+      $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
+    });
+  }).catch(function(e){KCUP("Lists failed: "+e.message)});
+}
+function ICPUSH(){ /* manual fallback for the automatic capture push */
+  var em=prompt("Push a lead to CoreSwift — email:"); if(!em)return;
+  api("/api/v1/integrations/coreswift/push",{method:"POST",body:JSON.stringify({email:em,name:"Manual push"})}).then(function(r){
+    KCUP(r.status==="pushed"?"Lead pushed to CoreSwift CRM":"Nothing pushed: "+(r.message||""));
+  }).catch(function(e){KCUP("Push failed: "+e.message)});
+}
+function LIC(){
+  var grd=$("li-ic-grd"); if(!grd)return;
+  var prov=window._icProv||[], pkeys=window._icKeys||{};
+  grd.innerHTML="";
+  if(!prov.length){grd.innerHTML='<p style="color:#64748b;font-size:13px;grid-column:1/-1">No providers in the catalogue.</p>';return;}
+  prov.forEach(function(p){
+    var rec=pkeys[p.key], connected=!!rec&&rec.is_active!==false;
+    var native=(p.key==="coreswift"||p.key==="incentiveswift");
+    var it=El("div",{"class":"it"});
+    if(p.key==="coreswift") it.style.cssText="grid-column:1/-1;border:2px solid #6366f1;background:#f5f3ff";
+    it.innerHTML='<h4>'+X(p.name)+' '+(native?'<span class="badge bg">Native</span> ':'')+'<span class="badge '+(connected?"bg":"br")+'">'+(connected?"Connected":"Not connected")+'</span></h4>'
+      +'<p>'+X(p.description||"")+'</p>'
+      +'<div id="li-cs-status" style="font-size:12px;color:#6366f1;margin:4px 0"></div>';
+    if(p.key==="coreswift"){
+      it.innerHTML+='<p style="font-size:12px;color:#4338ca;margin:6px 0">One CRM for every tool you just connected — every funnel opt-in lands in CoreSwift. '
+        +'<a href="https://coreswiftcrm.com/pricing" target="_blank" style="color:#4338ca;font-weight:700;text-decoration:underline">Upgrade to CoreSwift CRM →</a></p>';
+    }
+    var kw=El("div");
+    kw.innerHTML='<input id="ick-'+X(p.key)+'" type="password" autocomplete="new-password" placeholder="'+(connected?X(rec.api_key_masked||"key stored"):"API key")+'" style="width:100%;padding:8px;margin:4px 0;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">';
+    it.appendChild(kw);
+    if(p.requires_base_url){
+      var uw=El("div");
+      uw.innerHTML='<input id="icu-'+X(p.key)+'" type="text" placeholder="Base URL" value="'+X((rec&&rec.base_url)||"")+'" style="width:100%;padding:8px;margin:2px 0;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">';
+      it.appendChild(uw);
+    }
+    var btns=El("div",{style:"display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"});
+    btns.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ICC(p.key)}},"Connect"));
+    btns.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){ICT(p.key)}},"Test connection"));
+    if(connected) btns.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){ICD(p.key)}},"Disconnect"));
+    if(p.key==="coreswift"){
+      btns.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:ICLS},"Lists"));
+      btns.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:ICPUSH},"Push a lead now"));
+    }
+    it.appendChild(btns);
+    grd.appendChild(it);
+  });
+  api("/api/v1/integrations/coreswift/status").then(function(s){
+    var el=$("li-cs-status");
+    if(el) el.innerHTML="Inbound: funnel opt-ins → "+X(s.base_url||"")+" — "+(s.connected?"key stored":"no key stored");
+  }).catch(function(e){
+    var el=$("li-cs-status"); if(el) el.innerHTML="CoreSwift status unavailable: "+X(e.message||"");
+  });
+}
 function LI(){
-  Promise.all([api("/api/v1/integration-targets"),api("/api/v1/affiliate-products"),api("/api/v1/api-keys")]).then(function(r){
+  Promise.all([api("/api/v1/integration-targets"),api("/api/v1/affiliate-products"),api("/api/v1/api-keys"),api("/api/v1/available-providers"),api("/api/v1/provider-keys")]).then(function(r){
     var tg=Array.isArray(r[0])?r[0]:(r[0]&&r[0].data?r[0].data:[]);
     var pr=Array.isArray(r[1])?r[1]:(r[1]&&r[1].data?r[1].data:[]);
     var ks=Array.isArray(r[2])?r[2]:(r[2]&&r[2].data?r[2].data:[]);
+    var prov=Array.isArray(r[3])?r[3]:[];
+    var pkeys={};
+    (Array.isArray(r[4])?r[4]:[]).forEach(function(k){pkeys[k.provider]=k;});
+    window._icProv=prov; window._icKeys=pkeys;
 
     $("ct").innerHTML='<div id="li-section"></div>';
     var root=$("li-section");
@@ -1199,15 +1289,10 @@ function LI(){
     }
     root.appendChild(ak_div);
 
-    // SwiftSoftware Integrations
-    var sw_div=El("div",{"class":"cc"},'<h3>SwiftSoftware Integrations</h3><div class="grd" id="li-sw-grd"></div>');
-    var sw_grd=sw_div.querySelector("#li-sw-grd");
-    [{n:"ADASwift",d:"ADA compliance scanning & reporting",u:"https://adaswift.com"},{n:"WorkflowSwift",d:"Automation workflows & n8n",u:"https://workflowswift.com"},{n:"CoreSwiftCRM",d:"CRM",u:"https://coreswiftcrm.com"},{n:"IncentiveSwift",d:"Incentive & rewards",u:"https://incentiveswift.com"},{n:"MissedCallRespondr",d:"Missed call automation",u:"https://missedcallrespondr.com"}].forEach(function(s){
-      var it=El("div",{"class":"it"}); it.innerHTML='<h4>'+s.n+'</h4><p>'+s.d+'</p>';
-      it.appendChild(El("a",{"class":"btn btn-sm btn-o",style:"margin-top:8px;text-decoration:none",href:s.u,target:"_blank"},"Connect"));
-      sw_grd.appendChild(it);
-    });
-    root.appendChild(sw_div);
+    // Integration Center — the LIVE available_providers catalogue (CoreSwift pinned first)
+    var ic_div=El("div",{"class":"cc"},'<h3>Integration Center</h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Connect FunnelSwift to the tools you already use. When CoreSwift CRM is connected, every captured funnel opt-in lands there as a contact.</p><div class="grd" id="li-ic-grd"></div>');
+    root.appendChild(ic_div);
+    LIC();
 
     // Affiliate Products
     var ap_div=El("div",{"class":"cc"},'<h3>Affiliate Products</h3><div class="grd" id="li-ap-grd"></div>');
