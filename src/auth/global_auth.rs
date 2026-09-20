@@ -44,6 +44,10 @@ fn is_public(path: &str) -> bool {
     }
     // Public embed for web-to-lead forms: GET /api/v1/web-to-lead/configs/:id/embed
     path.starts_with("/api/v1/web-to-lead/configs/") && path.ends_with("/embed")
+        // Public thank-you page confirmation: GET /api/v1/checkout/session/:id.
+        // The buyer lands back from the payment provider with no JWT; the route is
+        // id-scoped and only ever returns a non-sensitive summary of that session.
+        || path.starts_with("/api/v1/checkout/session/")
         // Public viewer confirmation of a card's consent / age gate:
         // POST /api/v1/kinetic/cards/:id/gate. The viewer of a public card page is
         // anonymous and has no JWT, and the endpoint only ever issues the HMAC for

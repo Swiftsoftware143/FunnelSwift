@@ -60,7 +60,7 @@ function upgradeTo(slug){
   if(!confirm('Upgrade to '+slug+' plan?')) return;
   try {
     var token = T || '';
-    fetch(window.location.origin+'/api/v1/checkout/create-session', {
+    fetch(window.location.origin+'/api/v1/checkout/create', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
       body:JSON.stringify({plan_slug:slug})

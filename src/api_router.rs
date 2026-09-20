@@ -492,6 +492,10 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/checkout/sessions",
             get(checkout_handler::list_checkout_sessions),
         )
+        .route(
+            "/api/v1/checkout/session/:id",
+            get(checkout_handler::get_checkout_session_public),
+        )
         // Webhook receivers (no auth — signature-verified)
         .route(
             "/api/v1/webhooks/stripe",
