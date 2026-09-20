@@ -36,3 +36,5 @@ Thumbs.db
 # Build artifacts / binaries
 funnelswift
 funnelswift-api
+
+# host-served SPA copies now versioned here (source of truth: /opt/swift/nginx/www-app|www-admin/funnelswift)
