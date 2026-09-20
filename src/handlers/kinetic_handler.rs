@@ -134,6 +134,31 @@ pub async fn create_card(
     let video_provider = body["video_provider"].as_str();
     let video_id = body["video_id"].as_str();
 
+    // Plan gate: premium themes + premium catalogue templates require the
+    // `premium_themes` feature. Free themes (midnight/ocean/rose) and free
+    // templates (bio_*) pass through untouched, as do plain card types.
+    crate::features::enforce_theme_access(
+        &state,
+        tenant_id,
+        body["theme_slug"].as_str().or(body["theme"].as_str()),
+    )
+    .await?;
+    // A card carries its catalogue template in `template_type`, while `type`/`card_type`
+    // describe the card kind. Chaining these with `.or()` short-circuits on the FIRST `Some`,
+    // so `{"type":"bio-link","template_type":"biz_executive"}` was never checked against
+    // `template_type` at all and a premium template got created for free. Every candidate is
+    // checked now, so whichever field carries the template, the gate sees it.
+    for candidate in [
+        body["template_type"].as_str(),
+        body["type"].as_str(),
+        body["card_type"].as_str(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
+    }
+
     sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)")
         .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(card_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
         .execute(&state.pool).await?;
@@ -154,6 +179,26 @@ pub async fn update_card(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
+    // Plan gate: changing to a premium theme / premium catalogue template
+    // requires the caller's plan to grant `premium_themes`.
+    crate::features::enforce_theme_access(
+        &state,
+        tenant_id,
+        body["theme"].as_str().or(body["theme_slug"].as_str()),
+    )
+    .await?;
+    // Same reasoning as `create_card`: check every field that can carry a catalogue template,
+    // never just the first one that happens to be present.
+    for candidate in [
+        body["template_type"].as_str(),
+        body["type"].as_str(),
+        body["card_type"].as_str(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
+    }
     let social = body.get("social_links").cloned();
     sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), cta_text=COALESCE($16,cta_text), slug=COALESCE($17,slug), theme=COALESCE($18,theme) WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)

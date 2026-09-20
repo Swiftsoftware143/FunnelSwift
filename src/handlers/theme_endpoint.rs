@@ -1,10 +1,48 @@
-use crate::error::AppResult;
+use crate::auth::middleware::AuthUser;
+use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::{extract::State, Json};
 use serde_json::{json, Value};
+use uuid::Uuid;
 
-pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value>> {
-    Ok(Json(json!([
+/// `tier` for a catalogue id: `"free"` or `"premium"`.
+type TierFn = fn(&str) -> &'static str;
+
+/// Add `tier` + `locked` to every entry of a catalogue response, in place.
+///
+/// Every item is always returned — free users SEE the whole catalogue; premium
+/// items simply carry `"locked": true` so the UI can badge them. `locked` can
+/// only ever be true for a premium entry when the caller's plan does not grant
+/// `premium_themes`. The existing payload keys are left untouched.
+fn annotate_catalogue(items: &mut Value, premium_granted: bool, tier_of: TierFn) {
+    let Some(arr) = items.as_array_mut() else {
+        return;
+    };
+    for item in arr.iter_mut() {
+        let id = item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let tier = tier_of(&id);
+        let locked = tier == "premium" && !premium_granted;
+        if let Some(obj) = item.as_object_mut() {
+            obj.insert("tier".to_string(), json!(tier));
+            obj.insert("locked".to_string(), json!(locked));
+        }
+    }
+}
+
+/// GET /api/v1/kinetic/themes — the full theme catalogue for the caller's plan.
+///
+/// The route already sits on the globally authenticated router
+/// (`auth::global_auth::require_auth`), so a required `AuthUser` extractor is
+/// used to compute `locked` from the caller's own plan.
+pub async fn list_themes(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let granted = crate::features::premium_themes_granted(&state, tenant_id).await?;
+    let mut items = json!([
         {
             "id": "cyber_dark",
             "name": "Cyber Dark",
@@ -133,11 +171,20 @@ pub async fn list_themes(State(_state): State<AppState>) -> AppResult<Json<Value
                 "card_shadow": "0 4px 16px rgba(0, 0, 0, 0.06)"
             }
         }
-    ])))
+    ]);
+    annotate_catalogue(&mut items, granted, crate::features::theme_tier);
+    Ok(Json(items))
 }
 
-pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Value>> {
-    Ok(Json(json!([
+/// GET /api/v1/kinetic/templates — the full template catalogue for the caller's plan.
+pub async fn list_templates(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let granted = crate::features::premium_themes_granted(&state, tenant_id).await?;
+    let mut items = json!([
         // ==========================================
         // ARCHETYPE: DIGITAL BUSINESS CARD (5)
         // ==========================================
@@ -1451,5 +1498,7 @@ pub async fn list_templates(State(_state): State<AppState>) -> AppResult<Json<Va
                 {"type":"title_block","headline":"Your Headline","subtitle":"A compelling sub-headline."}
             ]
         }
-    ])))
+    ]);
+    annotate_catalogue(&mut items, granted, crate::features::template_tier);
+    Ok(Json(items))
 }

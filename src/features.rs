@@ -429,3 +429,117 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
         "team": team
     })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Premium card themes + templates (`premium_themes` plan feature)
+// ─────────────────────────────────────────────────────────────────────────────
+// Gating rule (single source of truth for the catalogue endpoints AND the
+// create/update card handlers):
+//   * free themes     — midnight, ocean, rose
+//   * free templates  — the `bio_*` family
+//   * everything else — requires `premium_themes` on `plans.features`
+// Semantics, matching `enforce_feature_flag`: no active plan -> allow;
+// key absent/FALSE -> locked (402 UpgradeRequired); key TRUE -> allow.
+
+/// jsonb key on `plans.features` that grants premium themes and templates.
+pub const PREMIUM_THEMES_KEY: &str = "premium_themes";
+
+/// Themes every plan may use, regardless of `premium_themes`.
+pub const FREE_THEMES: &[&str] = &["midnight", "ocean", "rose"];
+
+/// Namespace prefixes used by the template catalogue in
+/// `handlers::theme_endpoint`. Card *types* (`default`, `business_card`,
+/// `mini_page`, `mini_funnel`, `hero`, `thank_you`, ...) are not catalogue ids
+/// and are therefore never gated by this module.
+const TEMPLATE_NAMESPACES: &[&str] = &[
+    "biz_", "bio_", "page_", "funnel_", "hero_", "starter_", "blank_",
+];
+/// Catalogue ids that carry no namespace prefix.
+const TEMPLATE_STANDALONE_IDS: &[&str] = &["realestate_showcase", "creator_hub", "ecom_boutique"];
+
+/// `"free"` or `"premium"` for a theme id.
+pub fn theme_tier(theme_id: &str) -> &'static str {
+    if FREE_THEMES.contains(&theme_id) {
+        "free"
+    } else {
+        "premium"
+    }
+}
+
+/// `"free"` or `"premium"` for a template id (`bio_*` templates are free).
+pub fn template_tier(template_id: &str) -> &'static str {
+    if template_id.starts_with("bio_") {
+        "free"
+    } else {
+        "premium"
+    }
+}
+
+/// True when `id` looks like a template-catalogue id (rather than a card type).
+pub fn is_catalogue_template(id: &str) -> bool {
+    TEMPLATE_NAMESPACES.iter().any(|p| id.starts_with(p)) || TEMPLATE_STANDALONE_IDS.contains(&id)
+}
+
+/// Does the tenant's active plan grant `premium_themes`?
+/// `true` when there is no active plan (fail-open, consistent with the other
+/// helpers here) or when the jsonb key is literally `true`; `false` when the
+/// key is absent, `null`, or `false`.
+pub async fn premium_themes_granted(state: &AppState, tenant_id: Uuid) -> AppResult<bool> {
+    let granted: Option<bool> = sqlx::query_scalar(
+        "SELECT (COALESCE(p.features->>$2, 'false') = 'true')
+         FROM plans p
+         JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
+         WHERE tps.tenant_id = $1 AND tps.status = 'active'
+         ORDER BY tps.start_date DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(PREMIUM_THEMES_KEY)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(granted.unwrap_or(true))
+}
+
+/// Reject a premium `theme` with 402 when the caller's plan lacks
+/// `premium_themes`. Free/empty/unknown-to-catalogue values pass.
+pub async fn enforce_theme_access(
+    state: &AppState,
+    tenant_id: Uuid,
+    theme: Option<&str>,
+) -> AppResult<()> {
+    let Some(theme) = theme.map(str::trim).filter(|t| !t.is_empty()) else {
+        return Ok(());
+    };
+    if theme_tier(theme) == "free" {
+        return Ok(());
+    }
+    if premium_themes_granted(state, tenant_id).await? {
+        return Ok(());
+    }
+    Err(AppError::UpgradeRequired(format!(
+        "The \"{}\" theme is a premium theme. Upgrade to Kinetic Pro to unlock premium themes.",
+        theme
+    )))
+}
+
+/// Reject a premium catalogue `template` with 402 when the caller's plan lacks
+/// `premium_themes`. Free (`bio_*`) templates and non-catalogue values (card
+/// types) pass untouched.
+pub async fn enforce_template_access(
+    state: &AppState,
+    tenant_id: Uuid,
+    template: Option<&str>,
+) -> AppResult<()> {
+    let Some(template) = template.map(str::trim).filter(|t| !t.is_empty()) else {
+        return Ok(());
+    };
+    if !is_catalogue_template(template) || template_tier(template) == "free" {
+        return Ok(());
+    }
+    if premium_themes_granted(state, tenant_id).await? {
+        return Ok(());
+    }
+    Err(AppError::UpgradeRequired(format!(
+        "The \"{}\" template is a premium template. Upgrade to Kinetic Pro to unlock premium templates.",
+        template
+    )))
+}

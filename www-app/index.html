@@ -189,6 +189,7 @@ function api(p,o){
   if(T) o.headers["Authorization"]="Bearer "+T;
   return fetch(p,o).then(function(r){
     if(r.status===401){T="";localStorage.removeItem("ws_fs_token");window.location.href="/login";throw Error("auth")}
+    if(r.status===402){return r.json().then(function(e){KCUP(e.error||"Plan limit reached. Upgrade to continue.");throw Error("upgrade_required")})}
     if(!r.ok) return r.json().then(function(e){throw Error(e.error||e.message||"Error "+r.status)});
     return r.json();
   });
@@ -446,8 +447,23 @@ function SL(id){
 }
 function DL(id){if(confirm("Delete lead?")) api("/api/v1/leads/"+id,{method:"DELETE"}).then(function(){S("leads")});}
 
-;(function(){var s=document.createElement("style");s.textContent=".lc-tab{display:inline-block;padding:8px 16px;font-size:13px;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:600}.lc-tab:hover{color:#6366f1}.lc-tab-a{color:#6366f1;border-bottom-color:#6366f1}.mc-tab{}.ts{outline:2px solid #6366f1 !important;outline-offset:1px}";document.head.appendChild(s);})();/* === KINETIC CARDS — Full: Templates, Preview, Themes, Domains === */
+;(function(){var s=document.createElement("style");s.textContent=".lc-tab{display:inline-block;padding:8px 16px;font-size:13px;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:600}.lc-tab:hover{color:#6366f1}.lc-tab-a{color:#6366f1;border-bottom-color:#6366f1}.mc-tab{}.ts{outline:2px solid #6366f1 !important;outline-offset:1px}.kc-lock{position:absolute;top:2px;right:2px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1c1105;font-size:7px;font-weight:800;padding:1px 4px;border-radius:6px;line-height:1.5;letter-spacing:.3px;box-shadow:0 1px 3px rgba(0,0,0,.35);z-index:3;pointer-events:none}.kc-tpl-lock{font-size:8px;padding:2px 6px;border-radius:8px}.kc-locked{opacity:.62}.kc-locked:hover{opacity:.85}";document.head.appendChild(s);})();/* === KINETIC CARDS — Full: Templates, Preview, Themes, Domains === */
 var KCB={cards:[],templates:[],themes:[],tab:"my"}; // Kinetic Card Binder state
+
+/* === PLAN GATING — premium themes / templates =====================
+   The server sends EVERY theme and template with "tier" ("free"/"premium")
+   and "locked" (true when the caller's plan lacks the premium_themes feature).
+   Locked tiles keep their preview but carry a 🔒 badge in the tile's
+   upper-right corner and never apply — clicking them opens the upgrade prompt
+   (the same modal/CTA used for other plan limits). A 402 from the API also
+   raises this prompt, so the UI stays correct even if "locked" is stale. */
+function KCUP(msg){
+  if(!msg) msg="This is a premium item. Upgrade to unlock it.";
+  O("Upgrade Required",function(){
+    $("mb").innerHTML='<div style="text-align:center;padding:20px"><p style="font-size:15px;color:#1e1b4b;margin-bottom:16px">'+X(msg)+'</p><button class="btn" onclick="C();S(\'upgrade\')" style="padding:12px 24px;font-size:14px">View Plans &amp; Upgrade</button></div>';
+  });
+}
+function KCPremium(it){return !!(it&&it.locked);}
 
 function LC(){
   // Load everything in parallel
@@ -463,6 +479,9 @@ function LC(){
     var s={}; r[3].forEach(function(x){s[x.key]=x.value;});
     KCB.subdomain=s.subdomain||""; KCB.custom_domain=s.custom_domain||"";
     LCR();
+  }).catch(function(e){
+    if(e&&e.message==="upgrade_required") return;
+    showMsg((e&&e.message)||"Failed to load cards","me");
   });
 }
 
@@ -570,7 +589,9 @@ function LCT(){
   var grd=El("div",{"class":"grd"});
   filtered.forEach(function(t){
     var tc=t.preview_colors||["#0f172a","#6366f1","#ffffff"];
-    var card=El("div",{"class":"it lc-tpl-card",style:"cursor:pointer;overflow:hidden;border:none;padding:0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .2s"});
+    var tplLocked=KCPremium(t);
+    var card=El("div",{"class":"it lc-tpl-card"+(tplLocked?" kc-locked":""),style:"position:relative;cursor:pointer;overflow:hidden;border:none;padding:0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .2s"});
+    if(tplLocked) card.appendChild(El("span",{"class":"kc-lock kc-tpl-lock"},"🔒 PRO"));
     card.setAttribute("data-name",t.name);
     card.setAttribute("data-desc",t.description||"");
     card.onmouseenter=function(){card.style.transform="translateY(-2px)";card.style.boxShadow="0 8px 25px rgba(0,0,0,.12)"};
@@ -636,7 +657,10 @@ function LCT(){
     content.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h4 style="font-size:13px;font-weight:700;color:#0f172a">'+X(t.name)+'</h4><span style="font-size:9px;color:#64748b;background:#f1f5f9;padding:1px 6px;border-radius:4px;font-weight:600">'+X(t.niche||t.category||"")+'</span></div>';
     content.innerHTML+='<p style="font-size:11px;color:#64748b;line-height:1.4;margin-bottom:10px">'+X(t.description||"").slice(0,80)+(t.description&&t.description.length>80?"...":"")+'</p>';
     
-    content.appendChild(El("button",{"class":"btn btn-sm",style:"width:100%",onclick:function(){MFC({template:t,slug:"",title:""})}},"Use Template"));
+    content.appendChild(El("button",{"class":"btn btn-sm",style:"width:100%",onclick:function(){
+      if(tplLocked){KCUP('The "'+X(t.name)+'" template is a premium template. Upgrade to Kinetic Pro to unlock premium templates.');return;}
+      MFC({template:t,slug:"",title:""});
+    }},tplLocked?"🔒 Locked — Upgrade":"Use Template"));
     card.appendChild(content);
     grd.appendChild(card);
   });
@@ -735,7 +759,10 @@ function MFC(data){
   var tg=El("div",{style:"display:grid;grid-template-columns:repeat(3,1fr);gap:6px"});
   KCB.themes.forEach(function(th){
     var isActive=false;
-    var thBtn=El("div",{className:"mc-theme-btn",style:"padding:6px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid #e2e8f0;font-size:9px;transition:all .15s",onclick:function(){
+    var thLocked=KCPremium(th);
+    var thBtn=El("div",{className:"mc-theme-btn"+(thLocked?" kc-locked":""),style:"position:relative;padding:6px;border-radius:8px;cursor:pointer;text-align:center;border:2px solid #e2e8f0;font-size:9px;transition:all .15s",onclick:function(){
+      // A locked theme is visible but never applied — it opens the upgrade prompt instead.
+      if(thLocked){KCUP("The \u201c"+X(th.name||"")+"\u201d theme is a premium theme. Upgrade to unlock it.");return;}
       if(th.colors){
         // Use the gradient as a background style token
         var bk=th.colors.background||th.gradient||"#0f172a";
@@ -759,6 +786,7 @@ function MFC(data){
     var bgStr=th.colors?th.colors.background:(th.gradient||"linear-gradient(135deg,#000,#fff)");
     var btm=th.colors?th.colors.accent:(th.accent||"#fff");
     thBtn.innerHTML='<div style="height:24px;border-radius:4px;margin-bottom:4px;background:'+bgStr+';box-shadow:inset 0 0 0 1px rgba(255,255,255,0.1)"></div><span style="font-size:9px;color:#475569;font-weight:600">'+X(th.name||"")+'</span>';
+    if(thLocked) thBtn.appendChild(El("span",{"class":"kc-lock kc-tpl-lock"},"\ud83d\udd12 PRO"));
     tg.appendChild(thBtn);
   });
   themeDiv.appendChild(tg);
