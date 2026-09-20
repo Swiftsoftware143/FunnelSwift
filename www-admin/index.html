@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FunnelSwift — Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--primary:#6366f1;--primary-dark:#4f46e5;--bg:#f1f5f9;--surface:#fff;--text:#1e293b;--muted:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#10b981;--warning:#f59e0b}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);margin:0;color:var(--text)}
+.sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);min-height:100vh;padding:12px;display:flex;flex-direction:column;flex-shrink:0;position:fixed;left:0;top:0;bottom:0;z-index:100;overflow-y:auto}
+.main{margin-left:240px;padding:24px;min-height:100vh}
+.logo-area{display:flex;align-items:center;gap:8px;padding:12px 8px 16px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.logo-area .icon{font-size:24px}
+.logo-area .title{font-weight:700;font-size:16px;color:var(--text)}
+.nav-section{margin-bottom:4px}
+.nav-section-header{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:12px 8px 4px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;margin-bottom:2px}
+.nav-item:hover{background:#f1f5f9;color:var(--text)}
+.nav-item.active{background:var(--primary);color:#fff}
+.nav-item .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.nav-item .badge{font-size:10px;padding:1px 6px;border-radius:10px;background:#e2e8f0;color:var(--muted);margin-left:auto}
+.nav-item.active .badge{background:rgba(255,255,255,.25);color:#fff}
+.nav-divider{height:1px;background:var(--border);margin:8px 0}
+.nav-footer{padding:8px;border-top:1px solid var(--border);margin-top:auto}
+.nav-user{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--muted)}
+.nav-user:hover{background:#f1f5f9}
+.nav-user .avatar{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
+.nav-user .logout{color:var(--danger);font-size:11px;margin-left:auto;cursor:pointer}
+/* Cards & Tables */
+.card{background:var(--surface);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:20px;margin-bottom:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:16px;font-weight:600}
+.card-subtitle{font-size:13px;color:var(--muted)}
+.table-wrap{overflow-x:auto}
+.table{width:100%;border-collapse:collapse}
+.table th{text-align:left;padding:10px 12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);white-space:nowrap}
+.table td{padding:10px 12px;font-size:13px;border-bottom:1px solid #f1f5f9}
+.table tr:hover td{background:#f8fafc}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-dark)}
+.btn-secondary{background:#f1f5f9;color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:#e2e8f0}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#dc2626}
+.btn-success{background:var(--success);color:#fff}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-xs{padding:2px 8px;font-size:11px;border-radius:6px}
+.btn-icon{padding:6px;border-radius:8px;background:0 0;border:none;cursor:pointer;font-size:16px}
+.btn-icon:hover{background:#f1f5f9}
+.btn-group{display:flex;gap:6px}
+/* Inputs */
+.input{border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;width:100%;outline:0;background:var(--surface);box-sizing:border-box}
+.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(99,102,241,.1)}
+.select{border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:0;background:var(--surface)}
+.search-bar{position:relative}
+.search-bar .input{padding-left:32px}
+.search-bar .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:200;animation:fadeIn .15s}
+.modal{background:var(--surface);border-radius:16px;padding:24px;width:90%;max-width:520px;max-height:85vh;overflow-y:auto;animation:slideUp .2s}
+.modal-lg{max-width:700px}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.modal-title{font-size:18px;font-weight:600}
+.modal-close{background:0 0;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:4px}
+.modal-close:hover{color:var(--text)}
+.modal-body{margin-bottom:20px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end}
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-hint{font-size:11px;color:var(--muted);margin-top:2px}
+/* Badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500}
+.badge-green{background:#d1fae5;color:#065f46}.badge-red{background:#fee2e2;color:#991b1b}
+.badge-yellow{background:#fef3c7;color:#92400e}.badge-blue{background:#dbeafe;color:#1e40af}
+.badge-purple{background:#ede9fe;color:#5b21b6}
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:var(--surface);border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.stat-value{font-size:24px;font-weight:700;color:var(--text)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:2px}
+.stat-change{font-size:11px;margin-top:4px}
+.stat-change.up{color:var(--success)}.stat-change.down{color:var(--danger)}
+/* Toggle */
+.toggle{position:relative;width:40px;height:22px;background:#cbd5e1;border-radius:11px;cursor:pointer;transition:background .2s;display:inline-block}
+.toggle.on{background:var(--primary)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s}
+.toggle.on::after{transform:translateX(18px)}
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px}
+.tab{padding:8px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+/* Empty state */
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty .icon{font-size:40px;margin-bottom:12px}
+.empty .title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px}
+.empty .desc{font-size:13px}
+/* Section divider in sidebar */
+.sidebar-section-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#94a3b8;padding:8px 12px 2px}
+/* Role indicator */
+.role-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:#fef3c7;color:#92400e;margin-left:4px}
+.role-badge.admin{background:#ede9fe;color:#5b21b6}
+/* Animations */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;z-index:300;animation:slideUp .2s;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.toast-success{background:var(--success)}.toast-error{background:var(--danger)}.toast-info{background:var(--primary)}
+/* Responsive */
+@media(max-width:768px){.sidebar{width:60px!important}.sidebar .nav-text,.sidebar .nav-section-header,.sidebar .logo-area .title,.sidebar .badge,.sidebar .role-badge,.sidebar .section-divider-label{display:none}.sidebar .nav-item{justify-content:center;padding:10px}.sidebar .nav-item .icon{font-size:18px}.main{margin-left:60px!important}}
+/* Plan card in upgrade */
+.plan-card{border:2px solid var(--border);border-radius:12px;padding:20px;text-align:center;transition:all .2s}
+.plan-card:hover{border-color:var(--primary);box-shadow:0 4px 12px rgba(99,102,241,.1)}
+.plan-card.current{border-color:var(--primary);background:#eef2ff}
+.plan-name{font-size:18px;font-weight:700;margin-bottom:8px}
+.plan-price{font-size:32px;font-weight:800;color:var(--primary);margin-bottom:4px}
+.plan-price span{font-size:14px;font-weight:400;color:var(--muted)}
+.plan-features{list-style:none;padding:0;margin:16px 0;text-align:left;font-size:13px}
+.plan-features li{padding:6px 0;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px}
+.plan-features li .check{color:var(--success);font-weight:700}
+.plan-features li .cross{color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+// ── FunnelSwift Admin SPA ──
+const API_BASE = '/api/v1';
+let TOKEN = localStorage.getItem('ws_fs_token') || '';
+let USER = null; // { id, email, role, tenant_id, plan_id, plan_slug, plan: {...} }
+let STATE = { view: 'dashboard', modal: null, data: {}, toast: null, subView: null };
+
+// ── API ──
+async function api(path, opts={}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers||{}) };
+  if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  if (res.status === 401) { TOKEN = ''; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; throw new Error('auth'); }
+  if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error'); throw new Error('402'); }
+  if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); throw new Error(e.error||e.message||'Error '+res.status); }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ── Toast ──
+function showToast(msg, type='info') {
+  STATE.toast = { msg, type };
+  renderApp();
+  setTimeout(() => { STATE.toast = null; renderApp(); }, 3500);
+}
+
+// ── Helpers ──
+function x(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function $(id) { return document.getElementById(id); }
+function isSuperAdmin() { return USER && (USER.role === 'super_admin' || USER.is_super_admin); }
+function canManageAffiliates() { return isSuperAdmin(); }
+function formatDate(d) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); }
+
+// ── Login ──
+async function doLogin(email, password) {
+  const res = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  TOKEN = res.token;
+  localStorage.setItem('ws_fs_token', TOKEN);
+  await loadUser();
+  renderApp();
+}
+
+async function loadUser() {
+  try {
+    const me = await api('/auth/me');
+    // Also try to get plan details
+    let plan = null;
+    try { if (me.plan_id) { const planRes = await api('/plans/' + me.plan_id); plan = planRes; } } catch(e){}
+    USER = { ...me, planObj: plan };
+  } catch(e) { USER = null; TOKEN = ''; localStorage.removeItem('ws_fs_token'); }
+}
+
+function doLogout() { TOKEN = ''; USER = null; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; }
+
+// ── Init ──
+(async function init() {
+  if (TOKEN) await loadUser();
+  renderApp();
+})();
+
+// ── Render ──
+function renderApp() {
+  const app = document.getElementById('app');
+  if (!TOKEN || !USER) {
+    app.innerHTML = renderLogin();
+    bindLogin();
+    return;
+  }
+  app.innerHTML = renderShell();
+  bindShell();
+  renderView();
+}
+
+function renderLogin() {
+  return `<div class="flex items-center justify-center min-h-screen bg-gray-50">
+    <div class="card w-full max-w-sm" style="padding:40px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:40px;margin-bottom:8px">🚀</div>
+        <h1 style="font-size:20px;font-weight:700">FunnelSwift Admin</h1>
+        <p style="font-size:13px;color:var(--muted)">Sign in to manage your account</p>
+      </div>
+      <div id="login-error" style="background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none"></div>
+      <div class="form-group"><label class="form-label">Email</label><input class="input" id="login-email" type="email" placeholder="swiftsoftware143@yahoo.com" autocomplete="email"></div>
+      <div class="form-group"><label class="form-label">Password</label><input class="input" id="login-pass" type="password" placeholder="Enter password" autocomplete="current-password"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" id="login-btn">Sign In</button>
+    </div>
+  </div>`;
+}
+
+function bindLogin() {
+  const btn = document.getElementById('login-btn');
+  const email = document.getElementById('login-email');
+  const pass = document.getElementById('login-pass');
+  const err = document.getElementById('login-error');
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = 'Signing in...'; err.style.display = 'none';
+    try { await doLogin(email.value.trim(), pass.value); }
+    catch(e) { err.textContent = e.message; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
+  };
+  pass.onkeydown = (e) => { if (e.key === 'Enter') btn.click(); };
+}
+
+// ── SHELL ──
+function renderShell() {
+  const nav = buildNav();
+  const u = USER || {};
+  const initials = (u.email||'U')[0].toUpperCase();
+  const roleLabel = isSuperAdmin() ? 'Super Admin' : 'User';
+
+  return `<div class="flex">
+    <div class="sidebar">
+      <div class="logo-area">
+        <span class="icon">🚀</span>
+        <span class="title">FunnelSwift</span>
+      </div>
+      ${nav}
+      <div class="nav-footer">
+        <div class="nav-user">
+          <div class="avatar">${initials}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(u.email)}</div>
+            <div class="role-badge ${isSuperAdmin()?'admin':''}">${roleLabel}</div>
+          </div>
+          <span class="logout" onclick="window._logout()" title="Sign Out">⏻</span>
+        </div>
+      </div>
+    </div>
+    <div class="main">
+      <div id="view-container"></div>
+    </div>
+    ${STATE.toast ? `<div class="toast toast-${STATE.toast.type}">${x(STATE.toast.msg)}</div>` : ''}
+    ${STATE.modal ? renderModal(STATE.modal) : ''}
+  </div>`;
+}
+
+window._logout = doLogout;
+
+// ── NAVIGATION ──
+function buildNav() {
+  // Role-aware navigation structure
+  const sections = [];
+
+  // My Account (both roles)
+  sections.push(`<div class="nav-item" data-view="myAccount"><span class="icon">👤</span><span class="nav-text">My Account</span></div>`);
+  sections.push(`<div class="sidebar-section-label">MAIN</div>`);
+
+  // Main nav (both roles)
+  const mainItems = [
+    { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+    { id: 'portfolio', icon: '🏢', label: 'Portfolio Companies' },
+    { id: 'plans', icon: '💳', label: 'Plans' },
+    { id: 'leads', icon: '👥', label: 'Leads' },
+    { id: 'tags', icon: '🏷️', label: 'Tags' },
+  ];
+  mainItems.forEach(n => {
+    sections.push(`<div class="nav-item ${STATE.view===n.id?'active':''}" data-view="${n.id}"><span class="icon">${n.icon}</span><span class="nav-text">${n.label}</span></div>`);
+  });
+
+  // Affiliate Section
+  sections.push(`<div class="sidebar-section-label">AFFILIATE</div>`);
+  if (isSuperAdmin()) {
+    sections.push(`<div class="nav-item ${STATE.view==='affiliates'?'active':''}" data-view="affiliates"><span class="icon">🤝</span><span class="nav-text">Affiliates</span></div>`);
+  }
+  sections.push(`<div class="nav-item ${STATE.view==='affiliateProducts'?'active':''}" data-view="affiliateProducts"><span class="icon">📦</span><span class="nav-text">Affiliate Products</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='affiliatePayouts'?'active':''}" data-view="affiliatePayouts"><span class="icon">💰</span><span class="nav-text">${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}</span></div>`);
+
+  // Tools
+  sections.push(`<div class="sidebar-section-label">TOOLS</div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='emailTemplates'?'active':''}" data-view="emailTemplates"><span class="icon">✉️</span><span class="nav-text">Email Templates</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='campaigns'?'active':''}" data-view="campaigns"><span class="icon">📢</span><span class="nav-text">Campaigns</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='integrations'?'active':''}" data-view="integrations"><span class="icon">🔌</span><span class="nav-text">Integrations</span></div>`);
+
+  // Super Admin (divider + admin-only)
+  if (isSuperAdmin()) {
+    sections.push(`<div class="nav-divider"></div>`);
+    sections.push(`<div class="sidebar-section-label">SUPER ADMIN</div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='superAdmin'?'active':''}" data-view="superAdmin"><span class="icon">⚙️</span><span class="nav-text">Super Admin</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='systemTags'?'active':''}" data-view="systemTags" style="padding-left:28px"><span class="icon">🔖</span><span class="nav-text">System Tags</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='tagGroups'?'active':''}" data-view="tagGroups" style="padding-left:28px"><span class="icon">📁</span><span class="nav-text">Tag Groups</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='apiKeys'?'active':''}" data-view="apiKeys"><span class="icon">🔑</span><span class="nav-text">API Keys</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></div>`);
+  }
+
+  return `<div class="flex-1">${sections.join('')}</div>`;
+}
+
+// ── VIEW ROUTER ──
+const viewRenderers = {
+  cardAnalytics: renderCardAnalytics,
+  cardUtmBuilder: renderCardUtmBuilder,
+  cardLocations: renderCardLocations,
+  dashboard: renderDashboard,
+  myAccount: renderMyAccount,
+  portfolio: renderPortfolio,
+  plans: renderPlans,
+  leads: renderLeads,
+  tags: renderTags,
+  affiliates: renderAffiliates,
+  affiliateProducts: renderAffiliateProducts,
+  affiliatePayouts: renderAffiliatePayouts,
+  emailTemplates: renderEmailTemplates,
+  campaigns: renderCampaigns,
+  webhooks: renderWebhooks,
+  integrations: renderIntegrations,
+  superAdmin: renderSuperAdmin,
+  systemTags: renderSystemTags,
+  tagGroups: renderTagGroups,
+  tenants: renderTenants,
+  apiKeys: renderApiKeys,
+  settings: renderSettings,
+};
+
+async function renderView() {
+  const container = document.getElementById('view-container');
+  if (!container) return;
+  const fn = viewRenderers[STATE.view] || renderDashboard;
+  try {
+    container.innerHTML = '<div class="empty"><div class="icon">⏳</div><div class="title">Loading...</div></div>';
+    const html = await fn();
+    container.innerHTML = html;
+    bindView(STATE.view);
+  } catch(e) {
+    container.innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="title">Error</div><div class="desc">${x(e.message)}</div></div>`;
+  }
+}
+
+function bindShell() {
+  document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+    el.onclick = () => {
+      STATE.view = el.dataset.view;
+      STATE.subView = null;
+      renderApp();
+    };
+  });
+}
+
+function bindView(view) {
+  switch(view) {
+    case 'dashboard': bindDashboard(); break;
+    case 'myAccount': bindMyAccount(); break;
+    case 'portfolio': bindPortfolio(); break;
+    case 'plans': bindPlans(); break;
+    case 'leads': bindLeads(); break;
+    case 'tags': bindTags(); break;
+    case 'affiliates': bindAffiliates(); break;
+    case 'affiliateProducts': bindAffiliateProducts(); break;
+    case 'affiliatePayouts': bindAffiliatePayouts(); break;
+    case 'emailTemplates': bindEmailTemplates(); break;
+    case 'campaigns': bindCampaigns(); break;
+    case 'webhooks': bindWebhooks(); break;
+    case 'integrations': bindIntegrations(); break;
+    case 'superAdmin': bindSuperAdmin(); break;
+    case 'systemTags': bindSystemTags(); break;
+    case 'tagGroups': bindTagGroups(); break;
+    case 'tenants': bindTenants(); break;
+    case 'apiKeys': bindApiKeys(); break;
+    case 'settings': bindSettings(); break;
+    case 'cardAnalytics': bindCardAnalytics(); break;
+    case 'cardUtmBuilder': bindCardUtmBuilder(); break;
+    case 'cardLocations': bindCardLocations(); break;
+  }
+}
+
+// ── DASHBOARD ──
+async function renderDashboard() {
+  let stats = null;
+  try { stats = await api('/dashboard/stats'); } catch(e) { stats = null; }
+  let recent = null;
+  try { recent = await api('/dashboard/activity?limit=10'); } catch(e) { recent = null; }
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">Dashboard</h1>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">${stats?.total_leads||0}</div><div class="stat-label">Total Leads</div></div>
+      <div class="stat-card"><div class="stat-value">${stats?.total_cards||0}</div><div class="stat-label">Cards Created</div></div>
+      <div class="stat-card"><div class="stat-value">${stats?.total_affiliates||0}</div><div class="stat-label">Affiliates</div></div>
+      <div class="stat-card"><div class="stat-value">${stats?.total_tags||0}</div><div class="stat-label">Tags</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">📋 Recent Activity</span></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Action</th><th>Details</th><th>Date</th></tr></thead>
+          <tbody>${recent&&recent.length?recent.slice(0,10).map(r=>`<tr><td>${x(r.action||r.type||'Activity')}</td><td>${x(r.details||r.description||'-')}</td><td>${formatDate(r.created_at)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No recent activity</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+function bindDashboard() {}
+
+// ── MY ACCOUNT ──
+async function renderMyAccount() {
+  const plan = USER.planObj || {};
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">My Account</h1>
+    <div class="card">
+      <div class="card-header"><span class="card-title">👤 Profile</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="form-label">Email</div><div style="font-size:14px;font-weight:500">${x(USER.email)}</div></div>
+        <div><div class="form-label">Role</div><div class="badge ${isSuperAdmin()?'badge-purple':'badge-blue'}">${isSuperAdmin()?'Super Admin':'User'}</div></div>
+        <div><div class="form-label">Tenant ID</div><div style="font-size:12px;color:var(--muted)">${x(USER.tenant_id||'N/A')}</div></div>
+        <div><div class="form-label">User ID</div><div style="font-size:12px;color:var(--muted)">${x(USER.id||'N/A')}</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">💳 My Plan</span>
+        <span class="badge badge-green">Active</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="form-label">Plan Name</div><div style="font-size:15px;font-weight:600">${x(plan.name||USER.plan_slug||'Free')}</div></div>
+        <div><div class="form-label">Price</div><div style="font-size:15px;font-weight:600">${plan.price?formatCurrency(plan.price)+'/'+(plan.billing_cycle||'month'):'Free'}</div></div>
+        <div><div class="form-label">Cards Limit</div><div>${plan.max_cards||'Unlimited'}</div></div>
+        <div><div class="form-label">Leads Limit</div><div>${plan.max_leads||'Unlimited'}</div></div>
+        <div><div class="form-label">Webhooks</div><div>${plan.has_webhooks?'✅':'❌'}</div></div>
+        <div><div class="form-label">API Access</div><div>${plan.has_api?'✅':'❌'}</div></div>
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary btn-sm" onclick="window._navTo('plans')">Upgrade Plan</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔑 API Key</span></div>
+      <div class="form-group">
+        <div style="display:flex;gap:8px">
+          <input class="input" id="api-key-display" value="${x(USER.api_key||'No API key generated')}" readonly style="font-family:monospace;font-size:12px">
+          ${USER.api_key?`<button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${x(USER.api_key)}');window._toast('Copied!','success')">📋</button>`:''}
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="generate-api-key">Generate New API Key</button>
+    </div>
+  </div>`;
+}
+function bindMyAccount() {
+  document.getElementById('generate-api-key')?.addEventListener('click', async function(){
+    try {
+      const res = await api('/api-keys', { method: 'POST', body: JSON.stringify({}) });
+      USER.api_key = res.key || res.api_key;
+      showToast('API key generated!', 'success');
+      renderApp();
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+}
+window._navTo = function(view) { STATE.view = view; renderApp(); };
+window._toast = showToast;
+
+// ── PORTFOLIO COMPANIES ──
+async function renderPortfolio() {
+  let items = [];
+  try { items = await api('/portfolio-companies'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.items || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Portfolio Companies</h1>
+      <button class="btn btn-primary btn-sm" id="add-portfolio-btn">+ Add Company</button>
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">🏢</div><div class="title">No companies yet</div><div class="desc">Add your first portfolio company</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Company</th><th>Email</th><th>Plan</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(c=>`<tr>
+        <td><strong>${x(c.company_name||c.name)}</strong>${c.description?`<div style="font-size:11px;color:var(--muted)">${x(c.description)}</div>`:''}</td>
+        <td>${x(c.email||'-')}</td>
+        <td><span class="badge badge-blue">${x(c.plan_slug||c.plan||'free')}</span></td>
+        <td><span class="badge ${c.status==='active'?'badge-green':'badge-yellow'}">${x(c.status||'active')}</span></td>
+        <td>
+          <button class="btn btn-secondary btn-xs" onclick="window._editPortfolio('${c.id}')">Edit</button>
+          ${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${c.id}')">Impersonate</button>`:''}
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindPortfolio() {
+  document.getElementById('add-portfolio-btn')?.addEventListener('click', () => openPortfolioModal());
+}
+window._editPortfolio = function(id) { openPortfolioModal(id); };
+window._impersonate = async function(companyId) {
+  try {
+    const res = await api(`/portfolio-companies/${companyId}/impersonate`);
+    TOKEN = res.token || res.access_token;
+    localStorage.setItem('ws_fs_token', TOKEN);
+    await loadUser();
+    STATE.view = 'dashboard';
+    showToast('Impersonating company...', 'info');
+    renderApp();
+  } catch(e) { showToast(e.message, 'error'); }
+};
+
+function openPortfolioModal(id) {
+  STATE.modalData = { id };
+  STATE.modal = { title: id ? 'Edit Company' : 'Add Company' };
+  renderApp();
+}
+
+function renderModal(m) {
+  return `<div class="modal-overlay" onclick="window._closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">${x(m.title)}</span>
+        <button class="modal-close" onclick="window._closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body">${m.content||''}</div>
+    </div>
+  </div>`;
+}
+window._closeModal = function(e) {
+  if (e && e.target !== e.currentTarget) return;
+  STATE.modal = null;
+  STATE.modalData = null;
+  renderApp();
+};
+
+// ── PLANS ──
+async function renderPlans() {
+  let plans = [];
+  try { plans = await api('/plans'); } catch(e) { plans = []; }
+  if (!Array.isArray(plans)) plans = plans.data || plans.plans || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Plans</h1>
+      ${isSuperAdmin() ? `<button class="btn btn-primary btn-sm" id="add-plan-btn">+ Add Plan</button>` : ''}
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Features</th>${isSuperAdmin()?'<th>Actions</th>':''}</tr></thead>
+      <tbody>${plans.map(p=>`<tr>
+        <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div></td>
+        <td>${p.price>0?formatCurrency(p.price):'Free'}</td>
+        <td><span class="badge badge-blue">${x(p.billing_cycle||'month')}</span></td>
+        <td>${p.max_cards||'∞'}</td>
+        <td>${p.max_leads||'∞'}</td>
+        <td>
+          ${p.has_webhooks?'<span class="badge badge-green">Webhooks</span> ':''}
+          ${p.has_api?'<span class="badge badge-purple">API</span> ':''}
+          ${p.has_analytics?'<span class="badge badge-blue">Analytics</span> ':''}
+          ${p.has_import_export?'<span class="badge badge-yellow">Import/Export</span>':''}
+        </td>
+        ${isSuperAdmin()?`<td><button class="btn btn-secondary btn-xs" onclick="window._editPlan('${p.id}')">Edit</button></td>`:''}
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+    ${!isSuperAdmin() && USER.plan_slug === 'capture-free' ? `
+    <div class="card" style="text-align:center;padding:30px;background:#eef2ff;border:2px solid var(--primary);margin-top:16px">
+      <div style="font-size:32px;margin-bottom:8px">🚀</div>
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">Ready to unlock more features?</h2>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Upgrade to a paid plan to get more cards, leads, and advanced features.</p>
+      <button class="btn btn-primary" onclick="window._navTo('plans')">Compare Plans & Upgrade</button>
+    </div>`:''}
+  </div>`;
+}
+function bindPlans() {
+  document.getElementById('add-plan-btn')?.addEventListener('click', () => openPlanModal());
+}
+window._editPlan = function(id) { openPlanModal(id); };
+function openPlanModal(id) {
+  STATE.modalData = { id };
+  STATE.modal = { title: id ? 'Edit Plan' : 'Add Plan', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  // Load plan data into modal
+  setTimeout(async () => {
+    let plan = {};
+    if (id) try { plan = await api('/plans/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    const f = (k, def) => plan[k] !== undefined ? plan[k] : def;
+    body.innerHTML = `<form id="plan-form">
+      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(f('name',''))}" required></div><div class="form-group"><label class="form-label">Slug</label><input class="input" name="slug" value="${x(f('slug',''))}" required></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Price ($)</label><input class="input" name="price" type="number" step="0.01" value="${f('price',0)}"></div><div class="form-group"><label class="form-label">Annual Price ($)</label><input class="input" name="annual_price" type="number" step="0.01" value="${f('annual_price','')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Billing Cycle</label><select class="input" name="billing_cycle"><option value="month" ${f('billing_cycle')==='month'?'selected':''}>Monthly</option><option value="year" ${f('billing_cycle')==='year'?'selected':''}>Yearly</option><option value="lifetime" ${f('billing_cycle')==='lifetime'?'selected':''}>Lifetime</option></select></div><div class="form-group"><label class="form-label">Side</label><select class="input" name="side"><option value="capture" ${f('side')==='capture'?'selected':''}>Capture</option><option value="kinetic" ${f('side')==='kinetic'?'selected':''}>Kinetic</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Cards</label><input class="input" name="max_cards" type="number" value="${f('max_cards','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Leads</label><input class="input" name="max_leads" type="number" value="${f('max_leads','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Tags</label><input class="input" name="max_tags" type="number" value="${f('max_tags','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Forms</label><input class="input" name="max_forms" type="number" value="${f('max_forms','')}" placeholder="Unlimited"></div></div>
+      <div style="margin-top:12px"><div class="form-label" style="margin-bottom:8px">Feature Toggles</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${['has_webhooks','has_api','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Plan</button>
+      </div>
+    </form>`;
+    document.getElementById('plan-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      // Convert numbers
+      ['price','annual_price','max_cards','max_leads','max_tags','max_forms','max_custom_domains','max_qr_codes','max_action_buttons','max_team_members','max_ocr_scans'].forEach(k=>{ if(data[k]!==''&&data[k]!==undefined) data[k]=parseFloat(data[k]); else delete data[k]; });
+      // Feature toggles
+      document.querySelectorAll('.toggle[data-toggle]').forEach(t=>{ data[t.dataset.toggle] = t.classList.contains('on'); });
+      try {
+        if (id) await api('/plans/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/plans', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id?'Plan updated':'Plan created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+    // Toggle clicks
+    document.querySelectorAll('.toggle[data-toggle]').forEach(t=>{ t.onclick = function(){ this.classList.toggle('on'); }; });
+  }, 100);
+}
+
+// ── LEADS ──
+async function renderLeads() {
+  let leads = [];
+  try { leads = await api('/leads'); } catch(e) { leads = []; }
+  if (!Array.isArray(leads)) leads = leads.data || leads.leads || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Leads</h1>
+      <div class="btn-group">
+        <div class="search-bar"><span class="search-icon">🔍</span><input class="input" id="lead-search" placeholder="Search leads..." style="width:200px"></div>
+        <button class="btn btn-primary btn-sm" id="add-lead-btn">+ Add Lead</button>
+      </div>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="leads-tbody">${leads.map(l=>`<tr>
+        <td><strong>${x(l.name||l.full_name||'-')}</strong></td>
+        <td>${x(l.email||'-')}</td>
+        <td><span class="badge badge-blue">${x(l.source||'direct')}</span></td>
+        <td>${(l.tags||[]).map(t=>`<span class="badge badge-green">${x(t.name||t)}</span>`).join(' ')}</td>
+        <td>${formatDate(l.created_at)}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editLead('${l.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+  </div>`;
+}
+function bindLeads() {
+  document.getElementById('add-lead-btn')?.addEventListener('click', () => openLeadModal());
+  document.getElementById('lead-search')?.addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#leads-tbody tr').forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+window._editLead = function(id) { openLeadModal(id); };
+function openLeadModal(id) {
+  STATE.modalData = { id };
+  STATE.modal = { title: id ? 'Edit Lead' : 'Add Lead', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    let lead = {};
+    if (id) try { lead = await api('/leads/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="lead-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(lead.name||'')}"></div>
+      <div class="form-group"><label class="form-label">Email</label><input class="input" name="email" type="email" value="${x(lead.email||'')}"></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Phone</label><input class="input" name="phone" value="${x(lead.phone||'')}"></div><div class="form-group"><label class="form-label">Source</label><input class="input" name="source" value="${x(lead.source||'')}"></div></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea class="input" name="notes" rows="3" style="resize:vertical">${x(lead.notes||'')}</textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Lead</button>
+      </div>
+    </form>`;
+    document.getElementById('lead-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      try {
+        if (id) await api('/leads/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/leads', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id?'Lead updated':'Lead created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── TAGS ──
+async function renderTags() {
+  let tags = [];
+  try { tags = await api('/tags'); } catch(e) { tags = []; }
+  if (!Array.isArray(tags)) tags = tags.data || tags.tags || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Tags</h1>
+      <button class="btn btn-primary btn-sm" id="add-tag-btn">+ Add Tag</button>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Group</th><th>Type</th><th>Actions</th></tr></thead>
+      <tbody>${tags.map(t=>`<tr>
+        <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px;vertical-align:middle"></span><strong>${x(t.name)}</strong></td>
+        <td><span class="badge badge-blue">${x(t.group_name||t.tag_group||'General')}</span></td>
+        <td>${t.is_system?`<span class="badge badge-purple">🔒 System</span>`:`<span class="badge badge-green">Custom</span>`}</td>
+        <td>${!t.is_system?`<button class="btn btn-secondary btn-xs" onclick="window._editTag('${t.id}')">Edit</button>`:`<span style="font-size:11px;color:var(--muted)">System managed</span>`}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+  </div>`;
+}
+function bindTags() {
+  document.getElementById('add-tag-btn')?.addEventListener('click', () => openTagModal());
+}
+window._editTag = function(id) { openTagModal(id); };
+function openTagModal(id) {
+  STATE.modal = { title: id ? 'Edit Tag' : 'Add Tag', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(async () => {
+    let tag = {};
+    if (id) try { tag = await api('/tags/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="tag-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(tag.name||'')}" required></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(tag.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><input class="input" name="group_name" value="${x(tag.group_name||'')}" placeholder="e.g. Source, Status"></div></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        ${id?`<button type="button" class="btn btn-danger" onclick="window._deleteTag('${id}')">Delete</button>`:''}
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Tag</button>
+      </div>
+    </form>`;
+    document.getElementById('tag-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      try {
+        if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/tags', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id?'Tag updated':'Tag created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+window._deleteTag = async function(id) {
+  if (!confirm('Delete this tag?')) return;
+  try { await api('/tags/'+id, { method: 'DELETE' }); showToast('Tag deleted', 'success'); STATE.modal = null; renderApp(); }
+  catch(e) { showToast(e.message, 'error'); }
+};
+
+// ── AFFILIATES (Super Admin only) ──
+async function renderAffiliates() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div><div class="desc">Only super admins can manage affiliates.</div></div>`;
+
+  let items = [];
+  try { items = await api('/affiliates'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.affiliates || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Affiliates</h1>
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-sm" id="export-affiliates-btn">📥 Export CSV</button>
+        <button class="btn btn-primary btn-sm" id="add-affiliate-btn">+ Add Affiliate</button>
+      </div>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Commission</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(a=>`<tr>
+        <td><code style="font-size:11px">${x(a.affiliate_id||a.id)}</code></td>
+        <td><strong>${x(a.name||a.full_name||'-')}</strong></td>
+        <td>${x(a.email||'-')}</td>
+        <td>${a.commission_rate?a.commission_rate+'%':'-'}</td>
+        <td><span class="badge ${a.status==='active'?'badge-green':'badge-yellow'}">${x(a.status||'pending')}</span></td>
+        <td>${formatDate(a.created_at||a.joined_at)}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editAffiliate('${a.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+  </div>`;
+}
+function bindAffiliates() {
+  document.getElementById('add-affiliate-btn')?.addEventListener('click', () => openAffiliateModal());
+  document.getElementById('export-affiliates-btn')?.addEventListener('click', async () => {
+    try {
+      const items = await api('/affiliates');
+      const arr = Array.isArray(items) ? items : (items.data||items.affiliates||[]);
+      const csv = 'ID,Name,Email,Commission,Status,Joined\n' + arr.map(a=>`${a.affiliate_id||a.id},${a.name||a.full_name},${a.email},${a.commission_rate}%,${a.status},${a.created_at||a.joined_at}`).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a'); el.href = url; el.download = 'affiliates.csv'; el.click();
+      showToast('Exported!', 'success');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+}
+window._editAffiliate = function(id) { openAffiliateModal(id); };
+function openAffiliateModal(id) {
+  STATE.modal = { title: id ? 'Edit Affiliate' : 'Add Affiliate', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(async () => {
+    let a = {};
+    if (id) try { a = await api('/affiliates/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="affiliate-form">
+      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(a.name||a.full_name||'')}" required></div><div class="form-group"><label class="form-label">Email</label><input class="input" name="email" type="email" value="${x(a.email||'')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="commission_rate" type="number" step="0.1" value="${a.commission_rate||''}"></div><div class="form-group"><label class="form-label">Status</label><select class="input" name="status"><option value="active" ${a.status==='active'?'selected':''}>Active</option><option value="pending" ${a.status==='pending'?'selected':''}>Pending</option><option value="suspended" ${a.status==='suspended'?'selected':''}>Suspended</option></select></div></div>
+      <div class="form-group"><label class="form-label">Industry</label><input class="input" name="industry" value="${x(a.industry||'')}"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Affiliate</button>
+      </div>
+    </form>`;
+    document.getElementById('affiliate-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      if (data.commission_rate) data.commission_rate = parseFloat(data.commission_rate);
+      try {
+        if (id) await api('/affiliates/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/affiliates', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id?'Affiliate updated':'Affiliate created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── AFFILIATE PRODUCTS (Both roles — different view) ──
+async function renderAffiliateProducts() {
+  let items = [];
+  try { items = await api('/affiliate-products'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.products || [];
+
+  const isAdmin = isSuperAdmin();
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">${isAdmin?'Affiliate Products':'My Products'}</h1>
+      ${isAdmin ? `<button class="btn btn-primary btn-sm" id="add-product-btn">+ Add Product</button>` : ''}
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">📦</div><div class="title">No products yet</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Product</th><th>URL</th><th>Commission</th><th>Type</th>${isAdmin?'<th>Tenant</th>':''}<th>Actions</th></tr></thead>
+      <tbody>${items.map(p=>`<tr>
+        <td><strong>${x(p.name||p.product_name||'-')}</strong>${p.description?`<div style="font-size:11px;color:var(--muted)">${x(p.description)}</div>`:''}</td>
+        <td><a href="${x(p.url||'#')}" target="_blank" style="font-size:12px;color:var(--primary)">${x((p.url||'').substring(0,40))}${(p.url||'').length>40?'...':''}</a></td>
+        <td><strong>${p.default_commission_rate||p.commission_rate||0}%</strong></td>
+        <td>${p.is_third_party?`<span class="badge badge-yellow">3rd Party</span>`:`<span class="badge badge-blue">Internal</span>`}</td>
+        ${isAdmin?`<td><span class="badge badge-green">${x(p.tenant_name||p.tenant_id||'-')}</span></td>`:''}
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editAffiliateProduct('${p.id}')">${isAdmin?'Edit':'View'}</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindAffiliateProducts() {
+  document.getElementById('add-product-btn')?.addEventListener('click', () => openAffiliateProductModal());
+}
+window._editAffiliateProduct = function(id) { openAffiliateProductModal(id); };
+function openAffiliateProductModal(id) {
+  STATE.modal = { title: id ? (isSuperAdmin()?'Edit Product':'View Product') : 'Add Product' };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(async () => {
+    let p = {};
+    if (id) try { p = await api('/affiliate-products/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    const isAdmin = isSuperAdmin();
+    body.innerHTML = `<form id="product-form">
+      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(p.name||p.product_name||'')}" ${isAdmin?'':'readonly'}></div><div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(p.url||'')}" ${isAdmin?'':'readonly'}></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="default_commission_rate" type="number" step="0.1" value="${p.default_commission_rate||p.commission_rate||''}" ${isAdmin?'':'readonly'}></div><div class="form-group"><label class="form-label">Third Party</label><select class="input" name="is_third_party" ${isAdmin?'':'disabled'}><option value="false" ${!p.is_third_party?'selected':''}>No</option><option value="true" ${p.is_third_party?'selected':''}>Yes</option></select></div></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" rows="2" ${isAdmin?'':'readonly'}>${x(p.description||'')}</textarea></div>
+      ${isAdmin?`<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Product</button>
+      </div>`:''}
+    </form>`;
+    if (isAdmin) {
+      document.getElementById('product-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const data = Object.fromEntries(fd);
+        if (data.default_commission_rate) data.default_commission_rate = parseFloat(data.default_commission_rate);
+        data.is_third_party = data.is_third_party === 'true';
+        try {
+          if (id) await api('/affiliate-products/'+id, { method: 'PUT', body: JSON.stringify(data) });
+          else await api('/affiliate-products', { method: 'POST', body: JSON.stringify(data) });
+          showToast(id?'Product updated':'Product created', 'success');
+          STATE.modal = null; renderApp();
+        } catch(e) { showToast(e.message, 'error'); }
+      });
+    }
+  }, 100);
+}
+
+// ── AFFILIATE PAYOUTS ──
+async function renderAffiliatePayouts() {
+  let items = [];
+  try { items = await api('/affiliate-payouts'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.payouts || [];
+
+  const isAdmin = isSuperAdmin();
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">${isAdmin?'Affiliate Payouts':'My Payouts'}</h1>
+      ${isAdmin ? `<button class="btn btn-primary btn-sm" id="add-payout-btn">+ Record Payout</button>` : ''}
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">💰</div><div class="title">No payouts yet</div></div>` : `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">${formatCurrency(items.reduce((s,i)=>s+(i.amount||0),0))}</div><div class="stat-label">Total${isAdmin?' Payouts':' Earned'}</div></div>
+      <div class="stat-card"><div class="stat-value">${items.filter(i=>i.status==='pending').length}</div><div class="stat-label">Pending</div></div>
+      <div class="stat-card"><div class="stat-value">${items.filter(i=>i.status==='paid').length}</div><div class="stat-label">Paid</div></div>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>ID</th>${isAdmin?'<th>Affiliate</th>':''}<th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${items.map(p=>`<tr>
+        <td><code style="font-size:11px">${x(p.id).substring(0,8)}</code></td>
+        ${isAdmin?`<td>${x(p.affiliate_name||p.affiliate_id||'-')}</td>`:''}
+        <td><strong>${formatCurrency(p.amount)}</strong></td>
+        <td><span class="badge ${p.status==='paid'?'badge-green':p.status==='pending'?'badge-yellow':'badge-red'}">${x(p.status)}</span></td>
+        <td>${formatDate(p.created_at||p.payout_date)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindAffiliatePayouts() {}
+
+// ── EMAIL TEMPLATES ──
+async function renderEmailTemplates() {
+  let items = [];
+  try { items = await api('/admin/email-templates'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.templates || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Email Templates</h1>
+      <button class="btn btn-primary btn-sm" id="add-email-btn">+ Add Template</button>
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">✉️</div><div class="title">No templates yet</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Subject</th><th>Type</th><th>Updated</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(t=>`<tr>
+        <td><strong>${x(t.name||t.template_name)}</strong></td>
+        <td>${x(t.subject||'-')}</td>
+        <td><span class="badge badge-blue">${x(t.type||'email')}</span></td>
+        <td>${formatDate(t.updated_at)}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editEmailTemplate('${t.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindEmailTemplates() {
+  document.getElementById('add-email-btn')?.addEventListener('click', () => openEmailTemplateModal());
+}
+window._editEmailTemplate = function(id) { openEmailTemplateModal(id); };
+
+function openEmailTemplateModal(id) {
+  STATE.modal = { title: id ? 'Edit Email Template' : 'Add Email Template', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    let t = {};
+    if (id) try { t = await api('/admin/email-templates/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="email-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
+      <div class="form-group"><label class="form-label">Subject</label><input class="input" name="subject" value="${x(t.subject||'')}"></div>
+      <div class="form-group"><label class="form-label">Type</label><select class="input" name="type"><option value="email" ${(t.type||'email')==='email'?'selected':''}>Email</option><option value="sms" ${t.type==='sms'?'selected':''}>SMS</option></select></div>
+      <div class="form-group"><label class="form-label">Body (HTML)</label><textarea class="input" name="body" rows="8" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.body||'')}</textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
+      </div>
+    </form>`;
+    document.getElementById('email-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      try {
+        if (id) await api('/admin/email-templates/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/admin/email-templates', { method: 'POST', body: JSON.stringify(data) });
+        showToast('Saved!', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── CAMPAIGNS ──
+async function renderCampaigns() {
+  let items = [];
+  try { items = await api('/campaigns'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.campaigns || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Campaigns</h1>
+      <button class="btn btn-primary btn-sm" id="add-campaign-btn">+ Add Campaign</button>
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">📢</div><div class="title">No campaigns yet</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(c=>`<tr>
+        <td><strong>${x(c.name||c.campaign_name)}</strong></td>
+        <td><span class="badge badge-blue">${x(c.type||c.campaign_type||'email')}</span></td>
+        <td><span class="badge ${c.status==='active'?'badge-green':'badge-yellow'}">${x(c.status||'draft')}</span></td>
+        <td>${formatDate(c.created_at)}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editCampaign('${c.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindCampaigns() {
+  document.getElementById('add-campaign-btn')?.addEventListener('click', () => openCampaignModal());
+}
+window._editCampaign = function(id) { openCampaignModal(id); };
+function openCampaignModal(id) {
+  STATE.modal = { title: id ? 'Edit Campaign' : 'Add Campaign', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    let c = {};
+    if (id) try { c = await api('/campaigns/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="campaign-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(c.name||'')}" required></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Type</label><select class="input" name="type"><option value="email" ${(c.type||'email')==='email'?'selected':''}>Email</option><option value="sms" ${c.type==='sms'?'selected':''}>SMS</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="input" name="status"><option value="draft" ${(c.status||'draft')==='draft'?'selected':''}>Draft</option><option value="active" ${c.status==='active'?'selected':''}>Active</option><option value="paused" ${c.status==='paused'?'selected':''}>Paused</option></select></div></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
+      </div>
+    </form>`;
+    document.getElementById('campaign-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      try {
+        if (id) await api('/campaigns/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/campaigns', { method: 'POST', body: JSON.stringify(data) });
+        showToast('Saved!', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── WEBHOOKS ──
+async function renderWebhooks() {
+  let items = [];
+  try { items = await api('/webhooks'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.webhooks || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">Webhooks</h1>
+      <button class="btn btn-primary btn-sm" id="add-webhook-btn">+ Add Webhook</button>
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">🔗</div><div class="title">No webhooks yet</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>URL</th><th>Events</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(w=>`<tr>
+        <td><code style="font-size:11px">${x(w.url||w.webhook_url)}</code></td>
+        <td>${(w.events||[]).map(e=>`<span class="badge badge-blue">${x(e)}</span>`).join(' ')}</td>
+        <td><span class="badge ${w.active!==false?'badge-green':'badge-red'}">${w.active!==false?'Active':'Inactive'}</span></td>
+        <td>${formatDate(w.created_at)}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editWebhook('${w.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindWebhooks() {
+  document.getElementById('add-webhook-btn')?.addEventListener('click', () => openWebhookModal());
+}
+window._editWebhook = function(id) { openWebhookModal(id); };
+function openWebhookModal(id) {
+  STATE.modal = { title: id ? 'Edit Webhook' : 'Add Webhook', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    let w = {};
+    if (id) try { w = await api('/webhooks/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="webhook-form">
+      <div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(w.url||'')}" placeholder="https://..." required></div>
+      <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((w.events||[]).join(', '))}" placeholder="lead.created, tag.updated"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${w.active!==false?'on':''}" id="webhook-active-toggle"></span> Active</label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
+      </div>
+    </form>`;
+    document.getElementById('webhook-active-toggle')?.addEventListener('click', function(){this.classList.toggle('on');});
+    document.getElementById('webhook-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      data.events = data.events ? data.events.split(',').map(s=>s.trim()).filter(Boolean) : [];
+      data.active = document.getElementById('webhook-active-toggle').classList.contains('on');
+      try {
+        if (id) await api('/webhooks/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/webhooks', { method: 'POST', body: JSON.stringify(data) });
+        showToast('Saved!', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── INTEGRATION CENTER ──
+let _integrationsCache = [];
+function maskKey(k) { if(!k) return '—'; if(k.length<=4) return '••••'; return '••••••' + k.slice(-4); }
+
+async function renderIntegrations() {
+  let items = [];
+  try { items = await api('/integration-targets'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.items || [];
+  _integrationsCache = items;
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">🔌 Integration Center</h1>
+      <button class="btn btn-primary btn-sm" id="add-integration-btn">+ Add Connection</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px">Connect third-party services (e.g. Mailgun for email). Keys are stored per-tenant and never shared.</p>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">🔌</div><div class="title">No integrations yet</div><div class="desc">Add your first connection (e.g. Mailgun for email)</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Endpoint / URL</th><th>API Key</th><th>Events</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(t=>`<tr>
+        <td><strong>${x(t.name)}</strong></td>
+        <td><code style="font-size:11px">${x(t.webhook_url)}</code></td>
+        <td><code style="font-size:11px">${maskKey(t.api_key)}</code></td>
+        <td>${(t.events||[]).slice(0,3).map(e=>`<span class="badge badge-blue">${x(e)}</span>`).join(' ')}${(t.events||[]).length>3?' …':''}</td>
+        <td><span class="badge ${t.is_active?'badge-green':'badge-red'}">${t.is_active?'Active':'Inactive'}</span></td>
+        <td>
+          <button class="btn btn-secondary btn-xs" onclick="window._editIntegration('${t.id}')">Edit</button>
+          <button class="btn btn-danger btn-xs" onclick="window._deleteIntegration('${t.id}')">Delete</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindIntegrations() {
+  document.getElementById('add-integration-btn')?.addEventListener('click', () => openIntegrationModal());
+}
+window._editIntegration = function(id) { openIntegrationModal(id); };
+window._deleteIntegration = async function(id) {
+  if (!confirm('Delete this integration?')) return;
+  try {
+    await api('/integration-targets/'+id, { method: 'DELETE' });
+    showToast('Integration deleted', 'success');
+    renderView();
+  } catch(e) { showToast(e.message, 'error'); }
+};
+
+function openIntegrationModal(id) {
+  STATE.modal = { title: id ? 'Edit Connection' : 'Add Connection', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(() => {
+    const t = id ? (_integrationsCache.find(i => i.id === id) || {}) : {};
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="integration-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" placeholder="e.g. Mailgun" required></div>
+      <div class="form-group"><label class="form-label">API Base URL / Webhook URL</label><input class="input" name="webhook_url" value="${x(t.webhook_url||'')}" placeholder="https://api.mailgun.net/v3/your-domain/messages" required></div>
+      <div class="form-group"><label class="form-label">API Key</label><input class="input" name="api_key" value="" placeholder="${id?'Leave blank to keep existing key':'Enter key'}" autocomplete="off"></div>
+      <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((t.events||[]).join(', '))}" placeholder="email.send"></div>
+      ${id?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${t.is_active?'on':''}" id="integration-active-toggle"></span> Active</label>`:''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
+      </div>
+    </form>`;
+    document.getElementById('integration-active-toggle')?.addEventListener('click', function(){this.classList.toggle('on');});
+    document.getElementById('integration-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      data.events = data.events ? data.events.split(',').map(s=>s.trim()).filter(Boolean) : [];
+      if (data.api_key === '') delete data.api_key;
+      try {
+        if (id) {
+          data.is_active = document.getElementById('integration-active-toggle').classList.contains('on');
+          await api('/integration-targets/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        } else {
+          await api('/integration-targets', { method: 'POST', body: JSON.stringify(data) });
+        }
+        showToast(id?'Connection updated':'Connection created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── SUPER ADMIN DASHBOARD ──
+async function renderSuperAdmin() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  let stats = {};
+  try { stats = await api('/admin/stats'); } catch(e) { stats = {}; }
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚙️ Super Admin Dashboard</h1>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">${stats.total_tenants||0}</div><div class="stat-label">Total Tenants</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.total_users||0}</div><div class="stat-label">Total Users</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.total_affiliates||0}</div><div class="stat-label">Total Affiliates</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.total_plans||0}</div><div class="stat-label">Active Plans</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Quick Actions</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('systemTags')"><div style="font-size:24px">🔖</div><div style="font-weight:600;margin-top:4px">System Tags</div><div style="font-size:12px;color:var(--muted)">Manage system-wide tags</div></div>
+        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tagGroups')"><div style="font-size:24px">📁</div><div style="font-weight:600;margin-top:4px">Tag Groups</div><div style="font-size:12px;color:var(--muted)">Configure tag groups</div></div>
+        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tenants')"><div style="font-size:24px">🏢</div><div style="font-weight:600;margin-top:4px">Tenants</div><div style="font-size:12px;color:var(--muted)">Manage tenants</div></div>
+        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('apiKeys')"><div style="font-size:24px">🔑</div><div style="font-weight:600;margin-top:4px">API Keys</div><div style="font-size:12px;color:var(--muted)">Manage API keys</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+function bindSuperAdmin() {}
+
+// ── SYSTEM TAGS (Super Admin only) ──
+async function renderSystemTags() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  let items = [];
+  try { items = await api('/tags?system=true'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.tags || [];
+  items = items.filter(t => t.is_system === true);
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <div><h1 style="font-size:22px;font-weight:700">🔖 System Tags</h1><p style="font-size:13px;color:var(--muted)">These tags appear to all users. Users cannot edit or delete them.</p></div>
+      <button class="btn btn-primary btn-sm" id="add-sys-tag-btn">+ Add System Tag</button>
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">🔖</div><div class="title">No system tags yet</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Group</th><th>Color</th><th>Plan Mapping</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(t=>`<tr>
+        <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px"></span><strong>${x(t.name)}</strong> <span class="badge badge-purple">System</span></td>
+        <td><span class="badge badge-blue">${x(t.group_name||t.tag_group||'-')}</span></td>
+        <td><div style="width:20px;height:20px;border-radius:4px;background:${x(t.color||'#6366f1')};border:1px solid #e2e8f0"></div></td>
+        <td>${t.plan_slug?`<span class="badge badge-yellow">${x(t.plan_slug)}</span>`:'-'}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editSysTag('${t.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindSystemTags() {
+  document.getElementById('add-sys-tag-btn')?.addEventListener('click', () => openSysTagModal());
+}
+window._editSysTag = function(id) { openSysTagModal(id); };
+function openSysTagModal(id) {
+  STATE.modal = { title: id ? 'Edit System Tag' : 'Add System Tag', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    let t = {};
+    if (id) try { t = await api('/tags/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="systag-form">
+      <input type="hidden" name="is_system" value="true">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><input class="input" name="group_name" value="${x(t.group_name||'')}"></div></div>
+      <div class="form-group"><label class="form-label">Plan Slug (optional — maps this tag to a specific plan)</label><input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="e.g., capture-free, kinetic-pro"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} System Tag</button>
+      </div>
+    </form>`;
+    document.getElementById('systag-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      data.is_system = true;
+      try {
+        if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/tags', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id?'Updated':'Created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── TAG GROUPS (Super Admin only) ──
+async function renderTagGroups() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  let items = [];
+  try { items = await api('/tag-groups'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.groups || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">📁 Tag Groups</h1>
+      <button class="btn btn-primary btn-sm" id="add-group-btn">+ Add Group</button>
+    </div>
+    ${items.length === 0 ? `<div class="empty"><div class="icon">📁</div><div class="title">No tag groups yet</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Description</th><th>Tags Count</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(g=>`<tr>
+        <td><strong>${x(g.name)}</strong></td>
+        <td>${x(g.description||'-')}</td>
+        <td><span class="badge badge-blue">${g.tag_count||g.count||0}</span></td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editTagGroup('${g.id}')">Edit</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindTagGroups() {
+  document.getElementById('add-group-btn')?.addEventListener('click', () => openTagGroupModal());
+}
+window._editTagGroup = function(id) { openTagGroupModal(id); };
+function openTagGroupModal(id) {
+  STATE.modal = { title: id ? 'Edit Tag Group' : 'Add Tag Group', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    let g = {};
+    if (id) try { g = await api('/tag-groups/'+id); } catch(e){}
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="group-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(g.name||'')}" required></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" rows="2">${x(g.description||'')}</textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
+      </div>
+    </form>`;
+    document.getElementById('group-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      try {
+        if (id) await api('/tag-groups/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/tag-groups', { method: 'POST', body: JSON.stringify(data) });
+        showToast('Saved!', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
+
+// ── TENANTS (Super Admin only) ──
+async function renderTenants() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  let items = [];
+  try { items = await api('/admin/tenants'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.tenants || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">🏢 Tenants</h1>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th></tr></thead>
+      <tbody>${items.map(t=>`<tr>
+        <td><strong>${x(t.name||t.company_name)}</strong></td>
+        <td><code>${x(t.slug||t.tenant_slug)}</code></td>
+        <td><span class="badge badge-blue">${x(t.plan_slug||'free')}</span></td>
+        <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
+        <td>${t.user_count||0}</td>
+        <td>${formatDate(t.created_at)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+  </div>`;
+}
+function bindTenants() {}
+
+// ── API KEYS (Super Admin only) ──
+async function renderApiKeys() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  let items = [];
+  try { items = await api('/api-keys'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.keys || [];
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <h1 style="font-size:22px;font-weight:700">🔑 API Keys</h1>
+      <button class="btn btn-primary btn-sm" id="add-apikey-btn">+ Generate Key</button>
+    </div>
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Key</th><th>Tenant</th><th>Created</th><th>Last Used</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(k=>`<tr>
+        <td><code style="font-size:11px">${x((k.key||k.api_key||'').substring(0,16))}...</code></td>
+        <td>${x(k.tenant_name||k.tenant_id||'-')}</td>
+        <td>${formatDate(k.created_at)}</td>
+        <td>${formatDate(k.last_used_at)||'Never'}</td>
+        <td><button class="btn btn-danger btn-xs" onclick="window._revokeKey('${k.id}')">Revoke</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>
+  </div>`;
+}
+function bindApiKeys() {
+  document.getElementById('add-apikey-btn')?.addEventListener('click', async () => {
+    const tenantId = prompt('Tenant ID (leave blank for system):');
+    try {
+      await api('/api-keys', { method: 'POST', body: JSON.stringify({ tenant_id: tenantId || null }) });
+      showToast('API key generated!', 'success');
+      renderApp();
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+}
+window._revokeKey = async function(id) {
+  if (!confirm('Revoke this API key? This cannot be undone.')) return;
+  try { await api('/api-keys/'+id, { method: 'DELETE' }); showToast('Key revoked', 'success'); renderApp(); }
+  catch(e) { showToast(e.message, 'error'); }
+};
+
+// ── SYSTEM SETTINGS (Super Admin only) ──
+async function renderSettings() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚡ System Settings</h1>
+    <div class="card">
+      <div class="card-header"><span class="card-title">General Settings</span></div>
+      <div class="form-group"><label class="form-label">Default Plan</label>
+        <select class="input" id="default-plan"><option value="capture-free">Free (Capture)</option><option value="kinetic-free">Free (Kinetic)</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Max Tenants Per User</label><input class="input" id="max-tenants" type="number" value="5"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle on" id="reg-open-toggle"></span> Registration Open</label>
+      <button class="btn btn-primary btn-sm">Save Settings</button>
+    </div>
+  </div>`;
+}
+function bindSettings() {}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CARD ANALYTICS — Views, UTM, Locations
+// ═══════════════════════════════════════════════════════════════════
+const ANALYTICS_COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#14b8a6'];
+let _analyticsChartInstances = {};
+
+function destroyAnalyticsCharts() {
+  Object.values(_analyticsChartInstances).forEach(c => { try { c.destroy(); } catch(e){} });
+  _analyticsChartInstances = {};
+}
+
+// ── CARD ANALYTICS (Main Dashboard) ──
+async function renderCardAnalytics() {
+  let overview = null;
+  try { overview = await api('/analytics/overview'); } catch(e) { overview = null; }
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">📊 Card Analytics</h1>
+
+    <!-- Overview Cards -->
+    <div class="stats-grid">
+      <div class="stat-card" style="cursor:pointer" onclick="STATE.subView='cardList';renderApp()">
+        <div class="stat-value">${overview?.total_cards||0}</div>
+        <div class="stat-label">Total Cards</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${overview?.active_cards||0}</div>
+        <div class="stat-label">Active Cards</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${(overview?.total_views||0).toLocaleString()}</div>
+        <div class="stat-label">Total Views</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${(overview?.total_clicks||0).toLocaleString()}</div>
+        <div class="stat-label">Total Clicks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${(overview?.unique_visitors||0).toLocaleString()}</div>
+        <div class="stat-label">Unique Visitors</div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+      <!-- Daily Trend Chart -->
+      <div class="card" style="padding:20px">
+        <div class="card-header" style="padding:0;margin-bottom:12px">
+          <span class="card-title">📈 Daily Views & Clicks (30 Days)</span>
+        </div>
+        <div style="height:250px">
+          <canvas id="dailyTrendChart"></canvas>
+        </div>
+        ${(!overview?.daily_trend||overview.daily_trend.length===0)?'<div class="empty" style="padding:40px"><div class="icon">📭</div><div class="desc">No tracking data yet. Share your cards to see analytics.</div></div>':''}
+      </div>
+
+      <!-- Top Cards -->
+      <div class="card" style="padding:20px">
+        <div class="card-header" style="padding:0;margin-bottom:12px">
+          <span class="card-title">🏆 Top Cards</span>
+        </div>
+        ${overview?.top_cards&&overview.top_cards.length>0 ? `<div style="max-height:250px;overflow-y:auto">
+          <table class="table" style="font-size:12px">
+            <thead><tr><th>Card</th><th>Type</th><th>Views</th><th>Clicks</th></tr></thead>
+            <tbody>${overview.top_cards.map((c,i)=>`<tr style="cursor:pointer" onclick="STATE.subView='cardDetail';STATE.data.cardId='${c.card_id||c.id}';renderApp()">
+              <td><strong>${x(c.card_title||c.title||'Untitled')}</strong></td>
+              <td><span class="badge badge-blue">${x(c.card_type||c.template_type||'card')}</span></td>
+              <td>${(c.views||0).toLocaleString()}</td>
+              <td>${(c.clicks||0).toLocaleString()}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>`:'<div class="empty" style="padding:40px"><div class="icon">📭</div><div class="desc">No card data yet</div></div>'}
+      </div>
+    </div>
+
+    <!-- Top Countries -->
+    ${overview?.top_countries&&overview.top_countries.length>0 ? `<div class="card" style="padding:20px;margin-top:20px">
+      <div class="card-header" style="padding:0;margin-bottom:12px">
+        <span class="card-title">🌍 Top Countries</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        ${overview.top_countries.map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8fafc;border-radius:8px">
+          <span style="font-size:20px">${countryFlag(c.country||'')}</span>
+          <div style="flex:1"><strong>${x(c.country||'Unknown')}</strong></div>
+          <div style="font-weight:600;color:var(--primary)">${(c.count||0).toLocaleString()}</div>
+        </div>`).join('')}
+      </div>
+    </div>`:''}
+
+    <!-- Sub-Views -->
+    ${STATE.subView==='cardList' ? await renderCardList() : ''}
+    ${STATE.subView==='cardDetail' ? await renderCardDetail() : ''}
+  </div>`;
+}
+
+function bindCardAnalytics() {
+  // Draw daily trend chart if data exists
+  setTimeout(async () => {
+    let overview = null;
+    try { overview = await api('/analytics/overview'); } catch(e) { return; }
+    const canvas = document.getElementById('dailyTrendChart');
+    if (!canvas || !overview?.daily_trend?.length) return;
+    destroyAnalyticsCharts();
+    const dates = overview.daily_trend.map(d => new Date(d.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+    const views = overview.daily_trend.map(d => d.views||0);
+    const clicks = overview.daily_trend.map(d => d.clicks||0);
+    _analyticsChartInstances.dailyTrend = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: dates,
+        datasets: [
+          { label: 'Views', data: views, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3, pointRadius: 1 },
+          { label: 'Clicks', data: clicks, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3, pointRadius: 1 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth:12, padding:16 } } }, scales: { y: { beginAtZero: true, ticks: { precision:0 } } } }
+    });
+  }, 100);
+}
+
+// ── CARD LIST (Sub-view) ──
+async function renderCardList() {
+  let cards = [];
+  try { const r = await api('/kinetic/cards'); cards = Array.isArray(r)?r:(r?.cards||r?.data||[]); } catch(e) { cards = []; }
+
+  return `<div class="card" style="padding:20px;margin-top:20px">
+    <div class="card-header" style="padding:0;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+      <span class="card-title">📋 All Cards</span>
+      <button class="btn btn-sm" onclick="STATE.subView=null;renderApp()" style="background:var(--border)">✕ Close</button>
+    </div>
+    ${cards.length===0?'<div class="empty"><div class="desc">No cards found</div></div>':`<div class="table-wrap"><table class="table" style="font-size:12px">
+      <thead><tr><th>Card</th><th>Type</th><th>Slug</th><th>Views</th><th>UTM</th><th>Actions</th></tr></thead>
+      <tbody>${cards.map(c=>`<tr>
+        <td><strong>${x(c.title||'Untitled')}</strong></td>
+        <td><span class="badge badge-blue">${x(c.template_type||c.type||'card')}</span></td>
+        <td><code style="font-size:11px">${x(c.slug)}</code></td>
+        <td>${(c.view_count||c.views||0).toLocaleString()}</td>
+        <td>${c.utm_source?`<span class="badge badge-green">UTM Set</span>`:`<span class="badge" style="background:#e2e8f0">None</span>`}</td>
+        <td>
+          <button class="btn btn-primary btn-xs" onclick="STATE.subView='cardDetail';STATE.data.cardId='${c.id}';renderApp()">📊 Stats</button>
+          <button class="btn btn-xs" onclick="STATE.view='cardUtmBuilder';STATE.data.cardId='${c.id}';renderApp()" style="background:var(--warning);color:#fff;margin-left:4px">🔗 UTM</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>`}
+  </div>`;
+}
+
+// ── CARD DETAIL (Per-Card Analytics) ──
+async function renderCardDetail() {
+  const cardId = STATE.data?.cardId;
+  if (!cardId) return '<div class="empty"><div class="icon">⚠️</div><div class="title">No card selected</div></div>';
+
+  let data = null;
+  try { data = await api('/card-analytics/'+cardId); } catch(e) { data = null; }
+
+  if (!data) return '<div class="empty"><div class="icon">⚠️</div><div class="title">Failed to load card analytics</div></div>';
+
+  return `<div class="card" style="padding:20px;margin-top:20px">
+    <div class="card-header" style="padding:0;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <span class="card-title">📋 ${x(data.card_title||'Card')} — Detail</span>
+      <div>
+        <button class="btn btn-primary btn-sm" onclick="STATE.view='cardUtmBuilder';STATE.data.cardId='${cardId}';renderApp()">🔗 UTM Builder</button>
+        <button class="btn btn-sm" onclick="STATE.subView=null;renderApp()" style="background:var(--border);margin-left:8px">✕ Close</button>
+      </div>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">${(data.total_views||0).toLocaleString()}</div><div class="stat-label">Total Views</div></div>
+      <div class="stat-card"><div class="stat-value">${(data.total_clicks||0).toLocaleString()}</div><div class="stat-label">Total Clicks</div></div>
+      <div class="stat-card"><div class="stat-value">${(data.total_shares||0).toLocaleString()}</div><div class="stat-label">Shares</div></div>
+      <div class="stat-card"><div class="stat-value">${(data.unique_visitors||0).toLocaleString()}</div><div class="stat-label">Unique Visitors</div></div>
+      <div class="stat-card"><div class="stat-value">${(data.today_views||0).toLocaleString()}</div><div class="stat-label">Today</div></div>
+      <div class="stat-card"><div class="stat-value">${(data.this_week_views||0).toLocaleString()}</div><div class="stat-label">This Week</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+      <div class="card" style="padding:16px">
+        <div class="card-title" style="font-size:14px;margin-bottom:12px">📈 Daily Views (30 Days)</div>
+        <div style="height:220px"><canvas id="cardDailyChart"></canvas></div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div class="card-title" style="font-size:14px;margin-bottom:12px">📊 Event Breakdown</div>
+        <div style="height:220px"><canvas id="cardEventsChart"></canvas></div>
+        ${(!data.events_by_type||data.events_by_type.length===0)?'<div class="empty" style="padding:20px"><div class="desc">No events recorded</div></div>':''}
+      </div>
+    </div>
+
+    <!-- UTM Sources -->
+    ${data.utm_sources&&data.utm_sources.length>0 ? `<div style="margin-top:20px">
+      <div class="card-title" style="font-size:14px;margin-bottom:8px">🔗 UTM Sources</div>
+      <div class="table-wrap"><table class="table" style="font-size:12px">
+        <thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead>
+        <tbody>${data.utm_sources.map(u=>`<tr><td>${x(u.utm_source||'-')}</td><td>${x(u.utm_medium||'-')}</td><td>${x(u.utm_campaign||'-')}</td><td><strong>${u.count||0}</strong></td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>`:''}
+
+    <!-- Locations -->
+    ${data.top_locations&&data.top_locations.length>0 ? `<div style="margin-top:20px">
+      <div class="card-title" style="font-size:14px;margin-bottom:8px">🌍 Top Locations</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+        ${data.top_locations.map(l=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f8fafc;border-radius:6px;font-size:12px">
+          <span>${countryFlag(l.country||'')}</span>
+          <span style="flex:1">${[l.city,l.region,l.country].filter(Boolean).join(', ')||'Unknown'}</span>
+          <strong>${l.count||0}</strong>
+        </div>`).join('')}
+      </div>
+    </div>`:''}
+  </div>`;
+}
+
+function bindCardDetail() {
+  setTimeout(async () => {
+    const cardId = STATE.data?.cardId;
+    if (!cardId) return;
+    let data = null;
+    try { data = await api('/card-analytics/'+cardId); } catch(e) { return; }
+    destroyAnalyticsCharts();
+
+    // Daily chart
+    const dailyCanvas = document.getElementById('cardDailyChart');
+    if (dailyCanvas && data?.daily_stats?.length) {
+      _analyticsChartInstances.cardDaily = new Chart(dailyCanvas, {
+        type: 'line',
+        data: {
+          labels: data.daily_stats.map(d => new Date(d.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})),
+          datasets: [
+            { label: 'Views', data: data.daily_stats.map(d=>d.views||0), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3, pointRadius: 1 },
+            { label: 'Clicks', data: data.daily_stats.map(d=>d.clicks||0), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3, pointRadius: 1 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth:12, padding:16 } } }, scales: { y: { beginAtZero: true, ticks: { precision:0 } } } }
+      });
+    }
+
+    // Events pie chart
+    const eventsCanvas = document.getElementById('cardEventsChart');
+    if (eventsCanvas && data?.events_by_type?.length) {
+      _analyticsChartInstances.cardEvents = new Chart(eventsCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: data.events_by_type.map(e => e.event_type||'unknown'),
+          datasets: [{ data: data.events_by_type.map(e=>e.count||0), backgroundColor: ANALYTICS_COLORS }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth:12, padding:12, font: { size:11 } } } } }
+      });
+    }
+  }, 150);
+}
+
+// ── UTM BUILDER ──
+async function renderCardUtmBuilder() {
+  const cardId = STATE.data?.cardId;
+  let card = null, trackingUrl = '';
+
+  if (cardId) {
+    try { card = await api('/card-analytics/'+cardId); } catch(e) { card = null; }
+    try { const tu = await api('/card-analytics/'+cardId+'/tracking-url'); trackingUrl = tu?.tracking_url||tu?.url||''; } catch(e) {}
+  }
+
+  let cards = [];
+  try { const r = await api('/kinetic/cards'); cards = Array.isArray(r)?r:(r?.cards||r?.data||[]); } catch(e) {}
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">🔗 UTM Builder</h1>
+
+    <!-- Card Selector (if no card pre-selected) -->
+    ${!cardId ? `<div class="card" style="padding:20px;margin-bottom:16px">
+      <div class="card-title" style="font-size:14px;margin-bottom:8px">Select a Card</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+        ${cards.map(c=>`<div style="padding:10px 14px;background:#f8fafc;border-radius:8px;cursor:pointer;border:2px solid transparent" 
+          onmouseenter="this.style.borderColor='var(--primary)'" onmouseleave="this.style.borderColor='transparent'"
+          onclick="STATE.data.cardId='${c.id}';renderApp()">
+          <strong>${x(c.title||'Untitled')}</strong>
+          <div style="font-size:11px;color:var(--muted)">${x(c.slug)}</div>
+          ${c.utm_source?`<span class="badge badge-green" style="margin-top:4px">UTM Set</span>`:''}
+        </div>`).join('')}
+      </div>
+      ${cards.length===0?'<div class="empty"><div class="desc">No cards found</div></div>':''}
+    </div>`:''}
+
+    <!-- UTM Form (when card is selected) -->
+    ${cardId ? `<div class="card" style="padding:20px">
+      <div class="card-header" style="padding:0;margin-bottom:16px">
+        <span class="card-title">UTM Parameters — ${x(card?.card_title||card?.title||'Card')}</span>
+        ${cardId!==STATE.data?.cardId ? '' : ''}
+      </div>
+      <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">UTM Source</label>
+          <input class="input" id="utm-source" value="${x(card?.utm_source||'')}" placeholder="e.g. newsletter, facebook, google">
+        </div>
+        <div class="form-group">
+          <label class="form-label">UTM Medium</label>
+          <input class="input" id="utm-medium" value="${x(card?.utm_medium||'')}" placeholder="e.g. email, cpc, social">
+        </div>
+        <div class="form-group">
+          <label class="form-label">UTM Campaign</label>
+          <input class="input" id="utm-campaign" value="${x(card?.utm_campaign||'')}" placeholder="e.g. summer_sale, product_launch">
+        </div>
+        <div class="form-group">
+          <label class="form-label">UTM Content</label>
+          <input class="input" id="utm-content" value="${x(card?.utm_content||'')}" placeholder="e.g. banner_a, sidebar_link">
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">UTM Term</label>
+          <input class="input" id="utm-term" value="${x(card?.utm_term||'')}" placeholder="e.g. funnel+swift+cards">
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="btn btn-primary" id="save-utm-btn">💾 Save UTM</button>
+        <button class="btn" id="gen-url-btn" style="background:var(--warning);color:#fff">🔗 Generate Tracked URL</button>
+      </div>
+
+      <!-- Generated URL -->
+      <div id="utm-url-area" style="margin-top:16px;${trackingUrl?'':'display:none'}">
+        <label class="form-label">Tracked URL</label>
+        <div style="display:flex;gap:8px">
+          <input class="input" id="utm-url-display" value="${x(trackingUrl)}" readonly style="font-family:monospace;font-size:12px">
+          <button class="btn btn-primary btn-sm" id="copy-url-btn">📋 Copy</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Share this URL to track clicks and views with UTM parameters</div>
+      </div>
+    </div>`:''}
+  </div>`;
+}
+
+function bindCardUtmBuilder() {
+  document.getElementById('save-utm-btn')?.addEventListener('click', async () => {
+    const cardId = STATE.data?.cardId;
+    if (!cardId) return;
+    const data = {
+      utm_source: document.getElementById('utm-source')?.value||'',
+      utm_medium: document.getElementById('utm-medium')?.value||'',
+      utm_campaign: document.getElementById('utm-campaign')?.value||'',
+      utm_content: document.getElementById('utm-content')?.value||'',
+      utm_term: document.getElementById('utm-term')?.value||''
+    };
+    try {
+      await api('/card-analytics/'+cardId+'/utm', { method: 'PUT', body: JSON.stringify(data) });
+      showToast('UTM parameters saved!', 'success');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+
+  document.getElementById('gen-url-btn')?.addEventListener('click', async () => {
+    const cardId = STATE.data?.cardId;
+    if (!cardId) return;
+    try {
+      const res = await api('/card-analytics/'+cardId+'/tracking-url');
+      const url = res?.tracking_url||res?.url||'';
+      const area = document.getElementById('utm-url-area');
+      const input = document.getElementById('utm-url-display');
+      if (area) area.style.display = 'block';
+      if (input) input.value = url;
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+
+  document.getElementById('copy-url-btn')?.addEventListener('click', () => {
+    const input = document.getElementById('utm-url-display');
+    if (!input) return;
+    navigator.clipboard.writeText(input.value).then(() => showToast('URL copied!', 'success')).catch(() => showToast('Failed to copy', 'error'));
+  });
+}
+
+
+// ── LOCATIONS ──
+async function renderCardLocations() {
+  let overview = null;
+  try { overview = await api('/analytics/overview'); } catch(e) { overview = null; }
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">🌍 Location Tracking</h1>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">${(overview?.unique_visitors||0).toLocaleString()}</div><div class="stat-label">Unique Visitors</div></div>
+      <div class="stat-card"><div class="stat-value">${overview?.top_countries?.length||0}</div><div class="stat-label">Countries Reached</div></div>
+    </div>
+
+    ${overview?.top_countries&&overview.top_countries.length>0 ? `<div class="card" style="padding:20px;margin-top:20px">
+      <div class="card-title" style="font-size:14px;margin-bottom:12px">📍 Views by Country</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+        ${overview.top_countries.map((c,i)=>{
+          const maxCount = overview.top_countries[0]?.count||1;
+          const pct = Math.round((c.count/maxCount)*100);
+          return `<div style="padding:12px 16px;background:#f8fafc;border-radius:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:24px">${countryFlag(c.country||'')}</span>
+              <div style="flex:1"><strong>${x(c.country||'Unknown')}</strong></div>
+              <div style="font-weight:700;color:var(--primary);font-size:16px">${(c.count||0).toLocaleString()}</div>
+            </div>
+            <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${ANALYTICS_COLORS[i%ANALYTICS_COLORS.length]};border-radius:3px;transition:width .3s"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`:'<div class="empty"><div class="icon">📭</div><div class="desc">No location data yet. Share your cards to see where your audience is.</div></div>'}
+  </div>`;
+}
+
+function bindCardLocations() {}
+
+// ── Helpers ──
+function countryFlag(country) {
+  const map = {
+    'US':'🇺🇸','GB':'🇬🇧','CA':'🇨🇦','DE':'🇩🇪','FR':'🇫🇷','AU':'🇦🇺','BR':'🇧🇷','IN':'🇮🇳','JP':'🇯🇵','CN':'🇨🇳',
+    'KR':'🇰🇷','MX':'🇲🇽','ES':'🇪🇸','IT':'🇮🇹','NL':'🇳🇱','SE':'🇸🇪','NO':'🇳🇴','DK':'🇩🇰','FI':'🇫🇮','PL':'🇵🇱',
+    'CH':'🇨🇭','AT':'🇦🇹','BE':'🇧🇪','PT':'🇵🇹','IE':'🇮🇪','NZ':'🇳🇿','SG':'🇸🇬','AE':'🇦🇪','ZA':'🇿🇦','RU':'🇷🇺'
+  };
+  return map[country?.toUpperCase()] || '🌐';
+}
+
+
+</script>
+</body>
+</html>

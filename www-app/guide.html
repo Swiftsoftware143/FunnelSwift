@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FunnelSwift User Guide</title>
+<style>
+  :root {
+    --indigo: #4f46e5; --indigo-light: #6366f1; --indigo-dark: #3730a3; --indigo-glow: rgba(79, 70, 229, 0.15);
+    --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
+    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: var(--bg-dark); color: var(--text-primary); line-height: 1.6; min-height: 100vh; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-dark); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .app-layout { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 260px; background: var(--bg-card); border-right: 1px solid var(--border); position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 100; display: flex; flex-direction: column; }
+  .sidebar-logo { display: flex; align-items: center; gap: 12px; padding: 24px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo .logo-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--indigo), #8B5CF6); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .sidebar-logo h1 { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+  .sidebar-logo p { font-size: 11px; color: var(--text-muted); }
+  .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+  .sidebar-nav .section-title { padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; cursor: pointer; border: none; background: none; width: 100%; text-align: left; margin-bottom: 2px; }
+  .nav-item:hover { background: var(--border); color: var(--text-primary); }
+  .nav-item.active { background: var(--indigo-glow); color: var(--indigo-light); border-left: 2px solid var(--indigo-light); }
+  .nav-item .nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+  .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--text-muted); }
+
+  .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; }
+  .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar h2 { font-size: 16px; font-weight: 600; }
+  .topbar-badge { background: var(--indigo-glow); color: var(--indigo-light); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .content-area { flex: 1; padding: 28px; overflow-y: auto; max-width: 1100px; }
+
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 24px; font-weight: 700; margin: 48px 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 18px; font-weight: 600; margin: 28px 0 12px; color: var(--indigo-light); }
+  h4 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin-bottom: 16px; color: var(--text-secondary); }
+  a { color: var(--indigo-light); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .lead { font-size: 18px; color: var(--text-secondary); margin-bottom: 32px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .card-header .card-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--indigo), #7C3AED); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .card-header h3 { margin: 0; padding: 0; border: none; color: var(--text-primary); font-size: 16px; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+  .feature-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+  .feature-card:hover { border-color: var(--indigo); }
+  .feature-card .fc-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--indigo-glow); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 12px; }
+  .feature-card h4 { margin: 0 0 8px; font-size: 14px; }
+  .feature-card p { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+  code { background: var(--bg-elevated); color: var(--indigo-light); padding: 2px 8px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+  pre { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 16px 0; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-secondary); line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-elevated); font-weight: 600; color: var(--text-primary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { color: var(--text-secondary); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .badge-indigo { background: var(--indigo-glow); color: var(--indigo-light); }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--success); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--warning); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--info); }
+
+  .step-list { list-style: none; counter-reset: step; }
+  .step-list li { counter-increment: step; padding: 16px 16px 16px 52px; position: relative; margin-bottom: 8px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border); }
+  .step-list li::before { content: counter(step); position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--indigo); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .step-list li strong { color: var(--text-primary); }
+  .step-list li p { margin: 4px 0 0; font-size: 13px; }
+
+  .alert { padding: 14px 18px; border-radius: 8px; margin: 16px 0; border-left: 3px solid; font-size: 14px; }
+  .alert-info { background: rgba(59,130,246,0.08); border-color: var(--info); color: #93C5FD; }
+  .alert-warning { background: rgba(249,115,22,0.08); border-color: var(--warning); color: #FDBA74; }
+  .alert-success { background: rgba(34,197,94,0.08); border-color: var(--success); color: #86EFAC; }
+  .alert-danger { background: rgba(239,68,68,0.08); border-color: var(--danger); color: #FCA5A5; }
+
+  a.section-title { display: block; padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); text-decoration: none; cursor: pointer; }
+  a.section-title:hover { color: var(--indigo-light); background: rgba(255,255,255,0.03); border-radius: 6px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
+  .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
+  .stat-card .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+  .stat-card .stat-change { font-size: 12px; color: var(--success); margin-top: 4px; }
+
+  dl { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0; }
+  dt { font-weight: 600; color: var(--text-primary); font-size: 13px; padding: 6px 0; }
+  dd { color: var(--text-secondary); font-size: 13px; padding: 6px 0; }
+  dd code { font-size: 12px; }
+
+  .faq-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .faq-q { padding: 14px 18px; background: var(--bg-elevated); font-weight: 600; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-primary); border: none; width: 100%; text-align: left; }
+  .faq-q:hover { background: var(--bg-card); }
+  .faq-a { padding: 16px 18px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-secondary); display: none; }
+  .faq-a.open { display: block; }
+
+  .kv-tag { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 13px; font-family: 'SF Mono', monospace; color: var(--text-secondary); }
+  .kv-tag .kv-key { color: var(--text-muted); }
+  .kv-tag .kv-val { color: var(--indigo-light); }
+
+  .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+  .tmpl-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; transition: border-color 0.2s; }
+  .tmpl-card:hover { border-color: var(--indigo); }
+  .tmpl-card .tmpl-icon { font-size: 36px; margin-bottom: 8px; display: block; }
+  .tmpl-card h4 { margin: 0 0 4px; }
+  .tmpl-card p { margin: 0; font-size: 12px; color: var(--text-muted); }
+  .tmpl-card .tmpl-badge { display: inline-block; margin-top: 8px; }
+
+  ul { color: var(--text-secondary); margin: 8px 0 16px 24px; }
+  ul li { margin-bottom: 4px; }
+
+  .mobile-menu-btn { display: none; position: fixed; top: 14px; left: 14px; z-index: 200; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 20px; align-items: center; justify-content: center; }
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+    .main-content { margin-left: 0; }
+    .mobile-menu-btn { display: flex; }
+    .topbar { padding: 14px 16px 14px 64px; }
+    .content-area { padding: 16px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .template-grid { grid-template-columns: 1fr; }
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dt { padding-bottom: 0; }
+  }
+</style>
+</head>
+<body>
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()">=</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🔁</div>
+      <div>
+        <h1>FunnelSwift</h1>
+        <p>User Guide v3.0</p>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#getting-started" class="section-title" onclick="closeMobile()">Getting Started</a>
+      <a href="#introduction" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📖</span> Introduction</a>
+      <a href="#getting-started" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🚀</span> Getting Started</a>
+      <a href="#leads" class="section-title" onclick="closeMobile()">Lead Management</a>
+      <a href="#dashboard" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="#leads" class="nav-item" onclick="closeMobile()"><span class="nav-icon">👤</span> Leads</a>
+      <a href="#tags" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Tags</a>
+      <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🤝</span> Affiliates</a>
+      <a href="#kinetic-overview" class="section-title" onclick="closeMobile()">Kinetic Cards</a>
+      <a href="#kinetic-overview" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🃏</span> Overview</a>
+      <a href="#kinetic-templates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📐</span> Templates</a>
+      <a href="#kinetic-minifunnel" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎯</span> Mini Funnel</a>
+      <a href="#kinetic-analytics" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📈</span> Insights</a>
+      <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
+      <a href="#branding-badge" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Branding Badge</a>
+      <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
+      <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
+      <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
+      <a href="#api-keys" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔑</span> API Keys</a>
+      <a href="#plans" class="section-title" onclick="closeMobile()">Administration</a>
+      <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
+      <a href="#settings" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⚙️</span> Settings</a>
+      <a href="#faq" class="section-title" onclick="closeMobile()">Support</a>
+      <a href="#faq" class="nav-item" onclick="closeMobile()"><span class="nav-icon">❓</span> FAQ</a>
+    </nav>
+    <div class="sidebar-footer">&copy; 2026 FunnelSwift &mdash; Lead Generation Platform</div>
+  </aside>
+  <div class="main-content">
+    <header class="topbar">
+      <h2>FunnelSwift User Guide</h2>
+      <span class="topbar-badge">v3.0 &middot; Lead Gen, Kinetic Cards &amp; Affiliates</span>
+    </header>
+    <div class="content-area">
+      <h1 id="introduction">FunnelSwift User Guide</h1>
+      <p class="lead">A comprehensive guide to using FunnelSwift — the complete lead generation, affiliate management, and digital business card platform. Manage leads, create Kinetic landing cards, track with QR codes, and integrate with your website, mobile app, and CoreSwift CRM.</p>
+
+      <h2 id="getting-started">Getting Started</h2>
+      <p>FunnelSwift is a multi-purpose platform that combines lead capture, affiliate routing, digital landing cards (Kinetic), and cross-app sync with IncentiveSwift and CoreSwift CRM. This guide covers every feature.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">👤</div>
+          <h4>Lead Capture</h4>
+          <p>Manual entry, mobile app scanning, web form ingestion, and API integration &mdash; all in one place</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🃏</div>
+          <h4>Kinetic Cards</h4>
+          <p>Create bio-links, digital business cards, landing pages, and affiliate bridge funnels — all server-side rendered at your custom URL</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🌐</div>
+          <h4>Web-to-Lead</h4>
+          <p>Embed a JavaScript snippet on any website to auto-capture form submissions</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🤝</div>
+          <h4>Affiliates</h4>
+          <p>Route leads to partners with commission tracking and payout management</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📱</div>
+          <h4>Mobile App</h4>
+          <p>Scan business cards via camera, import contacts, and manage leads on the go — Android APK available</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🔗</div>
+          <h4>CoreSync</h4>
+          <p>Leads automatically sync to CoreSwift CRM with tags, source data, and stage mapping</p>
+        </div>
+      </div>
+
+      <h2 id="dashboard">📊 Dashboard</h2>
+      <p>The dashboard shows your key metrics at a glance: total leads, new leads today, top sources, conversion rates, affiliate performance, Kinetic card views, and revenue. Click any stat card to drill into the data.</p>
+
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-value" style="color:var(--indigo-light)">{{total}}</div><div class="stat-label">Total Leads</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--success)">{{today}}</div><div class="stat-label">New Today</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--info)">{{conversion}}</div><div class="stat-label">Conversion Rate</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--warning)">{{cards}}</div><div class="stat-label">Active Cards</div></div>
+      </div>
+
+      <h2 id="leads">👤 Leads</h2>
+      <p>Manage your prospect leads in the Leads section. Each lead stores name, email, phone, company, source, tags, and custom fields. Leads are auto-synced to CoreSwift CRM.</p>
+
+      <h3>Adding Leads</h3>
+      <ol class="step-list">
+        <li><strong>Manual Entry</strong><p>Click "Add Lead" and fill in the form fields. Required: Name or Email. Optional: phone, company, source, tags, notes, custom fields (First Name, Last Name, Website, Address, Title, Social).</p></li>
+        <li><strong>Mobile App Scan</strong><p>Use the FunnelSwift Android app to scan business cards via camera. OCR parses the card and creates a lead automatically.</p></li>
+        <li><strong>Bulk Import</strong><p>From the mobile app, import phone contacts in bulk. Search, select, and upload multiple contacts at once.</p></li>
+        <li><strong>Web-to-Lead Forms</strong><p>Embed a JS snippet on your website. Any form submission auto-creates a lead in your workspace. (See Web-to-Lead section.)</p></li>
+        <li><strong>Kinetic Card Forms</strong><p>Add a lead capture form block to any Kinetic landing card. Visitors submit their info directly through the card.</p></li>
+        <li><strong>API Ingestion</strong><p>Use the REST API to create leads programmatically. Requires an API key with appropriate permissions.</p></li>
+      </ol>
+
+      <h3>Editing Leads</h3>
+      <p>Click any lead to view details. In edit mode, you can change any field, add custom fields, change tags, and update notes. Stage progression: <span class="badge badge-blue">New</span> → <span class="badge badge-indigo">Contacted</span> → <span class="badge badge-orange">Qualified</span> → <span class="badge badge-green">Converted</span> → <span class="badge badge-red">Lost</span>.</p>
+
+      <h2 id="tags">🏷️ Tags &amp; Tag Groups</h2>
+      <p>Tags help organize leads by categories: Source, Status, Events, Services, Engagement, and Custom. Tags are grouped into tag groups for structured organization. Tags auto-sync from plan mappings and are workspace-specific.</p>
+
+      <h3>Creating Tags</h3>
+      <p>From the Tags section, you can create new tags, assign colors, and organize them into groups. Tags applied to leads in FunnelSwift are automatically pushed to CoreSwift CRM as well.</p>
+
+      <h2 id="affiliates">🤝 Affiliates</h2>
+      <p>Manage affiliate partners. Each affiliate gets a unique auto-generated ID. Configure commission rates, track payouts, and route leads to their external systems via webhooks. Affiliate performance is visible on the dashboard.</p>
+
+      <!-- ==================== KINETIC CARDS SECTION ==================== -->
+      <h2 id="kinetic-overview">🃏 Kinetic Cards</h2>
+      <p>Kinetic Cards are server-side rendered landing pages served at <code>/k/YOUR-SLUG</code>. Think of them as shareable mini-sites — bio-links, digital business cards, lead capture pages, and affiliate bridge funnels — all built from editable layout blocks.</p>
+
+      <div class="alert alert-info">
+        <strong>How it works:</strong> Each card is assembled from layout blocks (hero, bio, buttons, lead forms, social links, product showcase) and rendered instantly as a clean, fast HTML page. No page builder overhead. Cards are fully responsive and work great on mobile.
+      </div>
+
+      <h3>Creating a Kinetic Card</h3>
+      <ol class="step-list">
+        <li><strong>Navigate to Kinetic Cards</strong><p>From the sidebar, click <strong>Cards</strong> under the main navigation.</p></li>
+        <li><strong>Choose a Template</strong><p>Click "+ New Card". Choose from 54 templates across 5 archetypes — Bio Link, Business Card, Mini Page, Mini Funnel, or Hero. Or build from scratch with a blank canvas.</p></li>
+        <li><strong>Configure Content</strong><p>Fill in your content fields — name, description, image/logo URL, buttons, social links, lead form fields — depending on the template.</p></li>
+        <li><strong>Choose a Theme</strong><p>Pick from 8 visual themes — Cyber Dark, Ghost White, Ocean, Forest, Sunset, Ruby, Midnight, or Arctic. Each theme sets the card's color palette, fonts, and visual identity.</p></li>
+        <li><strong>Set Your Slug</strong><p>Give your card a unique slug (e.g. "my-link"). It will be available at <code>https://funnelswift.net/k/my-link</code>.</p></li>
+        <li><strong>Save &amp; Share</strong><p>Save the card. Share the URL, print a QR code, or embed it anywhere. The card is live immediately.</p></li>
+      </ol>
+
+      <h3>Layout Blocks</h3>
+      <p>Each Kinetic card is composed of layout blocks that you can arrange:</p>
+      <table>
+        <thead><tr><th>Block Type</th><th>What It Does</th></tr></thead>
+        <tbody>
+          <tr><td>Hero</td><td>Large header with title, subtitle, and background image/video</td></tr>
+          <tr><td>Bio</td><td>Avatar, name, title, short bio text</td></tr>
+          <tr><td>Buttons</td><td>List of CTA buttons with labels, URLs, and optional icons</td></tr>
+          <tr><td>Lead Form</td><td>Inline lead capture form with configurable fields (name, email, phone, message)</td></tr>
+          <tr><td>Social Icons</td><td>Social media profile links with platform icons</td></tr>
+          <tr><td>Mini Funnel</td><td>Product image/video + CTA — the affiliate bridge block</td></tr>
+          <tr><td>QR Code</td><td>Embed a QR code that links to the card or any URL</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="kinetic-templates">📐 Template Library</h2>
+      <p>FunnelSwift ships with <strong>54 pre-built templates</strong> organized across <strong>5 archetypes</strong>, each available in <strong>8 visual themes</strong>. Whether you're a real estate agent, musician, fitness coach, restaurant owner, or consultant — there's a template built for your industry.</p>
+
+      <h3>Five Card Archetypes</h3>
+      <div class="template-grid">
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🔗</span>
+          <h4>Bio Link</h4>
+          <p>Avatar + bio + CTA buttons + social links — your personal hub-in-bio</p>
+          <span class="badge badge-indigo tmpl-badge">Most Popular</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">💳</span>
+          <h4>Business Card</h4>
+          <p>Digital contact card — name, title, company, phone, email, socials</p>
+          <span class="badge badge-indigo tmpl-badge">Essential</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">📄</span>
+          <h4>Mini Page</h4>
+          <p>Compact landing with hero + feature grid + lead form</p>
+          <span class="badge badge-blue tmpl-badge">Landing Page</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🎯</span>
+          <h4>Mini Funnel</h4>
+          <p>Affiliate bridge — product image/video + strong CTA</p>
+          <span class="badge badge-green tmpl-badge">Affiliate Focus</span>
+        </div>
+        <div class="tmpl-card">
+          <span class="tmpl-icon">🎨</span>
+          <h4>Hero</h4>
+          <p>Full-screen immersive landing for launches & storefronts</p>
+          <span class="badge badge-orange tmpl-badge">Flagship</span>
+        </div>
+      </div>
+
+      <h3>Eight Visual Themes</h3>
+      <p>Every template can be styled with any of these 8 themes — each theme defines the card's color palette, typography, gradient, and visual identity:</p>
+      <table>
+        <thead><tr><th>Theme</th><th>Vibe</th><th>Best For</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Cyber Dark</strong></td><td>Dark, neon-accent, futuristic</td><td>Tech, SaaS, gaming, crypto</td></tr>
+          <tr><td><strong>Ghost White</strong></td><td>Clean white, minimal, modern</td><td>Consulting, corporate, legal</td></tr>
+          <tr><td><strong>Ocean</strong></td><td>Cool blues, calm, professional</td><td>Finance, healthcare, education</td></tr>
+          <tr><td><strong>Forest</strong></td><td>Earthy greens, grounded, natural</td><td>Wellness, eco, outdoor, agriculture</td></tr>
+          <tr><td><strong>Sunset</strong></td><td>Warm oranges/golds, vibrant, energetic</td><td>Fitness, hospitality, food, events</td></tr>
+          <tr><td><strong>Ruby</strong></td><td>Bold reds, passionate, attention-grabbing</td><td>Sales, promotions, entertainment</td></tr>
+          <tr><td><strong>Midnight</strong></td><td>Deep navy/dark blue, elegant, premium</td><td>Luxury, real estate, law firms</td></tr>
+          <tr><td><strong>Arctic</strong></td><td>Icy whites/blues, crisp, minimalist</td><td>Design, photography, architecture</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Template Gallery — Industry-Specific Designs</h3>
+      <p>The template library includes industry-specific variations for each archetype. Examples include:</p>
+      <ul>
+        <li><strong>Real Estate Agent</strong> — Business Card with property showcase, Bio Link with listing links</li>
+        <li><strong>Musician / Artist</strong> — Hero page for album drops, Bio Link for streaming platforms</li>
+        <li><strong>Fitness Coach</strong> — Mini Page with program tiers, Mini Funnel for challenge sign-ups</li>
+        <li><strong>Restaurant / Café</strong> — Bio Link with menu + reservation, Mini Funnel for catering</li>
+        <li><strong>Consultant / Coach</strong> — Business Card + booking, Mini Page for service packages</li>
+        <li><strong>E-commerce / Creator</strong> — Hero page for product drops, Mini Funnel for limited offers</li>
+        <li><strong>Healthcare / Clinic</strong> — Business Card with appointment booking, Bio Link with services</li>
+        <li><strong>Event / Wedding</strong> — Mini Page for RSVPs, Bio Link for gift registry</li>
+      </ul>
+      <p>Simply choose your archetype, pick an industry template, apply a theme, and your card is ready.</p>
+
+      <h3>Build from Scratch</h3>
+      <p>Prefer to start from a blank canvas? Each archetype has a <strong>Build from Scratch</strong> option — four blank canvases (one per archetype: Bio Link, Business Card, Mini Page, Mini Funnel) that let you assemble layout blocks from the ground up.</p>
+      <div class="alert alert-info">
+        <strong>Blank canvases:</strong> Build from Scratch cards start with zero pre-populated content. Add only the layout blocks you need — hero, bio, buttons, lead form, socials, QR code, mini funnel block — in any order. Every blank canvas is available on all plans (free, pro, and enterprise).
+      </div>
+
+      <h3>Template Gating by Plan</h3>
+      <table>
+        <thead><tr><th>Plan</th><th>Templates Available</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Free</strong></td><td><span class="badge badge-orange">8</span></td><td>4 industry starter templates + 4 blank canvases (Build from Scratch)</td></tr>
+          <tr><td><strong>Pro</strong></td><td><span class="badge badge-green">54</span></td><td>Full template library — all 5 archetypes, all industry variants, all 8 themes</td></tr>
+          <tr><td><strong>Enterprise</strong></td><td><span class="badge badge-indigo">54 + White Label</span></td><td>Full library plus white label toggle — hide FunnelSwift branding entirely</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-warning">
+        <strong>Free plan starter templates:</strong> Free users get one curated starter template per archetype (the most popular industry design — e.g. Bio Link for creators, Digital Business Card for consultants, Mini Page for coaches, Mini Funnel for affiliate promotions) plus all 4 blank canvases. Upgrade to Pro or Enterprise to unlock the full 54-template library.
+      </div>
+
+      <h2 id="kinetic-minifunnel">🎯 Mini Funnel Template</h2>
+      <p>The Mini Funnel template is designed specifically for affiliate marketing and product promotions. Create a focused bridge page between a traffic source (social media, ad, QR code) and your offer.</p>
+
+      <h3>Features</h3>
+      <ul>
+        <li><strong>Product Showcase</strong> — Display a product image (or video embed) with title and subtitle</li>
+        <li><strong>Strong CTA</strong> — Large call-to-action button with custom text and URL</li>
+        <li><strong>8 Themes</strong> — Cyber Dark, Ghost White, Ocean, Forest, Sunset, Ruby, Midnight, Arctic</li>
+        <li><strong>Mobile-First</strong> — Optimized for mobile traffic from social media and ads</li>
+        <li><strong>Lead Capture</strong> — Optional embedded form before the CTA</li>
+      </ul>
+
+      <div class="alert alert-warning">
+        <strong>Use case:</strong> Mini Funnels are ideal for Facebook/Instagram ads, influencer shoutouts, and QR code campaigns. Instead of sending traffic to a generic landing page, create a branded bridge page that leads to your offer. Choose from 8 themes to perfectly match your ad creative or brand aesthetic.
+      </div>
+
+      <h3>Setting Up a Mini Funnel</h3>
+      <ol class="step-list">
+        <li><strong>Create Card</strong><p>Click "+ New Card" and select the "Mini Funnel" template.</p></li>
+        <li><strong>Product Image or Video</strong><p>Upload a product image URL or paste a video embed URL (YouTube/Vimeo). One or the other — pick what converts best.</p></li>
+        <li><strong>Write Copy</strong><p>Add a compelling title and subtitle that drives the visitor to click the CTA.</p></li>
+        <li><strong>Set CTA</strong><p>Enter the button text (e.g. "Get My Free Trial", "Claim Discount") and the destination URL.</p></li>
+        <li><strong>Pick Theme</strong><p>Choose from 8 themes — Cyber Dark (tech/gaming), Ghost White (corporate), Ocean (finance/healthcare), Forest (wellness/eco), Sunset (fitness/food), Ruby (sales/promos), Midnight (luxury), or Arctic (design/photo).</p></li>
+        <li><strong>Enable Lead Form</strong><p>Optionally add a name + email form before the CTA to capture leads before the click.</p></li>
+        <li><strong>Publish</strong><p>Save and share. Your Mini Funnel is live at <code>/k/YOUR-SLUG</code>.</p></li>
+      </ol>
+
+      <div class="alert alert-success">
+        <strong>Pro tip:</strong> Use different slugs for different traffic sources (e.g. /k/insta-offer, /k/email-blast, /k/qr-poster) so you can track which source converts best via Insights.
+      </div>
+
+      <h2 id="kinetic-analytics">📈 Insights</h2>
+      <p>The Insights section gives you analytics on your Kinetic cards. Track views, lead captures, click-through rates, and conversion performance over time.</p>
+
+      <h3>Available Metrics</h3>
+      <ul>
+        <li><strong>Card Views</strong> — Total visits to each card, unique vs returning</li>
+        <li><strong>Lead Conversions</strong> — How many visitors submitted the lead form</li>
+        <li><strong>CTA Clicks</strong> — Button click tracking for each CTA on the card</li>
+        <li><strong>Top Cards</strong> — Your best-performing cards by views and conversions</li>
+        <li><strong>Traffic Sources</strong> — Where visitors are coming from (direct, social, QR, referral)</li>
+      </ul>
+
+      <h3>Viewing Insights</h3>
+      <p>From the sidebar, click <strong>Insights</strong>. Select a card from the dropdown or view all cards aggregated. Data is updated in near real-time and can be filtered by date range.</p>
+
+      <h2 id="sharing-app">📲 Sharing the App</h2><p>Share FunnelSwift with someone without asking for their phone number:</p><ul><li><strong>Install as App (PWA)</strong> — Visit <code>funnelswift.net</code> on their phone. An Install bar appears at the bottom — tap it to add FunnelSwift to the home screen. No app store needed.</li><li><strong>Short link</strong> — <code>kntcrd.com/app</code> redirects straight to the download page. Easy to say out loud.</li><li><strong>AirDrop / Nearby Share</strong> — Share the URL directly with someone nearby.</li><li><strong>NFC stickers</strong> — Buy blank programmable NFC tags, write <code>funnelswift.net</code> to them, and tap the tag to their phone.</li></ul><h2 id="kinetic-qr">📱 QR Codes</h2>
+      <p>Each Kinetic card can be paired with a QR code for print and physical-world use. QR codes are generated server-side as SVG (for print) or PNG (for digital).</p>
+
+      <h3>Generating QR Codes</h3>
+      <ol class="step-list">
+        <li><strong>Open a Card</strong><p>From the Cards list, click the QR icon on any card.</p></li>
+        <li><strong>Configure</strong><p>Choose size (small/medium/large) and format (SVG for print, PNG for digital).</p></li>
+        <li><strong>Download</strong><p>Download the QR code image. It links to your card's URL by default.</p></li>
+        <li><strong>Print or Share</strong><p>Use on flyers, posters, business cards, packaging, or in-store displays.</p></li>
+      </ol>
+
+      <div class="alert alert-info">
+        <strong>Plan limits:</strong> QR code generation limits depend on your plan. Free plans have a monthly limit. Enterprise plans include unlimited QR code generation.
+      </div>
+
+      <h3>QR Code API</h3>
+      <p>For programmatic generation, use the QR code API endpoint:</p>
+      <pre><code>GET /api/v1/kinetic/qr/{slug}?format=svg&size=300
+GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
+
+      <!-- ==================== BRANDING & AFFILIATE BADGE ==================== -->
+      <h2 id="branding-badge">🏷️ Branding &amp; Affiliate Badge</h2>
+      <p>FunnelSwift displays a subtle branding badge at the bottom of every Kinetic Card page. This badge is dynamic — it adapts based on your plan, card type, and whether you are an affiliate partner.</p>
+
+      <h3>How the Badge Works</h3>
+      <ul>
+        <li><strong>Free plan</strong> — All card pages display a branding badge at the bottom: <em>"Claim your free [Card Type] →"</em> where the card type is auto-detected.</li>
+        <li><strong>Paid plans (Pro &amp; Enterprise)</strong> — You can toggle the branding badge <strong>on or off</strong> from card settings. When off, your card pages are clean with no FunnelSwift footer.</li>
+        <li><strong>Enterprise with White Label</strong> — The badge toggle is available, plus additional white label controls to remove all FunnelSwift references (favicon, meta tags, etc.).</li>
+      </ul>
+
+      <h3>Auto-Detected Card Types</h3>
+      <p>The badge message automatically detects your card's archetype and displays one of these labels:</p>
+      <table>
+        <thead><tr><th>Archetype</th><th>Badge Text</th></tr></thead>
+        <tbody>
+          <tr><td>Bio Link</td><td>Claim your free <strong>Bio Link</strong> →</td></tr>
+          <tr><td>Business Card</td><td>Claim your free <strong>Digital Business Card</strong> →</td></tr>
+          <tr><td>Mini Page</td><td>Claim your free <strong>Mini Page</strong> →</td></tr>
+          <tr><td>Mini Funnel</td><td>Claim your free <strong>Mini Funnel</strong> →</td></tr>
+          <tr><td>Hero</td><td>Claim your free <strong>Hero Page</strong> →</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Affiliate Badge Links</h3>
+      <p>If your tenant account is an <strong>affiliate partner</strong>, the branding badge automatically routes through your affiliate referral code. The badge link becomes <code>/signup?ref=YOUR_AFFILIATE_ID</code>, so anyone who clicks the badge on your card and signs up generates a commission for you.</p>
+      <div class="alert alert-success">
+        <strong>Pro tip:</strong> As an affiliate, you can keep the badge enabled even on paid plans — turning free views into referral signups that earn you recurring commissions.
+      </div>
+
+      <!-- ==================== WEB-TO-LEAD SECTION ==================== -->
+      <h2 id="web-to-lead">🌐 Web-to-Lead</h2>
+      <p>Web-to-Lead lets you capture leads from any external website form. Embed a small JavaScript snippet on your site, and FunnelSwift will automatically ingest form submissions as leads.</p>
+
+      <div class="alert alert-info">
+        <strong>How it works:</strong> Your user copies a snippet, pastes it on their website, and every form submission is captured and routed to their FunnelSwift workspace — tagged, deduplicated, and ready to use.
+      </div>
+
+      <h3>Setting Up a Web-to-Lead Config</h3>
+      <ol class="step-list">
+        <li><strong>Navigate to Web-to-Lead</strong><p>From the sidebar, click <strong>Web-to-Lead</strong>.</p></li>
+        <li><strong>Create a Config</strong><p>Click "+ New Config". Give it a name (e.g. "Website Contact Form"), set a default source label, optionally assign one or more tags for auto-labeling, and set a rate limit (default 100/hr).</p></li>
+        <li><strong>Get the Embed Code</strong><p>Click the link icon (🔗) on your config. A modal shows the embed code and instructions.</p></li>
+        <li><strong>Create an API Key</strong><p>Go to <strong>API Keys</strong> and create a new key. Copy the full key.</p></li>
+        <li><strong>Paste on Your Website</strong><p>Copy the embed code, replace <code>YOUR_FULL_API_KEY_HERE</code> with your actual key, and paste it just before <code>&lt;/body&gt;</code> on your website.</p></li>
+      </ol>
+
+      <h3>The Embed Snippet</h3>
+      <pre><code>&lt;!-- FunnelSwift Web-to-Lead --&gt;
+&lt;script&gt;
+window.FunnelSwiftConfig = {
+  apiKey: "fs_live_xxxxxxxxxxxxxxxx",
+  configId: "00000000-0000-0000-0000-000000000000"
+};
+&lt;/script&gt;
+&lt;script src="https://funnelswift.net/funnelswift-capture.js" async&gt;&lt;/script&gt;</code></pre>
+
+      <h3>Smart Field Mapping</h3>
+      <p>The JavaScript snippet automatically detects form fields by name and label. It maps common patterns like <code>email</code>, <code>name</code>, <code>phone</code>, <code>company</code>, <code>message</code>, and more. Unrecognized fields pass through as custom data.</p>
+
+      <h3>Duplicate Detection</h3>
+      <p>If a submission has an email that already exists, the system returns success but does not create a duplicate lead. Duplicates are logged for your reference.</p>
+
+      <h3>Rate Limiting</h3>
+      <p>Default 100 submissions per hour per workspace. Configure per config under Web-to-Lead settings.</p>
+
+      <h3>Direct API Endpoint</h3>
+      <pre><code>POST https://funnelswift.net/api/v1/web-to-lead
+Content-Type: application/json
+
+{
+  "api_key": "fs_live_xxxxxxxxxxxxxxxx",
+  "config_id": "00000000-0000-0000-0000-000000000000",
+  "name": "John Smith",
+  "email": "john@example.com",
+  "company": "Acme Inc",
+  "phone": "+1-555-0123"
+}</code></pre>
+
+      <h2 id="api-keys">🔑 API Keys</h2>
+      <p>Generate API keys for programmatic access to FunnelSwift. Keys are hashed with Argon2 for security. Permissions control what each key can do, including web-to-lead access.</p>
+
+      <h3>Creating an API Key</h3>
+      <ol class="step-list">
+        <li>Go to <strong>API Keys</strong> from the sidebar.</li>
+        <li>Click <strong>"+ New Key"</strong> and give it a descriptive name.</li>
+        <li>Copy the key immediately — it's shown once.</li>
+        <li>Use with Web-to-Lead by pasting it into your embed snippet's <code>apiKey</code> field.</li>
+      </ol>
+
+      <h2 id="plans">💳 Plans</h2>
+      <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, API access, Kinetic card limits, QR code limits, template access, etc.).</p>
+
+      <h3>Plan Features</h3>
+      <p>Manage feature flags for each plan in the admin panel. Available features include:</p>
+      <ul>
+        <li><strong>Lead Capacity</strong> — Maximum leads per workspace</li>
+        <li><strong>Kinetic Cards</strong> — Number of active cards allowed</li>
+        <li><strong>Template Access</strong> — Number of templates available (Free: 8, Pro: 54, Enterprise: 54 + white label)</li>
+        <li><strong>QR Generation</strong> — Monthly QR code generation limit</li>
+        <li><strong>Web-to-Lead</strong> — Hourly submission rate limit</li>
+        <li><strong>API Access</strong> — API rate limits and endpoint access</li>
+        <li><strong>Analytics</strong> — Data retention and export options</li>
+        <li><strong>Branding Badge</strong> — Toggle FunnelSwift badge on/off (paid plans only)</li>
+        <li><strong>White Label</strong> — Remove all FunnelSwift branding (Enterprise only)</li>
+        <li><strong>Mobile App</strong> — Business card scan and import limits</li>
+        <li><strong>Cross-App Sync</strong> — CoreSwift CRM integration access</li>
+      </ul>
+
+      <h3>Template Gating by Plan</h3>
+      <div class="alert alert-info">
+        <strong>Free Plan (8 templates):</strong> 4 industry starter templates (one per archetype) + 4 blank canvases (Build from Scratch for each archetype, except Hero which requires Pro).<br>
+        <strong>Pro Plan (54 templates):</strong> Full template library — all 5 archetypes with all industry variants styled across all 8 visual themes.<br>
+        <strong>Enterprise Plan (54 + White Label):</strong> Same full library as Pro, plus white label toggle to remove all FunnelSwift branding from card pages.
+      </div>
+
+      <h2 id="settings">⚙️ Settings</h2>
+      <p>Configure your account profile, change password, and manage workspace preferences including SEO settings and legal pages.</p>
+
+      <h3>Mobile App</h3>
+      <p>Download the FunnelSwift Android app from the Settings page. The mobile app lets you:</p>
+      <ul>
+        <li>Scan business cards via camera with automatic OCR</li>
+        <li>Import phone contacts in bulk</li>
+        <li>View and manage leads on the go</li>
+        <li>Share your Kinetic cards via QR code scanner</li>
+        <li>Syncs with your workspace in real-time</li>
+      </ul>
+
+      <h2 id="faq">❓ Frequently Asked Questions</h2>
+
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What's the difference between a Kinetic Card and a regular landing page?</button>
+        <div class="faq-a">Kinetic Cards are SSR (server-side rendered) pages with pre-built layout blocks — no page builder overhead, no loading spinners, instant load. They're optimized for mobile and designed for specific use cases: bio-links, business cards, funnels, and lead capture.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How do I get the web-to-lead embed code for my website?</button>
+        <div class="faq-a">Go to Web-to-Lead in the sidebar, create a config, then click the link icon (🔗). The modal shows your embed HTML. You'll need an active API key.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What happens if someone submits a duplicate email?</button>
+        <div class="faq-a">The web-to-lead endpoint returns success but does not create a duplicate lead. The duplicate is logged in web_to_lead_logs with status 'duplicate' for your review.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Can I use my own domain for Kinetic Cards?</button>
+        <div class="faq-a">Yes — on paid plans, you can configure a custom domain. Cards are served from your domain instead of funnelswift.net/k/your-slug.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What's the Mini Funnel template for?</button>
+        <div class="faq-a">Mini Funnels are designed for affiliate marketing and product promotions. Display a product image or video with a strong CTA button. Choose from 8 themes to match your ad creative. Great for Facebook/Instagram ads, influencer campaigns, and QR code bridge pages.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How does template gating work? What templates do I get on the free plan?</button>
+        <div class="faq-a">The free plan includes <strong>8 templates</strong>: 4 industry starter templates (one curated template per archetype — Bio Link, Digital Business Card, Mini Page, Mini Funnel) plus 4 blank canvases (Build from Scratch for all four free-eligible archetypes). The Hero archetype is available on Pro/Enterprise only. Upgrading to Pro unlocks the full <strong>54-template library</strong> with all industry-specific variants. Enterprise adds white label controls on top of the full library.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Can I build a card from scratch without using a template?</button>
+        <div class="faq-a">Yes! Every archetype has a <strong>Build from Scratch</strong> blank canvas option. You start with zero pre-populated content and add only the layout blocks you need — hero, bio, buttons, lead form, social icons, QR code, mini funnel — in any order you want. Blank canvases count toward your template limit and are available on all plans (free: 4 blank canvases, Pro/Enterprise: blank canvases for every archetype).</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Does FunnelSwift sync with CoreSwift CRM?</button>
+        <div class="faq-a">Yes. Leads captured in FunnelSwift (via web-to-lead, Kinetic forms, manual entry, or mobile app) are automatically synced to CoreSwift CRM with their tags, source, and stage data. No separate configuration needed.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Where is the inline guide / help?</button>
+        <div class="faq-a">This page (guide.html) is the full user guide. The FunnelSwift dashboard has walkthrough tooltips that appear when you first visit each section. Click the "?" help button in the bottom-right of the dashboard to re-open them. An inline help panel embedded in the dashboard is coming soon.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How do I make a Hero Page with a blended background?</button>
+        <div class="faq-a">The Hero template creates a full-screen hero section with an optional background image/video and gradient overlay. When you create a Kinetic Card, select the Hero Page template settings. Set the background image URL, choose gradient colors, and adjust the blend angle. The hero takes up the full screen with your headline, subtitle, and CTA button overlaid on the blended background.</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script>
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+function closeMobile() {
+  if (window.innerWidth <= 900) {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+  }
+}
+</script>
+</body>
+</html>
