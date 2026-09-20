@@ -66,7 +66,7 @@ pub async fn list_cards(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let rows = sqlx::query(
-        "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
+        "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, consent_required, age_gate_type, age_gate_message, consent_decline_redirect, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
     ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     use sqlx::Row;
     let cards: Vec<Value> = rows.iter().map(|r| json!({
@@ -88,6 +88,12 @@ pub async fn list_cards(
         "video_provider": r.try_get::<Option<String>, _>("video_provider").unwrap_or_default(),
         "video_id": r.try_get::<Option<String>, _>("video_id").unwrap_or_default(),
         "is_template": r.try_get::<bool, _>("is_template").unwrap_or(false),
+        // Consent / age gate half of `has_card_gating` — the editor prefills its
+        // controls from these, and they are what the renderer acts on.
+        "consent_required": r.try_get::<Option<bool>, _>("consent_required").unwrap_or(None).unwrap_or(false),
+        "age_gate_type": r.try_get::<Option<String>, _>("age_gate_type").unwrap_or(None),
+        "age_gate_message": r.try_get::<Option<String>, _>("age_gate_message").unwrap_or(None),
+        "consent_decline_redirect": r.try_get::<Option<String>, _>("consent_decline_redirect").unwrap_or(None),
         "template_category": r.try_get::<Option<String>, _>("template_category").unwrap_or_default(),
         "category": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
         "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
@@ -646,7 +652,7 @@ pub async fn render_card(
         // `tenant_plans` table that does not exist, and the error was swallowed by
         // `.unwrap_or(None)` below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
-        "SELECT k.id, k.password_hash, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
+        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or_else(|e| {
         // Never swallow this again: a failed lookup is indistinguishable from a missing
         // card on the public page, which is exactly how the phantom-table bug hid.
@@ -822,6 +828,100 @@ pub async fn render_card(
             if presented.as_deref() != Some(expected.as_str()) {
                 return axum::response::Html(render_password_gate(&title));
             }
+        }
+    }
+
+    // ── Consent + age gate — the other half of the same `has_card_gating` feature ──
+    // Migration 024 added consent_required / age_gate_type / age_gate_message /
+    // consent_decline_redirect and nothing ever read them either, so the feature sold on
+    // Suite + Agency shipped with only its password half. Every pre-existing card has
+    // consent_required = false and age_gate_type NULL, which is why this whole block is
+    // skipped for them and their pages render exactly as before.
+    // Consent is evaluated first and the age gate only after it passes, so a card with
+    // both is two sequential interstitials (consent -> reload -> age -> reload -> card).
+    let consent_required: bool = r
+        .try_get::<Option<bool>, _>("consent_required")
+        .unwrap_or(None)
+        .unwrap_or(false);
+    let age_gate_type: String = r
+        .try_get::<Option<String>, _>("age_gate_type")
+        .unwrap_or(None)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    // The only message column migration 024 defined; shown on whichever interstitial
+    // renders when the owner set one, with a per-gate default otherwise.
+    let gate_message: String = r
+        .try_get::<Option<String>, _>("age_gate_message")
+        .unwrap_or(None)
+        .unwrap_or_default();
+    // Never trust a stored redirect: `safe_redirect_target` accepts only http(s), so a
+    // javascript:/data: value that somehow reached the column is rendered as "no target".
+    let decline_redirect: String = r
+        .try_get::<Option<String>, _>("consent_decline_redirect")
+        .unwrap_or(None)
+        .unwrap_or_default();
+    let decline_target: Option<&str> = safe_redirect_target(&decline_redirect);
+
+    // Interstitial copy: the owner's message when they set one, otherwise the per-gate
+    // default (18+ and 21+ get their own wording).
+    let consent_msg = if gate_message.trim().is_empty() {
+        "We need your consent before showing this card.".to_string()
+    } else {
+        gate_message.clone()
+    };
+    let age_msg = if gate_message.trim().is_empty() {
+        age_gate_default_message(&age_gate_type).to_string()
+    } else {
+        gate_message.clone()
+    };
+
+    // Consent gate — cookie value is bound to the gate's *configuration* (the configured
+    // decline target), so reconfiguring the gate invalidates outstanding consent cookies
+    // exactly like rotating a password invalidates the password cookie.
+    if consent_required {
+        let cookie_name = format!("kc_consent_{}", card_id.simple());
+        let expected = card_unlock_token(
+            &state.jwt_secret,
+            &card_id,
+            &consent_gate_signature(&decline_redirect),
+        );
+        let presented = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|raw| cookie_lookup(raw, &cookie_name));
+        if presented.as_deref() != Some(expected.as_str()) {
+            return axum::response::Html(render_gate_interstitial(
+                &title,
+                "consent",
+                &consent_msg,
+                &card_id,
+                decline_target,
+            ));
+        }
+    }
+
+    // Age gate — 'none' (the default) and any unexpected value mean "no age gate", so a
+    // bad value can never silently keep rendering an interstitial.
+    if is_age_gate_type(&age_gate_type) {
+        let cookie_name = format!("kc_age_{}", card_id.simple());
+        let expected = card_unlock_token(
+            &state.jwt_secret,
+            &card_id,
+            &age_gate_signature(&age_gate_type),
+        );
+        let presented = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|raw| cookie_lookup(raw, &cookie_name));
+        if presented.as_deref() != Some(expected.as_str()) {
+            return axum::response::Html(render_gate_interstitial(
+                &title,
+                "age",
+                &age_msg,
+                &card_id,
+                decline_target,
+            ));
         }
     }
 
@@ -1107,6 +1207,396 @@ fetch(u,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.
     )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Consent + age gate (the other half of `has_card_gating` — Suite + Agency)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The age gate values the renderer honours. 'none' (the column default, i.e. NULL)
+/// and anything outside this allowlist mean "no age gate" — the setter 400s on a bad
+/// value precisely so a typo can never leave a gate silently not rendering.
+fn is_age_gate_type(t: &str) -> bool {
+    matches!(t, "age_18" | "age_21" | "custom")
+}
+
+/// Default copy for an age gate the owner gave no message for.
+fn age_gate_default_message(t: &str) -> &'static str {
+    match t {
+        "age_21" => "You must be 21 or over to view this card.",
+        "age_18" => "You must be 18 or over to view this card.",
+        _ => "Please confirm you are old enough to view this card.",
+    }
+}
+
+/// Configuration binding for the consent cookie: the gate's own configuration is part
+/// of the HMAC input, so reconfiguring the gate invalidates every outstanding consent
+/// cookie — the property the password cookie gets from hashing the password.
+fn consent_gate_signature(decline_redirect: &str) -> String {
+    format!("consent:{}", decline_redirect.trim())
+}
+
+/// Configuration binding for the age cookie (its configuration is the gate type).
+fn age_gate_signature(age_gate_type: &str) -> String {
+    format!("age:{}", age_gate_type.trim())
+}
+
+/// Accept a decline-redirect target only when it is an absolute http(s) URL.
+/// `javascript:` and `data:` are an XSS sink the moment the interstitial follows the
+/// value, and a bare/relative path is not something the owner deliberately configured.
+/// Whitespace and control characters are refused too, so the value can never break out
+/// of the attribute it is rendered into. Returns the trimmed URL when it is safe.
+pub fn safe_redirect_target(raw: &str) -> Option<&str> {
+    let t = raw.trim();
+    if t.is_empty() || t.len() > 2048 {
+        return None;
+    }
+    if t.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return None;
+    }
+    let lower = t.to_ascii_lowercase();
+    let scheme_ok = ["https://", "http://"]
+        .iter()
+        .any(|p| lower.starts_with(p) && t.len() > p.len());
+    if scheme_ok {
+        Some(t)
+    } else {
+        None
+    }
+}
+
+/// Canonicalise an incoming `age_gate_type`: `none`/empty clear the gate (NULL), the
+/// three real types are stored verbatim, everything else is a 400 so that a bad value
+/// can never be persisted (which is how a gate silently stops rendering).
+fn normalize_age_gate_type(v: &str) -> AppResult<Option<String>> {
+    match v.trim() {
+        "" | "none" => Ok(None),
+        s if is_age_gate_type(s) => Ok(Some(s.to_string())),
+        _ => Err(AppError::BadRequest(
+            "age_gate_type must be one of none, age_18, age_21, custom".into(),
+        )),
+    }
+}
+
+/// Read an optional string field, distinguishing "absent" from "wrong type" — a
+/// non-string value is a client bug worth reporting, not something to ignore.
+fn optional_json_str<'a>(body: &'a Value, key: &str) -> AppResult<Option<&'a str>> {
+    match body.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s.as_str())),
+        Some(_) => Err(AppError::BadRequest(format!("{key} must be a string"))),
+    }
+}
+
+/// Read an optional boolean field (same absent-vs-wrong-type distinction).
+fn optional_json_bool(body: &Value, key: &str) -> AppResult<Option<bool>> {
+    match body.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(_) => Err(AppError::BadRequest(format!("{key} must be true or false"))),
+    }
+}
+
+/// HTML served instead of a consent- or age-gated card.
+///
+/// `title` arrives already html-escaped (as with `render_password_gate`); everything
+/// else is escaped here. The confirm button POSTs `{"gate": <gate>}` to the public,
+/// id-addressed gate route and reloads. Decline follows the owner's redirect when one
+/// is configured and validated, otherwise it shows a neutral "nothing to see" panel.
+/// No owner-supplied text ever reaches the script: the only interpolated attribute is
+/// an already-validated absolute http(s) URL.
+fn render_gate_interstitial(
+    title: &str,
+    gate: &str,
+    message: &str,
+    card_id: &Uuid,
+    decline_target: Option<&str>,
+) -> String {
+    // `gate` is a literal from the two call sites below.
+    let (heading, confirm_label) = if gate == "age" {
+        ("Age verification", "Yes, I'm old enough")
+    } else {
+        ("Before you continue", "Continue")
+    };
+    let action = format!("/api/v1/kinetic/cards/{}/gate", card_id);
+    let redirect_attr = match decline_target {
+        Some(url) => format!(" data-redirect=\"{}\"", html_escape(url)),
+        None => String::new(),
+    };
+    format!(
+        r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{title}</title>
+<style>
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0f172a;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:24px}}
+.box{{width:100%;max-width:380px;background:#111827;border:1px solid #1f2937;border-radius:16px;padding:28px;text-align:center}}
+h1{{font-size:20px;margin:0 0 6px}}p{{color:#9ca3af;font-size:14px;margin:0 0 18px}}
+button{{width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#a855f7;color:#fff;font-size:15px;font-weight:600;cursor:pointer}}
+button.ghost{{background:transparent;border:1px solid #374151;color:#9ca3af;font-weight:500}}
+.decl{{color:#9ca3af;font-size:14px;margin:0}}
+.err{{color:#f87171;font-size:13px;margin-top:12px}}
+</style></head>
+<body><div class="box"{redirect_attr}>
+<h1>{heading}</h1>
+<p>{message}</p>
+<button id="acc" type="button">{confirm_label}</button>
+<button id="dec" type="button" class="ghost">No thanks</button>
+<p id="err" class="err" style="display:none">Something went wrong. Please try again.</p>
+<div id="declined" style="display:none"><p class="decl">No problem — this card will not be shown.</p></div>
+</div>
+<script>
+(function(){{var box=document.querySelector('.box'),acc=document.getElementById('acc'),
+dec=document.getElementById('dec'),err=document.getElementById('err'),dn=document.getElementById('declined');
+var redirect=box.getAttribute('data-redirect');
+dec.addEventListener('click',function(){{
+if(redirect){{location.href=redirect;return;}}
+acc.style.display='none';dec.style.display='none';err.style.display='none';dn.style.display='block';}});
+acc.addEventListener('click',function(){{
+acc.disabled=true;
+fetch('{action}',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{gate:'{gate}'}})}})
+.then(function(r){{if(r.ok){{location.reload()}}else{{acc.disabled=false;err.style.display='block'}}}})
+.catch(function(){{acc.disabled=false;err.style.display='block'}});}});
+}})();
+</script>
+</body></html>"#,
+        title = title,
+        heading = heading,
+        message = html_escape(message),
+        confirm_label = confirm_label,
+        action = action,
+        redirect_attr = redirect_attr,
+        gate = gate
+    )
+}
+
+/// Set a card's consent / age gate. Mirror of `set_card_password`: same plan gate
+/// (`has_card_gating` ⇒ 402 without it), same tenant-scoped ownership check, same
+/// 400 shapes. Absent keys leave the current value untouched (partial update), and an
+/// empty string for the message or the redirect clears it (NULL).
+pub async fn set_card_gating(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(card_id): Path<Uuid>,
+    Json(body): Json<Value>,
+) -> AppResult<Json<Value>> {
+    use sqlx::Row;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // Selling point of Suite/Agency — a plan without it gets 402 UpgradeRequired
+    // rather than a silently ignored write.
+    crate::features::enforce_feature_flag(&state, tenant_id, "has_card_gating", "Card gating")
+        .await?;
+    // Same ownership check create_button / set_card_password use.
+    let owns_card: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id = $1 AND tenant_id = $2)",
+    )
+    .bind(card_id)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+    if !owns_card {
+        return Err(AppError::NotFound("Card not found".into()));
+    }
+
+    let current = sqlx::query(
+        "SELECT consent_required, age_gate_type, age_gate_message, consent_decline_redirect FROM kinetic_cards WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(card_id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Card not found".into()))?;
+    let current_consent: bool = current
+        .try_get::<Option<bool>, _>("consent_required")
+        .unwrap_or(None)
+        .unwrap_or(false);
+    let current_age_type: Option<String> = current
+        .try_get::<Option<String>, _>("age_gate_type")
+        .unwrap_or(None);
+    let current_message: Option<String> = current
+        .try_get::<Option<String>, _>("age_gate_message")
+        .unwrap_or(None);
+    let current_redirect: Option<String> = current
+        .try_get::<Option<String>, _>("consent_decline_redirect")
+        .unwrap_or(None);
+
+    // Validate everything BEFORE the UPDATE: nothing unvalidated may reach the columns.
+    let consent_required = match optional_json_bool(&body, "consent_required")? {
+        Some(v) => v,
+        None => current_consent,
+    };
+    let age_gate_type = match optional_json_str(&body, "age_gate_type")? {
+        Some(v) => normalize_age_gate_type(v)?,
+        None => current_age_type,
+    };
+    let age_gate_message = match optional_json_str(&body, "age_gate_message")? {
+        Some(v) => {
+            let v = v.trim();
+            if v.is_empty() {
+                None
+            } else {
+                Some(v.to_string())
+            }
+        }
+        None => current_message,
+    };
+    let consent_decline_redirect = match optional_json_str(&body, "consent_decline_redirect")? {
+        Some(v) => {
+            let v = v.trim();
+            if v.is_empty() {
+                None
+            } else if safe_redirect_target(v).is_some() {
+                Some(v.to_string())
+            } else {
+                return Err(AppError::BadRequest(
+                    "consent_decline_redirect must be an http:// or https:// URL".into(),
+                ));
+            }
+        }
+        None => current_redirect,
+    };
+
+    sqlx::query(
+        "UPDATE kinetic_cards SET consent_required = $3, age_gate_type = $4, age_gate_message = $5, consent_decline_redirect = $6 WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(card_id)
+    .bind(tenant_id)
+    .bind(consent_required)
+    .bind(age_gate_type.as_deref())
+    .bind(age_gate_message.as_deref())
+    .bind(consent_decline_redirect.as_deref())
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(json!({
+        "id": card_id,
+        "consent_required": consent_required,
+        "age_gate_type": age_gate_type.unwrap_or_else(|| "none".to_string()),
+        "age_gate_message": age_gate_message,
+        "consent_decline_redirect": consent_decline_redirect,
+        "message": "Card gating saved"
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct CardGateConfirmRequest {
+    #[serde(default)]
+    pub gate: String,
+}
+
+/// POST /api/v1/kinetic/cards/:id/gate — an anonymous viewer's own confirmation of a
+/// consent or age gate; sets the matching cookie so the interstitial can reload into
+/// the real card.
+///
+/// Public (`auth/global_auth.rs` lets this one path through unauthenticated) and
+/// deliberately tenant-agnostic: the viewer is anonymous, the card is addressed by id,
+/// and the only thing issued is the same HMAC the renderer recomputes for that card's
+/// *current* gate configuration. A gate that is not configured answers 400, so a stale
+/// page can never mint a cookie for a gate the owner has switched off.
+pub async fn confirm_card_gate(
+    axum::extract::Path(card_id): axum::extract::Path<Uuid>,
+    State(state): State<AppState>,
+    Json(req): Json<CardGateConfirmRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT consent_required, age_gate_type, consent_decline_redirect FROM kinetic_cards WHERE id = $1 LIMIT 1",
+    )
+    .bind(card_id)
+    .fetch_optional(&state.pool)
+    .await;
+    let r = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(json!({"confirmed": false, "error": "Card not found"})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!(
+                "confirm_card_gate lookup failed for card {}: {}",
+                card_id,
+                e
+            );
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"confirmed": false, "error": "Lookup failed"})),
+            )
+                .into_response();
+        }
+    };
+
+    let (cookie_name, token) = match req.gate.trim() {
+        "consent" => {
+            let required: bool = r
+                .try_get::<Option<bool>, _>("consent_required")
+                .unwrap_or(None)
+                .unwrap_or(false);
+            if !required {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(
+                        json!({"confirmed": false, "error": "This card does not ask for consent"}),
+                    ),
+                )
+                    .into_response();
+            }
+            let decline: String = r
+                .try_get::<Option<String>, _>("consent_decline_redirect")
+                .unwrap_or(None)
+                .unwrap_or_default();
+            (
+                format!("kc_consent_{}", card_id.simple()),
+                card_unlock_token(
+                    &state.jwt_secret,
+                    &card_id,
+                    &consent_gate_signature(&decline),
+                ),
+            )
+        }
+        "age" => {
+            let t: String = r
+                .try_get::<Option<String>, _>("age_gate_type")
+                .unwrap_or(None)
+                .unwrap_or_default();
+            let t = t.trim().to_string();
+            if !is_age_gate_type(&t) {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(json!({"confirmed": false, "error": "This card has no age gate"})),
+                )
+                    .into_response();
+            }
+            (
+                format!("kc_age_{}", card_id.simple()),
+                card_unlock_token(&state.jwt_secret, &card_id, &age_gate_signature(&t)),
+            )
+        }
+        _ => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({"confirmed": false, "error": "gate must be \"consent\" or \"age\""})),
+            )
+                .into_response()
+        }
+    };
+
+    let cookie = format!("{cookie_name}={token}; Path=/; Max-Age=604800; HttpOnly; SameSite=Lax");
+    (
+        axum::http::StatusCode::OK,
+        [(axum::http::header::SET_COOKIE, cookie)],
+        Json(json!({"confirmed": true})),
+    )
+        .into_response()
+}
+
 #[derive(serde::Deserialize)]
 pub struct CardUnlockRequest {
     pub password: String,
@@ -1175,4 +1665,146 @@ pub async fn unlock_card(
         Json(json!({"unlocked": true})),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cid() -> Uuid {
+        Uuid::parse_str("8f1a1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b").unwrap()
+    }
+
+    #[test]
+    fn consent_cookie_is_bound_to_the_gate_configuration() {
+        let base = card_unlock_token("secret", &cid(), &consent_gate_signature(""));
+        // stable for one configuration, so a viewer's cookie survives a reload
+        assert_eq!(
+            base,
+            card_unlock_token("secret", &cid(), &consent_gate_signature(""))
+        );
+        // reconfiguring the gate invalidates outstanding consent cookies
+        assert_ne!(
+            base,
+            card_unlock_token(
+                "secret",
+                &cid(),
+                &consent_gate_signature("https://declined.test/bye")
+            )
+        );
+        // scoped to the card and to the server secret
+        assert_ne!(
+            base,
+            card_unlock_token("secret", &Uuid::new_v4(), &consent_gate_signature(""))
+        );
+        assert_ne!(
+            base,
+            card_unlock_token("other-secret", &cid(), &consent_gate_signature(""))
+        );
+    }
+
+    #[test]
+    fn age_cookie_is_bound_to_the_age_gate_type() {
+        let t18 = card_unlock_token("secret", &cid(), &age_gate_signature("age_18"));
+        let t21 = card_unlock_token("secret", &cid(), &age_gate_signature("age_21"));
+        assert_ne!(t18, t21);
+        assert_eq!(
+            t18,
+            card_unlock_token("secret", &cid(), &age_gate_signature("age_18"))
+        );
+        // an age cookie and a consent cookie never collide, even on the same input
+        assert_ne!(
+            t18,
+            card_unlock_token("secret", &cid(), &consent_gate_signature("age_18"))
+        );
+    }
+
+    #[test]
+    fn age_gate_allowlist_accepts_the_four_legal_values_and_rejects_age_16() {
+        for ok in ["age_18", "age_21", "custom"] {
+            assert!(is_age_gate_type(ok), "{ok} should be a real age gate");
+        }
+        for bad in [
+            "none", "", "age_16", "AGE_18", "age18", "custom ", "yes", "true",
+        ] {
+            assert!(!is_age_gate_type(bad), "{bad} must not render an age gate");
+        }
+        // the setter's normaliser: legal values stored, 'none'/empty cleared, junk 400s
+        assert_eq!(
+            normalize_age_gate_type("age_18").unwrap(),
+            Some("age_18".to_string())
+        );
+        assert_eq!(
+            normalize_age_gate_type("custom").unwrap(),
+            Some("custom".to_string())
+        );
+        assert_eq!(normalize_age_gate_type("none").unwrap(), None);
+        assert_eq!(normalize_age_gate_type("").unwrap(), None);
+        assert!(normalize_age_gate_type("age_16").is_err());
+    }
+
+    #[test]
+    fn redirect_validator_rejects_javascript_and_data_schemes() {
+        for bad in [
+            "",
+            "   ",
+            "javascript:alert(1)",
+            "JavaScript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "ftp://example.com/x",
+            "//evil.example.com",
+            "/local/path",
+            "https://",
+            "http://",
+            "https://example.com/a b",
+            "https://example.com/a\nb",
+        ] {
+            assert_eq!(
+                safe_redirect_target(bad),
+                None,
+                "{bad:?} must not be an accepted decline target"
+            );
+        }
+        assert_eq!(
+            safe_redirect_target("https://example.com/declined"),
+            Some("https://example.com/declined")
+        );
+        assert_eq!(
+            safe_redirect_target("  http://example.com/x  "),
+            Some("http://example.com/x")
+        );
+        assert_eq!(
+            safe_redirect_target("HTTPS://Example.com/x"),
+            Some("HTTPS://Example.com/x")
+        );
+    }
+
+    #[test]
+    fn interstitial_escapes_owner_text_and_only_emits_a_validated_redirect() {
+        let html = render_gate_interstitial(
+            "Card &amp; Co",
+            "age",
+            "You must be 18+ <script>alert(1)</script>",
+            &cid(),
+            safe_redirect_target("https://ok.test/bye"),
+        );
+        assert!(html.contains("You must be 18+ &lt;script&gt;alert(1)&lt;/script&gt;"));
+        assert!(!html.contains("<script>alert(1)</script>"));
+        assert!(html.contains(" data-redirect=\"https://ok.test/bye\""));
+        assert!(html.contains("Age verification"));
+        // no valid target => no attribute at all, so decline shows the neutral panel
+        let html2 = render_gate_interstitial(
+            "T",
+            "consent",
+            "hello",
+            &cid(),
+            safe_redirect_target("javascript:alert(1)"),
+        );
+        // no valid target => no attribute is emitted at all (the script's own
+        // getAttribute('data-redirect') lookup is still there and reads null), so
+        // decline shows the neutral panel instead of navigating
+        assert!(!html2.contains("data-redirect=\""));
+        assert!(html2.contains(&format!("/api/v1/kinetic/cards/{}/gate", cid())));
+        assert!(html2.contains("Before you continue"));
+    }
 }

@@ -44,6 +44,11 @@ fn is_public(path: &str) -> bool {
     }
     // Public embed for web-to-lead forms: GET /api/v1/web-to-lead/configs/:id/embed
     path.starts_with("/api/v1/web-to-lead/configs/") && path.ends_with("/embed")
+        // Public viewer confirmation of a card's consent / age gate:
+        // POST /api/v1/kinetic/cards/:id/gate. The viewer of a public card page is
+        // anonymous and has no JWT, and the endpoint only ever issues the HMAC for
+        // the card's *current* gate configuration (an unconfigured gate gets 400).
+        || (path.starts_with("/api/v1/kinetic/cards/") && path.ends_with("/gate"))
 }
 
 fn is_internal(path: &str) -> bool {

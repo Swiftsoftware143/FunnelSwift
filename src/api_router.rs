@@ -606,6 +606,17 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/kinetic/cards/:id/password",
             put(kinetic_handler::set_card_password),
         )
+        // Consent + age half of the same `has_card_gating` feature: `gating` is the
+        // plan-gated owner setter, `gate` is the anonymous viewer's confirmation
+        // (public — see `is_public` in auth/global_auth.rs).
+        .route(
+            "/api/v1/kinetic/cards/:id/gating",
+            put(kinetic_handler::set_card_gating),
+        )
+        .route(
+            "/api/v1/kinetic/cards/:id/gate",
+            post(kinetic_handler::confirm_card_gate),
+        )
         .route(
             "/api/v1/kinetic/cards/:id/sources",
             get(kinetic_handler::list_sources).post(kinetic_handler::create_source),

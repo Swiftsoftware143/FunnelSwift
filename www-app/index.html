@@ -786,6 +786,52 @@ function MFC(data){
   }},"Save Password");
   gateBox.appendChild(gpIn);
   gateBox.appendChild(El("div",{style:"margin-top:2px"},[gpBtn,gpMsg]));
+  // ── Consent + age gate — the other half of the same `has_card_gating` feature ──
+  // Same treatment as the password above: everyone SEES the controls, a plan without
+  // the flag gets the 🔒 PRO badge and Save opens the upgrade modal instead of writing
+  // (server-side 402 is the real gate; `api()` already routes it to KCUP).
+  // Saved to PUT /api/v1/kinetic/cards/:id/gating. Every value is prefilled from the
+  // card payload (list_cards returns the four columns) and every value is sent, so
+  // saving never silently clears a gate the owner already configured.
+  var cg=El("div",{style:"margin-top:10px;border-top:1px dashed #e2e8f0;padding-top:8px"});
+  cg.appendChild(El("label",{style:"font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"Consent & age gate"));
+  var cgRow=El("label",{style:"font-size:10px;color:#475569;display:flex;align-items:center;margin-bottom:6px"});
+  var cgConsent=El("input",{id:"mc-gate-consent",type:"checkbox",style:"margin:0 6px 0 0"});
+  cgConsent.checked=!!c.consent_required;
+  cgRow.appendChild(cgConsent);
+  cgRow.appendChild(El("span",null,"Ask visitors to accept before viewing"));
+  cg.appendChild(cgRow);
+  var cgOptions=[["none","No age gate"],["age_18","18+ only"],["age_21","21+ only"],["custom","Custom age requirement"]];
+  var cgSel=El("select",{id:"mc-gate-age",style:"width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;margin-bottom:6px"});
+  cgOptions.forEach(function(o){cgSel.appendChild(El("option",{value:o[0]},o[1]));});
+  cgSel.value=c.age_gate_type||"none";
+  cg.appendChild(cgSel);
+  cg.appendChild(El("input",{id:"mc-gate-msg",type:"text",value:c.age_gate_message||"",placeholder:"Message shown on the gate (optional)",style:"width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;margin-bottom:6px"}));
+  cg.appendChild(El("input",{id:"mc-gate-redirect",type:"text",value:c.consent_decline_redirect||"",placeholder:"Decline redirect URL (https://…)",style:"width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"}));
+  cg.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin:6px 0 0;line-height:1.4"},"Visitors must accept (and confirm their age, when set) before your card is shown. A decline sends them to the redirect URL if you set an http(s) one."));
+  var cgMsg=El("span",{style:"font-size:10px;margin-left:8px;color:#64748b"});
+  var cgBtn=El("button",{"class":"btn",type:"button",style:"margin-top:6px;font-size:11px;padding:5px 12px",onclick:function(){
+    if(!gateOn){KCUP("Consent and age gates are a Suite/Agency feature. Upgrade to gate your card.");return;}
+    var cid=mb_._cid;
+    if(!cid){cgMsg.style.color="#dc2626";cgMsg.textContent="Save the card first.";return;}
+    var gbody={
+      consent_required:!!(($("mc-gate-consent")||{}).checked),
+      age_gate_type:(($("mc-gate-age")||{}).value)||"none",
+      age_gate_message:(($("mc-gate-msg")||{}).value)||"",
+      consent_decline_redirect:(($("mc-gate-redirect")||{}).value)||""
+    };
+    cgBtn.disabled=true;cgMsg.style.color="#64748b";cgMsg.textContent="Saving...";
+    api("/api/v1/kinetic/cards/"+cid+"/gating",{method:"PUT",body:JSON.stringify(gbody)}).then(function(r){
+      cgBtn.disabled=false;cgMsg.style.color="#16a34a";cgMsg.textContent="Gate saved ✓";
+      if(r){c.consent_required=!!r.consent_required;c.age_gate_type=r.age_gate_type;
+        c.age_gate_message=r.age_gate_message;c.consent_decline_redirect=r.consent_decline_redirect;}
+    }).catch(function(e){
+      if(e&&e.message==="upgrade_required")return;
+      cgBtn.disabled=false;cgMsg.style.color="#dc2626";cgMsg.textContent=(e&&e.message)||"Could not save";
+    });
+  }},"Save Gate");
+  cg.appendChild(El("div",{style:"margin-top:2px"},[cgBtn,cgMsg]));
+  gateBox.appendChild(cg);
   if(!gateOn) gateBox.appendChild(El("span",{"class":"kc-lock kc-tpl-lock"},"\ud83d\udd12 PRO"));
   p0.appendChild(gateBox);
   left.appendChild(p0);
