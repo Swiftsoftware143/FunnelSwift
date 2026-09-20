@@ -102,6 +102,34 @@ pub async fn create_lead(
         }
     }
 
+    // `leads.name` is NOT NULL, but a client may legitimately identify a person by parts alone:
+    // the mobile capture screen sends `first_name`/`last_name` and has no combined `name` field
+    // at all. Binding the absent `name` straight through put NULL into a NOT NULL column, so
+    // EVERY lead captured from the app failed with a 500 "Database error". Compose the display
+    // name from whatever the caller actually gave us, and answer a genuinely nameless lead with
+    // a 400 instead of a database fault.
+    let display_name: Option<String> = req
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            let joined = format!(
+                "{} {}",
+                req.first_name.as_deref().unwrap_or("").trim(),
+                req.last_name.as_deref().unwrap_or("").trim()
+            )
+            .trim()
+            .to_string();
+            (!joined.is_empty()).then_some(joined)
+        });
+    let Some(display_name) = display_name else {
+        return Err(AppError::BadRequest(
+            "A lead needs a name — supply `name`, or at least `first_name`".into(),
+        ));
+    };
+
     let lead_id = Uuid::new_v4();
     // The user account this lead flows through — the affiliate attribution anchor.
     let created_by = Uuid::parse_str(&auth.user_id).ok();
@@ -114,7 +142,7 @@ pub async fn create_lead(
     .bind(tenant_id)
     .bind(&req.first_name)
     .bind(&req.last_name)
-    .bind(&req.name)
+    .bind(&display_name)
     .bind(&req.email)
     .bind(&req.phone)
     .bind(&req.company)
@@ -219,9 +247,27 @@ pub async fn update_lead(
             .await?
             .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
 
+    // The app edits a person by parts (`first_name`/`last_name`) and never sends a combined
+    // `name`. The UPDATE below did not mention first_name/last_name at all and only ever wrote
+    // `name`, so renaming a lead from the app was a silent no-op: the old name stayed, and the
+    // parts were discarded. Prefer an explicit `name`, else recompose from the parts, else keep
+    // what the row already holds.
+    let first_name = req.first_name.clone().or(existing.first_name.clone());
+    let last_name = req.last_name.clone().or(existing.last_name.clone());
     let name = req
         .name
         .clone()
+        .filter(|n| !n.trim().is_empty())
+        .or_else(|| {
+            let joined = format!(
+                "{} {}",
+                first_name.as_deref().unwrap_or("").trim(),
+                last_name.as_deref().unwrap_or("").trim()
+            )
+            .trim()
+            .to_string();
+            (!joined.is_empty()).then_some(joined)
+        })
         .or(existing.name.clone())
         .unwrap_or_default();
     let email = req.email.clone().or(existing.email.clone());
@@ -243,10 +289,13 @@ pub async fn update_lead(
     let custom_fields = req.custom_fields.or(existing.custom_fields);
 
     sqlx::query(
-        r#"UPDATE leads SET name=$1, email=$2, phone=$3, company=$4, source=$5, status=$6, stage=$7, score=$8,
-           tags=$9, custom_fields=$10, notes=$11, assigned_to=$12, updated_at=NOW() WHERE id=$13 AND tenant_id=$14"#,
+        r#"UPDATE leads SET name=$1, first_name=$2, last_name=$3, email=$4, phone=$5, company=$6,
+           source=$7, status=$8, stage=$9, score=$10, tags=$11, custom_fields=$12, notes=$13,
+           assigned_to=$14, updated_at=NOW() WHERE id=$15 AND tenant_id=$16"#,
     )
     .bind(&name)
+    .bind(&first_name)
+    .bind(&last_name)
     .bind(&email)
     .bind(&phone)
     .bind(&company)
