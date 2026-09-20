@@ -963,6 +963,35 @@ async function renderEmailTemplates() {
       <h1 style="font-size:22px;font-weight:700">Email Templates</h1>
       <button class="btn btn-primary btn-sm" id="add-email-btn">+ Add Template</button>
     </div>
+    <div class="card" id="email-provider-card" style="margin-bottom:20px">
+      <div class="card-header" style="padding:16px 16px 0;display:flex;align-items:center;gap:10px">
+        <h2 style="font-size:16px;font-weight:700;margin:0">Email Provider (System Email)</h2>
+        <span class="badge badge-yellow" id="ep-status-badge">loading…</span>
+      </div>
+      <div style="padding:16px">
+        <div style="font-size:12px;color:#64748b;margin-bottom:12px">
+          Provider + credentials are stored in this installation's database. Nothing is read from the server environment.
+          Choose smtp, mailgun, sendgrid or sendiio and paste that provider's key — the dropdown is served by the API.
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+          <div class="form-group"><label class="form-label">Provider</label><select class="input" id="ep-provider"></select></div>
+          <div class="form-group"><label class="form-label">From name</label><input class="input" id="ep-from-name" placeholder="FunnelSwift"></div>
+          <div class="form-group"><label class="form-label">From address</label><input class="input" id="ep-from-address" placeholder="you@yourdomain.com"></div>
+          <div class="form-group"><label class="form-label">Domain (Mailgun)</label><input class="input" id="ep-domain" placeholder="mg.yourdomain.com"></div>
+          <div class="form-group"><label class="form-label">API URL (optional)</label><input class="input" id="ep-api-url" placeholder="https://api.mailgun.net/v3/…/messages"></div>
+          <div class="form-group"><label class="form-label">API key</label><input class="input" id="ep-api-key" placeholder="paste the provider key"></div>
+          <div class="form-group"><label class="form-label">SMTP host</label><input class="input" id="ep-smtp-host" placeholder="smtp.yourdomain.com"></div>
+          <div class="form-group"><label class="form-label">SMTP port</label><input class="input" id="ep-smtp-port" placeholder="587"></div>
+          <div class="form-group"><label class="form-label">SMTP username</label><input class="input" id="ep-smtp-username"></div>
+          <div class="form-group"><label class="form-label">SMTP password</label><input class="input" type="password" id="ep-smtp-password"></div>
+          <div class="form-group"><label class="form-label">SMTP encryption</label><select class="input" id="ep-smtp-encryption"><option value="">STARTTLS (default)</option><option value="tls">TLS</option></select></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" id="ep-save">Save email provider</button>
+          <button class="btn btn-secondary btn-sm" id="ep-test">Send test email</button>
+        </div>
+      </div>
+    </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">✉️</div><div class="title">No templates yet</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Subject</th><th>Type</th><th>Updated</th><th>Actions</th></tr></thead>
@@ -978,8 +1007,70 @@ async function renderEmailTemplates() {
 }
 function bindEmailTemplates() {
   document.getElementById('add-email-btn')?.addEventListener('click', () => openEmailTemplateModal());
+  bindEmailProvider();
 }
 window._editEmailTemplate = function(id) { openEmailTemplateModal(id); };
+
+// ── EMAIL PROVIDER (system email — DB-stored, provider is an admin choice) ──
+async function bindEmailProvider() {
+  const sel = document.getElementById('ep-provider');
+  if (!sel) return;
+  try {
+    const d = await api('/admin/email-config');
+    const cfg = d.config || {};
+    (d.providers || []).forEach(p => { const o = document.createElement('option'); o.value = p.value; o.textContent = p.label; sel.appendChild(o); });
+    sel.value = d.provider || cfg.provider || 'smtp';
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === undefined || v === null) ? '' : v; };
+    set('ep-from-name', cfg.from_name); set('ep-from-address', cfg.from_address);
+    set('ep-domain', cfg.domain); set('ep-api-url', cfg.api_url); set('ep-api-key', cfg.api_key);
+    set('ep-smtp-host', cfg.smtp_host); set('ep-smtp-port', cfg.smtp_port);
+    set('ep-smtp-username', cfg.smtp_username); set('ep-smtp-password', cfg.smtp_password);
+    set('ep-smtp-encryption', cfg.smtp_encryption || '');
+    const badge = document.getElementById('ep-status-badge');
+    if (badge) {
+      badge.textContent = d.configured ? ('configured · ' + (d.provider || '')) : 'not configured';
+      badge.className = 'badge ' + (d.configured ? 'badge-green' : 'badge-yellow');
+    }
+  } catch (e) {
+    showToast('Could not load email provider: ' + e.message, 'error');
+  }
+  document.getElementById('ep-save')?.addEventListener('click', saveEmailProvider);
+  document.getElementById('ep-test')?.addEventListener('click', testEmailProvider);
+}
+
+function emailProviderPayload() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    provider: v('ep-provider'),
+    from_name: v('ep-from-name'),
+    from_address: v('ep-from-address'),
+    domain: v('ep-domain'),
+    api_url: v('ep-api-url'),
+    api_key: v('ep-api-key'),
+    smtp_host: v('ep-smtp-host'),
+    smtp_port: parseInt(v('ep-smtp-port') || '0', 10) || 0,
+    smtp_username: v('ep-smtp-username'),
+    smtp_password: v('ep-smtp-password'),
+    smtp_encryption: v('ep-smtp-encryption')
+  };
+}
+
+async function saveEmailProvider() {
+  try {
+    await api('/admin/email-config', { method: 'POST', body: JSON.stringify(emailProviderPayload()) });
+    showToast('Email provider saved', 'success');
+    await bindEmailProvider();
+  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+}
+
+async function testEmailProvider() {
+  showToast('Sending test email…', 'info');
+  try {
+    const r = await api('/admin/email-config/test', { method: 'POST', body: '{}' });
+    if (r.success) showToast('Test email sent via ' + r.provider + ' to ' + r.to, 'success');
+    else showToast('Provider refused the message: ' + (r.detail || 'unknown error'), 'error');
+  } catch (e) { showToast('Test failed: ' + e.message, 'error'); }
+}
 
 function openEmailTemplateModal(id) {
   STATE.modal = { title: id ? 'Edit Email Template' : 'Add Email Template', content: `<div class="empty"><div class="icon">⏳</div></div>` };

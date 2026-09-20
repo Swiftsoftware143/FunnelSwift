@@ -10,6 +10,13 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// The one string a masked secret is replaced with in responses.
+const MASK: &str = "••••••••";
+
+fn is_masked(v: &str) -> bool {
+    v.is_empty() || v.chars().all(|c| c == '•' || c == '*')
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmailTemplate {
     pub id: Uuid,
@@ -194,26 +201,145 @@ pub async fn list_template_types() -> Json<Vec<serde_json::Value>> {
     ])
 }
 
-/// GET /api/v1/admin/email-config
-pub async fn get_email_config() -> Json<serde_json::Value> {
+/// GET /api/v1/admin/email-config — global (system mail) provider config, secrets masked.
+/// DB-backed: nothing here reads the process environment.
+pub async fn get_email_config(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let value: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT value FROM admin_settings WHERE key = 'email'")
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
+    let cfg = value
+        .as_ref()
+        .map(|v| crate::email_provider::EmailConfig::from_json(v, "smtp"));
+
+    let mut out = value.unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = out.as_object_mut() {
+        if obj.contains_key("api_key") {
+            let set = cfg.as_ref().map(|c| !c.api_key.is_empty()).unwrap_or(false);
+            obj.insert(
+                "api_key".into(),
+                serde_json::json!(if set { MASK } else { "" }),
+            );
+            obj.insert("api_key_set".into(), serde_json::json!(set));
+        }
+        if obj.contains_key("smtp_password") {
+            let set = cfg
+                .as_ref()
+                .map(|c| !c.smtp_password.is_empty())
+                .unwrap_or(false);
+            obj.insert(
+                "smtp_password".into(),
+                serde_json::json!(if set { MASK } else { "" }),
+            );
+            obj.insert("smtp_password_set".into(), serde_json::json!(set));
+        }
+    }
+
     Json(serde_json::json!({
-        "provider": "mailgun",
-        "api_url": std::env::var("EMAIL_API_URL").unwrap_or_default(),
-        "from_address": std::env::var("EMAIL_FROM").unwrap_or_default(),
-        "api_key_configured": std::env::var("EMAIL_API_KEY").map(|k| !k.is_empty()).unwrap_or(false),
+        "config": out,
+        "configured": cfg.as_ref().map(|c| c.is_configured()).unwrap_or(false),
+        "provider": cfg.as_ref().map(|c| c.provider.clone()).unwrap_or_default(),
+        "providers": crate::email_provider::available(),
     }))
 }
 
-/// POST /api/v1/admin/email-config
-pub async fn update_email_config(Json(req): Json<serde_json::Value>) -> Json<serde_json::Value> {
-    let provider = req["provider"].as_str().unwrap_or("mailgun");
-    // We intentionally do NOT mutate process env vars here: `std::env::set_var` from an async
-    // handler in a multi-threaded runtime is a data race (and unsafe on modern Rust). Email
-    // configuration is environment-managed — set EMAIL_API_URL / EMAIL_API_KEY / EMAIL_FROM in
-    // /etc/swift/env/funnelswift.env and restart the service to apply.
-    Json(serde_json::json!({
-        "status": "acknowledged",
-        "provider": provider,
-        "note": "Email config is environment-managed. Update /etc/swift/env/funnelswift.env (EMAIL_API_URL, EMAIL_API_KEY, EMAIL_FROM) and restart the service."
-    }))
+/// POST /api/v1/admin/email-config — save the global system-mail provider.
+/// A masked secret coming back from the UI never overwrites the stored one.
+pub async fn update_email_config(
+    State(state): State<AppState>,
+    Json(mut body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let existing: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT value FROM admin_settings WHERE key = 'email'")
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+    let existing = existing.unwrap_or_else(|| serde_json::json!({}));
+
+    let obj = body
+        .as_object_mut()
+        .ok_or_else(|| AppError::BadRequest("Expected a JSON object".to_string()))?;
+
+    for secret in ["api_key", "smtp_password"] {
+        let incoming = obj.get(secret).and_then(|v| v.as_str()).unwrap_or("");
+        if is_masked(incoming) {
+            let kept = existing
+                .get(secret)
+                .cloned()
+                .unwrap_or(serde_json::json!(""));
+            obj.insert(secret.to_string(), kept);
+        }
+    }
+    obj.remove("api_key_set");
+    obj.remove("smtp_password_set");
+
+    if let Some(p) = body.get("provider").and_then(|v| v.as_str()) {
+        let valid = crate::email_provider::available()
+            .iter()
+            .any(|v| v.get("value").and_then(|x| x.as_str()) == Some(p));
+        if !valid {
+            return Err(AppError::BadRequest(format!(
+                "Unknown email provider '{p}'. Choose one of the values served by GET /api/v1/admin/email-config."
+            )));
+        }
+    }
+
+    sqlx::query(
+        "INSERT INTO admin_settings (key, value, description, updated_at)
+         VALUES ('email', $1::jsonb, 'Global system email provider (admin-editable)', NOW())
+         ON CONFLICT (key) DO UPDATE SET value = $1::jsonb, updated_at = NOW()",
+    )
+    .bind(&body)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to save email config: {e}")))?;
+
+    Ok(Json(
+        serde_json::json!({ "success": true, "provider": body.get("provider") }),
+    ))
+}
+
+/// POST /api/v1/admin/email-config/test — send a real message and return the
+/// provider's true response (used by the "Send test email" button).
+pub async fn test_email_config(
+    State(state): State<AppState>,
+    user: crate::auth::middleware::AuthUser,
+) -> Json<serde_json::Value> {
+    let Some(cfg) = crate::email_provider::resolve(&state.pool, None).await else {
+        return Json(serde_json::json!({
+            "success": false,
+            "detail": "Global email provider not configured — save provider + credentials first."
+        }));
+    };
+
+    let to = if user.email.trim().is_empty() {
+        "swiftsoftware143@yahoo.com".to_string()
+    } else {
+        user.email.clone()
+    };
+
+    match crate::email_provider::deliver(
+        &cfg,
+        &to,
+        "FunnelSwift System Email Test",
+        "This is a test of the FunnelSwift system email provider.\n\nIf you received it, sending works.\n\n- FunnelSwift",
+        None,
+    )
+    .await
+    {
+        Ok(()) => Json(serde_json::json!({
+            "success": true,
+            "provider": cfg.provider,
+            "to": to,
+            "detail": format!("{} accepted the message", cfg.provider)
+        })),
+        Err(e) => Json(serde_json::json!({
+            "success": false,
+            "provider": cfg.provider,
+            "to": to,
+            "detail": e
+        })),
+    }
 }

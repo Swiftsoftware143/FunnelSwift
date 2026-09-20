@@ -3,26 +3,20 @@
 //! Templates are stored in `email_templates` with html_body (HTML) and body (plain text).
 //! Falls back to hardcoded inline templates when DB template not found.
 //!
-//! Provider resolution (per-tenant → env fallback):
+//! Provider resolution is **DB only** (`crate::email_provider`) — no env vars:
 //!   - `send_template_email_for_tenant` resolves the tenant's Mailgun/SMTP/email config from
-//!     the Integration Center (`target_software`), reading `webhook_url` as the Mailgun API
-//!     base and `api_key` as the key. Falls back to EMAIL_API_URL / EMAIL_API_KEY / EMAIL_FROM
-//!     env vars when the tenant has no active email-provider row.
-//!   - `send_template_email` is the env-only path for system emails with no tenant context.
+//!     `tenant_settings` (`email_config` / `mailgun_config` / `smtp_config`), then falls back to
+//!     the global `admin_settings.email` row (system mail).
+//!   - `send_template_email` is the system path (no tenant context) — same global row.
+//!   - Any other provider choice (smtp | mailgun | sendgrid | sendiio) is stored in that row.
+//!
+//! Unconfigured is never fatal: it is logged and the send is skipped.
 //!
 //! Direct API send (no queue).
 
 use serde_json::json;
 use sqlx::PgPool;
-use std::env;
 use uuid::Uuid;
-
-/// Resolved email provider config (API base + key + from address).
-struct ProviderConfig {
-    api_url: String,
-    api_key: String,
-    from: String,
-}
 
 /// Render a template string by replacing {{key}} placeholders
 fn render(template: &str, vars: &std::collections::HashMap<&str, &str>) -> String {
@@ -33,96 +27,36 @@ fn render(template: &str, vars: &std::collections::HashMap<&str, &str>) -> Strin
     result
 }
 
-/// Resolve the tenant's Mailgun/SMTP/email provider config from the Integration Center
-/// (`target_software`). Returns `None` when the tenant has no active email-provider row,
-/// in which case the caller falls back to the env-var provider.
-async fn resolve_tenant_provider(
+/// Send an already-rendered email through the tenant's DB-configured provider.
+/// Graceful degradation: unconfigured logs a warning and skips (never panics, never
+/// silently uses a server-wide env credential).
+async fn dispatch_for_tenant(
     pool: &PgPool,
-    tenant_id: Uuid,
-) -> Result<Option<ProviderConfig>, String> {
-    let row: Option<(String, Option<String>)> = sqlx::query_as(
-        r#"SELECT webhook_url, api_key
-           FROM target_software
-           WHERE tenant_id = $1
-             AND (LOWER(name) LIKE '%mailgun%' OR LOWER(name) LIKE '%smtp%' OR LOWER(name) LIKE '%email%')
-             AND is_active = true
-           ORDER BY created_at ASC
-           LIMIT 1"#,
-    )
-    .bind(tenant_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("Failed to resolve email provider: {e}"))?;
-
-    let Some((api_url, api_key)) = row else {
-        return Ok(None);
-    };
-
-    if api_url.trim().is_empty() {
-        return Ok(None);
-    }
-
-    let from = env::var("EMAIL_FROM").unwrap_or_else(|_| "swiftsoftware143@yahoo.com".to_string());
-
-    Ok(Some(ProviderConfig {
-        api_url,
-        api_key: api_key.unwrap_or_default(),
-        from,
-    }))
-}
-
-/// System-wide provider config from env vars (no tenant context).
-fn env_provider() -> Result<ProviderConfig, String> {
-    let api_url = env::var("EMAIL_API_URL").map_err(|_| "EMAIL_API_URL not set".to_string())?;
-    let api_key = env::var("EMAIL_API_KEY").map_err(|_| "EMAIL_API_KEY not set".to_string())?;
-    let from = env::var("EMAIL_FROM").unwrap_or_else(|_| "swiftsoftware143@yahoo.com".to_string());
-    Ok(ProviderConfig {
-        api_url,
-        api_key,
-        from,
-    })
-}
-
-/// Send an already-rendered email through the given provider.
-async fn dispatch(
-    config: &ProviderConfig,
+    tenant_id: Option<Uuid>,
     to: &str,
     subject: &str,
     body: Option<&str>,
     html: Option<&str>,
 ) -> Result<(), String> {
-    let mut payload = json!({
-        "from": config.from,
-        "to": to,
-        "subject": subject,
-    });
+    let Some(cfg) = crate::email_provider::resolve(pool, tenant_id).await else {
+        tracing::warn!(
+            tenant = ?tenant_id,
+            to = %to,
+            subject = %subject,
+            "email skipped — no email provider configured for this tenant (Admin > Settings > Email Provider)"
+        );
+        return Err(
+            "Email provider not configured. Set it in Admin > Settings > Email Provider."
+                .to_string(),
+        );
+    };
 
-    if let Some(obj) = payload.as_object_mut() {
-        if let Some(html) = html {
-            obj.insert("html".into(), json!(html));
-        }
-        if let Some(text) = body {
-            obj.insert("text".into(), json!(text));
-        }
-    }
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&config.api_url)
-        .header("Authorization", format!("Bearer {}", config.api_key))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
+    crate::email_provider::deliver(&cfg, to, subject, body.unwrap_or(""), html)
         .await
-        .map_err(|e| format!("Failed to send email: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Email API returned {}: {}", status, text));
-    }
-
-    Ok(())
+        .map_err(|e| {
+            tracing::warn!(provider = %cfg.provider, to = %to, "email send failed: {e}");
+            e
+        })
 }
 
 /// Look up + render a template (DB-backed, falling back to inline hardcoded content).
@@ -144,7 +78,7 @@ async fn render_template(
 }
 
 /// Send a template email for a specific tenant, resolving the Mailgun/SMTP config from the
-/// Integration Center (`target_software`) first, falling back to env vars when absent.
+/// tenant's DB row, falling back to the global `admin_settings.email` row.
 pub async fn send_template_email_for_tenant(
     pool: &PgPool,
     tenant_id: Uuid,
@@ -156,13 +90,9 @@ pub async fn send_template_email_for_tenant(
     let (final_subject, final_body, final_html) =
         render_template(pool, aid, template_type, vars).await;
 
-    let provider = match resolve_tenant_provider(pool, tenant_id).await? {
-        Some(p) => p,
-        None => env_provider()?,
-    };
-
-    dispatch(
-        &provider,
+    dispatch_for_tenant(
+        pool,
+        Some(tenant_id),
         to,
         &final_subject,
         final_body.as_deref(),
@@ -171,8 +101,8 @@ pub async fn send_template_email_for_tenant(
     .await
 }
 
-/// Fetch a template from the DB and send the email using env-var provider config (system emails
-/// with no tenant context). Prefer `send_template_email_for_tenant` when a tenant_id is known.
+/// Fetch a template from the DB and send the email using the global system-mail provider
+/// (no tenant context). Prefer `send_template_email_for_tenant` when a tenant_id is known.
 pub async fn send_template_email(
     pool: &PgPool,
     aid: Uuid,
@@ -183,10 +113,9 @@ pub async fn send_template_email(
     let (final_subject, final_body, final_html) =
         render_template(pool, aid, template_type, vars).await;
 
-    let provider = env_provider()?;
-
-    dispatch(
-        &provider,
+    dispatch_for_tenant(
+        pool,
+        None,
         to,
         &final_subject,
         final_body.as_deref(),

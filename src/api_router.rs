@@ -556,6 +556,20 @@ pub fn create_router(state: AppState) -> Router {
             get(email_template_handler::get_email_config)
                 .post(email_template_handler::update_email_config),
         )
+        .route(
+            "/api/v1/admin/email-config/test",
+            post(email_template_handler::test_email_config),
+        )
+        // Same config surface under the fleet-standard name (provider is a stored choice).
+        .route(
+            "/api/v1/admin/email-settings",
+            get(email_template_handler::get_email_config)
+                .put(email_template_handler::update_email_config),
+        )
+        .route(
+            "/api/v1/admin/email-settings/test",
+            post(email_template_handler::test_email_config),
+        )
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
         // LinkedIn - profile lookup
