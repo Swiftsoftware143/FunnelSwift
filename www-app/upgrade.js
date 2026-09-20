@@ -29,8 +29,7 @@ function renderUpgrade(plans){
     [
       {l:'Cards',v:p.max_cards},{l:'QR Codes',v:p.max_qr_codes},
       {l:'Forms',v:p.max_forms},{l:'Leads',v:p.max_leads},
-      {l:'Tags',v:p.max_tags},{l:'Domains',v:p.max_custom_domains},
-      {l:'Team',v:p.max_team_members}
+      {l:'Tags',v:p.max_tags},{l:'Domains',v:p.max_custom_domains}
     ].forEach(function(x){
       var v = (x.v !== null && x.v !== undefined) ? x.v : String.fromCharCode(8734);
       html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">'+x.l+'</span><span style="font-weight:600">'+v+'</span></div>';
