@@ -301,15 +301,16 @@ pub async fn get_subdomain(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let row = sqlx::query_as::<_, (String,)>(
-        "SELECT value FROM settings WHERE tenant_id=$1 AND key='subdomain'",
+    // NOTE: this used to read a `settings` table that does not exist in this database
+    // ('relation "settings" does not exist'), so GET and PUT both 500'd and no tenant could
+    // ever claim a subdomain. tenant_settings is the real table; value is jsonb.
+    let row = sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(value #>> '{}', '') FROM tenant_settings WHERE tenant_id=$1 AND key='subdomain'",
     )
     .bind(tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    Ok(Json(
-        json!({"subdomain": row.map(|r| r.0).unwrap_or_default()}),
-    ))
+    Ok(Json(json!({"subdomain": row.unwrap_or_default()})))
 }
 pub async fn set_subdomain(
     auth: AuthUser,
@@ -321,31 +322,84 @@ pub async fn set_subdomain(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let val = body["subdomain"].as_str().unwrap_or("ss");
+    let val = body["subdomain"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    if val.is_empty() {
+        return Err(AppError::BadRequest("Subdomain is required".into()));
+    }
     if val.len() < 3
         || val.len() > 63
         || !val
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        || val.starts_with('-')
+        || val.ends_with('-')
     {
         return Err(AppError::BadRequest(
-            "Subdomain must be 3-63 chars of lowercase letters, numbers, or hyphens".into(),
+            "Subdomain must be 3-63 chars of lowercase letters, numbers, or hyphens (cannot start or end with a hyphen)".into(),
         ));
+    }
+    // Reserved names: hostnames that already mean something on kntcrd.com (or would break the
+    // zone) must never be claimable by a tenant — otherwise a user could take `www`/`admin`
+    // and shadow infrastructure hostnames.
+    const RESERVED: [&str; 24] = [
+        "www",
+        "admin",
+        "api",
+        "app",
+        "mail",
+        "smtp",
+        "imap",
+        "ftp",
+        "ns",
+        "ns1",
+        "ns2",
+        "cdn",
+        "static",
+        "assets",
+        "dashboard",
+        "portal",
+        "support",
+        "help",
+        "billing",
+        "status",
+        "test",
+        "dev",
+        "kntcrd",
+        "funnelswift",
+    ];
+    if RESERVED.contains(&val.as_str()) {
+        return Err(AppError::Conflict(format!(
+            "'{val}' is reserved — pick another subdomain"
+        )));
     }
     // Reject if another tenant already claimed this subdomain.
     let taken: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM settings WHERE key = 'subdomain' AND value = $1 AND tenant_id != $2)",
+        "SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE key = 'subdomain' AND value #>> '{}' = $1 AND tenant_id != $2)",
     )
-    .bind(val)
+    .bind(&val)
     .bind(tenant_id)
     .fetch_one(&state.pool)
     .await?;
     if taken {
         return Err(AppError::Conflict("Subdomain already in use".into()));
     }
-    sqlx::query("INSERT INTO settings (id, tenant_id, key, value) VALUES ($1,$2,'subdomain',$3) ON CONFLICT (tenant_id, key) DO UPDATE SET value=$3")
-        .bind(Uuid::new_v4()).bind(tenant_id).bind(val).execute(&state.pool).await?;
-    Ok(Json(json!({"message": "Saved"})))
+    sqlx::query(
+        "INSERT INTO tenant_settings (id, tenant_id, key, value, created_at, updated_at)
+         VALUES ($1,$2,'subdomain', to_jsonb($3::text), NOW(), NOW())
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = to_jsonb($3::text), updated_at = NOW()",
+    )
+    .bind(Uuid::new_v4())
+    .bind(tenant_id)
+    .bind(&val)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(
+        json!({"message": "Saved", "subdomain": val, "url": format!("https://{val}.kntcrd.com")}),
+    ))
 }
 pub async fn get_custom_domain(
     auth: AuthUser,
@@ -356,15 +410,14 @@ pub async fn get_custom_domain(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let row = sqlx::query_as::<_, (String,)>(
-        "SELECT value FROM settings WHERE tenant_id=$1 AND key='custom_domain'",
+    // tenant_settings, not the non-existent `settings` table (same bug as the subdomain pair).
+    let row = sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(value #>> '{}', '') FROM tenant_settings WHERE tenant_id=$1 AND key='custom_domain'",
     )
     .bind(tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    Ok(Json(
-        json!({"custom_domain": row.map(|r| r.0).unwrap_or_default()}),
-    ))
+    Ok(Json(json!({"custom_domain": row.unwrap_or_default()})))
 }
 pub async fn set_custom_domain(
     auth: AuthUser,
@@ -392,9 +445,17 @@ pub async fn set_custom_domain(
     {
         return Err(AppError::BadRequest("Invalid custom domain".into()));
     }
-    sqlx::query("INSERT INTO settings (id, tenant_id, key, value) VALUES ($1,$2,'custom_domain',$3) ON CONFLICT (tenant_id, key) DO UPDATE SET value=$3")
-        .bind(Uuid::new_v4()).bind(tenant_id).bind(val).execute(&state.pool).await?;
-    Ok(Json(json!({"message": "Saved"})))
+    sqlx::query(
+        "INSERT INTO tenant_settings (id, tenant_id, key, value, created_at, updated_at)
+         VALUES ($1,$2,'custom_domain', to_jsonb($3::text), NOW(), NOW())
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = to_jsonb($3::text), updated_at = NOW()",
+    )
+    .bind(Uuid::new_v4())
+    .bind(tenant_id)
+    .bind(val)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(json!({"message": "Saved", "custom_domain": val})))
 }
 
 pub async fn get_site_meta(
@@ -466,8 +527,17 @@ pub async fn render_card(
         prefix
     };
     let row = sqlx::query(
-        "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plans tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
-    ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or(None);
+        // tenant_plan_subscriptions is the real table — this query used to join a
+        // `tenant_plans` table that does not exist, and the error was swallowed by
+        // `.unwrap_or(None)` below, so EVERY card page rendered "Card not found"
+        // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
+        "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
+    ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or_else(|e| {
+        // Never swallow this again: a failed lookup is indistinguishable from a missing
+        // card on the public page, which is exactly how the phantom-table bug hid.
+        tracing::error!("render_card lookup failed for slug '{}': {}", slug, e);
+        None
+    });
 
     // ── Load global SEO settings for SSO injection ──
     let seo_rows: Vec<(String, Value)> =
