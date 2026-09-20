@@ -5,8 +5,12 @@ use argon2::{
     Argon2,
 };
 use axum::{extract::State, http::StatusCode, Json};
+use chrono::Utc;
+use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::{json, Value};
 use uuid::Uuid;
+
+use crate::auth::models::Claims;
 
 /// POST /api/v1/auth/signup — Public signup (used by Kinetic Cards landing page).
 /// Creates tenant + user, assigns plan from request body (defaults to 'free').
@@ -141,12 +145,44 @@ pub async fn public_signup(
         }
     }
 
+    // Mint the same session JWT the main register path returns. Without it the Kinetic
+    // landing page had nothing to hand the app: it stored `undefined` as the token and
+    // then redirected to /dashboard on the *marketing* host, which is a 404. The app runs
+    // on its own origin, so the caller passes this token over as ?token= (exactly what
+    // the main landing page's register flow does); the SPA stores it and strips the URL.
+    let now = Utc::now().timestamp() as usize;
+    let claims = Claims {
+        sub: user_id.to_string(),
+        tenant_id: tenant_id.to_string(),
+        email: email.clone(),
+        role: "user".into(),
+        exp: now + 86400 * 30,
+        iat: now,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
+        impersonating: None,
+    };
+
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+    )
+    .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))?;
+
     Ok((
         StatusCode::CREATED,
         Json(json!({
             "message": "Account created successfully",
-            "email": email,
+            "token": token,
             "plan": plan_slug,
+            "user": {
+                "id": user_id,
+                "email": email,
+                "name": name,
+                "role": "user",
+                "tenant_id": tenant_id
+            }
         })),
     ))
 }

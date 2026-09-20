@@ -785,7 +785,7 @@
  document.getElementById('signupError').style.display = 'none';
 
  try {
- const res = await fetch(API + '/auth/signup', {
+ const res = await fetch('/api/v1/auth/signup', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
  body: JSON.stringify({
@@ -793,7 +793,7 @@
  email: email,
  password: password,
  source: 'kinetic-landing',
- plan: 'kinetic_free',
+ plan: 'kinetic-free',
  affiliate_code: window._kineticRef || null
  })
  });
@@ -804,10 +804,14 @@
  throw new Error(data.error || data.message || 'Signup failed');
  }
 
- // Store token and redirect to dashboard
- localStorage.setItem('token', data.token);
- localStorage.setItem('user', JSON.stringify(data.user));
- window.location.href = data.redirect || '/dashboard';
+ // The API now returns a JWT for the new account. The app lives on its own
+ // origin, so hand the token over in the URL exactly like the main landing
+ // page's register flow does — the SPA stores it and strips it from the URL.
+ if (data.token) {
+ window.location.href = 'https://app.funnelswift.net/?token=' + encodeURIComponent(data.token);
+ } else {
+ window.location.href = 'https://app.funnelswift.net/login';
+ }
 
  } catch(err) {
  showError(err.message);
