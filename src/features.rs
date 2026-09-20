@@ -335,7 +335,11 @@ async fn get_usage_count(state: &AppState, tenant_id: Uuid, feature_key: &str) -
                 .unwrap_or(0)
         }
         "max_cards" | "max_kinetic_cards" => sqlx::query_scalar(
-            "SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id = $1 AND is_template = false",
+            // `is_template` is NOT a column on kinetic_cards (see \d kinetic_cards), so the
+            // old predicate made this query ERROR on every call and `.unwrap_or(0)` returned 0.
+            // Effect: enforce_feature_limit("max_cards") always saw 0 cards (so the plan card
+            // limit was never enforced) and the dashboard usage counter always read 0.
+            "SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id = $1",
         )
         .bind(tenant_id)
         .fetch_one(&state.pool)

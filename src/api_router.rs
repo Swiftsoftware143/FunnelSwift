@@ -66,6 +66,15 @@ pub fn create_router(state: AppState) -> Router {
         .route("/c/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/f/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/h/:slug/lead", post(kinetic_handler::submit_lead))
+        // Card password gate (`has_card_gating`) — verifies the card password and sets
+        // the unlock cookie; the gate page reloads on 2xx.
+        .route("/k/:slug/unlock", post(kinetic_handler::unlock_card))
+        .route("/b/:slug/unlock", post(kinetic_handler::unlock_card))
+        .route("/c/:slug/unlock", post(kinetic_handler::unlock_card))
+        .route("/m/:slug/unlock", post(kinetic_handler::unlock_card))
+        .route("/f/:slug/unlock", post(kinetic_handler::unlock_card))
+        .route("/h/:slug/unlock", post(kinetic_handler::unlock_card))
+        .route("/thank/:slug/unlock", post(kinetic_handler::unlock_card))
         .route("/track/click", get(kinetic_handler::track_click))
         // Default
         .route(

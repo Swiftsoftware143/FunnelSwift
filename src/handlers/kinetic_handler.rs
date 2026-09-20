@@ -560,6 +560,7 @@ pub async fn render_card(
     axum::extract::Path(slug): axum::extract::Path<String>,
     axum::extract::Host(host): axum::extract::Host,
     OriginalUri(uri): OriginalUri,
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
 ) -> impl axum::response::IntoResponse {
     use sqlx::Row;
@@ -576,7 +577,7 @@ pub async fn render_card(
         // `tenant_plans` table that does not exist, and the error was swallowed by
         // `.unwrap_or(None)` below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
-        "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
+        "SELECT k.id, k.password_hash, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or_else(|e| {
         // Never swallow this again: a failed lookup is indistinguishable from a missing
         // card on the public page, which is exactly how the phantom-table bug hid.
@@ -731,6 +732,30 @@ pub async fn render_card(
         .unwrap_or(None)
         .map(|d| html_escape(&d));
     let card_id: Uuid = r.try_get("id").unwrap_or_default();
+
+    // ── Card-level password gate (plan feature `has_card_gating`) ──────────────────
+    // Migration 024 added kinetic_cards.password_hash / consent_required / age_gate_*,
+    // but nothing ever read them: the "Card Gating" feature sold on Suite + Agency was
+    // never delivered. This honours the password half of it.
+    // NULL or empty (the default for every pre-existing card) => no gate, so behaviour
+    // is byte-identical for cards that never set a password.
+    // NOTE: the *setter* (and the editor UI) is still open — see
+    // /opt/swift/audits/funnelswift/FunnelSwift-feature-verification-2026-09-20.md.
+    // The plan flag is enforced by the setter; rendering honours any hash that exists.
+    if let Ok(Some(phc)) = r.try_get::<Option<String>, _>("password_hash") {
+        if !phc.trim().is_empty() {
+            let cookie_name = format!("kc_gate_{}", card_id.simple());
+            let expected = card_unlock_token(&state.jwt_secret, &card_id, &phc);
+            let presented = headers
+                .get(axum::http::header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|raw| cookie_lookup(raw, &cookie_name));
+            if presented.as_deref() != Some(expected.as_str()) {
+                return axum::response::Html(render_password_gate(&title));
+            }
+        }
+    }
+
     let _video_provider: Option<String> = r.try_get("video_provider").unwrap_or(None);
     let _video_id: Option<String> = r.try_get("video_id").unwrap_or(None);
 
@@ -931,4 +956,154 @@ pub async fn submit_lead(
 }
 pub async fn track_click(State(_state): State<AppState>) -> Json<Value> {
     Json(json!({}))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card password gate (`has_card_gating` — Suite + Agency)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Stateless unlock token: HMAC-SHA256(jwt_secret, "<card_id>:<password_hash>").
+/// Bound to the card AND to the current hash, so rotating a card's password
+/// invalidates every outstanding unlock cookie. The password itself never leaves
+/// the server, and the token is not reversible into the stored hash.
+pub fn card_unlock_token(secret: &str, card_id: &Uuid, password_hash: &str) -> String {
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
+    let msg = format!("{}:{}", card_id.simple(), password_hash);
+    hex::encode(ring::hmac::sign(&key, msg.as_bytes()).as_ref())
+}
+
+/// Pull one cookie value out of a raw `Cookie:` header.
+fn cookie_lookup(raw: &str, name: &str) -> Option<String> {
+    raw.split(';').find_map(|part| {
+        let mut it = part.trim().splitn(2, '=');
+        match (it.next(), it.next()) {
+            (Some(k), Some(v)) if k == name => Some(v.to_string()),
+            _ => None,
+        }
+    })
+}
+
+/// Verify a card password against an argon2 PHC string (project standard) or a
+/// bcrypt hash (what migration 024's comment assumed). Returns false — never an
+/// error — for an unparseable/unknown hash format.
+pub fn verify_card_password(password: &str, stored: &str) -> bool {
+    use argon2::password_hash::{PasswordHash, PasswordVerifier};
+    if let Ok(parsed) = PasswordHash::new(stored) {
+        if argon2::Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok()
+        {
+            return true;
+        }
+    }
+    bcrypt::verify(password, stored).unwrap_or(false)
+}
+
+/// HTML served instead of a gated card. The form posts JSON to `<current
+/// path>/unlock` (built from `location.pathname`, so nothing from the URL is
+/// interpolated into the script) and reloads on success.
+fn render_password_gate(title: &str) -> String {
+    format!(
+        r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{title}</title>
+<style>
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0f172a;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:24px}}
+.box{{width:100%;max-width:380px;background:#111827;border:1px solid #1f2937;border-radius:16px;padding:28px;text-align:center}}
+h1{{font-size:20px;margin:0 0 6px}}p{{color:#9ca3af;font-size:14px;margin:0 0 18px}}
+input{{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #374151;background:#0b1220;color:#e5e7eb;font-size:15px}}
+button{{width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#a855f7;color:#fff;font-size:15px;font-weight:600;cursor:pointer}}
+.err{{color:#f87171;font-size:13px;margin-top:12px}}
+</style></head>
+<body><div class="box">
+<h1>{title}</h1>
+<p>This card is password protected. Enter the password to view it.</p>
+<form id="gate"><input id="pw" type="password" autocomplete="current-password" placeholder="Password" required autofocus>
+<button type="submit">Unlock</button></form>
+<p id="err" class="err" style="display:none">Incorrect password. Try again.</p>
+</div>
+<script>
+(function(){{var f=document.getElementById('gate'),e=document.getElementById('err');
+f.addEventListener('submit',function(ev){{ev.preventDefault();
+var u=location.pathname.replace(/\/+$/,'')+'/unlock';
+fetch(u,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{password:document.getElementById('pw').value}})}})
+.then(function(r){{if(r.ok){{location.reload()}}else{{e.style.display='block'}}}})
+.catch(function(){{e.style.display='block'}});}});}})();
+</script>
+</body></html>"#,
+        title = title
+    )
+}
+
+#[derive(serde::Deserialize)]
+pub struct CardUnlockRequest {
+    pub password: String,
+}
+
+/// POST /<k|b|c|m|f|h|thank>/:slug/unlock — verifies the card password and sets the
+/// unlock cookie. Response shape is JSON; the gate page reloads on 2xx.
+pub async fn unlock_card(
+    axum::extract::Path(slug): axum::extract::Path<String>,
+    State(state): State<AppState>,
+    Json(req): Json<CardUnlockRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use sqlx::Row;
+    let row = sqlx::query("SELECT id, password_hash FROM kinetic_cards WHERE slug = $1 LIMIT 1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await;
+    let r = match row {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(json!({"unlocked": false, "error": "Card not found"})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("unlock_card lookup failed for slug '{}': {}", slug, e);
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"unlocked": false, "error": "Lookup failed"})),
+            )
+                .into_response();
+        }
+    };
+    let card_id: Uuid = r.try_get("id").unwrap_or_default();
+    let stored: Option<String> = r.try_get("password_hash").unwrap_or(None);
+    let stored = stored.filter(|h| !h.trim().is_empty());
+    let stored = match stored {
+        Some(h) => h,
+        None => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({"unlocked": false, "error": "This card is not password protected"})),
+            )
+                .into_response()
+        }
+    };
+    if !verify_card_password(&req.password, &stored) {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(json!({"unlocked": false, "error": "Incorrect password"})),
+        )
+            .into_response();
+    }
+    let token = card_unlock_token(&state.jwt_secret, &card_id, &stored);
+    let cookie = format!(
+        "kc_gate_{}={}; Path=/; Max-Age=604800; HttpOnly; SameSite=Lax",
+        card_id.simple(),
+        token
+    );
+    (
+        axum::http::StatusCode::OK,
+        [(axum::http::header::SET_COOKIE, cookie)],
+        Json(json!({"unlocked": true})),
+    )
+        .into_response()
 }

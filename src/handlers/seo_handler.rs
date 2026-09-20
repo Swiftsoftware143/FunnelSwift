@@ -24,14 +24,21 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
 
     // Public kinetic cards
     if let Ok(rows) = sqlx::query(
-        "SELECT slug, updated_at FROM kinetic_cards WHERE is_template = false ORDER BY updated_at DESC LIMIT 500"
+        // Same phantom column as the card counter: `is_template` does not exist on
+        // kinetic_cards, the query errored, `if let Ok(...)` swallowed it and the sitemap
+        // silently listed ZERO card pages.
+        "SELECT slug, updated_at FROM kinetic_cards WHERE COALESCE(slug,'') != '' ORDER BY updated_at DESC LIMIT 500"
     )
     .fetch_all(&state.pool)
     .await
     {
         for row in &rows {
-            let slug: String = row.get("slug");
-            let updated: Option<chrono::NaiveDateTime> = row.get("updated_at");
+            let slug: String = row.try_get("slug").unwrap_or_default();
+            // updated_at is `timestamp with time zone`; reading it as NaiveDateTime made
+            // Row::get PANIC (sqlx row.rs:72 type mismatch). try_get cannot panic, and the
+            // Utc type matches the column.
+            let updated: Option<chrono::DateTime<chrono::Utc>> =
+                row.try_get("updated_at").unwrap_or(None);
             let lastmod = updated.map(|d| d.format("%Y-%m-%d").to_string());
             urls.push(xml_url("https://kntcrd.com", &format!("/k/{}", slug), "daily", "0.8", lastmod));
         }
@@ -45,8 +52,9 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
     .await
     {
         for row in &rows {
-            let slug: String = row.get("slug");
-            let created: Option<chrono::NaiveDateTime> = row.get("created_at");
+            let slug: String = row.try_get("slug").unwrap_or_default();
+            let created: Option<chrono::DateTime<chrono::Utc>> =
+                row.try_get("created_at").unwrap_or(None);
             let lastmod = created.map(|d| d.format("%Y-%m-%d").to_string());
             urls.push(xml_url(base, &format!("/funnel/{}", slug), "weekly", "0.7", lastmod));
         }
