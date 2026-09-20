@@ -739,9 +739,12 @@ pub fn create_router(state: AppState) -> Router {
             post(web_to_lead_handler::handle_web_to_lead),
         )
         // Cross-app push routes — FunnelSwift provisions users in sister apps via tags
+        // NOTE: the CoreSwift LEAD push below is the canonical BYOK handler in
+        // coreswift_integration_handler (src/coreswift.rs is the single CoreSwift client).
+        // The legacy env/internal-shared-key lead implementation was deleted on 2026-09-20.
         .route(
             "/api/v1/push/coreswift",
-            post(coreswift_push::push_lead_to_coreswift),
+            post(coreswift_integration_handler::coreswift_push),
         )
         .route(
             "/api/v1/push/coreswift/user",

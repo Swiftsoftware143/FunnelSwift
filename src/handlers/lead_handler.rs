@@ -11,7 +11,6 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::features;
 use crate::handlers::adaswift_provision;
-use crate::handlers::coreswift_push;
 use crate::handlers::workflowswift_push::push_to_workflowswift;
 use crate::models::lead::*;
 use crate::state::AppState;
@@ -378,32 +377,29 @@ pub async fn update_lead_stage(
     .execute(&state.pool)
     .await?;
 
-    // Best-effort push to CoreSwift CRM on stage change
-    tokio::spawn({
-        let pool = state.pool.clone();
-        let cs_url = state.coreswift_url.clone();
-        let sync_key = state.internal_sync_key.clone();
-        async move {
-            if let Ok(Some((name, email, company))) =
-                sqlx::query_as::<_, (String, String, Option<String>)>(
-                    "SELECT name, email, company FROM leads WHERE id = $1",
-                )
-                .bind(id)
-                .fetch_optional(&pool)
-                .await
-            {
-                let _ = coreswift_push::push_to_coreswift(
-                    &cs_url,
-                    &sync_key,
-                    tenant_id,
-                    &name,
-                    &email,
-                    company.as_deref(),
-                )
-                .await;
-            }
-        }
-    });
+    // Best-effort push to CoreSwift CRM on stage change — BYOK path (src/coreswift.rs).
+    // A stage change only syncs when the tenant has connected CoreSwift.
+    if let Ok(Some((name, email, company, phone))) =
+        sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
+            "SELECT name, email, company, phone FROM leads WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await
+    {
+        crate::coreswift::spawn_lead_push(
+            state.pool.clone(),
+            tenant_id,
+            crate::coreswift::LeadPayload {
+                email: Some(email),
+                phone,
+                name: Some(name),
+                company,
+                source: Some("stage_change".to_string()),
+                ..Default::default()
+            },
+        );
+    }
 
     Ok(Json(json!({"message": "Stage updated"})))
 }
