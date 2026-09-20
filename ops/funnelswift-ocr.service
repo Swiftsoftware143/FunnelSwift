@@ -1,0 +1,16 @@
+[Unit]
+Description=FunnelSwift Host OCR Service (Tesseract over docker bridge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/swift/scripts/funnelswift_ocr_service.py
+Restart=always
+RestartSec=3
+User=root
+WorkingDirectory=/opt/swift/scripts
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

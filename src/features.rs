@@ -411,6 +411,15 @@ async fn get_usage_count(state: &AppState, tenant_id: Uuid, feature_key: &str) -
         .fetch_one(&state.pool)
         .await
         .unwrap_or(0),
+        // `max_ocr_scans` was a plan column `plan_limit` reads but this match had
+        // no arm for, so it fell through to `_ => 0` and `enforce_feature_limit`
+        // compared `0 >= limit` — never true, so the sold metered feature was
+        // never enforced. Rows are written by `handlers::ocr` (migration 045).
+        "max_ocr_scans" => sqlx::query_scalar("SELECT COUNT(*) FROM ocr_scans WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0),
         _ => 0i64,
     }
 }
