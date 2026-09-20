@@ -38,3 +38,7 @@ funnelswift
 funnelswift-api
 
 # host-served SPA copies now versioned here (source of truth: /opt/swift/nginx/www-app|www-admin/funnelswift)
+
+# editor/backup artefacts — never commit these
+*.bak
+*.bak-*
