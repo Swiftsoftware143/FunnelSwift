@@ -40,6 +40,10 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::templates::html_escape;
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    Argon2,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -289,6 +293,71 @@ pub async fn create_button(
     .execute(&state.pool)
     .await?;
     Ok((StatusCode::CREATED, Json(json!({"id": id}))))
+}
+
+/// Set / clear a card's viewer password (plan feature `has_card_gating`).
+///
+/// `{"password": "..."}` stores an argon2 PHC hash; an empty or absent password
+/// clears the gate (NULL). The stored hash is what `render_card` compares against
+/// at serve time and what `card_unlock_token` binds the unlock cookie to, so
+/// rotating the password invalidates every outstanding unlock cookie.
+pub async fn set_card_password(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(card_id): Path<Uuid>,
+    Json(body): Json<Value>,
+) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // Selling point of Suite/Agency — a plan without it gets 402 UpgradeRequired
+    // rather than a silently ignored write.
+    crate::features::enforce_feature_flag(&state, tenant_id, "has_card_gating", "Card gating")
+        .await?;
+    // Same ownership check create_button uses: never touch another tenant's card.
+    let owns_card: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE id = $1 AND tenant_id = $2)",
+    )
+    .bind(card_id)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+    if !owns_card {
+        return Err(AppError::NotFound("Card not found".into()));
+    }
+
+    let password = body["password"].as_str().unwrap_or("").trim();
+    let new_hash: Option<String> = if password.is_empty() {
+        None
+    } else {
+        if password.chars().count() < 8 {
+            return Err(AppError::BadRequest(
+                "Password must be at least 8 characters".into(),
+            ));
+        }
+        // Same hashing scheme as tenant/user auth (argon2 PHC string).
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+            .to_string();
+        Some(hash)
+    };
+
+    sqlx::query("UPDATE kinetic_cards SET password_hash = $3 WHERE id = $1 AND tenant_id = $2")
+        .bind(card_id)
+        .bind(tenant_id)
+        .bind(new_hash.as_deref())
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(json!({
+        "id": card_id,
+        "password_protected": new_hash.is_some(),
+        "message": if new_hash.is_some() { "Card password set" } else { "Card password cleared" }
+    })))
 }
 
 pub async fn delete_button(

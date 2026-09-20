@@ -465,6 +465,16 @@ function KCUP(msg){
   });
 }
 function KCPremium(it){return !!(it&&it.locked);}
+/* Plan flag lookup: does the signed-in tenant's active plan grant `has_card_gating`?
+   Comes from /api/v1/auth/me -> current_plan.features.card_gating (the jsonb key
+   features.rs maps has_card_gating to). Unknown/absent => false, so a caller whose
+   plan is missing the flag sees the locked treatment. */
+function KCGating(){
+  var f=U&&U.current_plan&&U.current_plan.features;
+  if(!f) return false;
+  var v=f.card_gating;
+  return v===true||v==="true"||v===1||v==="1";
+}
 
 function LC(){
   // Load everything in parallel
@@ -745,6 +755,39 @@ function MFC(data){
   p0.appendChild(MF("Bio","mc-bio",c.bio||"","Bio / about section","textarea"));
   p0.appendChild(MF("Tagline","mc-tagline",c.tagline||"","Short headline"));
   p0.appendChild(MF("Meta Description","mc-meta",c.meta_description||"","SEO description","textarea"));
+
+  // ── Card password (plan feature `has_card_gating`, sold on Suite/Agency) ──────
+  // Same treatment as premium themes/templates: everyone SEES the control, but a
+  // plan without the flag gets the 🔒 PRO badge and clicking Save opens the upgrade
+  // modal instead of writing. The flag comes from /api/v1/auth/me →
+  // current_plan.features.card_gating (the jsonb key has_card_gating maps to).
+  var mb_=mb;
+  var gateOn=KCGating();
+  var gateBox=El("div",{"class":gateOn?"":"kc-locked",style:"margin-top:10px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;position:relative"});
+  gateBox.appendChild(El("label",{style:"font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"Password protect"));
+  gateBox.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin:0 0 6px;line-height:1.4"},"Visitors must enter this password before your card is shown. Leave blank and save to remove it (min 8 characters)."));
+  var gpIn=El("input",{id:"mc-gate-pw",type:"password",autocomplete:"new-password",placeholder:"At least 8 characters",style:"width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"});
+  var gpMsg=El("span",{style:"font-size:10px;margin-left:8px;color:#64748b"});
+  var gpBtn=El("button",{"class":"btn",type:"button",style:"margin-top:6px;font-size:11px;padding:5px 12px",onclick:function(){
+    if(!gateOn){KCUP("Card passwords are a Suite/Agency feature. Upgrade to password-protect your card.");return;}
+    var cid=mb_._cid;
+    if(!cid){gpMsg.style.color="#dc2626";gpMsg.textContent="Save the card first.";return;}
+    var pw=($("mc-gate-pw")||{}).value||"";
+    gpBtn.disabled=true;gpMsg.style.color="#64748b";gpMsg.textContent="Saving...";
+    api("/api/v1/kinetic/cards/"+cid+"/password",{method:"PUT",body:JSON.stringify({password:pw})}).then(function(r){
+      gpBtn.disabled=false;
+      gpMsg.style.color="#16a34a";
+      gpMsg.textContent=(r&&r.password_protected)?"Password set ✓":"Password cleared ✓";
+      if($("mc-gate-pw")) $("mc-gate-pw").value="";
+    }).catch(function(e){
+      gpBtn.disabled=false;gpMsg.style.color="#dc2626";
+      gpMsg.textContent=(e&&e.message)||"Could not save";
+    });
+  }},"Save Password");
+  gateBox.appendChild(gpIn);
+  gateBox.appendChild(El("div",{style:"margin-top:2px"},[gpBtn,gpMsg]));
+  if(!gateOn) gateBox.appendChild(El("span",{"class":"kc-lock kc-tpl-lock"},"\ud83d\udd12 PRO"));
+  p0.appendChild(gateBox);
   left.appendChild(p0);
 
   // TAB 1: Look & Feel

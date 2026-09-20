@@ -603,6 +603,10 @@ pub fn create_router(state: AppState) -> Router {
             get(kinetic_handler::list_buttons).post(kinetic_handler::create_button),
         )
         .route(
+            "/api/v1/kinetic/cards/:id/password",
+            put(kinetic_handler::set_card_password),
+        )
+        .route(
             "/api/v1/kinetic/cards/:id/sources",
             get(kinetic_handler::list_sources).post(kinetic_handler::create_source),
         )
