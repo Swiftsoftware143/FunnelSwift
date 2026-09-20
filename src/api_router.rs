@@ -61,6 +61,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/k/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/b/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))
+        // /c, /f and /h render the same cards as /k, /b and /m but had no lead route at all —
+        // three of the six public card types could not capture a lead.
+        .route("/c/:slug/lead", post(kinetic_handler::submit_lead))
+        .route("/f/:slug/lead", post(kinetic_handler::submit_lead))
+        .route("/h/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/track/click", get(kinetic_handler::track_click))
         // Default
         .route(

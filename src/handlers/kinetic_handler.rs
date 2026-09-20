@@ -531,7 +531,7 @@ pub async fn render_card(
         // `tenant_plans` table that does not exist, and the error was swallowed by
         // `.unwrap_or(None)` below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
-        "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
+        "SELECT k.id, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or_else(|e| {
         // Never swallow this again: a failed lookup is indistinguishable from a missing
         // card on the public page, which is exactly how the phantom-table bug hid.
@@ -648,11 +648,19 @@ pub async fn render_card(
     .unwrap_or(json!({}));
     let _template_type: String = r.try_get("template_type").unwrap_or_default();
     // Branding badge logic:
-    //   white_label=true + tenant.settings.hide_branding_badge → hidden
-    //   Otherwise → always show (free plans forced ON, paid plans can toggle off)
+    //   the plan grants badge removal via `remove_branding` (Kinetic Pro, Suite, Agency/Scale)
+    //   OR via `white_label`; the tenant's site_meta.hide_branding_badge is the actual switch.
+    //   Otherwise the badge is forced ON (free plans cannot hide it).
+    // Before this, the check required white_label alone — an Agency/Scale-only flag — so
+    // Kinetic Pro customers who had paid specifically for "hide branding" could never remove
+    // the badge. A granted, paid-for feature was silently not delivered.
     let is_white_label: String = r.try_get("white_label").unwrap_or_else(|_| "false".into());
+    let has_remove_branding: String = r
+        .try_get("remove_branding")
+        .unwrap_or_else(|_| "false".into());
+    let can_hide_badge = is_white_label == "true" || has_remove_branding == "true";
     let tenant_settings: Option<Value> = r.try_get("tenant_settings").unwrap_or(None);
-    let tenant_hides_badge = is_white_label == "true"
+    let tenant_hides_badge = can_hide_badge
         && tenant_settings
             .as_ref()
             .and_then(|s| s.get("hide_branding_badge"))
