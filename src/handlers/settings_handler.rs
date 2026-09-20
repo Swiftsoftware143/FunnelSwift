@@ -38,8 +38,10 @@ pub async fn update_settings(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    // tenant_settings.id is NOT NULL with no default — the insert omitted it, so every
+    // settings save died with "null value in column id violates not-null constraint".
     sqlx::query(
-        r#"INSERT INTO tenant_settings (tenant_id, key, value) VALUES ($1, $2, $3)
+        r#"INSERT INTO tenant_settings (id, tenant_id, key, value) VALUES (gen_random_uuid(), $1, $2, $3)
            ON CONFLICT (tenant_id, key) DO UPDATE SET value = $3, updated_at = NOW()"#,
     )
     .bind(tenant_id)
