@@ -1,8 +1,8 @@
 # Deployment Guide
 
 ## VPS Information
-- **IP:** 178.156.221.18
-- **Provider:** Hetzner
+- **IP:** 209.222.97.179
+- **Provider:** ReliableSite (Miami)
 - **User:** root
 
 ## Deployment (systemctl, native binary)

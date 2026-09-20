@@ -5,7 +5,7 @@
 - **Database**: PostgreSQL on Docker, container `swift-postgres-1`
 - **Web App**: Single-page HTML/JS at `/var/www/funnelswift/`
 - **Mobile App**: React Native / Expo at `/opt/swift/FunnelSwift-Mobile/`
-- **VPS**: Hetzner Debian 12 — root@178.156.221.18
+- **VPS**: Miami (ReliableSite) Ubuntu 24.04 — root@209.222.97.179
 
 ## Web-to-Lead Feature
 
