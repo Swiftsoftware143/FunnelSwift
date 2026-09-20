@@ -314,6 +314,7 @@ function buildNav() {
     sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='apiKeys'?'active':''}" data-view="apiKeys"><span class="icon">🔑</span><span class="nav-text">API Keys</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></div>`);
   }
 
   return `<div class="flex-1">${sections.join('')}</div>`;
@@ -328,6 +329,7 @@ const viewRenderers = {
   myAccount: renderMyAccount,
   portfolio: renderPortfolio,
   plans: renderPlans,
+  planAdmin: renderPlanAdmin,
   leads: renderLeads,
   tags: renderTags,
   affiliates: renderAffiliates,
@@ -376,6 +378,7 @@ function bindView(view) {
     case 'myAccount': bindMyAccount(); break;
     case 'portfolio': bindPortfolio(); break;
     case 'plans': bindPlans(); break;
+    case 'planAdmin': bindPlanAdmin(); break;
     case 'leads': bindLeads(); break;
     case 'tags': bindTags(); break;
     case 'affiliates': bindAffiliates(); break;
@@ -1506,7 +1509,7 @@ async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
 
   let items = [];
-  try { items = await api('/admin/tenants'); } catch(e) { items = []; }
+  try { items = await api('/tenants'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
 
   return `<div>
@@ -2002,6 +2005,149 @@ function countryFlag(country) {
   return map[country?.toUpperCase()] || '🌐';
 }
 
+
+
+// ── PLAN ADMIN (operator parity) — plans · feature flags · tenant overrides · plan assignment ──
+async function renderPlanAdmin() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+  let plans = [], tenants = [];
+  try { const r = await api('/admin/plans'); plans = r.plans || r.data || (Array.isArray(r) ? r : []); } catch (e) { plans = []; }
+  try { const t = await api('/tenants'); tenants = Array.isArray(t) ? t : (t.tenants || t.data || []); } catch (e) { tenants = []; }
+  STATE.data.planAdminPlans = plans;
+  STATE.data.planAdminTenants = tenants;
+  const tenantOpts = tenants.map(t => `<option value="${x(t.id)}">${x(t.name || t.email || t.id)}${t.plan_name ? ' — ' + x(t.plan_name) : ''}</option>`).join('');
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <div><h1 style="font-size:22px;font-weight:700">🎚️ Plans &amp; Features</h1>
+      <p style="font-size:13px;color:var(--muted)">Operator control: plan catalogue, feature flags, per-tenant feature overrides, plan assignment.</p></div>
+      <button class="btn btn-secondary btn-sm" id="planadmin-reload">↻ Reload</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">Plan catalogue</div><div class="card-subtitle">GET /api/v1/admin/plans</div></div></div>
+      <div class="table-wrap"><table class="table" id="planadmin-plans-table">
+        <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
+        <tbody>${plans.length ? plans.map(p => `<tr>
+          <td><strong>${x(p.name)}</strong></td>
+          <td><code>${x(p.slug)}</code></td>
+          <td>${formatCurrency(p.price)}</td>
+          <td>${p.max_leads == null ? '∞' : x(p.max_leads)}</td>
+          <td>${p.max_tags == null ? '∞' : x(p.max_tags)}</td>
+          <td>${p.payment_provider ? `<span class="badge badge-blue">${x(p.payment_provider)}</span>` : '-'}</td>
+          <td><code style="font-size:11px">${x(JSON.stringify(p.features || {}).slice(0, 50))}</code></td>
+          <td><button class="btn btn-secondary btn-xs" data-plan-edit="${x(p.id)}">Edit Features</button></td>
+        </tr>`).join('') : `<tr><td colspan="8">No plans returned</td></tr>`}</tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Assign plan to tenant</div>
+      <div class="card-subtitle">POST /api/v1/admin/plans/assign</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <select id="planadmin-assign-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
+        <select id="planadmin-assign-plan" class="input" style="min-width:200px"><option value="">— select plan —</option>${plans.map(p => `<option value="${x(p.id)}">${x(p.name)} — ${formatCurrency(p.price)}</option>`).join('')}</select>
+        <button class="btn btn-primary btn-sm" id="planadmin-assign-btn">Assign Plan</button>
+      </div>
+      <div id="planadmin-assign-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Tenant feature override</div>
+      <div class="card-subtitle">GET/POST /api/v1/admin/tenants/:id/feature-override(s)</div>
+      <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Override one feature limit for a single tenant. Use -1 for unlimited, 0 to fall back to the plan default.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <select id="planadmin-ov-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
+        <input id="planadmin-ov-key" class="input" placeholder="feature_key (e.g. kinetic_themes)" style="min-width:220px">
+        <input id="planadmin-ov-val" class="input" type="number" placeholder="limit_value" value="0" style="width:130px">
+        <button class="btn btn-primary btn-sm" id="planadmin-ov-save">Set Override</button>
+        <button class="btn btn-secondary btn-sm" id="planadmin-ov-load">Load Existing</button>
+      </div>
+      <div id="planadmin-ov-out" style="margin-top:12px;font-size:13px"></div>
+      <div id="planadmin-ov-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    </div>
+  </div>`;
+}
+
+function bindPlanAdmin() {
+  const rl = $('planadmin-reload'); if (rl) rl.onclick = () => renderView();
+  document.querySelectorAll('[data-plan-edit]').forEach(b => { b.onclick = () => window._editPlanFeatures(b.dataset.planEdit); });
+  const ab = $('planadmin-assign-btn');
+  if (ab) ab.onclick = async () => {
+    const tenant_id = ($('planadmin-assign-tenant') || {}).value;
+    const plan_id = ($('planadmin-assign-plan') || {}).value;
+    const msg = $('planadmin-assign-msg');
+    if (!tenant_id || !plan_id) { if (msg) msg.textContent = 'Select both a tenant and a plan.'; return; }
+    ab.disabled = true; if (msg) msg.textContent = 'Assigning…';
+    try {
+      const r = await api('/admin/plans/assign', { method: 'POST', body: JSON.stringify({ tenant_id, plan_id }) });
+      if (msg) msg.textContent = '✓ ' + (r.message || 'Plan assigned');
+      showToast('Plan assigned', 'success');
+    } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
+    ab.disabled = false;
+  };
+  const os = $('planadmin-ov-save');
+  if (os) os.onclick = async () => {
+    const tid = ($('planadmin-ov-tenant') || {}).value;
+    const key = (($('planadmin-ov-key') || {}).value || '').trim();
+    const val = parseInt((($('planadmin-ov-val') || {}).value || '0'), 10);
+    const msg = $('planadmin-ov-msg');
+    if (!tid || !key || isNaN(val)) { if (msg) msg.textContent = 'Tenant, feature_key and numeric limit_value are all required.'; return; }
+    os.disabled = true;
+    try {
+      const r = await api('/admin/tenants/' + tid + '/feature-override', { method: 'POST', body: JSON.stringify({ feature_key: key, limit_value: val }) });
+      if (msg) msg.textContent = '✓ ' + (r.message || 'Override set');
+      showToast('Feature override set', 'success');
+    } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
+    os.disabled = false;
+  };
+  const ol = $('planadmin-ov-load');
+  if (ol) ol.onclick = async () => {
+    const tid = ($('planadmin-ov-tenant') || {}).value;
+    const out = $('planadmin-ov-out');
+    if (!tid) { if (out) out.textContent = 'Select a tenant first.'; return; }
+    ol.disabled = true;
+    try {
+      const r = await api('/admin/tenants/' + tid + '/feature-overrides');
+      const ov = (r && r.overrides) || [];
+      if (out) out.innerHTML = ov.length
+        ? `<table class="table"><thead><tr><th>feature_key</th><th>limit_value</th></tr></thead><tbody>${ov.map(o => `<tr><td><code>${x(o.feature_key)}</code></td><td>${x(o.limit_value)}</td></tr>`).join('')}</tbody></table>`
+        : 'No overrides set for this tenant.';
+    } catch (e) { if (out) out.textContent = '✗ ' + e.message; }
+    ol.disabled = false;
+  };
+}
+
+window._editPlanFeatures = function (id) {
+  const p = (STATE.data.planAdminPlans || []).find(z => z.id === id) || {};
+  STATE.modal = {
+    title: 'Feature flags — ' + (p.name || id),
+    content: `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">PUT /api/v1/admin/plans/${x(id)}/features — the JSON object is merged into the plan's existing <code>features</code>.</div>
+      <textarea id="planadmin-features-json" class="input" style="width:100%;height:170px;font-family:ui-monospace,monospace;font-size:12px">${x(JSON.stringify(p.features || {}, null, 2))}</textarea>
+      <div style="font-size:12px;color:var(--muted);margin:10px 0 4px">allowed_template_ids (optional JSON array, leave blank to keep unchanged)</div>
+      <input id="planadmin-templates-json" class="input" style="width:100%" placeholder='["tpl_1","tpl_2"]' value="${p.allowed_template_ids ? x(JSON.stringify(p.allowed_template_ids)) : ''}">
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-primary btn-sm" id="planadmin-features-save">Save Features</button>
+        <button class="btn btn-secondary btn-sm" onclick="window._closeModal()">Cancel</button>
+      </div>
+      <div id="planadmin-features-msg" style="font-size:12px;margin-top:10px;color:var(--muted)"></div>`
+  };
+  renderApp();
+  const sv = document.getElementById('planadmin-features-save');
+  if (!sv) return;
+  sv.onclick = async () => {
+    const msg = document.getElementById('planadmin-features-msg');
+    let features;
+    try { features = JSON.parse(document.getElementById('planadmin-features-json').value || '{}'); }
+    catch (e) { if (msg) msg.textContent = '✗ features must be valid JSON: ' + e.message; return; }
+    const tplRaw = (document.getElementById('planadmin-templates-json').value || '').trim();
+    const body = { features };
+    if (tplRaw) { try { body.allowed_template_ids = JSON.parse(tplRaw); } catch (e) { if (msg) msg.textContent = '✗ allowed_template_ids must be valid JSON array'; return; } }
+    sv.disabled = true; if (msg) msg.textContent = 'Saving…';
+    try {
+      const r = await api('/admin/plans/' + id + '/features', { method: 'PUT', body: JSON.stringify(body) });
+      if (msg) msg.textContent = '✓ ' + (r.message || 'Features updated');
+      showToast('Plan features updated', 'success');
+    } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
+    sv.disabled = false;
+  };
+};
 
 </script>
 </body>

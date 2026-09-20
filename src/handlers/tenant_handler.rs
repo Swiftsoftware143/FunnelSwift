@@ -16,12 +16,42 @@ pub async fn list_tenants(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin only".into()));
     }
-    let rows = sqlx::query_as::<_, (Uuid, String, String, Option<String>, Option<String>, Option<String>, Option<bool>, chrono::NaiveDateTime)>(
-        "SELECT t.id, t.name, t.email, t.status, t.plan_id, p.name as plan_name, t.is_visible, t.created_at FROM tenants t LEFT JOIN plans p ON t.plan_id = p.id ORDER BY t.created_at DESC"
-    ).fetch_all(&state.pool).await.unwrap_or_default();
-    let tenants: Vec<serde_json::Value> = rows.into_iter().map(|r| json!({
-        "id": r.0, "name": r.1, "email": r.2, "status": r.3, "plan_id": r.4, "plan_name": r.5, "is_visible": r.6, "created_at": r.7
-    })).collect();
+    // NOTE: the tenants table has no email/status/is_visible/plan_id columns, so the old
+    // query referenced four columns that do not exist and then swallowed the resulting
+    // error with `.unwrap_or_default()` — every caller silently received `[]` (112 rows in
+    // the DB, empty list in the UI). Plan comes from the newest active subscription row.
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            chrono::NaiveDateTime,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
+        r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug
+           FROM tenants t
+           LEFT JOIN LATERAL (
+               SELECT plan_id FROM tenant_plan_subscriptions s
+               WHERE s.tenant_id = t.id AND s.status = 'active'
+               ORDER BY s.start_date DESC NULLS LAST LIMIT 1
+           ) sub ON TRUE
+           LEFT JOIN plans p ON p.id = sub.plan_id
+           ORDER BY t.created_at DESC"#,
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let tenants: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.0, "name": r.1, "slug": r.2, "created_at": r.3,
+                "plan_name": r.4, "plan_slug": r.5, "plan": r.4, "status": "active"
+            })
+        })
+        .collect();
     Ok(Json(json!(tenants)))
 }
 
