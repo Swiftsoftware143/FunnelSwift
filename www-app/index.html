@@ -1352,7 +1352,7 @@ function LI(){
     var prov=Array.isArray(r[3])?r[3]:[];
     var pkeys={};
     (Array.isArray(r[4])?r[4]:[]).forEach(function(k){pkeys[k.provider]=k;});
-    window._icProv=prov; window._icKeys=pkeys;
+    window._icProv=prov; window._icKeys=pkeys; window._itg=tg;
 
     $("ct").innerHTML='<div id="li-section"></div>';
     var root=$("li-section");
@@ -1419,7 +1419,10 @@ function GK(){api("/api/v1/api-keys",{method:"POST",body:JSON.stringify({name:"I
 function CA(id){navigator.clipboard.writeText(window.location.origin+"/ref/"+id).then(function(){alert("Link copied!");});}
 
 function MFI(id){
-  if(id) api("/api/v1/integration-targets/"+id).then(function(t){RFI(id,t)});
+  // GET /api/v1/integration-targets/:id is not a route (405), and the list is already loaded, so
+  // the edit modal reads the row from it. The API never returns the stored key (only
+  // api_key_masked), so the key field stays blank and blank means "keep the stored key".
+  if(id){var t=(window._itg||[]).filter(function(x){return x.id===id;})[0]||{};RFI(id,t);}
   else RFI(null,{events:[],is_active:true});
 }
 function RFI(id,t){
@@ -1427,7 +1430,7 @@ function RFI(id,t){
     var mb=$("mb");
     mb.appendChild(ff("Name", El("input",{id:"fn",value:t.name||""})));
     mb.appendChild(ff("Webhook URL", El("input",{id:"fu",value:t.webhook_url||""})));
-    mb.appendChild(ff("API Key (optional)", El("input",{id:"fk",value:t.api_key||""})));
+    mb.appendChild(ff("API Key (optional)", El("input",{id:"fk",type:"password",value:"",placeholder:id?"stored — leave blank to keep it":"optional",autocomplete:"off"})));
     mb.appendChild(ff("Events (comma-sep)", El("input",{id:"fv",value:(t.events||[]).join(", ")})));
     mb.appendChild(ff("Active", El("input",{id:"fa",type:"checkbox",checked:t.is_active!==false?"checked":null})));
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));

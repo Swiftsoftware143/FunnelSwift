@@ -3,13 +3,18 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, FromRow)]
+/// A routing target as it exists IN THE DATABASE — `stored_api_key` is the value as stored, i.e.
+/// `enc:v1:` ciphertext (src/security/provider_key_crypto.rs). This struct is deliberately NOT
+/// `Serialize`: a handler that hands it to a client would echo a credential. The read path
+/// (routing_handler::list_target_software) decrypts it and exposes `api_key_masked` only.
+#[derive(Debug, FromRow)]
 pub struct TargetSoftware {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub name: String,
     pub webhook_url: String,
-    pub api_key: Option<String>,
+    #[sqlx(rename = "api_key")]
+    pub stored_api_key: Option<String>,
     pub portfolio_company_id: Option<Uuid>,
     pub events: Vec<String>,
     pub is_active: bool,

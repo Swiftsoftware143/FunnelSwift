@@ -1,12 +1,16 @@
-//! At-rest encryption for BYOK provider credentials (`provider_keys.api_key`).
+//! At-rest encryption for BYOK / customer-supplied credential columns.
+//!
+//! Covered columns (all three go through THIS module — never a second encoding):
+//!   * `provider_keys.api_key`        — BYOK provider credentials (OpenAI, Resend, Mailgun, …)
+//!   * `payment_providers.api_key`    — customer-supplied payment secret keys (Stripe, …)
+//!   * `target_software.api_key`      — outbound webhook signing keys / IncentiveSwift bearer
 //!
 //! Threat model
 //! ------------
-//! `provider_keys.api_key` holds CUSTOMER-SUPPLIED third-party credentials (OpenAI, Resend /
-//! SendGrid, Mailgun, social tokens). They are money-bearing: a database dump, a leaked
-//! backup or a read-only SQL grant must not hand them over. The master key therefore lives
-//! ONLY in the app environment (`PROVIDER_KEY_ENC_SECRET`) and never in the database, so
-//! ciphertext at rest is useless without the process environment.
+//! These columns hold CUSTOMER-SUPPLIED third-party credentials. They are money-bearing: a
+//! database dump, a leaked backup or a read-only SQL grant must not hand them over. The master
+//! key therefore lives ONLY in the app environment (`PROVIDER_KEY_ENC_SECRET`) and never in the
+//! database, so ciphertext at rest is useless without the process environment.
 //!
 //! Ciphertext format
 //! -----------------
@@ -178,5 +182,52 @@ pub async fn decrypt_optional(
     match stored {
         Some(s) if !s.trim().is_empty() => Ok(Some(decrypt_from_storage(db, s.trim()).await?)),
         _ => Ok(None),
+    }
+}
+
+/// Mask a credential for read-back: first 8 chars + ellipsis + last 4.
+///
+/// This is the ONE read-back shape for every credential surface in the app (provider keys,
+/// payment providers, routing targets): a client that owns the key still learns whether one is
+/// stored, and the value never travels back in the clear. Character-based (not byte-based)
+/// slicing so a multi-byte credential cannot panic the handler.
+pub fn mask(secret: &str) -> String {
+    let k = secret.trim();
+    if k.is_empty() {
+        return String::new();
+    }
+    let chars: Vec<char> = k.chars().collect();
+    if chars.len() <= 12 {
+        return "****".to_string();
+    }
+    let head: String = chars[..8].iter().collect();
+    let tail: String = chars[chars.len() - 4..].iter().collect();
+    format!("{}…{}", head, tail)
+}
+
+/// Encrypt a credential that a client just submitted into a NULLABLE column.
+///
+/// `None` (field absent) stays SQL NULL and an empty/blank submission stays `''`, so "no
+/// credential" keeps the representation the table already used; anything else is encrypted
+/// through [`encrypt_for_storage`] (which fails closed without a master key).
+pub async fn encrypt_optional(
+    db: &PgPool,
+    incoming: Option<&str>,
+) -> Result<Option<String>, CryptoError> {
+    match incoming {
+        None => Ok(None),
+        Some(v) if v.trim().is_empty() => Ok(Some(String::new())),
+        Some(v) => Ok(Some(encrypt_for_storage(db, v.trim()).await?)),
+    }
+}
+
+/// The value to store when a client did NOT submit a credential (an update that only touches
+/// non-secret fields): the stored bytes are passed through untouched, except a legacy plaintext
+/// row, which is encrypted in place so the DB guard (migration 051) stays satisfied.
+pub async fn keep_stored(db: &PgPool, stored: Option<&str>) -> Result<Option<String>, CryptoError> {
+    match stored {
+        None => Ok(None),
+        Some(s) if s.is_empty() || is_encrypted(s) => Ok(Some(s.to_string())),
+        Some(s) => Ok(Some(encrypt_for_storage(db, s).await?)),
     }
 }

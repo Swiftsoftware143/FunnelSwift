@@ -15,10 +15,38 @@ pub async fn list_payment_providers(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    let rows: Vec<(Uuid, Option<Uuid>, String, String, bool, chrono::NaiveDateTime)> = sqlx::query_as(
+    // created_at is TIMESTAMPTZ in this table: decoding it as NaiveDateTime failed the query, and
+    // `unwrap_or_default()` turned that decode error into a silent EMPTY list — every configured
+    // payment provider was invisible. It now decodes as DateTime<Utc>, and a real DB error is a 500
+    // instead of a lie.
+    let rows: Vec<(
+        Uuid,
+        Option<Uuid>,
+        String,
+        String,
+        bool,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
         "SELECT id, tenant_id, provider_type, COALESCE(api_key,''), is_active, created_at FROM payment_providers WHERE tenant_id = $1 ORDER BY created_at"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
-    Ok(Json(json!(rows)))
+    ).bind(tenant_id).fetch_all(&state.pool).await?;
+    // payment_providers.api_key is CIPHERTEXT at rest (src/security/provider_key_crypto.rs), so
+    // the read-back is decrypted HERE and only a mask of the DECRYPTED value is returned. Before
+    // kanban t_63840ff2 this endpoint put the raw secret key in the response body.
+    let mut out: Vec<Value> = Vec::with_capacity(rows.len());
+    for (id, tenant_id, provider_type, stored, is_active, created_at) in rows {
+        let plain =
+            crate::security::provider_key_crypto::decrypt_from_storage(&state.pool, stored.trim())
+                .await?;
+        out.push(json!({
+            "id": id,
+            "tenant_id": tenant_id,
+            "provider_type": provider_type,
+            "api_key_masked": crate::security::provider_key_crypto::mask(&plain),
+            "is_active": is_active,
+            "created_at": created_at,
+        }));
+    }
+    Ok(Json(json!(out)))
 }
 pub async fn upsert_payment_provider(
     auth: AuthUser,
@@ -28,11 +56,22 @@ pub async fn upsert_payment_provider(
     let provider = payload["provider_type"]
         .as_str()
         .ok_or_else(|| AppError::Validation("provider_type required".into()))?;
-    let api_key = payload["api_key"].as_str().unwrap_or("");
+    let api_key = payload["api_key"].as_str().unwrap_or("").trim().to_string();
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // Encrypt BEFORE the write: this column only ever holds 'enc:v1:' ciphertext, and a write
+    // fails closed (500) without the master key rather than storing the secret in the clear.
+    let stored_api_key =
+        crate::security::provider_key_crypto::encrypt_for_storage(&state.pool, &api_key).await?;
     sqlx::query("INSERT INTO payment_providers (id, tenant_id, provider_type, api_key, is_active) VALUES ($1, $2, $3, $4, true)")
-        .bind(Uuid::new_v4()).bind(tenant_id).bind(provider).bind(api_key).execute(&state.pool).await?;
-    Ok((StatusCode::OK, Json(json!({"message": "Provider saved"}))))
+        .bind(Uuid::new_v4()).bind(tenant_id).bind(provider).bind(&stored_api_key).execute(&state.pool).await?;
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "message": "Provider saved",
+            "provider_type": provider,
+            "api_key_masked": crate::security::provider_key_crypto::mask(&api_key),
+        })),
+    ))
 }
 pub async fn delete_payment_provider(
     auth: AuthUser,

@@ -277,8 +277,12 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
             };
 
     // Get integration targets (affiliate products)
+    // `api_key` is stripped here: that column holds a customer credential (enc:v1: ciphertext,
+    // src/security/provider_key_crypto.rs) and this payload is served to every authenticated
+    // caller — it is not a credential surface, so the field is removed rather than masked
+    // (kanban t_63840ff2). No shipped client reads it (grep: available_products is unused).
     let products: Vec<serde_json::Value> = sqlx::query_as::<_, (serde_json::Value,)>(
-        r#"SELECT row_to_json(t.*)::jsonb FROM target_software t ORDER BY t.name"#,
+        r#"(SELECT (row_to_json(t.*)::jsonb - 'api_key') AS p FROM target_software t ORDER BY t.name)"#,
     )
     .fetch_all(&state.pool)
     .await

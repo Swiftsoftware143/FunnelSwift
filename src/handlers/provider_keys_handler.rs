@@ -18,17 +18,7 @@ use axum::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-/// Mask a stored key for read-back: first 8 + last 4.
-fn mask(api_key: &str) -> String {
-    let k = api_key.trim();
-    if k.is_empty() {
-        return String::new();
-    }
-    if k.len() <= 12 {
-        return "****".to_string();
-    }
-    format!("{}…{}", &k[..8], &k[k.len() - 4..])
-}
+use crate::security::provider_key_crypto::mask;
 
 pub async fn list_provider_keys(
     auth: AuthUser,

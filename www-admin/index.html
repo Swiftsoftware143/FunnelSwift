@@ -1259,7 +1259,7 @@ async function renderIntegrations() {
       <tbody>${items.map(t=>`<tr>
         <td><strong>${x(t.name)}</strong></td>
         <td><code style="font-size:11px">${x(t.webhook_url)}</code></td>
-        <td><code style="font-size:11px">${maskKey(t.api_key)}</code></td>
+        <td><code style="font-size:11px">${x(t.api_key_masked || '—')}</code></td>
         <td>${(t.events||[]).slice(0,3).map(e=>`<span class="badge badge-blue">${x(e)}</span>`).join(' ')}${(t.events||[]).length>3?' …':''}</td>
         <td><span class="badge ${t.is_active?'badge-green':'badge-red'}">${t.is_active?'Active':'Inactive'}</span></td>
         <td>
@@ -1355,12 +1355,12 @@ async function renderProviderKeys() {
           : keys.map(k => {
             const prov = _rowField(k, 'provider', 0);
             const base = _rowField(k, 'base_url', 2);
-            const key = _rowField(k, 'api_key', 1);
+            const key = _rowField(k, 'api_key_masked', 1);
             const created = (_rowField(k, 'created_at', 3) || '').toString().slice(0, 10);
             return `<tr>
               <td><span class="badge badge-blue">${x(prov)}</span></td>
               <td><code style="font-size:11px">${x(base || '—')}</code></td>
-              <td><code style="font-size:11px">${maskKey(key)}</code></td>
+              <td><code style="font-size:11px">${x(key || '—')}</code></td>
               <td style="font-size:12px;color:var(--muted)">${x(created || '—')}</td>
               <td><button class="btn btn-danger btn-xs" onclick="window._deleteProviderKey('${x(prov)}')">Delete</button></td>
             </tr>`;
@@ -1391,11 +1391,11 @@ async function renderProviderKeys() {
         <tbody>${payments.length === 0 ? `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No payment provider configured</td></tr>`
           : payments.map(p => {
             const ptype = _rowField(p, 'provider_type', 2);
-            const key = _rowField(p, 'api_key', 3);
+            const key = _rowField(p, 'api_key_masked', 3);
             const active = _rowField(p, 'is_active', 4);
             return `<tr>
               <td><span class="badge badge-blue">${x(ptype)}</span></td>
-              <td><code style="font-size:11px">${maskKey(key)}</code></td>
+              <td><code style="font-size:11px">${x(key || '—')}</code></td>
               <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Inactive'}</span></td>
               <td><button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
             </tr>`;
@@ -2550,7 +2550,7 @@ async function renderLeadRouting() {
     <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/POST /api/v1/target-software · GET /api/v1/routing-logs — where this tenant's leads are dual-routed. Needs the <code>has_dual_routing</code> plan flag.</div>
     <div class="card">
       <div class="card-header"><span class="card-title">Routing targets</span></div>
-      ${wiredTable(['Name', 'Webhook', 'Key', 'Active'], targets.map(t => `<tr><td>${x(t.name)}</td><td style="font-size:12px">${x(t.webhook_url)}</td><td style="font-size:12px;color:var(--muted)">${t.api_key ? '••••set' : '-'}</td><td>${t.is_active ? 'yes' : 'no'}</td></tr>`), 'No routing targets')}
+      ${wiredTable(['Name', 'Webhook', 'Key', 'Active'], targets.map(t => `<tr><td>${x(t.name)}</td><td style="font-size:12px">${x(t.webhook_url)}</td><td style="font-size:12px;color:var(--muted)">${t.api_key_masked ? x(t.api_key_masked) : '—'}</td><td>${t.is_active ? 'yes' : 'no'}</td></tr>`), 'No routing targets')}
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         ${wiredInput('wired-ts-name', 'Target name')}${wiredInput('wired-ts-url', 'https://…/webhook')}${wiredInput('wired-ts-key', 'API key (optional)')}
         <button class="btn btn-primary" id="wired-ts-add">Add target</button><span id="wired-ts-msg" style="font-size:12px"></span>
