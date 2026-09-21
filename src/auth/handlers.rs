@@ -276,20 +276,14 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
                 }
             };
 
-    // Get integration targets (affiliate products)
-    // `api_key` is stripped here: that column holds a customer credential (enc:v1: ciphertext,
-    // src/security/provider_key_crypto.rs) and this payload is served to every authenticated
-    // caller — it is not a credential surface, so the field is removed rather than masked
-    // (kanban t_63840ff2). No shipped client reads it (grep: available_products is unused).
-    let products: Vec<serde_json::Value> = sqlx::query_as::<_, (serde_json::Value,)>(
-        r#"(SELECT (row_to_json(t.*)::jsonb - 'api_key') AS p FROM target_software t ORDER BY t.name)"#,
-    )
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .map(|(r,)| r)
-    .collect();
+    // `available_products` was REMOVED here (kanban t_e0f9b86b). It was built as
+    //   SELECT (row_to_json(t.*)::jsonb - 'api_key') AS p FROM target_software t ORDER BY t.name
+    // with no tenant filter, so every authenticated caller got EVERY tenant's routing targets
+    // (name, webhook_url, portfolio_company_id, events, is_active). The field is deleted rather
+    // than tenant-scoped because no shipped surface reads it (box-wide grep: www-app,
+    // www-admin and FunnelSwift-Mobile have zero references) and the same rows are already
+    // served, correctly scoped, by GET /target-software (WHERE tenant_id = $1). Deleting it
+    // removes the leak with no loss of capability; use that endpoint for a tenant's targets.
 
     // Get current plan subscription
     let current_plan: Option<serde_json::Value> = sqlx::query_as::<_, (serde_json::Value,)>(
@@ -318,7 +312,6 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
         "api_key": api_key_row.map(|(p, n, _fk)| json!({"prefix": p, "name": n})),
-        "available_products": products,
         "current_plan": current_plan
     }))
 }
