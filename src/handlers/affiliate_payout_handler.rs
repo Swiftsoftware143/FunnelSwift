@@ -32,10 +32,11 @@ pub async fn list_tiers(
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
     let rows: Vec<(Uuid, String, f64, i32, f64, Option<String>, chrono::NaiveDateTime)> = sqlx::query_as(
-        "SELECT id, name, commission_rate, min_sales, min_revenue, description, created_at FROM affiliate_tiers ORDER BY min_sales ASC"
+        "SELECT id, name, commission_rate, min_sales, min_revenue, description, created_at FROM affiliate_tiers ORDER BY min_sales ASC",
     )
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| tracing::error!("list_tiers query failed: {:?}", e))
     .unwrap_or_default();
     let tiers: Vec<serde_json::Value> = rows.iter().map(|r| json!({"id": r.0.to_string(), "name": r.1, "commission_rate": r.2, "min_sales": r.3, "min_revenue": r.4, "description": r.5, "created_at": r.6})).collect();
     Ok(Json(json!(tiers)))

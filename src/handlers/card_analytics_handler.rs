@@ -161,6 +161,7 @@ pub async fn track_card_event(
         .bind(card_id)
         .fetch_optional(&state.pool)
         .await
+        .map_err(|e| tracing::error!("track_card_event card lookup failed: {:?}", e))
         .unwrap_or_default();
 
     let tenant_id = match row {
@@ -361,11 +362,21 @@ pub async fn get_card_analytics(
 
     let utm_sources: Vec<UtmSourceRow> = sqlx::query_as(
         "SELECT utm_source, utm_medium, utm_campaign, COUNT(*) as count FROM kinetic_card_events WHERE card_id=$1 AND utm_source IS NOT NULL GROUP BY utm_source, utm_medium, utm_campaign ORDER BY count DESC LIMIT 10"
-    ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
+    )
+    .bind(card_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| tracing::error!("card_analytics utm_sources query failed: {:?}", e))
+    .unwrap_or_default();
 
     let top_locations: Vec<LocationRow> = sqlx::query_as(
         "SELECT country, region, city, view_count as count FROM kinetic_card_locations WHERE card_id=$1 ORDER BY view_count DESC LIMIT 20"
-    ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
+    )
+    .bind(card_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| tracing::error!("card_analytics top_locations query failed: {:?}", e))
+    .unwrap_or_default();
 
     // views/clicks are INTEGER (INT4) in kinetic_card_daily_stats while DailyStatsRow holds
     // Option<i64>, which sqlx decodes as INT8 only -- so no row ever decoded and
@@ -388,7 +399,12 @@ pub async fn get_card_analytics(
 
     let events_by_type: Vec<EventTypeRow> = sqlx::query_as(
         "SELECT event_type, COUNT(*) as count FROM kinetic_card_events WHERE card_id=$1 GROUP BY event_type ORDER BY count DESC"
-    ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
+    )
+    .bind(card_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| tracing::error!("card_analytics events_by_type query failed: {:?}", e))
+    .unwrap_or_default();
 
     Ok(Json(CardAnalyticsResponse {
         card_id: card_id.to_string(),
@@ -486,15 +502,30 @@ pub async fn get_tenant_analytics(
                     FROM kinetic_card_daily_stats GROUP BY card_id) d ON d.card_id = k.id
          WHERE k.tenant_id = $1
          ORDER BY views DESC LIMIT 10"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+         )
+         .bind(tenant_id)
+         .fetch_all(&state.pool)
+         .await
+         .map_err(|e| tracing::error!("tenant_analytics top_cards query failed: {:?}", e))
+         .unwrap_or_default();
 
     let top_countries: Vec<LocationRow> = sqlx::query_as(
         "SELECT country, region, city, SUM(view_count) as count FROM kinetic_card_locations WHERE tenant_id=$1 GROUP BY country, region, city ORDER BY count DESC LIMIT 20"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| tracing::error!("tenant_analytics top_countries query failed: {:?}", e))
+    .unwrap_or_default();
 
     let daily_trend: Vec<DailyStatsRow> = sqlx::query_as(
         "SELECT stat_date as date, SUM(views) as views, SUM(clicks) as clicks FROM kinetic_card_daily_stats WHERE tenant_id=$1 GROUP BY stat_date ORDER BY stat_date DESC LIMIT 30"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| tracing::error!("tenant_analytics daily_trend query failed: {:?}", e))
+    .unwrap_or_default();
 
     Ok(Json(TenantAnalyticsSummary {
         total_cards,
