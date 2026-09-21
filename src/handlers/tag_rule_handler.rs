@@ -25,7 +25,7 @@ pub async fn list_tag_rules(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
-    let rows: Vec<(Uuid, String, chrono::NaiveDateTime)> = sqlx::query_as(
+    let rows: Vec<(Uuid, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         "SELECT id, COALESCE(name,''), created_at FROM tag_rules WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
     .bind(tenant_id)

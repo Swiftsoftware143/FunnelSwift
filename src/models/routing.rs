@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -13,7 +13,7 @@ pub struct TargetSoftware {
     pub portfolio_company_id: Option<Uuid>,
     pub events: Vec<String>,
     pub is_active: bool,
-    pub created_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,5 +31,5 @@ pub struct RoutingLog {
     pub target_software: Uuid,
     pub status: String,
     pub result: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
 }

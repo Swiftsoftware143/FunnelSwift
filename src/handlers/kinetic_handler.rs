@@ -96,8 +96,14 @@ pub async fn list_cards(
         "consent_decline_redirect": r.try_get::<Option<String>, _>("consent_decline_redirect").unwrap_or(None),
         "template_category": r.try_get::<Option<String>, _>("template_category").unwrap_or_default(),
         "category": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
-        "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default(),
-        "updated_at": r.try_get::<chrono::NaiveDateTime, _>("updated_at").unwrap_or_default()
+        "created_at": r
+            .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_default(),
+        "updated_at": r
+            .try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_default()
     })).collect();
     Ok(Json(json!({"cards": cards})))
 }
@@ -253,14 +259,22 @@ pub async fn list_buttons(
         "SELECT b.id, b.card_id, b.label, b.url, b.sort_order, b.created_at FROM kinetic_buttons b JOIN kinetic_cards c ON c.id = b.card_id WHERE b.card_id=$1 AND c.tenant_id=$2 ORDER BY b.sort_order"
     ).bind(card_id).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
     use sqlx::Row;
-    let buttons: Vec<Value> = rows.iter().map(|r| json!({
-        "id": r.try_get::<Uuid, _>("id").unwrap_or_default().to_string(),
-        "card_id": r.try_get::<Uuid, _>("card_id").unwrap_or_default().to_string(),
-        "label": r.try_get::<String, _>("label").unwrap_or_default(),
-        "url": r.try_get::<String, _>("url").unwrap_or_default(),
-        "sort_order": r.try_get::<i32, _>("sort_order").unwrap_or(0),
-        "created_at": r.try_get::<chrono::NaiveDateTime, _>("created_at").unwrap_or_default()
-    })).collect();
+    let buttons: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").unwrap_or_default().to_string(),
+                "card_id": r.try_get::<Uuid, _>("card_id").unwrap_or_default().to_string(),
+                "label": r.try_get::<String, _>("label").unwrap_or_default(),
+                "url": r.try_get::<String, _>("url").unwrap_or_default(),
+                "sort_order": r.try_get::<i32, _>("sort_order").unwrap_or(0),
+                "created_at": r
+                    .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default()
+            })
+        })
+        .collect();
     Ok(Json(json!(buttons)))
 }
 
