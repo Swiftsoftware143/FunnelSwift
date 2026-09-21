@@ -48,18 +48,23 @@ pub async fn list_provider_keys(
     .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
-    let out: Vec<Value> = rows
-        .into_iter()
-        .map(|(provider, api_key, base_url, is_active, created_at)| {
-            json!({
-                "provider": provider,
-                "api_key_masked": mask(&api_key),
-                "base_url": base_url,
-                "is_active": is_active,
-                "created_at": created_at,
-            })
-        })
-        .collect();
+    // provider_keys.api_key is CIPHERTEXT at rest (src/security/provider_key_crypto.rs), so
+    // the read-back mask is computed from the decrypted value. The ciphertext is never
+    // returned to a client and a row that cannot be decrypted is a hard error, not a silent
+    // "****" mask.
+    let mut out: Vec<Value> = Vec::with_capacity(rows.len());
+    for (provider, api_key, base_url, is_active, created_at) in rows {
+        let plain =
+            crate::security::provider_key_crypto::decrypt_from_storage(&state.pool, api_key.trim())
+                .await?;
+        out.push(json!({
+            "provider": provider,
+            "api_key_masked": mask(&plain),
+            "base_url": base_url,
+            "is_active": is_active,
+            "created_at": created_at,
+        }));
+    }
     Ok(Json(json!(out)))
 }
 
@@ -102,8 +107,14 @@ pub async fn upsert_provider_key(
             return Err(AppError::Validation("api_key required".into()));
         }
         (Some(prev), true) => {
-            // Keep the stored secret, only touch base_url / metadata.
+            // Keep the stored secret, only touch base_url / metadata. The stored value is
+            // ciphertext at rest, so the read-back mask describes the DECRYPTED credential.
             metadata["key_unchanged"] = json!(true);
+            let prev_plain = crate::security::provider_key_crypto::decrypt_from_storage(
+                &state.pool,
+                prev.trim(),
+            )
+            .await?;
             sqlx::query(
                 "UPDATE provider_keys SET base_url = $3, metadata = metadata || $4::jsonb, \
                  is_active = true, updated_at = NOW() \
@@ -115,27 +126,24 @@ pub async fn upsert_provider_key(
             .bind(&metadata)
             .execute(&state.pool)
             .await?;
-            let _ = prev;
             return Ok((
                 StatusCode::OK,
                 Json(json!({
                     "message": "Key saved",
                     "provider": provider,
-                    "api_key_masked": mask(
-                        &sqlx::query_scalar::<_, String>(
-                            "SELECT COALESCE(api_key,'') FROM provider_keys \
-                             WHERE tenant_id = $1 AND provider = $2",
-                        )
-                        .bind(tenant_id)
-                        .bind(&provider)
-                        .fetch_one(&state.pool)
-                        .await?
-                    ),
+                    "api_key_masked": mask(&prev_plain),
                 })),
             ));
         }
         _ => {}
     }
+
+    // Encrypt BEFORE the write: this column only ever holds 'enc:v1:' ciphertext. The call
+    // FAILS CLOSED (500) when PROVIDER_KEY_ENC_SECRET is missing rather than storing the
+    // plaintext credential. The response mask is computed from the request value.
+    let stored_api_key =
+        crate::security::provider_key_crypto::encrypt_for_storage(&state.pool, api_key.trim())
+            .await?;
 
     sqlx::query(
         "INSERT INTO provider_keys (id, tenant_id, provider, api_key, base_url, metadata, is_active) \
@@ -148,7 +156,7 @@ pub async fn upsert_provider_key(
     .bind(Uuid::new_v4())
     .bind(tenant_id)
     .bind(&provider)
-    .bind(&api_key)
+    .bind(&stored_api_key)
     .bind(&base_url)
     .bind(&metadata)
     .execute(&state.pool)

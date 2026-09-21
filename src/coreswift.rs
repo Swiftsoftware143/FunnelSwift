@@ -99,7 +99,12 @@ pub async fn resolve_conn(db: &PgPool, tenant_id: Uuid) -> Result<Option<CoreSwi
     let Some((api_key, base_url)) = row else {
         return Ok(None);
     };
-    let api_key = api_key.trim().to_string();
+    // Stored as ciphertext at rest: unwind it before the value is used as a credential.
+    let api_key = crate::security::provider_key_crypto::decrypt_from_storage(db, api_key.trim())
+        .await
+        .map_err(|e| format!("CoreSwift key decrypt failed: {e}"))?
+        .trim()
+        .to_string();
     if api_key.is_empty() {
         return Ok(None);
     }

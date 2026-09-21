@@ -56,6 +56,17 @@ async fn main() -> Result<()> {
     // Run migrations
     database.migrate().await?;
 
+    // Posture line: a missing master key means BYOK writes fail closed by design. Say so in
+    // the boot log instead of discovering it on the first customer write.
+    if security::provider_key_crypto::is_configured() {
+        tracing::info!("Provider key encryption: enabled (AES-256 at rest, enc:v1 format)");
+    } else {
+        tracing::error!(
+            "Provider key encryption: DISABLED — PROVIDER_KEY_ENC_SECRET missing/short; \
+             BYOK writes fail closed (a plaintext credential is never stored)"
+        );
+    }
+
     let pool = database.pool().clone();
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| std::io::Error::other("JWT_SECRET must be set in environment"))?;

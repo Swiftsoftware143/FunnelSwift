@@ -204,7 +204,17 @@ pub async fn test_provider_connection(
     .bind(&provider)
     .fetch_optional(&state.pool)
     .await?;
-    let has_key = stored.map(|k| !k.trim().is_empty()).unwrap_or(false);
+    // The stored value is ciphertext at rest: "has a key" means the DECRYPTED value is
+    // non-empty, which also proves the master key can read what the app wrote.
+    let has_key = match stored.as_deref() {
+        Some(k) if !k.trim().is_empty() => {
+            !crate::security::provider_key_crypto::decrypt_from_storage(&state.pool, k.trim())
+                .await?
+                .trim()
+                .is_empty()
+        }
+        _ => false,
+    };
     Ok(Json(json!({
         "provider": provider,
         "valid": has_key,
