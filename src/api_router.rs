@@ -212,10 +212,6 @@ pub fn create_router(state: AppState) -> Router {
                 .post(affiliate_tracking_handler::create_affiliate_link),
         )
         .route(
-            "/api/v1/affiliate-stats",
-            get(affiliate_tracking_handler::get_affiliate_stats),
-        )
-        .route(
             "/api/v1/affiliate-conversions",
             get(affiliate_tracking_handler::list_conversions)
                 .post(affiliate_tracking_handler::track_conversion),
@@ -243,10 +239,6 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/affiliate/leads",
             post(affiliate_lead_handler::list_affiliate_prospects),
-        )
-        .route(
-            "/api/v1/affiliate/leads-stats",
-            post(affiliate_lead_handler::get_affiliate_leads_stats),
         )
         .route(
             "/api/v1/check-affiliate-email",
@@ -285,10 +277,6 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/affiliate-payouts/:id/pay",
             post(affiliate_payout_handler::mark_payout_paid),
-        )
-        .route(
-            "/api/v1/affiliates/:id/pending-conversions",
-            get(affiliate_payout_handler::get_affiliate_pending_conversions),
         )
         .route(
             "/api/v1/plans",
@@ -534,10 +522,6 @@ pub fn create_router(state: AppState) -> Router {
                 .delete(tenant_handler::delete_tenant),
         )
         .route(
-            "/api/v1/tenants/:id/credits",
-            get(tenant_handler::get_tenant_credits).post(tenant_handler::assign_credits),
-        )
-        .route(
             "/api/v1/tenants/:id/plan",
             post(tenant_handler::assign_plan),
         )
@@ -577,16 +561,6 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/admin/email-config/test",
             post(email_template_handler::test_email_config),
         )
-        // Same config surface under the fleet-standard name (provider is a stored choice).
-        .route(
-            "/api/v1/admin/email-settings",
-            get(email_template_handler::get_email_config)
-                .put(email_template_handler::update_email_config),
-        )
-        .route(
-            "/api/v1/admin/email-settings/test",
-            post(email_template_handler::test_email_config),
-        )
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
         // LinkedIn - profile lookup
@@ -605,10 +579,6 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/linkedin/auth",
             delete(linkedin_auth_handler::delete_linkedin_auth),
-        )
-        .route(
-            "/api/v1/linkedin/cookies/:user_id",
-            get(linkedin_auth_handler::get_linkedin_cookies_for_user),
         )
         .route(
             "/api/v1/web-to-lead/configs",
@@ -653,16 +623,8 @@ pub fn create_router(state: AppState) -> Router {
             post(kinetic_handler::confirm_card_gate),
         )
         .route(
-            "/api/v1/kinetic/cards/:id/sources",
-            get(kinetic_handler::list_sources).post(kinetic_handler::create_source),
-        )
-        .route(
             "/api/v1/kinetic/buttons/:id",
             delete(kinetic_handler::delete_button),
-        )
-        .route(
-            "/api/v1/kinetic/sources/:id",
-            delete(kinetic_handler::delete_source),
         )
         .route("/api/v1/kinetic/metrics", get(kinetic_handler::get_metrics))
         .route(

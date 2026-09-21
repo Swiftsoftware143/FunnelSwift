@@ -63,14 +63,6 @@ pub async fn list_affiliate_prospects(
     Ok(Json(json!(leads)))
 }
 
-pub async fn get_affiliate_leads_stats(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Json(_payload): Json<Value>,
-) -> AppResult<Json<Value>> {
-    Ok(Json(json!({"total": 0, "converted": 0, "pending": 0})))
-}
-
 pub async fn check_affiliate_for_email(
     auth: AuthUser,
     State(state): State<AppState>,

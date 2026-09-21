@@ -138,20 +138,3 @@ pub async fn assign_plan(
         .await?;
     Ok(Json(json!({"message": "Plan assigned"})))
 }
-
-pub async fn get_tenant_credits(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(json!({"credits": 0})))
-}
-
-pub async fn assign_credits(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-    Json(_req): Json<serde_json::Value>,
-) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(json!({"message": "Credits assigned"})))
-}

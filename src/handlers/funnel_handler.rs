@@ -97,11 +97,20 @@ pub async fn render_funnel(
     State(state): State<AppState>,
 ) -> axum::response::Html<String> {
     // Load SEO settings for injection
-    let seo_rows: Vec<(String, Value)> =
-        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%'")
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default();
+    let seo_rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%'",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(k, raw)| {
+        (
+            k,
+            crate::handlers::site_settings_handler::value_from_text(&raw),
+        )
+    })
+    .collect();
     let mut seo_meta = String::from("<meta name=\"description\" content=\"FunnelSwift — interactive funnel for leads and conversion.\">\n<meta property=\"og:type\" content=\"website\">\n<meta property=\"twitter:card\" content=\"summary_large_image\">\n");
     let mut seo_scripts = String::new();
     for (k, v) in &seo_rows {

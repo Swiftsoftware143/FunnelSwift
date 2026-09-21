@@ -311,6 +311,10 @@ function buildNav() {
     sections.push(`<div class="nav-item ${STATE.view==='superAdmin'?'active':''}" data-view="superAdmin"><span class="icon">⚙️</span><span class="nav-text">Super Admin</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='systemTags'?'active':''}" data-view="systemTags" style="padding-left:28px"><span class="icon">🔖</span><span class="nav-text">System Tags</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tagGroups'?'active':''}" data-view="tagGroups" style="padding-left:28px"><span class="icon">📁</span><span class="nav-text">Tag Groups</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='siteSettings'?'active':''}" data-view="siteSettings"><span class="icon">🌐</span><span class="nav-text">Site Settings</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='leadRouting'?'active':''}" data-view="leadRouting"><span class="icon">🧭</span><span class="nav-text">Lead Routing</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='apiKeys'?'active':''}" data-view="apiKeys"><span class="icon">🔑</span><span class="nav-text">API Keys</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></div>`);
@@ -346,6 +350,10 @@ const viewRenderers = {
   tenants: renderTenants,
   apiKeys: renderApiKeys,
   settings: renderSettings,
+  siteSettings: renderSiteSettings,
+  leadRouting: renderLeadRouting,
+  tagRules: renderTagRules,
+  checkoutSessions: renderCheckoutSessions,
 };
 
 async function renderView() {
@@ -357,6 +365,7 @@ async function renderView() {
     const html = await fn();
     container.innerHTML = html;
     bindView(STATE.view);
+    mountWiredPanels(STATE.view);
   } catch(e) {
     container.innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="title">Error</div><div class="desc">${x(e.message)}</div></div>`;
   }
@@ -395,6 +404,10 @@ function bindView(view) {
     case 'tenants': bindTenants(); break;
     case 'apiKeys': bindApiKeys(); break;
     case 'settings': bindSettings(); break;
+    case 'siteSettings': bindSiteSettings(); break;
+    case 'leadRouting': bindLeadRouting(); break;
+    case 'tagRules': bindTagRules(); break;
+    case 'checkoutSessions': break;
     case 'cardAnalytics': bindCardAnalytics(); break;
     case 'cardUtmBuilder': bindCardUtmBuilder(); break;
     case 'cardLocations': bindCardLocations(); break;
@@ -2239,6 +2252,418 @@ window._editPlanFeatures = function (id) {
     sv.disabled = false;
   };
 };
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WIRED SURFACES — kanban t_4cc3f695 (dead-endpoint triage)
+// Every endpoint below was served by the backend with no caller in any shipped
+// shell. Each one is now reachable from this console: four first-class sidebar
+// views, plus a panel appended to the view that owns the feature. Panels mount
+// after the owning view renders and swallow their own errors, so a failing
+// endpoint can never blank a working view.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function wiredPanel(view, title, endpoint) {
+  const c = document.getElementById('view-container');
+  if (!c) return null;
+  const host = document.createElement('div');
+  host.innerHTML = '<div class="card"><div class="card-header"><div><div class="card-title">' + x(title) +
+    '</div><div class="card-subtitle">' + x(endpoint) + '</div></div></div><div class="wbody"></div></div>';
+  c.appendChild(host);
+  return host.querySelector('.wbody');
+}
+
+function wiredErr(body, e) {
+  body.innerHTML = '<div class="empty"><div class="icon">⚠️</div><div class="desc">' + x((e && e.message) || String(e)) + '</div></div>';
+}
+
+function wiredInput(id, placeholder, type, value) {
+  return '<input class="input" id="' + id + '" type="' + (type || 'text') + '" placeholder="' + x(placeholder || '') + '" value="' + x(value === undefined || value === null ? '' : value) + '" style="max-width:320px">';
+}
+
+function wiredTable(cols, rows, empty) {
+  if (!rows || !rows.length) return '<div class="empty" style="padding:14px">' + x(empty || 'Nothing here yet') + '</div>';
+  return '<div class="table-wrap"><table class="table"><thead><tr>' + cols.map(c => '<th>' + x(c) + '</th>').join('') +
+    '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+}
+
+function mountWiredPanels(view) {
+  try {
+    switch (view) {
+      case 'dashboard': wiredInsights(); break;
+      case 'affiliateProducts': wiredAffiliateProductSync(); break;
+      case 'portfolio': wiredPortfolioSync(); break;
+      case 'emailTemplates': wiredTemplateTypes(); break;
+      case 'planAdmin': wiredPlanTagMappings(); break;
+      case 'settings': wiredSettingDelete(); break;
+      case 'affiliates': wiredAffiliateDetail(); break;
+    }
+  } catch (e) { /* a panel must never break the view it is attached to */ }
+}
+
+// ── GET /api/v1/insights ─────────────────────────────────────────────────────
+async function wiredInsights() {
+  const body = wiredPanel('dashboard', '📈 Tenant insights', 'GET /api/v1/insights');
+  if (!body) return;
+  try {
+    const d = await api('/insights');
+    body.innerHTML = '<div class="stats-grid"><div class="stat-card"><div class="stat-value">' + x(d.total_leads || 0) +
+      '</div><div class="stat-label">Total leads (this tenant)</div></div></div>';
+  } catch (e) { wiredErr(body, e); }
+}
+
+// ── POST /api/v1/admin/affiliate-products/sync ───────────────────────────────
+async function wiredAffiliateProductSync() {
+  const body = wiredPanel('affiliateProducts', '📦 Sync affiliate products', 'POST /api/v1/admin/affiliate-products/sync');
+  if (!body) return;
+  body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates one affiliate product row per plan that does not have one yet.</div>' +
+    '<button class="btn btn-primary" id="wired-ap-sync">Sync from plans</button><span id="wired-ap-msg" style="font-size:12px;margin-left:10px"></span>';
+  document.getElementById('wired-ap-sync').onclick = async () => {
+    const b = document.getElementById('wired-ap-sync'), m = document.getElementById('wired-ap-msg');
+    b.disabled = true; m.textContent = 'Syncing…';
+    try {
+      const r = await api('/admin/affiliate-products/sync', { method: 'POST' });
+      m.textContent = '✓ ' + (r.message || 'Synced') + (r.created !== undefined ? ' (' + r.created + ' created)' : '');
+      showToast('Affiliate products synced', 'success');
+      renderView();
+    } catch (e) { m.textContent = '✗ ' + e.message; b.disabled = false; }
+  };
+}
+
+// ── POST /api/v1/admin/portfolio-sync ────────────────────────────────────────
+async function wiredPortfolioSync() {
+  const body = wiredPanel('portfolio', '🏢 Sync a portfolio company', 'POST /api/v1/admin/portfolio-sync');
+  if (!body) return;
+  body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates (or re-uses) the user account for a CoreSwift portfolio company.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+    wiredInput('wired-ps-name', 'Company name') + wiredInput('wired-ps-email', 'owner@company.com', 'email') +
+    wiredInput('wired-ps-desc', 'Description') +
+    '<button class="btn btn-primary" id="wired-ps-go">Sync company</button><span id="wired-ps-msg" style="font-size:12px"></span></div>';
+  document.getElementById('wired-ps-go').onclick = async () => {
+    const m = document.getElementById('wired-ps-msg'), b = document.getElementById('wired-ps-go');
+    const payload = {
+      name: document.getElementById('wired-ps-name').value.trim(),
+      email: document.getElementById('wired-ps-email').value.trim(),
+      description: document.getElementById('wired-ps-desc').value.trim(),
+    };
+    if (!payload.email) { m.textContent = '✗ email is required'; return; }
+    b.disabled = true; m.textContent = 'Syncing…';
+    try {
+      const r = await api('/admin/portfolio-sync', { method: 'POST', body: JSON.stringify(payload) });
+      m.textContent = '✓ ' + (r.message || 'Synced');
+      showToast('Portfolio company synced', 'success');
+      renderView();
+    } catch (e) { m.textContent = '✗ ' + e.message; b.disabled = false; }
+  };
+}
+
+// ── GET /api/v1/admin/email-templates/types ──────────────────────────────────
+async function wiredTemplateTypes() {
+  const body = wiredPanel('emailTemplates', '🧩 Template types the sender knows', 'GET /api/v1/admin/email-templates/types');
+  if (!body) return;
+  try {
+    const types = await api('/admin/email-templates/types') || [];
+    body.innerHTML = wiredTable(['Type', 'Description', 'Merge fields'],
+      types.map(t => '<tr><td><code>' + x(t.type) + '</code></td><td>' + x(t.description || '') + '</td><td style="font-size:12px;color:var(--muted)">' +
+        x((t.merge_fields || []).join(', ')) + '</td></tr>'), 'No template types');
+  } catch (e) { wiredErr(body, e); }
+}
+
+// ── GET /api/v1/plan-tag-mappings + POST /api/v1/plan-tag-mappings/sync ──────
+async function wiredPlanTagMappings() {
+  const body = wiredPanel('planAdmin', '🏷️ Plan → tag mappings', 'GET /api/v1/plan-tag-mappings · POST /api/v1/plan-tag-mappings/sync');
+  if (!body) return;
+  let plans = [], tags = [], mappings = [];
+  try { mappings = await api('/plan-tag-mappings') || []; } catch (e) { }
+  try { plans = await api('/plans') || []; } catch (e) { }
+  try { tags = await api('/tags') || []; } catch (e) { }
+  if (!Array.isArray(plans)) plans = plans.data || [];
+  if (!Array.isArray(tags)) tags = tags.data || [];
+  body.innerHTML = wiredTable(['Plan', 'Tag', 'Target software', 'Dual routing', 'Created'],
+    (Array.isArray(mappings) ? mappings : []).map(m => '<tr><td style="font-size:12px">' + x(m.plan_id) + '</td><td style="font-size:12px">' + x(m.tag_id) +
+      '</td><td>' + x(m.target_software || '-') + '</td><td>' + (m.allow_dual_routing ? 'yes' : 'no') + '</td><td>' + formatDate(m.created_at) + '</td></tr>'),
+    'No mappings') +
+    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+    '<select class="input" id="wired-ptm-plan" style="max-width:260px"><option value="">Choose a plan…</option>' +
+    plans.map(p => '<option value="' + x(p.id) + '">' + x(p.name || p.slug || p.id) + '</option>').join('') + '</select>' +
+    '<select class="input" id="wired-ptm-tag" style="max-width:260px"><option value="">Choose a tag…</option>' +
+    tags.map(t => '<option value="' + x(t.id) + '">' + x(t.name || t.id) + '</option>').join('') + '</select>' +
+    '<button class="btn btn-primary" id="wired-ptm-sync">Sync mapping</button><span id="wired-ptm-msg" style="font-size:12px"></span></div>';
+  document.getElementById('wired-ptm-sync').onclick = async () => {
+    const m = document.getElementById('wired-ptm-msg'), b = document.getElementById('wired-ptm-sync');
+    const plan_id = document.getElementById('wired-ptm-plan').value;
+    const tag_id = document.getElementById('wired-ptm-tag').value;
+    if (!plan_id || !tag_id) { m.textContent = '✗ pick a plan and a tag'; return; }
+    b.disabled = true; m.textContent = 'Syncing…';
+    try {
+      const r = await api('/plan-tag-mappings/sync', { method: 'POST', body: JSON.stringify({ plan_id: plan_id, tag_ids: [tag_id] }) });
+      m.textContent = '✓ ' + (r.message || 'Synced') + ' (' + (r.tag_count === undefined ? '?' : r.tag_count) + ' tag(s))';
+      showToast('Plan-tag mappings synced', 'success');
+      renderView();
+    } catch (e) { m.textContent = '✗ ' + e.message; b.disabled = false; }
+  };
+}
+
+// ── DELETE /api/v1/settings/:key ─────────────────────────────────────────────
+async function wiredSettingDelete() {
+  const body = wiredPanel('settings', '🗑️ Remove a setting', 'DELETE /api/v1/settings/:key');
+  if (!body) return;
+  let rows = [];
+  try { rows = await api('/settings') || []; } catch (e) { wiredErr(body, e); return; }
+  if (!Array.isArray(rows)) rows = rows.data || [];
+  body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">SEO settings and <code>lead_stages</code> are protected server-side and will be refused.</div>' +
+    wiredTable(['Key', 'Value', ''], rows.map(r => '<tr><td><code>' + x(r.key) + '</code></td><td style="font-size:12px;color:var(--muted);max-width:420px;overflow:hidden;text-overflow:ellipsis">' +
+      x(typeof r.value === 'string' ? r.value : JSON.stringify(r.value)) + '</td><td><button class="btn" data-key="' + x(r.key) + '">Delete</button></td></tr>'),
+      'No settings for this tenant') + '<div id="wired-set-msg" style="font-size:12px;margin-top:8px"></div>';
+  body.querySelectorAll('button[data-key]').forEach(btn => {
+    btn.onclick = async () => {
+      const key = btn.dataset.key;
+      if (!confirm('Delete setting "' + key + '"?')) return;
+      btn.disabled = true;
+      try {
+        await api('/settings/' + encodeURIComponent(key), { method: 'DELETE' });
+        showToast('Setting deleted', 'success');
+        renderView();
+      } catch (e) { document.getElementById('wired-set-msg').textContent = '✗ ' + e.message; btn.disabled = false; }
+    };
+  });
+}
+
+// ── GET /api/v1/affiliates/:id/commissions + POST /:id/calculate-tier ───────
+async function wiredAffiliateDetail() {
+  const body = wiredPanel('affiliates', '💵 Affiliate commissions & tier', 'GET /api/v1/affiliates/:id/commissions · POST /api/v1/affiliates/:id/calculate-tier');
+  if (!body) return;
+  let affs = [];
+  try { affs = await api('/affiliates') || []; } catch (e) { }
+  if (!Array.isArray(affs)) affs = affs.data || [];
+  body.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
+    '<select class="input" id="wired-aff-sel" style="max-width:320px"><option value="">Choose an affiliate…</option>' +
+    affs.map(a => '<option value="' + x(a.id) + '">' + x(a.name || a.email || a.id) + '</option>').join('') + '</select>' +
+    '<button class="btn" id="wired-aff-tier">Calculate tier</button><button class="btn btn-primary" id="wired-aff-load">Load commissions</button>' +
+    '<span id="wired-aff-msg" style="font-size:12px"></span></div><div id="wired-aff-out"></div>';
+  const sel = document.getElementById('wired-aff-sel'), out = document.getElementById('wired-aff-out'), msg = document.getElementById('wired-aff-msg');
+  document.getElementById('wired-aff-tier').onclick = async () => {
+    if (!sel.value) { msg.textContent = '✗ pick an affiliate'; return; }
+    msg.textContent = 'Calculating…';
+    try {
+      const r = await api('/affiliates/' + encodeURIComponent(sel.value) + '/calculate-tier', { method: 'POST' });
+      out.innerHTML = '<div class="stats-grid"><div class="stat-card"><div class="stat-value">' + x(((r.commission_rate || 0) * 1)) +
+        '%</div><div class="stat-label">Commission rate</div></div><div class="stat-card"><div class="stat-value">' + formatCurrency(r.total_earned || 0) +
+        '</div><div class="stat-label">Total earned</div></div></div>';
+      msg.textContent = '';
+    } catch (e) { msg.textContent = '✗ ' + e.message; }
+  };
+  document.getElementById('wired-aff-load').onclick = async () => {
+    if (!sel.value) { msg.textContent = '✗ pick an affiliate'; return; }
+    msg.textContent = 'Loading…';
+    try {
+      const rows = await api('/affiliates/' + encodeURIComponent(sel.value) + '/commissions') || [];
+      out.innerHTML = wiredTable(['Amount', 'Rate', 'Commission', 'Status', 'Created'],
+        (Array.isArray(rows) ? rows : []).map(c => '<tr><td>' + formatCurrency(c.amount || 0) + '</td><td>' + x(c.rate || c.commission_rate || '') +
+          '</td><td>' + formatCurrency(c.commission || c.commission_amount || 0) + '</td><td>' + x(c.status || '') + '</td><td>' + formatDate(c.created_at) + '</td></tr>'),
+        'No commissions');
+      msg.textContent = '';
+    } catch (e) { msg.textContent = '✗ ' + e.message; }
+  };
+}
+
+// ═══ SIDEBAR VIEW: Site Settings (site_settings + SEO injection preview) ═════
+async function renderSiteSettings() {
+  let rows = [], inject = null;
+  try { rows = await api('/admin/sites') || []; } catch (e) { }
+  if (!Array.isArray(rows)) rows = rows.data || [];
+  try { inject = await api('/seo/inject'); } catch (e) { }
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Site Settings</h1>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/PUT /api/v1/admin/sites(/:key) — global site settings, including the <code>seo_*</code> keys that are injected into every card, funnel and public page.</div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Configured settings</span></div>
+      ${wiredTable(['Key', 'Value', ''], rows.map(r => `<tr><td><code>${x(r.key)}</code></td><td style="font-size:12px;color:var(--muted);max-width:420px;overflow:hidden;text-overflow:ellipsis">${x(typeof r.value === 'string' ? r.value : JSON.stringify(r.value))}</td><td><button class="btn" data-site-key="${x(r.key)}">Edit</button></td></tr>`), 'No site settings yet — add the first one below')}
+    </div>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">Add or update a setting</div><div class="card-subtitle">PUT /api/v1/admin/sites/:key</div></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        ${wiredInput('wired-ss-key', 'seo_site_name')}
+        <button class="btn" id="wired-ss-load">Load</button>
+      </div>
+      <textarea class="input" id="wired-ss-value" rows="4" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder='{"value": "..."} or a plain string'></textarea>
+      <div style="margin-top:8px"><button class="btn btn-primary" id="wired-ss-save">Save setting</button><span id="wired-ss-msg" style="font-size:12px;margin-left:10px"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">SEO injection preview</div><div class="card-subtitle">GET /api/v1/seo/inject — exactly what public pages get</div></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">meta tags</div>
+      <pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;font-size:11px;overflow:auto">${x((inject && inject.meta_tags) || '(none)')}</pre>
+      <div style="font-size:12px;color:var(--muted);margin:8px 0 6px">script tags</div>
+      <pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;font-size:11px;overflow:auto">${x((inject && inject.script_tags) || '(none)')}</pre>
+    </div>
+  </div>`;
+}
+
+function bindSiteSettings() {
+  const load = document.getElementById('wired-ss-load');
+  const save = document.getElementById('wired-ss-save');
+  const keyEl = document.getElementById('wired-ss-key');
+  const valEl = document.getElementById('wired-ss-value');
+  const msg = document.getElementById('wired-ss-msg');
+  const doLoad = async () => {
+    const key = keyEl.value.trim();
+    if (!key) { msg.textContent = '✗ enter a key'; return; }
+    msg.textContent = 'Loading…';
+    try {
+      const r = await api('/admin/sites/' + encodeURIComponent(key));
+      valEl.value = typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2);
+      msg.textContent = '✓ loaded';
+    } catch (e) { msg.textContent = '✗ ' + e.message; }
+  };
+  if (load) load.onclick = doLoad;
+  document.querySelectorAll('button[data-site-key]').forEach(b => {
+    b.onclick = async () => {
+      keyEl.value = b.dataset.siteKey;
+      await doLoad();
+      valEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+  });
+  if (save) save.onclick = async () => {
+    const key = keyEl.value.trim();
+    if (!key) { msg.textContent = '✗ enter a key'; return; }
+    let value = valEl.value;
+    try { value = JSON.parse(valEl.value); } catch (e) { value = valEl.value; }
+    save.disabled = true; msg.textContent = 'Saving…';
+    try {
+      await api('/admin/sites/' + encodeURIComponent(key), { method: 'PUT', body: JSON.stringify({ value: value }) });
+      msg.textContent = '✓ saved';
+      showToast('Site setting saved', 'success');
+      renderView();
+    } catch (e) { msg.textContent = '✗ ' + e.message; save.disabled = false; }
+  };
+}
+
+// ═══ SIDEBAR VIEW: Lead Routing (target software + routing log) ══════════════
+async function renderLeadRouting() {
+  let targets = [], logs = [];
+  try { targets = await api('/target-software') || []; } catch (e) { }
+  try { logs = await api('/routing-logs') || []; } catch (e) { }
+  if (!Array.isArray(targets)) targets = targets.data || [];
+  if (!Array.isArray(logs)) logs = logs.data || [];
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Lead Routing</h1>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/POST /api/v1/target-software · GET /api/v1/routing-logs — where this tenant's leads are dual-routed. Needs the <code>has_dual_routing</code> plan flag.</div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Routing targets</span></div>
+      ${wiredTable(['Name', 'Webhook', 'Key', 'Active'], targets.map(t => `<tr><td>${x(t.name)}</td><td style="font-size:12px">${x(t.webhook_url)}</td><td style="font-size:12px;color:var(--muted)">${t.api_key ? '••••set' : '-'}</td><td>${t.is_active ? 'yes' : 'no'}</td></tr>`), 'No routing targets')}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${wiredInput('wired-ts-name', 'Target name')}${wiredInput('wired-ts-url', 'https://…/webhook')}${wiredInput('wired-ts-key', 'API key (optional)')}
+        <button class="btn btn-primary" id="wired-ts-add">Add target</button><span id="wired-ts-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Recent routing log (100)</span></div>
+      ${wiredTable(['Lead', 'Status', 'Target', 'When'], logs.map(l => `<tr><td style="font-size:12px">${x(l.lead_id)}</td><td>${x(l.status)}</td><td style="font-size:12px">${x(l.target_software)}</td><td>${formatDate(l.created_at)}</td></tr>`), 'No routed leads yet')}
+    </div>
+  </div>`;
+}
+
+function bindLeadRouting() {
+  const b = document.getElementById('wired-ts-add');
+  if (!b) return;
+  b.onclick = async () => {
+    const msg = document.getElementById('wired-ts-msg');
+    const body = {
+      name: document.getElementById('wired-ts-name').value.trim(),
+      webhook_url: document.getElementById('wired-ts-url').value.trim(),
+    };
+    const key = document.getElementById('wired-ts-key').value.trim();
+    if (key) body.api_key = key;
+    if (!body.name || !body.webhook_url) { msg.textContent = '✗ name and webhook URL are required'; return; }
+    b.disabled = true; msg.textContent = 'Saving…';
+    try {
+      await api('/target-software', { method: 'POST', body: JSON.stringify(body) });
+      showToast('Routing target created', 'success');
+      renderView();
+    } catch (e) { msg.textContent = '✗ ' + e.message; b.disabled = false; }
+  };
+}
+
+// ═══ SIDEBAR VIEW: Tag Rules ═════════════════════════════════════════════════
+async function renderTagRules() {
+  let rules = [], tags = [];
+  try { rules = await api('/tag-rules') || []; } catch (e) { }
+  try { tags = await api('/tags?system=true') || []; } catch (e) { }
+  if (!Array.isArray(rules)) rules = rules.data || [];
+  if (!Array.isArray(tags)) tags = tags.data || [];
+  const tagOpts = id => '<option value="">—</option>' + tags.map(t => `<option value="${x(t.id)}">${x(t.name || t.id)}</option>`).join('');
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Tag Rules</h1>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/POST /api/v1/tag-rules · PUT/DELETE /api/v1/tag-rules/:id — when the trigger tag is applied, run the action.</div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Rules</span></div>
+      <div id="wired-tr-list">${wiredTable(['Name', 'Created', ''], rules.map(r => `<tr><td>${x(r.name)}</td><td>${formatDate(r.created_at)}</td><td><button class="btn" data-rule-toggle="${x(r.id)}">Deactivate</button> <button class="btn" data-rule-del="${x(r.id)}">Delete</button></td></tr>`), 'No tag rules')}</div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${wiredInput('wired-tr-name', 'Rule name')}
+        <select class="input" id="wired-tr-trigger" style="max-width:220px">${'<option value="">Trigger tag…</option>' + tags.map(t => `<option value="${x(t.id)}">${x(t.name || t.id)}</option>`).join('')}</select>
+        <select class="input" id="wired-tr-action" style="max-width:200px">
+          <option value="">Action…</option><option value="add_tag">add_tag</option><option value="remove_tag">remove_tag</option><option value="route_lead">route_lead</option><option value="notify">notify</option>
+        </select>
+        <select class="input" id="wired-tr-actiontag" style="max-width:220px"><option value="">Action tag (optional)…</option>${tagOpts()}</select>
+        <select class="input" id="wired-tr-app" style="max-width:200px"><option value="funnelswift">funnelswift</option><option value="coreswift">coreswift</option><option value="incentiveswift">incentiveswift</option></select>
+        <button class="btn btn-primary" id="wired-tr-add">Create rule</button><span id="wired-tr-msg" style="font-size:12px"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindTagRules() {
+  const add = document.getElementById('wired-tr-add');
+  if (add) add.onclick = async () => {
+    const msg = document.getElementById('wired-tr-msg');
+    const body = {
+      name: document.getElementById('wired-tr-name').value.trim(),
+      trigger_tag_id: document.getElementById('wired-tr-trigger').value,
+      action_type: document.getElementById('wired-tr-action').value,
+      target_app: document.getElementById('wired-tr-app').value,
+      is_active: true,
+    };
+    const atag = document.getElementById('wired-tr-actiontag').value;
+    if (atag) body.action_tag_id = atag;
+    if (!body.name || !body.trigger_tag_id || !body.action_type) { msg.textContent = '✗ name, trigger tag and action are required'; return; }
+    add.disabled = true; msg.textContent = 'Saving…';
+    try {
+      await api('/tag-rules', { method: 'POST', body: JSON.stringify(body) });
+      showToast('Tag rule created', 'success');
+      renderView();
+    } catch (e) { msg.textContent = '✗ ' + e.message; add.disabled = false; }
+  };
+  document.querySelectorAll('button[data-rule-del]').forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await api('/tag-rules/' + b.dataset.ruleDel, { method: 'DELETE' }); showToast('Tag rule deleted', 'success'); renderView(); }
+      catch (e) { showToast(e.message, 'error'); b.disabled = false; }
+    };
+  });
+  document.querySelectorAll('button[data-rule-toggle]').forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await api('/tag-rules/' + b.dataset.ruleToggle, { method: 'PUT', body: JSON.stringify({ is_active: false }) }); showToast('Tag rule updated', 'success'); renderView(); }
+      catch (e) { showToast(e.message, 'error'); b.disabled = false; }
+    };
+  });
+}
+
+// ═══ SIDEBAR VIEW: Checkout Sessions ═════════════════════════════════════════
+async function renderCheckoutSessions() {
+  let sessions = [];
+  try { sessions = await api('/checkout/sessions') || []; } catch (e) { }
+  const list = Array.isArray(sessions) ? sessions : (sessions.sessions || []);
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Checkout Sessions</h1>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET /api/v1/checkout/sessions — every payment session this tenant has started.</div>
+    <div class="card">
+      ${wiredTable(['Session', 'Provider', 'Amount', 'Status', 'Created'],
+        list.map(s => `<tr><td style="font-size:12px">${x(s.id)}</td><td>${x(s.provider_type)}</td><td>${formatCurrency(s.amount || 0)} ${x(s.currency || '')}</td><td><span class="badge badge-blue">${x(s.status)}</span></td><td>${formatDate(s.created_at)}</td></tr>`),
+        'No checkout sessions')}
+    </div>
+  </div>`;
+}
 
 </script>
 </body>

@@ -105,12 +105,20 @@ pub async fn robots_txt(State(state): State<AppState>) -> Response {
 
     // Load crawl-delay from tenant_settings (global key)
     let crawl_delay = sqlx::query_scalar::<_, String>(
-        "SELECT value->>'crawl_delay' FROM site_settings WHERE key = 'seo_robots'",
+        "SELECT value::text FROM site_settings WHERE key = 'seo_robots'",
     )
     .fetch_optional(&state.pool)
     .await
     .ok()
     .flatten()
+    .and_then(|raw| {
+        let v = crate::handlers::site_settings_handler::value_from_text(&raw);
+        v.get("crawl_delay").map(|d| {
+            d.as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| d.to_string())
+        })
+    })
     .unwrap_or_else(|| "1".to_string());
 
     let body = format!(
@@ -143,11 +151,20 @@ pub async fn get_seo_settings(
     _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
-    let rows: Vec<(String, Value)> =
-        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key")
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default();
+    let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(k, raw)| {
+        (
+            k,
+            crate::handlers::site_settings_handler::value_from_text(&raw),
+        )
+    })
+    .collect();
 
     let mut settings = serde_json::Map::new();
     for (key, value) in rows {
@@ -174,7 +191,7 @@ pub async fn update_seo_settings(
             )
             .bind(uuid::Uuid::new_v4())
             .bind(&key)
-            .bind(v)
+            .bind(serde_json::to_string(v).unwrap_or_default())
             .execute(&state.pool)
             .await?;
         }
@@ -184,11 +201,20 @@ pub async fn update_seo_settings(
 
 /// GET /api/v1/seo/inject — return meta/script tags for SSR injection
 pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Value>> {
-    let rows: Vec<(String, Value)> =
-        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key")
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default();
+    let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(k, raw)| {
+        (
+            k,
+            crate::handlers::site_settings_handler::value_from_text(&raw),
+        )
+    })
+    .collect();
 
     let mut meta_tags = Vec::new();
     let mut script_tags = Vec::new();

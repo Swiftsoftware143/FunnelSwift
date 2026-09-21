@@ -207,11 +207,3 @@ pub async fn calculate_affiliate_tier(
         None => Err(AppError::NotFound("Affiliate not found".into())),
     }
 }
-
-pub async fn get_affiliate_pending_conversions(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(json!([])))
-}

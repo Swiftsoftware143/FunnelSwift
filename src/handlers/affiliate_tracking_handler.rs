@@ -58,12 +58,6 @@ pub async fn create_affiliate_link(
         ),
     ))
 }
-pub async fn get_affiliate_stats(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    Ok(Json(json!({"total_clicks": 0, "total_conversions": 0})))
-}
 pub async fn list_conversions(
     auth: AuthUser,
     State(state): State<AppState>,

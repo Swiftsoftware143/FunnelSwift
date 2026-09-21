@@ -382,29 +382,6 @@ pub async fn delete_button(
     Ok(Json(json!({"message": "Deleted"})))
 }
 
-pub async fn list_sources(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_card_id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
-    Ok(Json(json!([])))
-}
-pub async fn create_source(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_card_id): Path<Uuid>,
-    Json(_body): Json<Value>,
-) -> AppResult<(StatusCode, Json<Value>)> {
-    Ok((StatusCode::CREATED, Json(json!({"id": Uuid::new_v4()}))))
-}
-pub async fn delete_source(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-    Path(_id): Path<Uuid>,
-) -> AppResult<Json<Value>> {
-    Ok(Json(json!({"message": "Deleted"})))
-}
-
 pub async fn get_metrics(
     _auth: AuthUser,
     State(_state): State<AppState>,
@@ -661,11 +638,20 @@ pub async fn render_card(
     });
 
     // ── Load global SEO settings for SSO injection ──
-    let seo_rows: Vec<(String, Value)> =
-        sqlx::query_as("SELECT key, value FROM site_settings WHERE key LIKE 'seo_%'")
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default();
+    let seo_rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%'",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(k, raw)| {
+        (
+            k,
+            crate::handlers::site_settings_handler::value_from_text(&raw),
+        )
+    })
+    .collect();
     let mut seo_meta = String::new();
     let mut seo_scripts = String::new();
     for (k, v) in &seo_rows {

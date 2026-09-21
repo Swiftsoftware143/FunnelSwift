@@ -558,6 +558,38 @@ function LCM(){
   df.appendChild(El("button",{"class":"btn",onclick:function(){LCSV()}},"Save Subdomain"));
   df.innerHTML+='<div class="fld"><label>Custom Domain (optional)</label><input id="lc-cd" value="'+X(KCB.custom_domain)+'" placeholder="mybrand.com" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><p style="font-size:11px;color:#94a3b8;margin-top:4px">Point your domain to kntcrd.com with a CNAME record</p></div>';
   df.appendChild(El("button",{"class":"btn",onclick:function(){LCSD()}},"Save Custom Domain"));
+  // Prefill the custom domain from its dedicated endpoint (was read from a settings blob only).
+  api("/api/v1/kinetic/custom-domain").then(function(d){
+    if(d&&d.custom_domain&&$("lc-cd")) $("lc-cd").value=d.custom_domain;
+  }).catch(function(){});
+
+  // ── Card site metadata — GET/PUT /api/v1/kinetic/site-meta (kanban t_4cc3f695) ──
+  var smBox=El("div",{style:"margin-top:10px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px"});
+  smBox.appendChild(El("label",{style:"font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"Card site metadata"));
+  smBox.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin:0 0 6px"},"Open Graph / favicon / analytics for your public card pages."));
+  var SM_KEYS=[["og_title","og:title"],["og_description","og:description"],["og_image","og:image URL"],["favicon_url","Favicon URL"],["twitter_handle","Twitter handle"],["google_analytics_id","Google Analytics id"],["facebook_pixel_id","Facebook pixel id"],["theme_color","Theme color"]];
+  SM_KEYS.forEach(function(f){
+    var fld=El("div",{"class":"fld"});
+    fld.appendChild(El("label",null,f[1]));
+    fld.appendChild(El("input",{id:"mc-sm-"+f[0],placeholder:f[1],style:"width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"}));
+    smBox.appendChild(fld);
+  });
+  var smMsg=El("span",{style:"font-size:10px;margin-left:8px;color:#64748b"});
+  var smSave=El("button",{"class":"btn",type:"button",style:"font-size:11px;padding:5px 12px"},"Save site metadata");
+  smSave.onclick=function(){
+    var payload={};
+    SM_KEYS.forEach(function(f){var el=$("mc-sm-"+f[0]);if(el&&el.value.trim())payload[f[0]]=el.value.trim();});
+    smMsg.style.color="#64748b";smMsg.textContent="Saving...";
+    api("/api/v1/kinetic/site-meta",{method:"PUT",body:JSON.stringify(payload)})
+      .then(function(){smMsg.style.color="#16a34a";smMsg.textContent="Saved \u2713";})
+      .catch(function(e){smMsg.style.color="#dc2626";smMsg.textContent=(e&&e.message)||"Could not save";});
+  };
+  smBox.appendChild(El("div",{style:"margin-top:2px"},[smSave,smMsg]));
+  df.appendChild(smBox);
+  api("/api/v1/kinetic/site-meta").then(function(m){
+    if(!m||typeof m!=="object")return;
+    SM_KEYS.forEach(function(f){var el=$("mc-sm-"+f[0]);if(el&&m[f[0]]!=null)el.value=String(m[f[0]]);});
+  }).catch(function(){});
   var dm=El("div",{id:"lc-dm","class":"msg"});
   b.appendChild(df);
   b.appendChild(dm);
@@ -834,6 +866,58 @@ function MFC(data){
   gateBox.appendChild(cg);
   if(!gateOn) gateBox.appendChild(El("span",{"class":"kc-lock kc-tpl-lock"},"\ud83d\udd12 PRO"));
   p0.appendChild(gateBox);
+
+  // ── CTA buttons — GET/POST /api/v1/kinetic/cards/:id/buttons, DELETE /kinetic/buttons/:id
+  //    kanban t_4cc3f695: both handlers are real (kinetic_buttons table) and had no caller
+  //    in any shipped shell, so the only way to get a button onto a card was SQL.
+  var kcBtnBox=El("div",{style:"margin-top:10px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px"});
+  kcBtnBox.appendChild(El("label",{style:"font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"CTA buttons"));
+  var kcBtnList=El("div",{id:"mc-btn-list",style:"font-size:12px;color:#64748b;margin-bottom:6px"});
+  kcBtnBox.appendChild(kcBtnList);
+  var kcBtnLabel=El("input",{id:"mc-btn-label",placeholder:"Label",style:"width:46%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;margin-right:4px"});
+  var kcBtnUrl=El("input",{id:"mc-btn-url",placeholder:"https://...",style:"width:46%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"});
+  var kcBtnMsg=El("span",{style:"font-size:10px;margin-left:8px;color:#64748b"});
+  function kcLoadButtons(){
+    var cid=mb._cid;
+    if(!cid){kcBtnList.textContent="Save the card first, then add buttons.";return;}
+    api("/api/v1/kinetic/cards/"+cid+"/buttons").then(function(rows){
+      rows=Array.isArray(rows)?rows:[];
+      kcBtnList.innerHTML="";
+      if(!rows.length){kcBtnList.textContent="No buttons yet.";return;}
+      rows.forEach(function(b){
+        var row=El("div",{style:"display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f1f5f9"});
+        row.appendChild(El("span",{style:"flex:1"},(b.label||"(no label)")+" \u2192 "+(b.url||"")));
+        var del=El("button",{"class":"btn btn-sm",type:"button"},"Delete");
+        del.onclick=function(){
+          if(!confirm("Delete button \""+(b.label||"")+"\"?"))return;
+          api("/api/v1/kinetic/buttons/"+b.id,{method:"DELETE"}).then(function(){kcLoadButtons();})
+            .catch(function(e){kcBtnMsg.style.color="#dc2626";kcBtnMsg.textContent=(e&&e.message)||"Delete failed";});
+        };
+        row.appendChild(del);
+        kcBtnList.appendChild(row);
+      });
+    }).catch(function(e){kcBtnList.textContent=(e&&e.message)||"Could not load buttons";});
+  }
+  var kcBtnAdd=El("button",{"class":"btn",type:"button",style:"margin-top:6px;font-size:11px;padding:5px 12px"},"Add Button");
+  kcBtnAdd.onclick=function(){
+    var cid=mb._cid;
+    if(!cid){kcBtnMsg.style.color="#dc2626";kcBtnMsg.textContent="Save the card first.";return;}
+    var label=($("mc-btn-label")||{}).value||"", url=($("mc-btn-url")||{}).value||"";
+    if(!label.trim()||!url.trim()){kcBtnMsg.style.color="#dc2626";kcBtnMsg.textContent="Label and URL are required.";return;}
+    kcBtnMsg.style.color="#64748b";kcBtnMsg.textContent="Saving...";
+    api("/api/v1/kinetic/cards/"+cid+"/buttons",{method:"POST",body:JSON.stringify({label:label.trim(),url:url.trim()})})
+      .then(function(){
+        kcBtnMsg.style.color="#16a34a";kcBtnMsg.textContent="Button added \u2713";
+        if($("mc-btn-label"))$("mc-btn-label").value="";
+        if($("mc-btn-url"))$("mc-btn-url").value="";
+        kcLoadButtons();
+      }).catch(function(e){kcBtnMsg.style.color="#dc2626";kcBtnMsg.textContent=(e&&e.message)||"Could not add button";});
+  };
+  kcBtnBox.appendChild(kcBtnLabel);
+  kcBtnBox.appendChild(kcBtnUrl);
+  kcBtnBox.appendChild(El("div",{style:"margin-top:2px"},[kcBtnAdd,kcBtnMsg]));
+  kcLoadButtons();
+  p0.appendChild(kcBtnBox);
   left.appendChild(p0);
 
   // TAB 1: Look & Feel
@@ -1075,7 +1159,7 @@ function LCSD(){
   var m=$("lc-dm");
   if(!m) return;
   m.className="msg mi"; m.textContent="Saving...";
-  api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"custom_domain",value:($("lc-cd")||{}).value||""})})
+  api("/api/v1/kinetic/custom-domain",{method:"PUT",body:JSON.stringify({custom_domain:($("lc-cd")||{}).value||""})})
   .then(function(){
     KCB.custom_domain=($("lc-cd")||{}).value||"";
     m.className="msg mk"; m.textContent="Custom domain saved!";
@@ -1575,6 +1659,9 @@ function showBanner(name){
   document.getElementById("imp-stop").onclick=stopImpersonation;
 }
 function stopImpersonation(){
+  // POST /api/v1/admin/stop-impersonation had no caller anywhere, which left the server
+  // side of an impersonation session unaware it had ended (kanban t_4cc3f695).
+  try{ api("/api/v1/admin/stop-impersonation",{method:"POST"}).catch(function(){}); }catch(e){}
   var orig=localStorage.getItem("ws_fs_original_token");
   if(orig){T=orig;localStorage.setItem("ws_fs_token",orig);}
   localStorage.removeItem("ws_fs_original_token");
