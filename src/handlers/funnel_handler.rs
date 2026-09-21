@@ -22,6 +22,7 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
     .bind(tenant_id)
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| tracing::error!("list_funnels query failed: {:?}", e))
     .unwrap_or_default();
     Ok(Json(json!(rows)))
 }
@@ -102,6 +103,7 @@ pub async fn render_funnel(
     )
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| tracing::error!("render_funnel seo settings query failed: {:?}", e))
     .unwrap_or_default()
     .into_iter()
     .map(|(k, raw)| {

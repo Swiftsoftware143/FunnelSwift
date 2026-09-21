@@ -657,6 +657,7 @@ pub async fn render_card(
     )
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| tracing::error!("render_card seo settings query failed: {:?}", e))
     .unwrap_or_default()
     .into_iter()
     .map(|(k, raw)| {

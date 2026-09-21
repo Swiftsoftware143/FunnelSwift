@@ -17,7 +17,9 @@ pub async fn list_qr_codes(
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, String, chrono::NaiveDateTime)> = sqlx::query_as(
         "SELECT id, COALESCE(title,''), COALESCE(slug,''), created_at FROM qr_codes WHERE tenant_id = $1 ORDER BY created_at DESC"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+    ).bind(tenant_id).fetch_all(&state.pool).await
+        .map_err(|e| tracing::error!("list_qr_codes query failed: {:?}", e))
+        .unwrap_or_default();
     Ok(Json(json!(rows)))
 }
 pub async fn create_qr_code(

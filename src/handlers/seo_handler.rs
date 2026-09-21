@@ -156,6 +156,7 @@ pub async fn get_seo_settings(
     )
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| tracing::error!("get_seo_settings query failed: {:?}", e))
     .unwrap_or_default()
     .into_iter()
     .map(|(k, raw)| {
@@ -206,6 +207,7 @@ pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Va
     )
     .fetch_all(&state.pool)
     .await
+    .map_err(|e| tracing::error!("seo_inject_tags query failed: {:?}", e))
     .unwrap_or_default()
     .into_iter()
     .map(|(k, raw)| {

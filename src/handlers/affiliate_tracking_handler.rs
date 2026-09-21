@@ -17,7 +17,9 @@ pub async fn list_affiliate_links(
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let rows: Vec<(Uuid, String, Option<String>, String, Option<f64>, chrono::NaiveDateTime)> = sqlx::query_as(
         "SELECT al.id, al.affiliate_id, al.target_software, al.tracking_code, al.commission_rate::float8, al.created_at FROM affiliate_links al JOIN affiliates a ON a.id = al.affiliate_id WHERE a.tenant_id = $1 ORDER BY al.created_at DESC"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+    ).bind(tenant_id).fetch_all(&state.pool).await
+        .map_err(|e| tracing::error!("list_affiliate_links query failed: {:?}", e))
+        .unwrap_or_default();
     let links: Vec<Value> = rows
         .iter()
         .map(|r| json!({"id": r.0.to_string(), "affiliate_id": r.1, "tracking_code": r.3}))
