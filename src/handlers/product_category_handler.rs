@@ -36,7 +36,9 @@ struct CategoryRow {
     pub description: Option<String>,
     pub sort_order: i32,
     pub is_active: bool,
-    pub created_at: chrono::NaiveDateTime,
+    // product_categories.created_at is TIMESTAMPTZ; decoding it as NaiveDateTime failed the whole
+    // request the moment the tenant had a row (sqlx: TIMESTAMP is not compatible with TIMESTAMPTZ).
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 pub async fn list_categories(

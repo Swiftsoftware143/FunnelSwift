@@ -56,7 +56,9 @@ pub async fn list_affiliate_prospects(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    let rows: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, String, chrono::NaiveDateTime)> = sqlx::query_as(
+    // leads.created_at is TIMESTAMPTZ; NaiveDateTime made this list 500 as soon as a lead with
+    // source='affiliate' existed (none did yet, so the bug was latent).
+    let rows: Vec<(Uuid, String, Option<String>, Option<String>, Option<String>, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         "SELECT id, name, email, phone, source, status, created_at FROM leads WHERE tenant_id = $1 AND source = 'affiliate' ORDER BY created_at DESC LIMIT 50"
     ).bind(tenant_id).fetch_all(&state.pool).await?;
     let leads: Vec<Value> = rows.iter().map(|r| json!({"id": r.0.to_string(), "name": r.1, "email": r.2, "phone": r.3, "source": r.4, "status": r.5, "created_at": r.6})).collect();
