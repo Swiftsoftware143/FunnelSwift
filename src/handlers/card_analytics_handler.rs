@@ -367,9 +367,24 @@ pub async fn get_card_analytics(
         "SELECT country, region, city, view_count as count FROM kinetic_card_locations WHERE card_id=$1 ORDER BY view_count DESC LIMIT 20"
     ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
 
+    // views/clicks are INTEGER (INT4) in kinetic_card_daily_stats while DailyStatsRow holds
+    // Option<i64>, which sqlx decodes as INT8 only -- so no row ever decoded and
+    // unwrap_or_default() reported it as `daily_stats: []` (kanban t_4385aa2c). Cast in SQL: the
+    // tenant-wide daily_trend below returns SUM(views)/SUM(clicks) as INT8 into the same struct.
     let daily_stats: Vec<DailyStatsRow> = sqlx::query_as(
-        "SELECT stat_date as date, views, clicks FROM kinetic_card_daily_stats WHERE card_id=$1 ORDER BY stat_date DESC LIMIT 30"
-    ).bind(card_id).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT stat_date as date, views::bigint as views, clicks::bigint as clicks FROM kinetic_card_daily_stats WHERE card_id=$1 ORDER BY stat_date DESC LIMIT 30"
+    )
+    .bind(card_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            "card_analytics daily_stats decode failed for card {}: {:?}",
+            card_id,
+            e
+        )
+    })
+    .unwrap_or_default();
 
     let events_by_type: Vec<EventTypeRow> = sqlx::query_as(
         "SELECT event_type, COUNT(*) as count FROM kinetic_card_events WHERE card_id=$1 GROUP BY event_type ORDER BY count DESC"

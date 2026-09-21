@@ -130,13 +130,48 @@ pub async fn list_payouts(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let rows: Vec<(Uuid, String, f64, String, Option<String>, chrono::NaiveDateTime, Option<String>)> = sqlx::query_as(
-        "SELECT p.id, p.affiliate_id, p.amount, p.status, p.period, p.created_at, a.name as affiliate_name FROM affiliate_payouts p LEFT JOIN affiliates a ON p.affiliate_id = a.id ORDER BY p.created_at DESC"
+    // `affiliate_payouts` (migration 021) is id / affiliate_user_id / amount / method / status /
+    // paid_at. The old SELECT asked for p.affiliate_id, p.period and p.created_at -- none of which
+    // exist -- so the query errored on EVERY call and unwrap_or_default() reported the failure as
+    // `200 []` (kanban t_4385aa2c). amount is NUMERIC while f64 decodes FLOAT8 only, hence the
+    // cast; the join keys on affiliates.user_id (affiliates.id is varchar, this column is uuid).
+    let rows: Vec<(
+        Uuid,
+        Option<Uuid>,
+        Option<f64>,
+        Option<String>,
+        Option<String>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT p.id, p.affiliate_user_id, p.amount::float8 AS amount, p.status, p.method, p.paid_at, a.name AS affiliate_name \
+         FROM affiliate_payouts p LEFT JOIN affiliates a ON a.user_id = p.affiliate_user_id \
+         ORDER BY p.paid_at DESC NULLS LAST, p.id",
     )
     .fetch_all(&state.pool)
     .await
-    .unwrap_or_default();
-    let payouts: Vec<serde_json::Value> = rows.iter().map(|r| json!({"id": r.0.to_string(), "affiliate_id": r.1, "amount": r.2, "status": r.3, "period": r.4, "created_at": r.5, "affiliate_name": r.6})).collect();
+    .map_err(|e| {
+        tracing::error!("list_payouts query failed: {:?}", e);
+        e
+    })?;
+    let payouts: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.0.to_string(),
+                "affiliate_user_id": r.1.map(|u| u.to_string()),
+                // legacy key kept for the shipped SPA (`p.affiliate_name || p.affiliate_id`)
+                "affiliate_id": r.1.map(|u| u.to_string()),
+                "amount": r.2,
+                "status": r.3,
+                "method": r.4,
+                "paid_at": r.5,
+                // no period column exists in affiliate_payouts; keep the key the SPA reads
+                "period": serde_json::Value::Null,
+                "affiliate_name": r.6,
+            })
+        })
+        .collect();
     Ok(Json(json!(payouts)))
 }
 
@@ -149,19 +184,27 @@ pub async fn create_payout(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     let id = Uuid::new_v4();
-    let affiliate_id = req["affiliate_id"].as_str().unwrap_or("");
+    // same column drift as list_payouts: this INSERT named affiliate_id/period, which do not
+    // exist on affiliate_payouts, so POST /affiliate-payouts always 500'd (kanban t_4385aa2c)
+    let affiliate_user_id = req["affiliate_user_id"]
+        .as_str()
+        .or_else(|| req["affiliate_id"].as_str())
+        .ok_or_else(|| AppError::BadRequest("affiliate_user_id is required".into()))?;
+    let affiliate_user_id: Uuid = affiliate_user_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid affiliate_user_id".into()))?;
     let amount = req["amount"].as_f64().unwrap_or(0.0);
     let status = req["status"].as_str().unwrap_or("pending");
-    let period = req["period"].as_str().unwrap_or("");
+    let method = req["method"].as_str();
 
     sqlx::query(
-        "INSERT INTO affiliate_payouts (id, affiliate_id, amount, status, period) VALUES ($1, $2, $3, $4, $5)"
+        "INSERT INTO affiliate_payouts (id, affiliate_user_id, amount, method, status) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(id)
-    .bind(affiliate_id)
+    .bind(affiliate_user_id)
     .bind(amount)
+    .bind(method)
     .bind(status)
-    .bind(period)
     .execute(&state.pool)
     .await?;
 

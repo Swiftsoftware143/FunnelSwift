@@ -28,6 +28,22 @@ fn generate_affiliate_id() -> String {
     format!("AFF-{}-{}", date_part, random_part)
 }
 
+/// Explicit column list for `affiliates`.
+///
+/// `SELECT *` dies at runtime the moment a real row is decoded: `commission_rate` is NUMERIC in
+/// the live DB while `Affiliate::commission_rate` is `Option<f64>`, and sqlx-postgres maps f64 to
+/// FLOAT8 only (it has no `impl Type<Postgres>` for numeric) -> `GET /affiliates` answered HTTP 500
+/// "Database error" with `mismatched types ... `NUMERIC`` (kanban t_4385aa2c). Casting keeps the
+/// struct unchanged, exactly like `PLAN_COLS` in plan_handler.rs.
+pub const AFFILIATE_COLS: &str = "id, tenant_id, name, email, industry, \
+    commission_rate::float8 AS commission_rate, tax_docs, is_active, is_visible, tags, \
+    created_at, updated_at";
+
+/// Same treatment for `affiliate_commissions.amount` NUMERIC(10,2) vs
+/// `AffiliateCommission::amount: f64`.
+pub const AFFILIATE_COMMISSION_COLS: &str = "id, affiliate_id, lead_id, \
+    amount::float8 AS amount, status, paid_at, created_at";
+
 pub async fn list_affiliates(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -37,9 +53,10 @@ pub async fn list_affiliates(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let affiliates = sqlx::query_as::<_, Affiliate>(
-        "SELECT * FROM affiliates WHERE tenant_id = $1 ORDER BY created_at DESC",
-    )
+    let affiliates = sqlx::query_as::<_, Affiliate>(&format!(
+        "SELECT {} FROM affiliates WHERE tenant_id = $1 ORDER BY created_at DESC",
+        AFFILIATE_COLS
+    ))
     .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
@@ -110,13 +127,15 @@ pub async fn get_affiliate(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let affiliate =
-        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
-            .bind(&id)
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let affiliate = sqlx::query_as::<_, Affiliate>(&format!(
+        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
+        AFFILIATE_COLS
+    ))
+    .bind(&id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     Ok(Json(affiliate))
 }
@@ -132,13 +151,15 @@ pub async fn update_affiliate(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing =
-        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
-            .bind(&id)
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let existing = sqlx::query_as::<_, Affiliate>(&format!(
+        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
+        AFFILIATE_COLS
+    ))
+    .bind(&id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     let tags_val = req.tags.or(existing.tags);
     let visible_val = req.is_visible.or(existing.is_visible);
@@ -173,17 +194,20 @@ pub async fn get_affiliate_commissions(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     // Verify affiliate exists and belongs to tenant
-    let _ =
-        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
-            .bind(&id)
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let _ = sqlx::query_as::<_, Affiliate>(&format!(
+        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
+        AFFILIATE_COLS
+    ))
+    .bind(&id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
-    let commissions = sqlx::query_as::<_, AffiliateCommission>(
-        "SELECT * FROM affiliate_commissions WHERE affiliate_id = $1 ORDER BY created_at DESC",
-    )
+    let commissions = sqlx::query_as::<_, AffiliateCommission>(&format!(
+        "SELECT {} FROM affiliate_commissions WHERE affiliate_id = $1 ORDER BY created_at DESC",
+        AFFILIATE_COMMISSION_COLS
+    ))
     .bind(&id)
     .fetch_all(&state.pool)
     .await?;
@@ -200,13 +224,15 @@ pub async fn delete_affiliate(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let _existing =
-        sqlx::query_as::<_, Affiliate>("SELECT * FROM affiliates WHERE id = $1 AND tenant_id = $2")
-            .bind(&id)
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let _existing = sqlx::query_as::<_, Affiliate>(&format!(
+        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
+        AFFILIATE_COLS
+    ))
+    .bind(&id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     sqlx::query("DELETE FROM affiliates WHERE id = $1 AND tenant_id = $2")
         .bind(&id)
