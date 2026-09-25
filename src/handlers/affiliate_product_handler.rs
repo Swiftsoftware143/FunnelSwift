@@ -55,10 +55,13 @@ pub struct UpdateProductRequest {
 /// ABSENT means "every row", and that default is the decision, not an oversight: this list backs the
 /// admin screen that owns the checkbox (`LP`, www-app/index.html), so filtering it would hide an
 /// inactive product from the only place that can re-tick it — the switch would be one-way. The
-/// affiliate-facing catalog (`LPR`) is the caller that asks for `is_active=true`, because an inactive
-/// product can never be credited: `tag_logic::attribute_affiliate_on_tags` and
-/// `affiliate_tracking_handler::handle_affiliate_upgrade_event` both resolve a product
-/// `WHERE is_active = true` only.
+/// affiliate-facing catalog (`LPR`) is the caller that asks for `is_active=true`, because a retired
+/// product stops being the thing that gets attributed: both attribution readers resolve a product
+/// `WHERE is_active = true` only — `tag_logic::attribute_affiliate_on_tags` (src/tag_logic.rs:319,
+/// which then writes no commission at all for it) and
+/// `affiliate_tracking_handler::handle_affiliate_upgrade_event`
+/// (src/handlers/affiliate_tracking_handler.rs:207, which binds the resolved id into the
+/// commission's `product_id`, so an inactive product leaves it NULL).
 #[derive(Debug, Deserialize)]
 pub struct ProductListQuery {
     pub is_active: Option<bool>,

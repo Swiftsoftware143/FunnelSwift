@@ -1634,11 +1634,13 @@ function LPAFS(p){
 
 /* Affiliate Products (User — read-only catalog) */
 function LPR(){
-  /* is_active=true: the affiliate-facing catalog shows only products that can actually be credited.
-     Attribution (tag_logic::attribute_affiliate_on_tags, affiliate_tracking_handler) resolves a
-     product WHERE is_active = true only, so a retired product is not promotable. The ADMIN list
-     (LP above) deliberately keeps the unfiltered route — it is the only screen that can re-tick a
-     product, so hiding inactive rows there would make the checkbox one-way. */
+  /* is_active=true: the affiliate-facing catalog offers only products that are still the thing being
+     promoted and attributed. Both attribution readers resolve a product WHERE is_active = true only
+     (tag_logic::attribute_affiliate_on_tags writes no commission for a retired one;
+     affiliate_tracking_handler::handle_affiliate_upgrade_event leaves the commission's product_id
+     NULL), so a retired product must not be offered here. The ADMIN list (LP above) deliberately
+     keeps the unfiltered route — it is the only screen that can re-tick a product, so hiding
+     inactive rows there would make the checkbox one-way. */
   api("/api/v1/affiliate-products?is_active=true").then(function(d){
     var all=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Affiliate Products ('+all.length+')</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">Products you can promote as an affiliate. Contact admin about adding new products.</p><div id="lpr-list"></div></div>';
