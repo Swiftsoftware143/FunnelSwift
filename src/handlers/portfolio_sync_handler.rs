@@ -31,8 +31,8 @@ pub async fn portfolio_sync_internal(
         .get("x-internal-key")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if !ct_eq(key, &state.internal_sync_key) {
-        return Err(AppError::Forbidden("Invalid internal key".into()));
+    if state.internal_sync_key.is_empty() || !ct_eq(key, &state.internal_sync_key) {
+        return Err(AppError::Unauthorized("Invalid internal key".into()));
     }
 
     let action = body

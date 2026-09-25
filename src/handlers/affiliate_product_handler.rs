@@ -324,8 +324,8 @@ pub async fn handle_cross_app_plan_sync(
         .get("x-internal-key")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if key != state.internal_sync_key {
-        return Err(AppError::Forbidden("Invalid internal key".into()));
+    if state.internal_sync_key.is_empty() || key != state.internal_sync_key {
+        return Err(AppError::Unauthorized("Invalid internal key".into()));
     }
 
     let plan_name = payload["plan_name"].as_str().unwrap_or("Unknown Plan");
