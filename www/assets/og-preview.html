@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FunnelSwift OG</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter','Nimbus Sans','DejaVu Sans',sans-serif;width:1200px;height:630px;overflow:hidden}
+.bg{width:1200px;height:630px;background:linear-gradient(135deg,#0a0c10 0%,#0f1520 50%,#0a0c10 100%);position:relative;overflow:hidden}
+.accent-bar{position:absolute;left:0;top:0;width:6px;height:100%;background:linear-gradient(180deg,#6366f1 0%,#a78bfa 100%)}
+.glow1{position:absolute;top:-80px;right:40px;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(99,102,241,0.06) 0%,transparent 70%)}
+.glow2{position:absolute;bottom:-40px;right:200px;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(167,139,250,0.04) 0%,transparent 70%)}
+.content{position:absolute;left:80px;top:64px;z-index:1}
+.badge{display:inline-flex;align-items:center;padding:8px 20px;border:1.5px solid #6366f1;border-radius:100px;background:rgba(99,102,241,0.12);margin-bottom:20px}
+.badge-text{font-size:14px;font-weight:700;color:#6366f1;letter-spacing:0.04em}
+.headline{font-size:52px;font-weight:900;line-height:1.2;color:#ffffff;margin-bottom:6px}
+.headline-accent{font-size:52px;font-weight:900;color:#6366f1;margin-bottom:24px}
+.subtitle{font-size:21px;color:#9ca3af;line-height:1.5;margin-bottom:32px}
+.subtitle2{font-size:21px;color:#9ca3af;margin-bottom:4px}
+.pills{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:36px}
+.pill{border:1.5px solid rgba(99,102,241,0.4);border-radius:100px;padding:8px 20px;background:rgba(99,102,241,0.08);font-size:13px;font-weight:700;color:#6366f1}
+.pill-neutral{border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:#9ca3af;font-size:13px;font-weight:600;border-radius:100px;padding:8px 20px}
+.cta{display:inline-flex;align-items:center;justify-content:center;width:230px;height:56px;border-radius:12px;background:linear-gradient(135deg,#6366f1 0%,#a78bfa 100%);font-size:22px;font-weight:800;color:#ffffff}
+.visual{position:absolute;right:80px;top:120px;opacity:0.5}
+.vis-pipe{background:rgba(99,102,241,0.12);border-radius:8px;margin-bottom:8px;position:relative;overflow:hidden;width:180px;height:18px}
+.vis-fill{position:absolute;left:0;top:0;height:100%;border-radius:8px}
+.f1{width:55%;background:rgba(99,102,241,0.4)}
+.f2{width:78%;background:rgba(167,139,250,0.35)}
+.f3{width:35%;background:rgba(99,102,241,0.25)}
+.vis-card{width:140px;height:100px;border-radius:16px;border:2px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.04);margin-top:16px;display:flex;align-items:center;justify-content:center;font-size:32px;color:rgba(99,102,241,0.2);font-weight:900}
+.dot{position:absolute;border-radius:50%;background:rgba(99,102,241,0.12)}
+.d1{top:40px;right:360px;width:8px;height:8px}
+.d2{top:200px;right:140px;width:6px;height:6px}
+.d3{top:380px;right:320px;width:8px;height:8px}
+.d4{top:500px;right:100px;width:6px;height:6px}
+.branding{position:absolute;left:80px;bottom:54px;display:flex;align-items:center;gap:10px}
+.brand-name{font-size:16px;font-weight:800;color:#ffffff}
+.brand-accent{font-size:16px;font-weight:800;color:#6366f1}
+.brand-domain{font-size:13px;color:#6b7280}
+.outer-border{position:absolute;inset:0;border:1px solid rgba(255,255,255,0.06)}
+</style>
+</head>
+<body>
+<div class="bg">
+  <div class="accent-bar"></div>
+  <div class="glow1"></div>
+  <div class="glow2"></div>
+
+  <div class="content">
+    <div class="badge"><span class="badge-text">AI-POWERED</span></div>
+    <div class="headline">Bio-Links &amp; Digital Cards</div>
+    <div class="headline-accent">That Convert Like Crazy</div>
+    <div class="subtitle">All-in-one lead capture platform — digital business</div>
+    <div class="subtitle2">cards, bio links, mini funnels, and affiliate tools.</div>
+
+    <div class="pills" style="margin-top:28px">
+      <span class="pill">Linktree Alternative</span>
+      <span class="pill">Bio.Link Alternative</span>
+      <span class="pill-neutral">ClickFunnels</span>
+      <span class="pill-neutral">Carrd</span>
+      <span class="pill-neutral">Beacons</span>
+    </div>
+
+    <div class="cta">Start Free  &rarr;</div>
+  </div>
+
+  <!-- Pipeline visual bars -->
+  <div class="visual">
+    <div class="vis-pipe"><div class="vis-fill f1"></div></div>
+    <div class="vis-pipe"><div class="vis-fill f2"></div></div>
+    <div class="vis-pipe"><div class="vis-fill f3"></div></div>
+    <div class="vis-card">📊</div>
+  </div>
+
+  <!-- Dots -->
+  <div class="dot d1"></div>
+  <div class="dot d2"></div>
+  <div class="dot d3"></div>
+  <div class="dot d4"></div>
+
+  <div class="branding">
+    <span class="brand-name">Funnel</span><span class="brand-accent">Swift</span>
+    <span class="brand-domain">funnelswift.net</span>
+  </div>
+
+  <div class="outer-border"></div>
+</div>
+</body>
+</html>
