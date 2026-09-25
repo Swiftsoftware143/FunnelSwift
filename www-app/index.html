@@ -1828,7 +1828,8 @@ function LA(){
   if(!U||!U.is_admin) return;
   api("/api/v1/affiliates").then(function(d){
     var all=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>Affiliates ('+all.length+')</h3><div id="la-search-wrap" style="margin-bottom:12px"></div><div id="la-list"></div></div>';
+    $("ct").innerHTML='<div class="cc"><h3>Affiliates ('+all.length+')</h3><div id="la-search-wrap" style="margin-bottom:12px"></div><div id="la-list"></div></div><div class="cc" id="la-ref"><p style="color:#64748b;padding:10px">Loading referral signups…</p></div>';
+    LREF();
     
     var search=El("input",{style:"width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px",placeholder:"Search affiliates by name, email, or ID..."});
     search.oninput=function(){
@@ -1856,6 +1857,44 @@ function LA(){
       tbl.appendChild(tr);
     });
     $("la-list").appendChild(tbl);
+  });
+}
+
+/* === REFERRAL SIGNUPS ===
+   THE reader for referral_tracking (kanban t_66cf5241). POST /api/v1/auth/signup has always written
+   one row per signup that arrived with an affiliate_code, and nothing ever read the table back: no
+   count, no report, no page. This panel is that reader - the per-code count plus the signups it
+   counted, from GET /api/v1/affiliate-referrals. */
+function LREF(){
+  var box=document.getElementById("la-ref"); if(!box) return;
+  api("/api/v1/affiliate-referrals").then(function(d){
+    d=d||{};
+    var total=d.total_signups||0, codes=d.by_code||[], recent=d.recent||[];
+    var h='<h3>Referral Signups (<span id="lref-total">'+total+'</span>)</h3>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:8px">Signups that arrived with an affiliate code (the <code>?ref=</code> link), counted per code.'
+      +' Your code: <code id="lref-code">'+X(d.affiliate_code||"none")+'</code>'
+      +(d.share_url?' \u2014 <a href="'+X(d.share_url)+'" target="_blank" rel="noopener">share link</a>':'')+'</p>';
+    if(!total){
+      h+='<p style="color:#64748b;padding:10px" id="lref-empty">No referral signups yet. A signup through a referral link appears here.</p>';
+    } else {
+      h+='<div id="lref-codes"><table><tr><th>Code</th><th>Signups</th><th>Last signup</th><th>Owner</th></tr>';
+      codes.forEach(function(c){
+        var owner=c.affiliate?(X(c.affiliate.name||"-")+' <span style="color:#64748b">(affiliate '+X(c.affiliate.affiliate_id||"")+')</span>')
+                             :(c.referrer_tenant?X(c.referrer_tenant.name||"-"):'<span style="color:#b45309">unresolved</span>');
+        h+='<tr><td><code>'+X(c.referrer_code||"-")+'</code></td><td><strong>'+X(String(c.signups))+'</strong></td><td>'+X(c.last_signup_at||"-")+'</td><td>'+owner+'</td></tr>';
+      });
+      h+='</table></div>';
+      if(recent.length){
+        h+='<div id="lref-recent" style="margin-top:12px"><table><tr><th>Referred signup</th><th>Code</th><th>When</th></tr>';
+        recent.forEach(function(r){
+          h+='<tr><td>'+X(r.referred_email||"-")+(r.referred_tenant_name?' <span style="color:#64748b">('+X(r.referred_tenant_name)+')</span>':'')+'</td><td><code>'+X(r.referrer_code||"-")+'</code></td><td>'+X(r.created_at||"-")+'</td></tr>';
+        });
+        h+='</table></div>';
+      }
+    }
+    box.innerHTML=h;
+  }).catch(function(){
+    box.innerHTML='<h3>Referral Signups</h3><p style="color:#b91c1c;padding:10px">Could not load referral signups.</p>';
   });
 }
 

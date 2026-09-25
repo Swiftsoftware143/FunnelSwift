@@ -7,6 +7,7 @@ pub mod affiliate_lead_handler;
 pub mod affiliate_payout_handler;
 pub mod affiliate_portal_handler;
 pub mod affiliate_product_handler;
+pub mod affiliate_referral_handler;
 pub mod affiliate_tracking_handler;
 pub mod api_key_handler;
 pub mod bulk_handler;
