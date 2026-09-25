@@ -75,7 +75,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/f/:slug/unlock", post(kinetic_handler::unlock_card))
         .route("/h/:slug/unlock", post(kinetic_handler::unlock_card))
         .route("/thank/:slug/unlock", post(kinetic_handler::unlock_card))
-        .route("/track/click", get(kinetic_handler::track_click))
+        // NOTE: GET /track/click was removed (kanban t_65849ce9). It was a no-op stub
+        // (persisted nothing, answered a constant `{}`) with zero callers in src/ or in any
+        // served www*/ root, while the README advertised it as "Public click tracking" — the
+        // only remaining claim it worked. Real click tracking is POST /card/:id/track with
+        // event_type=click, which the card page's own inline tracker calls and which writes
+        // kinetic_card_events. See src/handlers/card_analytics_handler.rs.
         // Default
         .route(
             "/",

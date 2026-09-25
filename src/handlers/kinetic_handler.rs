@@ -1145,9 +1145,10 @@ pub async fn submit_lead(
 ) -> Json<Value> {
     Json(json!({"message": "Lead submitted", "slug": slug}))
 }
-pub async fn track_click(State(_state): State<AppState>) -> Json<Value> {
-    Json(json!({}))
-}
+// track_click (GET /track/click) was removed here — kanban t_65849ce9. It was a no-op stub
+// that persisted nothing and answered a constant `{}`, with zero callers in src/ or in any
+// served www*/ root. Click tracking is POST /card/:id/track (event_type=click), handled by
+// card_analytics_handler::track_card_event.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Card password gate (`has_card_gating` — Suite + Agency)

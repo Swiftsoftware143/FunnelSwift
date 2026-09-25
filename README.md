@@ -159,7 +159,6 @@ All routes are under `/api/v1/`. 161 endpoints total.
 | GET | `/api/v1/incentiveswift/config` | IncentiveSwift config |
 | GET | `/funnel/:slug` | Public funnel page |
 | POST | `/k/:slug/lead` | Kinetic card lead submit |
-| GET | `/track/click` | Public click tracking |
 
 ## Deployment
 
