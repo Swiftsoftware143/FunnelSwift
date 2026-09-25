@@ -173,8 +173,24 @@ pub async fn portfolio_sync(
             "IncentiveSwift",
         ),
     ];
+    // One client for all five legs, with a per-leg timeout: each leg used to build its own
+    // `reqwest::Client::new()` with no timeout, so one hung receiver stalled this route forever
+    // (kanban t_fe17480d). 5s matches CoreSwift-CRM's broadcast_portfolio_sync.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::error!("Portfolio sync: could not build the HTTP client: {}", e);
+            reqwest::Client::new()
+        });
+    // Per-leg result, carried in the response (kanban t_fe17480d). The route used to answer
+    // {"status":"synced"} with HTTP 200 no matter how many legs failed, and a failed leg was only a
+    // warn line naming the app and status — which is how two dead receivers went unnoticed for
+    // months. A caller can now tell full success from partial success without reading logs.
+    let mut legs: Vec<Value> = Vec::with_capacity(apps.len());
+    let mut failed: Vec<String> = Vec::new();
     for (url, app_name) in apps {
-        match reqwest::Client::new()
+        match client
             .post(url)
             .header("x-internal-key", key)
             .header("Content-Type", "application/json")
@@ -183,19 +199,79 @@ pub async fn portfolio_sync(
             .await
         {
             Ok(resp) => {
-                let status = resp.status();
-                if !status.is_success() {
-                    tracing::warn!("Portfolio sync to {} returned {}", app_name, status);
+                let http_status = resp.status();
+                if http_status.is_success() {
+                    legs.push(json!({"app": app_name, "ok": true, "status": http_status.as_u16()}));
+                } else {
+                    // Cap what a receiver can put in the log line / the response body.
+                    let detail: String = resp
+                        .text()
+                        .await
+                        .unwrap_or_default()
+                        .trim()
+                        .chars()
+                        .take(200)
+                        .collect();
+                    tracing::error!(
+                        "Portfolio sync to {} REJECTED: HTTP {} — {}",
+                        app_name,
+                        http_status,
+                        detail
+                    );
+                    failed.push(app_name.to_string());
+                    legs.push(json!({
+                        "app": app_name,
+                        "ok": false,
+                        "status": http_status.as_u16(),
+                        "error": format!("HTTP {}: {}", http_status, detail)
+                    }));
                 }
             }
             Err(e) => {
-                tracing::warn!("Portfolio sync to {} failed: {}", app_name, e);
+                // Transport failure (refused / timeout / bad body) — distinct from a rejection.
+                let detail: String = e.to_string().chars().take(200).collect();
+                tracing::error!(
+                    "Portfolio sync to {} FAILED (transport): {}",
+                    app_name,
+                    detail
+                );
+                failed.push(app_name.to_string());
+                legs.push(json!({
+                    "app": app_name,
+                    "ok": false,
+                    "error": format!("transport: {}", detail)
+                }));
             }
         }
     }
+    let legs_failed = failed.len();
+    let legs_synced = legs.len() - legs_failed;
+    // Same class of success answer as before when every leg lands ("synced"); a partial fan-out now
+    // says so in `status` and lists the legs that failed. HTTP stays 200 either way: the tenant, its
+    // plan subscription, its user and its portfolio row are already committed above, so the fan-out
+    // outcome is a body-level fact, not a reason to fail the caller's request.
+    let sync_status = if legs_failed == 0 {
+        "synced"
+    } else {
+        "partial"
+    };
 
     Ok(Json(json!({
-        "status": "synced",
+        "status": sync_status,
+        "legs_synced": legs_synced,
+        "legs_failed": legs_failed,
+        "failed": failed,
+        "legs": legs,
+        "message": if legs_failed == 0 {
+            format!("Synced to all {} receivers", legs.len())
+        } else {
+            format!(
+                "Synced to {}/{} receivers — failed: {}",
+                legs_synced,
+                legs.len(),
+                failed.join(", ")
+            )
+        },
         "id": sync_id.to_string(),
         "name": name,
         "email": email,
