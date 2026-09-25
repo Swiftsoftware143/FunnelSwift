@@ -151,9 +151,36 @@ fn extract_domain_from_url(url: &str) -> Option<String> {
     Some(domain.to_string())
 }
 
+/// Country of the connection, taken from the edge that terminated it (kanban t_0534f248).
+///
+/// `kinetic_card_locations` shipped in migration 028 with a unique index built on
+/// `(card_id, country, COALESCE(region,''), COALESCE(city,''))` and two readers
+/// (`get_card_analytics`, `get_tenant_analytics`) — but no writer anywhere in the fleet,
+/// so "🌍 Top Locations" could never populate. Cloudflare terminates every public request
+/// for this app, and Cloudflare sets `CF-IPCountry` (ISO-3166 alpha-2) on all plans, so the
+/// country costs nothing: no new dependency, no mmdb in the image, no licence, and the
+/// visitor's IP is still never stored (mig 028's "Location (from IP — anonymous)" intent).
+/// City/region stay NULL — Cloudflare only exposes those on Enterprise, and the index was
+/// written NULL-safe precisely so a country-only row is a first-class row.
+///
+/// Only a well-formed 2-letter code is accepted, so a client cannot plant arbitrary text
+/// here; `XX` is Cloudflare's "unknown" and `T1` its Tor marker, neither of which is a country.
+fn edge_country(headers: &axum::http::HeaderMap) -> Option<String> {
+    for name in ["cf-ipcountry", "x-vercel-ip-country", "x-country-code"] {
+        if let Some(raw) = headers.get(name).and_then(|v| v.to_str().ok()) {
+            let code = raw.trim().to_ascii_uppercase();
+            if code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase()) && code != "XX" {
+                return Some(code);
+            }
+        }
+    }
+    None
+}
+
 pub async fn track_card_event(
     Path(card_id): Path<Uuid>,
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<TrackCardEventRequest>,
 ) -> (axum::http::StatusCode, Json<serde_json::Value>) {
     // Find tenant from card
@@ -203,9 +230,13 @@ pub async fn track_card_event(
     let ua = payload.user_agent.clone().unwrap_or_default();
     let (browser_family, os_family) = parse_user_agent(&ua);
 
+    // Geography comes from the edge that terminated the connection, never from the payload
+    // (kanban t_0534f248) — see `edge_country`.
+    let country = edge_country(&headers);
+
     // Insert raw event
     sqlx::query(
-        "INSERT INTO kinetic_card_events (id, card_id, tenant_id, event_type, utm_source, utm_medium, utm_campaign, utm_content, utm_term, user_agent, browser_family, os_family, referrer_url, device_type, screen_size, click_label, click_url, ip_address, session_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)"
+        "INSERT INTO kinetic_card_events (id, card_id, tenant_id, event_type, utm_source, utm_medium, utm_campaign, utm_content, utm_term, user_agent, browser_family, os_family, referrer_url, device_type, screen_size, click_label, click_url, ip_address, session_id, country) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)"
     )
     .bind(event_id)
     .bind(card_id)
@@ -226,6 +257,7 @@ pub async fn track_card_event(
     .bind(&payload.click_url)
     .bind(Option::<String>::None) // ip_address — skip for privacy
     .bind(Option::<String>::None) // session_id
+    .bind(&country) // country — from CF-IPCountry (kanban t_0534f248)
     .execute(&state.pool)
     .await
     .map_err(|e| tracing::error!("track_card_event insert error: {:?}", e))
@@ -254,6 +286,28 @@ pub async fn track_card_event(
     .await
     .map_err(|e| tracing::error!("daily_stats insert error: {:?}", e))
     .unwrap_or_default();
+
+    // Upsert the location rollup — the ONE writer of kinetic_card_locations (kanban t_0534f248).
+    // Same shape as the daily_stats arm above: one row per key, incremented in place on the
+    // table's own NULL-safe unique index (card_id, country, COALESCE(region,''), COALESCE(city,'')).
+    // Only for a `view`, matching what `view_count` and the daily stats' `views` column mean.
+    // A row with no country is skipped rather than written with a placeholder: the admin
+    // "Top Locations" block reads real geography, and a starved table is honest where
+    // "Unknown" rows would be inventable. country is NOT NULL, so there is no third option.
+    if is_view {
+        if let Some(cc) = country.as_deref() {
+            sqlx::query(
+                "INSERT INTO kinetic_card_locations (id, card_id, tenant_id, country, region, city, view_count, last_seen) VALUES (gen_random_uuid(), $1, $2, $3, NULL, NULL, 1, now()) ON CONFLICT (card_id, country, COALESCE(region,''), COALESCE(city,'')) DO UPDATE SET view_count = kinetic_card_locations.view_count + 1, last_seen = now()"
+            )
+            .bind(card_id)
+            .bind(tenant_id)
+            .bind(cc)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| tracing::error!("locations upsert error: {:?}", e))
+            .unwrap_or_default();
+        }
+    }
 
     (
         axum::http::StatusCode::OK,
