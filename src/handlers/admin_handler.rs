@@ -165,7 +165,11 @@ pub async fn portfolio_sync(
             "CoreSwift CRM",
         ),
         (
-            "http://localhost:8083/api/internal/portfolio-companies",
+            // IncentiveSwift serves this handler at /api/v1/internal/portfolio-companies
+            // (src/main.rs); the /api/internal/... path this list used to carry is a CoreSwift
+            // namespace and answered 404, so the IncentiveSwift leg of every tenant sync never
+            // landed a row (kanban t_8b887f91 — measured 404 before the fix).
+            "http://localhost:8083/api/v1/internal/portfolio-companies",
             "IncentiveSwift",
         ),
     ];
