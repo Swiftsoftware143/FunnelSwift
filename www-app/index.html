@@ -155,6 +155,25 @@ tr:hover{background:#f8fafc}
 
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
 
+/* kanban t_2f2c184b: the two nav accordions are collapsed by CSS (`.nav-acc-body{max-height:0;
+   overflow:hidden}`, only `.nav-accordion.open` reveals the links) and their headers call `TA(...)`
+   — which was defined ONLY in dashboard.js, a file nothing serves (the census in t_382c37c0 measured
+   0 references to it under /opt/swift/nginx). So in the served shell, clicking a header threw
+   `ReferenceError: TA is not defined` and five admin screens — System Tags, System Tag Groups,
+   Affiliates, Affiliate Tiers, Affiliate Payouts — were unreachable from the nav. Found by driving
+   the "System Tag Groups" Edit button, which is what this card had to prove live. Behaviour taken
+   from the dead copy so the two do not diverge: toggle, and remember the choice. */
+function TA(group){
+  var a=document.getElementById("acc-"+group);
+  if(a){ a.classList.toggle("open"); try{localStorage.setItem("fs_acc_"+group,a.classList.contains("open")?"1":"0")}catch(e){} }
+}
+function initAccordions(){
+  ["affiliates","tags"].forEach(function(g){
+    try{ if(localStorage.getItem("fs_acc_"+g)==="1"){var a=document.getElementById("acc-"+g); if(a) a.classList.add("open");} }catch(e){}
+  });
+}
+initAccordions();
+
 /* ═══ INLINE HELP SYSTEM — slide-out panel with per-section tips ═══ */
 var helpContent={
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
@@ -196,14 +215,20 @@ function api(p,o){
   o.headers["Content-Type"]="application/json";
   if(T) o.headers["Authorization"]="Bearer "+T;
   return fetch(p,o).then(function(r){
+    // kanban t_2f2c184b: the error arms below used to run `r.json()` unconditionally. A non-ok
+    // response with an EMPTY body — exactly what an unrouted path gets (axum answers a router-level
+    // 404/405 with no body) — then rejected with `SyntaxError: Unexpected end of JSON input`, so the
+    // caller showed nothing at all and the defect read as "the button does nothing". Read the body as
+    // text, parse when it parses, and fall back to the status line.
+    function errBody(){return r.text().then(function(t){if(!t)return null;try{return JSON.parse(t)}catch(e){return null}},function(){return null});}
     if(r.status===401){T="";localStorage.removeItem("ws_fs_token");window.location.href="/login";throw Error("auth")}
     // kanban t_af890bbf: a retired workspace (or a deleted one) is a session-ENDING condition, not
     // a per-click error - clear the token and let /login explain it, instead of leaving the user on
     // a page that can never load anything. Keyed on the API's own message, not on 403 as a class
     // (403 is also "Admin only" and friends, which must NOT log anyone out).
-    if(r.status===403) return r.json().then(function(e){var t=(e&&e.error)||"";if(/workspace is inactive|no longer exists/i.test(t)){T="";try{localStorage.removeItem("ws_fs_token")}catch(ex){}window.location.href="/login";throw Error("auth")}throw Error(t||"Error 403")});
-    if(r.status===402){return r.json().then(function(e){KCUP(e.error||"Plan limit reached. Upgrade to continue.");throw Error("upgrade_required")})}
-    if(!r.ok) return r.json().then(function(e){throw Error(e.error||e.message||"Error "+r.status)});
+    if(r.status===403) return errBody().then(function(e){var t=(e&&e.error)||"";if(/workspace is inactive|no longer exists/i.test(t)){T="";try{localStorage.removeItem("ws_fs_token")}catch(ex){}window.location.href="/login";throw Error("auth")}throw Error(t||"Error 403")});
+    if(r.status===402){return errBody().then(function(e){KCUP((e&&e.error)||"Plan limit reached. Upgrade to continue.");throw Error("upgrade_required")})}
+    if(!r.ok) return errBody().then(function(e){throw Error((e&&(e.error||e.message))||("Error "+r.status+(r.statusText?" "+r.statusText:"")))});
     return r.json();
   });
 }
@@ -357,15 +382,24 @@ function LDf(q){
     r.style.display=match?"":"none";
   });
 }
+/* kanban t_2f2c184b: ONE status list for BOTH leads controls. The row badge's quick change used to
+   fall back to its own Title-case ["New","Contacted","Qualified","Proposal"] — a fourth value space —
+   while the Edit modal wrote lowercase, so the control could not even offer the value the row holds
+   (patched around in t_382c37c0 by appending it) and a save from it would have written a Title-case
+   status into a lowercase column. It now offers exactly what the app's own working writer, the Edit
+   modal, offers. `window._ld_stages` stays the override hook for a tenant's configured pipeline;
+   which space is canonical is kanban t_adf187f9. */
+var LD_STATUS_DEFAULT=["new","contacted","qualified","converted","lost"];
+function ldStatuses(cur){
+  var s=(window._ld_stages&&window._ld_stages.length)?window._ld_stages.slice():LD_STATUS_DEFAULT.slice();
+  // the row's own value must be REPRESENTABLE in the control that edits it (t_382c37c0): when no
+  // option matches, the browser falls back to the FIRST one, so a save without touching the field
+  // would rewrite the status.
+  if(cur&&s.indexOf(cur)<0) s=s.concat([cur]);
+  return s;
+}
 function LDC(id,currentStatus){
-  var stages=window._ld_stages||["New","Contacted","Qualified","Proposal"];
-  if(!stages.length) stages=["New","Contacted","Qualified"];
-  // kanban t_382c37c0: the row's own value must be REPRESENTABLE in the control that edits it.
-  // When no option matches, the browser falls back to the FIRST one, so a save without touching the
-  // field rewrites the stage; `El()` no longer marks every option selected, which is the other half.
-  // (leads.status is stored lowercase while this stage list is the Title-case pipeline — the two
-  // value spaces do not overlap yet, so the stored value is appended; carded separately.)
-  if(currentStatus&&stages.indexOf(currentStatus)<0) stages=stages.concat([currentStatus]);
+  var stages=ldStatuses(currentStatus);
   var st=El("select",{style:"width:100%;padding:6px"});
   stages.forEach(function(s){st.appendChild(El("option",{value:s,selected:s===currentStatus?"selected":null},s));});
   O("Change Status",function(){
@@ -375,6 +409,9 @@ function LDC(id,currentStatus){
     d.appendChild(st); $("mb").appendChild(d);
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){
+      // kanban t_2f2c184b: this path had no route (empty-bodied 404). It is routed now, as a
+      // STATUS-ONLY write — deliberately not `PUT /leads/:id`, which rewrites 15 columns from one
+      // field and used to NULL `leads.tags` when the body omitted them.
       api("/api/v1/leads/"+id+"/status",{method:"PUT",body:JSON.stringify({status:st.value})}).then(function(){C();S("leads")}).catch(function(e){showMsg(e.message||"Failed","me")});
     }},"Save"));
   });
@@ -424,8 +461,9 @@ function RF(id,l){
     // touching Status rewrote the lead's stage. `El()` now skips null attributes, and a stored status
     // outside this list (the quick-change control can write one) is offered rather than falling
     // through to the first option.
-    var sts=["new","contacted","qualified","converted","lost"];
-    if(l.status&&sts.indexOf(l.status)<0) sts=sts.concat([l.status]);
+    // kanban t_2f2c184b: the list itself is now the shared `ldStatuses()`, so the Edit modal and the
+    // row badge write the same values instead of two different spaces.
+    var sts=ldStatuses(l.status);
     sts.forEach(function(s){
       fst.appendChild(El("option",{value:s,selected:l.status===s?"selected":null},s));
     });
@@ -1286,7 +1324,7 @@ function LG(){
       var tr=El("tr");
       tr.innerHTML='<td><strong>'+X(g.name)+'</strong></td><td>'+(g.is_collapsible?"Yes":"No")+'</td><td>'+(g.sort_order||0)+'</td><td></td>';
       var td=tr.querySelectorAll("td")[3];
-      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFG(g.id,false)}},"Edit"));
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFG(g.id,false,g)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){if(confirm("Delete group?")) api("/api/v1/tag-groups/"+g.id,{method:"DELETE"}).then(function(){S("tg")})}},"Del"));
       tbl.appendChild(tr);
@@ -2107,6 +2145,10 @@ function LSG(){
     var tags=Array.isArray(r[1])?r[1]:(r[1]&&r[1].data?r[1].data:[]);
     
     // Backend doesn't return is_system for tag groups, so admin sees ALL groups
+    // (kanban t_2f2c184b: verified there is no such column — `tag_groups` is
+    // id/tenant_id/name/is_collapsible/sort_order/created_at in migrations/000001_initial.sql and
+    // src/models/tag_group.rs; only `tags` carries is_system. So this screen is "all groups, admin
+    // view" and the SPA must not send an is_system flag it expects the API to persist.)
     // Count tags per group
     var tgCount={};
     tags.forEach(function(t){var g=t.group_id;if(g)tgCount[g]=(tgCount[g]||0)+1;});
@@ -2136,7 +2178,10 @@ function LSG(){
         tr.setAttribute("data-name",g.name||"");
         tr.innerHTML='<td><strong>'+X(g.name)+'</strong></td><td>'+cnt+' tags</td><td>'+(g.sort_order||0)+'</td><td>'+(g.created_at?String(g.created_at).slice(0,10):"-")+'</td><td></td>';
         var td=tr.querySelectorAll("td")[4];
-        td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFG(g.id,false)}},"Edit"));
+        // kanban t_2f2c184b: pass the screen's own context (isSystem=true) and the row object. The
+        // screen's label, warning and post-save tab are the "System" ones, and without the object the
+        // Edit button had to fetch a path the router does not serve (405, no modal).
+        td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFG(g.id,true,g)}},"Edit"));
         td.appendChild(document.createTextNode(" "));
         td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){if(confirm("Delete group \""+X(g.name)+"\"? Tags will be ungrouped.")) api("/api/v1/tag-groups/"+g.id,{method:"DELETE"}).then(function(){S("sgroups")});}},"Del"));
         tbl.appendChild(tr);
@@ -2285,9 +2330,26 @@ function LM(){
   });
 }
 /* === Updated group edit — handle system flag === */
-function MFG(id,isSystem){
-  if(id) api("/api/v1/tag-groups/"+id).then(function(g){RFG(id,g,isSystem)});
-  else RFG(null,{is_collapsible:true,sort_order:0,is_system:!!isSystem},isSystem);
+/* kanban t_2f2c184b: this button used to fetch `GET /api/v1/tag-groups/:id` — a path the router does
+   NOT serve (only PUT/DELETE), so the call answered an empty-bodied 405, `api()` threw a SyntaxError
+   on the empty body and NO modal ever opened, on both the "My Tag Groups" and "System Tag Groups"
+   screens. Fixed on the CALLER instead of by adding a detail route: the list this button lives in is
+   `SELECT *` and already carries every field the modal renders (name, is_collapsible, sort_order —
+   tag_groups has no other columns), so a refetch could only disagree with the row the user clicked.
+   `g` is the row object; with none (an out-of-band id) it falls back to the list route, which IS
+   served. `isSystem` keeps the screen's context: title, warning and which tab the save returns to. */
+function MFG(id,isSystem,g){
+  if(id){
+    if(g) return RFG(id,g,isSystem);
+    api("/api/v1/tag-groups").then(function(d){
+      var a=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
+      var found=a.filter(function(x){return String(x.id)===String(id)})[0];
+      if(!found){showMsg("Tag group not found","me");return;}
+      RFG(id,found,isSystem);
+    }).catch(function(e){showMsg(e.message||"Failed","me")});
+    return;
+  }
+  RFG(null,{is_collapsible:true,sort_order:0},isSystem);
 }
 function RFG(id,g,isSystem){
   O(id?"Edit "+((g.is_system||isSystem)?"System Group":"Tag Group"):"Create "+((g.is_system||isSystem)?"System Group":"Tag Group"), function(){

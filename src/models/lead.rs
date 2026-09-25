@@ -98,3 +98,10 @@ pub struct AssignRequest {
 pub struct StageRequest {
     pub stage: String,
 }
+
+/// `PUT /api/v1/leads/:id/status` (kanban t_2f2c184b) — the leads row badge's "Change Status"
+/// quick-change control. `leads.status` is its own column; this is NOT the `stage` write.
+#[derive(Debug, Deserialize)]
+pub struct LeadStatusRequest {
+    pub status: String,
+}

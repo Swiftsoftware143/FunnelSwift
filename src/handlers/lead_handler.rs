@@ -293,9 +293,14 @@ pub async fn update_lead(
     let score = req.score.or(existing.score);
     let notes = req.notes.or(existing.notes);
     let assigned_to = req.assigned_to.or(existing.assigned_to);
+    // kanban t_2f2c184b: every other column here resolves request-then-stored, but `tags` was bound
+    // from the REQUEST only — so any body that omitted `tags` (the leads Edit modal omits it, and any
+    // one-field caller does) NULLed a real, populated column: `leads.tags` is what `assign_lead_tags`
+    // and `tag_logic` merge into, and 11 of the 53 live rows carry a value. Keep it when it is not sent.
     let tags = req
         .tags
-        .map(|t| serde_json::Value::Array(t.into_iter().map(serde_json::Value::String).collect()));
+        .map(|t| serde_json::Value::Array(t.into_iter().map(serde_json::Value::String).collect()))
+        .or(existing.tags);
     let custom_fields = req.custom_fields.or(existing.custom_fields);
 
     sqlx::query(
@@ -446,6 +451,60 @@ pub async fn update_lead_stage(
 pub struct LeadTagsRequest {
     pub tags: Vec<String>,
     pub triggered_by: Option<String>,
+}
+
+/// PUT /api/v1/leads/:id/status — kanban t_2f2c184b.
+///
+/// The leads row badge's "Change Status" control saves here. It called this path before the route
+/// existed, so every save was an empty-bodied 404 and the modal was display-only (invisible in the
+/// SPA because `api()` ran `r.json()` on the empty body and threw a SyntaxError).
+///
+/// Deliberately a STATUS-ONLY write. The alternative — pointing the control at `PUT /leads/:id` —
+/// rewrites 15 columns from one field and is lossy (`update_lead` bound `tags` from the request
+/// only, so a body without `tags` NULLed a real column). One control, one column.
+///
+/// The value VOCABULARY is not enforced here: which space is canonical for a lead status
+/// (`leads.status` lowercase vs the tenant's Title-case `tenant_settings.lead_stages`) is decided
+/// by kanban t_adf187f9, and if a value-space check belongs anywhere it belongs in one place for
+/// both leads controls. What IS enforced is what the column physically is: `VARCHAR(50)`, so a
+/// blank or over-long value gets a 400 naming the limit instead of a 500 from the database.
+pub async fn update_lead_status(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LeadStatusRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let status = req.status.trim().to_string();
+    if status.is_empty() {
+        return Err(AppError::BadRequest("status is required".into()));
+    }
+    if status.chars().count() > 50 {
+        return Err(AppError::BadRequest(
+            "status must be 50 characters or fewer".into(),
+        ));
+    }
+
+    let res = sqlx::query(
+        "UPDATE leads SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+    )
+    .bind(&status)
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("Lead not found".into()));
+    }
+
+    Ok(Json(
+        json!({"message": "Lead status updated", "status": status}),
+    ))
 }
 
 pub async fn assign_lead_tags(

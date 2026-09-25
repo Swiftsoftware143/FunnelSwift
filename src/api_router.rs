@@ -122,6 +122,13 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/leads/:id/tags",
             post(lead_handler::assign_lead_tags),
         )
+        // kanban t_2f2c184b: the leads row badge's "Change Status" quick change saved to this path
+        // and the router never served it (empty-bodied 404, the modal was display-only). STATUS only
+        // — `stage` is a different column with its own route above.
+        .route(
+            "/api/v1/leads/:id/status",
+            put(lead_handler::update_lead_status),
+        )
         .route(
             "/api/v1/tags",
             get(tag_handler::list_tags).post(tag_handler::create_tag),
