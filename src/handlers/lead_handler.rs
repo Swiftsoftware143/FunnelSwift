@@ -281,10 +281,13 @@ pub async fn update_lead(
     let phone = req.phone.clone().or(existing.phone.clone());
     let company = req.company.clone().or(existing.company.clone());
     let source = req.source.clone().or(existing.source.clone());
+    // `Lead.status` decodes as Option since kanban t_d5da34d0 (the column is NULLABLE); the
+    // resolved value is unchanged - request, else the stored value, else "active" - and this path
+    // still never binds a NULL, so the update can neither create nor clear the NULL state.
     let status = req
         .status
         .clone()
-        .or(Some(existing.status.clone()))
+        .or(existing.status.clone())
         .unwrap_or_else(|| "active".to_string());
     let stage = req.stage.clone().or(existing.stage.clone());
     let score = req.score.or(existing.score);

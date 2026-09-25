@@ -47,8 +47,15 @@ pub struct UpdateProductRequest {
 #[derive(Debug, sqlx::FromRow)]
 struct AffiliateProductRow {
     pub id: Uuid,
-    pub tenant_id: Uuid,
-    pub name: String,
+    // NULLABLE-DECODED-AS-NON-OPTION (struct), kanban t_d5da34d0. `tenant_id` and `name` have no
+    // DEFAULT (a NULL is real data) so they decode as Option; `is_active` carries DEFAULT true and
+    // keeps its Rust type through COALESCE in the SELECT. `created_at`/`updated_at` are the same
+    // class one layer down: their NULLABILITY is invisible to `fleet-dbtype-audit.py` because the
+    // items are casts (`ap.created_at::timestamp`), and every INSERT in this app omits both
+    // columns, so a NULL is unreachable - but a psql write of NULL used to fail the whole-row
+    // decode of the admin product list, so they are Option too.
+    pub tenant_id: Option<Uuid>,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub price: Option<f64>,
     pub default_commission_rate: Option<f64>,
@@ -60,8 +67,8 @@ struct AffiliateProductRow {
     pub owner_name: Option<String>,
     pub system_tag_id: Option<Uuid>,
     pub system_tag_name: Option<String>,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: chrono::NaiveDateTime,
+    pub created_at: Option<chrono::NaiveDateTime>,
+    pub updated_at: Option<chrono::NaiveDateTime>,
 }
 
 pub async fn list_affiliate_products(
@@ -71,7 +78,7 @@ pub async fn list_affiliate_products(
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let products: Vec<AffiliateProductRow> = sqlx::query_as(
         "SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.price::float8, ap.default_commission_rate::float8,
-                ap.is_active, ap.is_third_party, ap.url, ap.category_id,
+                COALESCE(ap.is_active, true) AS is_active, ap.is_third_party, ap.url, ap.category_id,
                 ap.product_type, ap.owner_name, ap.system_tag_id,
                 t.name AS system_tag_name, ap.created_at::timestamp, ap.updated_at::timestamp
          FROM affiliate_products ap

@@ -13,7 +13,16 @@ pub struct Lead {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub company: Option<String>,
-    pub status: String,
+    // NULLABLE-DECODED-AS-NON-OPTION (struct), kanban t_d5da34d0. `leads.status` is NULLABLE
+    // (DEFAULT 'new') and `Lead` is decoded by FOUR `SELECT *` statements (list / by-id / the
+    // update read / export), so a single NULL status failed the whole-row decode of all four with
+    // "unexpected null; try decoding as an Option". Option is the arm this shape forces: a
+    // `SELECT *` cannot carry a COALESCE and there is no expression item to wrap. No writer can
+    // produce the NULL (create omits the column so the DEFAULT applies, the affiliate and
+    // web-capture inserts bind the literal 'new', the update path falls back to "active"), so this
+    // only changes the JSON of a state the app cannot reach - and the SPA already guards the key
+    // (`l.status || ""`, `l.status && ...`).
+    pub status: Option<String>,
     pub stage: Option<String>,
     pub source: Option<String>,
     pub tags: Option<serde_json::Value>,

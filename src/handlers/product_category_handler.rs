@@ -30,15 +30,22 @@ pub struct UpdateCategoryRequest {
 #[derive(Debug, sqlx::FromRow)]
 struct CategoryRow {
     pub id: Uuid,
-    pub tenant_id: Uuid,
-    pub name: String,
-    pub slug: String,
+    // NULLABLE-DECODED-AS-NON-OPTION (struct), kanban t_d5da34d0. Every column below is NULLABLE,
+    // so ONE row carrying a NULL failed the whole-row decode of this list with "unexpected null;
+    // try decoding as an Option". The three columns with no DEFAULT carry real data when NULL
+    // (the 8 tenant-less seed rows are the live NULL slug/tenant_id population) and decode as
+    // Option; the two DEFAULT'd scalars keep their Rust type through COALESCE in the SELECT;
+    // `created_at` stays Option because a `now()` DEFAULT is an insertion-time fact, not a value
+    // for an unset column (the same call as t_d79eb91c's provider_keys.created_at).
+    pub tenant_id: Option<Uuid>,
+    pub name: Option<String>,
+    pub slug: Option<String>,
     pub description: Option<String>,
     pub sort_order: i32,
     pub is_active: bool,
     // product_categories.created_at is TIMESTAMPTZ; decoding it as NaiveDateTime failed the whole
     // request the moment the tenant had a row (sqlx: TIMESTAMP is not compatible with TIMESTAMPTZ).
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn list_categories(
@@ -47,7 +54,7 @@ pub async fn list_categories(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let categories: Vec<CategoryRow> = sqlx::query_as(
-        "SELECT id, tenant_id, name, slug, description, sort_order, is_active, created_at FROM product_categories WHERE tenant_id = $1 ORDER BY sort_order ASC"
+        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE tenant_id = $1 ORDER BY sort_order ASC"
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
