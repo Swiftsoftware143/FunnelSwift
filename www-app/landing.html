@@ -77,6 +77,7 @@
       nav .links{display:none}
       .features{grid-template-columns:1fr}
       footer .container{grid-template-columns:1fr}
+    }
 /* Signup Modal */
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
 .modal-overlay.active{display:flex}
@@ -100,7 +101,6 @@
 .modal-footer{text-align:center;margin-top:12px;font-size:12px;color:#9ca3af}
 .modal-footer a{color:var(--primary,#f27f2f);text-decoration:none;font-weight:600}
 .modal-footer a:hover{text-decoration:underline}
-    }
   </style>
 </head>
 <body>
@@ -372,7 +372,7 @@ async function handleSignup(e){
   const btn=document.getElementById('signupBtn');const btnText=document.getElementById('signupBtnText');const spinner=document.getElementById('signupBtnSpinner');const err=document.getElementById('signupError');
   const name=document.getElementById('signupName').value.trim();
   const email=document.getElementById('signupEmail').value.trim();
-  const password=docu…yId('signupPassword').value;
+  const password=document.getElementById('signupPassword').value;
   err.classList.remove('show');
   if(!email||!password||!name){err.textContent='Please fill in all fields';err.classList.add('show');return}
   if(password.length<8){err.textContent='Password must be at least 8 characters';err.classList.add('show');return}
@@ -382,8 +382,7 @@ async function handleSignup(e){
     const res=await fetch('/api/v1/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(!res.ok||!data.token){err.textContent=data.message||data.error||'Registration failed';err.classList.add('show');btn.disabled=false;btnText.textContent='Create Free Account';spinner.style.display='none';return}
-    localStorage.setItem('ws_fs_token',data.token);
-    window.location.href='https://app.funnelswift.net/';
+    window.location.href='https://app.funnelswift.net/#token='+encodeURIComponent(data.token);
   }catch(ex){err.textContent='Network error. Please try again.';err.classList.add('show');btn.disabled=false;btnText.textContent='Create Free Account';spinner.style.display='none'}
 }
 </script>
