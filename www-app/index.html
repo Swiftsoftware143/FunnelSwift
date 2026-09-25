@@ -1624,8 +1624,13 @@ function RTN(id,t){
     mb.appendChild(ff("Email", El("input",{id:"fe",value:t.email||""})));
     mb.appendChild(ff("Slug", El("input",{id:"fs",value:t.slug||""})));
     var fst=El("select",{id:"fst"});
-    fst.appendChild(El("option",{value:"active",selected:t.status==="active"?"selected":null},"Active"));
-    fst.appendChild(El("option",{value:"inactive",selected:t.status==="inactive"?"selected":null},"Inactive"));
+    fst.appendChild(El("option",{value:"active"},"Active"));
+    fst.appendChild(El("option",{value:"inactive"},"Inactive"));
+    // kanban t_2a557c30: set the value directly. `El()` writes a null attribute value as the literal
+    // string "null", and a PRESENT `selected` attribute means selected — so BOTH options ended up
+    // with one and the browser kept the last ("Inactive") for every tenant, active ones included.
+    // With `tenants.status` now real, saving that modal without touching Status retired the tenant.
+    fst.value = t.status === "inactive" ? "inactive" : "active";
     mb.appendChild(ff("Status", fst));
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){STN(id)}},(id?"Save":"Create")));
