@@ -712,10 +712,22 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/push/coreswift/user",
             post(coreswift_push::provision_coreswift_user),
         )
-        .route(
-            "/api/v1/push/coreswift/tag",
-            post(coreswift_push::sync_coreswift_tag),
-        )
+        // REMOVED 2026-09-25 (kanban t_ae84b186): POST /api/v1/push/coreswift/tag is gone.
+        // It sent {"event","source_app","tags","tenant_id"} to CoreSwift's
+        // /api/v1/webhooks/cross-app/tag-sync, whose TagSyncRequest also requires
+        // lead{id,name,email,company}, added_tags, removed_tags and triggered_by — the Json
+        // extractor rejected the body before the handler ran, so the route answered
+        // {"status":"error","message":"CoreSwift returned status 422"} on EVERY call.
+        // A tag-only push has no correct payload: CoreSwift's tag sync is lead/contact-scoped
+        // (satisfying it would mean fabricating a CRM contact), its tenant-scoped tag route
+        // (/api/internal/tags) needs a tenant that CoreSwift already knows — and FunnelSwift
+        // tenant ids are not CoreSwift tenant ids (CoreSwift mints one per FunnelSwift tenant
+        // only when a lead first syncs) — and /api/v1/internal/tag-provision writes into a
+        // brand-new tenant, not the caller's. Tag sync already works on the canonical path:
+        // every lead tag change (POST /api/v1/leads/:id/tags, src/handlers/lead_handler.rs)
+        // and plan upgrade (src/tag_logic.rs) fire the full field-complete payload and get 200.
+        // Same class and same treatment as the ADASwift (t_65084d8b) and MissedCallRespondr
+        // (t_8803c75e) legacy-push removals.
         .route(
             "/api/v1/push/coreswift/health",
             get(coreswift_push::coreswift_health),

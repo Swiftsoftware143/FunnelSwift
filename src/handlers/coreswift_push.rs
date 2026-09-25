@@ -1,4 +1,6 @@
-// Legacy cross-app helpers: provision a CoreSwift user, tag sync, health.
+// Legacy cross-app helpers: provision a CoreSwift user, health.
+// The tag push that used to live here was removed 2026-09-25 (kanban t_ae84b186) — see the
+// note where `sync_coreswift_tag` used to be.
 // The CoreSwift LEAD push lives in src/coreswift.rs (the single CoreSwift client for
 // FunnelSwift) and is exposed at /api/v1/integrations/coreswift/push + /api/v1/push/coreswift.
 use crate::auth::middleware::AuthUser;
@@ -70,64 +72,17 @@ pub async fn provision_coreswift_user(
     }
 }
 
-/// Sync a tag to CoreSwift — API endpoint
-pub async fn sync_coreswift_tag(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Json(payload): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let tag = payload["tag"].as_str().unwrap_or("");
-    let coreswift_url = state.coreswift_url.clone();
-    let internal_key = state.internal_sync_key.clone();
-
-    if tag.is_empty() {
-        return Err(crate::error::AppError::BadRequest("tag is required".into()));
-    }
-    if coreswift_url.is_empty() {
-        return Ok(Json(
-            json!({"status":"skipped","message":"CoreSwift URL not configured"}),
-        ));
-    }
-
-    let client = reqwest::Client::new();
-    let url = format!(
-        "{}/api/v1/webhooks/cross-app/tag-sync",
-        coreswift_url.trim_end_matches('/')
-    );
-
-    let sync_payload = serde_json::json!({
-        "event": "tag_sync",
-        "source_app": "funnelswift",
-        "tags": [tag],
-        "tenant_id": auth.tenant_id,
-    });
-
-    match client
-        .post(&url)
-        .header("x-internal-key", &internal_key)
-        .header("Content-Type", "application/json")
-        .json(&sync_payload)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-    {
-        Ok(resp) => {
-            let status = resp.status();
-            if status.is_success() {
-                Ok(Json(
-                    json!({"status":"synced","tag":tag,"message":format!("Tag '{}' synced to CoreSwift",tag)}),
-                ))
-            } else {
-                Ok(Json(
-                    json!({"status":"error","message":format!("CoreSwift returned status {}", status.as_u16())}),
-                ))
-            }
-        }
-        Err(e) => Ok(Json(
-            json!({"status":"error","message":format!("Failed to reach CoreSwift CRM: {}", e)}),
-        )),
-    }
-}
+// Sync a tag to CoreSwift — REMOVED 2026-09-25 (kanban t_ae84b186).
+//
+// This handler POSTed `{"event","source_app","tags","tenant_id"}` to CoreSwift's
+// `/api/v1/webhooks/cross-app/tag-sync`; `TagSyncRequest` also requires
+// `lead{id,name,email,company}`, `added_tags`, `removed_tags` and `triggered_by`, so axum's
+// `Json` extractor refused the body before the handler ran and the route could never succeed
+// (it always answered `{"status":"error","message":"CoreSwift returned status 422"}`). A
+// tag-only request has no correct payload — CoreSwift's tag sync is lead/contact-scoped — and
+// the tag sync already runs on the canonical path: every lead tag change
+// (`/api/v1/leads/:id/tags` -> lead_handler.rs) and plan upgrade (tag_logic.rs) sends the full
+// shape. The route itself was removed from api_router.rs; see the note there.
 
 /// Check CoreSwift health
 pub async fn coreswift_health(

@@ -421,9 +421,15 @@ pub async fn assign_lead_tags(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    // Get current lead tags
+    // Get current lead tags.
+    // `leads.tags` is NULLABLE and 42 of the 53 live rows carry NULL (measured 2026-09-25,
+    // kanban t_ae84b186): decoding it straight into `serde_json::Value` makes sqlx answer
+    // "unexpected null; try decoding as an `Option`" and this route 500ed for 79% of leads —
+    // which is also the route that fires the cross-app tag sync to CoreSwift. COALESCE keeps a
+    // tagless lead readable as an empty tag list (tag_logic.rs already reads the same column as
+    // Option<Value> for the same reason).
     let row = sqlx::query_as::<_, (serde_json::Value,)>(
-        "SELECT tags FROM leads WHERE id = $1 AND tenant_id = $2",
+        "SELECT COALESCE(tags, '[]'::jsonb) FROM leads WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
