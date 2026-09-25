@@ -132,8 +132,21 @@ pub async fn create_card(
         .as_str()
         .or(body["card_type"].as_str())
         .unwrap_or("bio-link");
-    // Mini funnels are a plan-gated card type (has_mini_funnels).
-    if card_type == "mini_funnel" {
+    // kanban t_8151c83f: `card_type` is the card KIND vocabulary (`type`/`card_type`), while the card
+    // EDITOR's Template Type select sends `template_type` and no `type` at all — so `card_type` alone
+    // stored the fallback "bio-link" for every card created from the editor and that control was
+    // decorative on create (measured on the running container: POST {"template_type":"thank_you"}
+    // with no `type` -> row template_type='bio-link'). The explicit template wins when it is given;
+    // a client that only sends `type`/`card_type` keeps exactly the previous behaviour.
+    let template_type = body["template_type"]
+        .as_str()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or(card_type);
+    // Mini funnels are a plan-gated card type (has_mini_funnels). The gate reads the EFFECTIVE
+    // template now, because `template_type` reaches the column — otherwise the editor's "Mini Funnel"
+    // option would store a gated type for a plan that does not grant it.
+    if card_type == "mini_funnel" || template_type == "mini_funnel" {
         crate::features::enforce_feature_flag(
             &state,
             tenant_id,
@@ -176,7 +189,7 @@ pub async fn create_card(
     }
 
     sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)")
-        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(card_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
+        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
         .execute(&state.pool).await?;
     Ok((
         StatusCode::CREATED,
@@ -216,7 +229,32 @@ pub async fn update_card(
         crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
     }
     let social = body.get("social_links").cloned();
-    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), slug=COALESCE($16,slug), theme=COALESCE($17,theme) WHERE id=$1 AND tenant_id=$2")
+    // kanban t_8151c83f — TWO columns this screen edits were not writable through this route:
+    //  * `template_type` was missing from the SET list entirely, so the editor's Template Type select
+    //    could never change it (measured: PUT {"template_type":"hero"} left the row at business_card).
+    //  * `video_provider` used COALESCE, and `body["video_provider"].as_str()` is None for BOTH "the
+    //    key is absent" (leave the column) and "the client sent null" (the editor's None option ->
+    //    CLEAR it), so a provider could be set but never cleared (measured: PUT {"video_provider":null}
+    //    left the row at vimeo).
+    // Both are written only when the body carries them: an ABSENT key leaves the column alone, an
+    // explicit null (or the trimmed "" a select sends) clears `video_provider`. Note the mini-funnel
+    // plan gate stays on CREATE only — gating here would make an already-stored mini_funnel card
+    // unsavable for a plan that no longer grants the feature.
+    let template_type = body["template_type"]
+        .as_str()
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let vp_change: Option<Option<String>> = match body.get("video_provider") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(s)) => Some(Some(s.trim().to_string()).filter(|v| !v.is_empty())),
+        Some(_) => {
+            return Err(AppError::BadRequest(
+                "video_provider must be a string or null".into(),
+            ))
+        }
+    };
+    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
@@ -224,12 +262,15 @@ pub async fn update_card(
         .bind(body["btn_color"].as_str()).bind(body["avatar_url"].as_str())
         .bind(&social)
         .bind(body["tagline"].as_str()).bind(body["meta_description"].as_str())
-        .bind(body["video_provider"].as_str()).bind(body["video_id"].as_str())
+        .bind(body["video_id"].as_str())
         // `cta_text` was dropped: `kinetic_cards` has no such column and nothing reads one —
         // the footer CTA is the plan feature `kinetic_cta_text` and per-block CTAs live inside
         // `layout_blocks`. Naming it made this UPDATE fail 42703 on every card edit.
         .bind(body["slug"].as_str())
         .bind(body["theme"].as_str())
+        .bind(template_type)
+        .bind(vp_change.is_some())
+        .bind(vp_change.flatten())
         .execute(&state.pool).await?;
     Ok(Json(json!({"message": "Card updated"})))
 }
