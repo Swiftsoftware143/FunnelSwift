@@ -34,6 +34,52 @@ fn parse_status(raw: &str) -> AppResult<&'static str> {
     }
 }
 
+/// The role that owns the lifecycle flag: `auth::middleware::AuthUser::is_admin` is exactly
+/// `role == "admin"`, and the Tenants screen that writes `status` is admin-gated.
+pub const PLATFORM_ADMIN_ROLE: &str = "admin";
+
+/// The ONE enforcement reader of `tenants.status` (t_af890bbf). Every gate in the app reads the
+/// flag through this function so the "what does inactive mean" answer has a single home.
+///
+/// `Ok(Some("active"))` = live workspace, `Ok(Some("inactive"))` = retired, `Ok(None)` = the
+/// tenant row itself is gone (a deleted workspace whose 30-day JWT is still in the wild, since
+/// JWTs are stateless). Callers treat anything that is not `active` as "not live" — fail closed.
+pub async fn tenant_status_for(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>("SELECT status FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(pool)
+        .await
+}
+
+/// May this identity still USE its workspace? This is the decision of t_af890bbf, applied by the
+/// access surfaces only:
+///
+/// * ENFORCED — `auth::handlers::login`, `forgot_password`, `reset_password`, and the central
+///   `auth::global_auth::require_auth` gate (which is what ends an existing 30-day session), plus
+///   `admin_handler::impersonate` refusing an inactive *target*.
+/// * NOT ENFORCED, on purpose — public card serving/tracking/lead capture. Kinetic cards are
+///   physical artifacts with QR codes already in customers' hands and are addressed by third
+///   parties, so a mis-ticked dropdown would silently break a live campaign that nobody can log in
+///   to notice. Documented in docs/ADMIN_GUIDE.md ("Workspace Status").
+///
+/// `role == PLATFORM_ADMIN_ROLE` is exempt on purpose: the console that writes `status` is itself
+/// a tenant, so enforcing the flag on the operator would make a mis-ticked workspace — including
+/// the operator's own — impossible to switch back from the console. Tenant-level admins
+/// (`company_admin`) are NOT exempt; they are the customer.
+pub async fn workspace_access_allowed(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    role: &str,
+) -> Result<bool, sqlx::Error> {
+    if role == PLATFORM_ADMIN_ROLE {
+        return Ok(true);
+    }
+    Ok(tenant_status_for(pool, tenant_id).await?.as_deref() == Some("active"))
+}
+
 pub async fn list_tenants(
     auth: AuthUser,
     State(state): State<AppState>,

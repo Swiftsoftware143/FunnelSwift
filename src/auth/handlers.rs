@@ -209,6 +209,23 @@ pub async fn login(
 
     let user = user.ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
 
+    // tenants.status enforcement, part 1 of 4 (kanban t_af890bbf). A retired workspace cannot mint
+    // a new session. Checked AFTER the Argon2 verification above — a WRONG password is still the
+    // same 401 as always, so this refuses a correct password (403) without turning the endpoint
+    // into an account-existence oracle. `role == "admin"` is exempt: see
+    // `handlers::tenant_handler::workspace_access_allowed`.
+    if !crate::handlers::tenant_handler::workspace_access_allowed(
+        &state.pool,
+        user.tenant_id,
+        &user.role,
+    )
+    .await?
+    {
+        return Err(AppError::Forbidden(
+            crate::auth::global_auth::WORKSPACE_INACTIVE.into(),
+        ));
+    }
+
     let now = Utc::now().timestamp() as usize;
     let claims = Claims {
         sub: user.id.to_string(),
@@ -396,6 +413,22 @@ pub async fn forgot_password(
             .fetch_optional(&state.pool)
             .await?
     {
+        // tenants.status enforcement, part 2 of 4 (kanban t_af890bbf): a retired workspace cannot
+        // obtain NEW credentials either. The response body below is byte-identical to the one at
+        // the end of this function, so this adds no account-existence signal — the mail just is
+        // not sent, and the user learns the workspace is retired at login.
+        if !crate::handlers::tenant_handler::workspace_access_allowed(
+            &state.pool,
+            user.tenant_id,
+            &user.role,
+        )
+        .await?
+        {
+            return Ok(Json(serde_json::json!({
+                "message": "If the email exists, a password reset link has been sent"
+            })));
+        }
+
         let token = uuid::Uuid::new_v4().to_string();
         let expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
 
@@ -449,6 +482,24 @@ pub async fn reset_password(
     use sqlx::Row;
     let reset_id: uuid::Uuid = reset.get("id");
     let user_id: uuid::Uuid = reset.get("user_id");
+
+    // tenants.status enforcement, part 3 of 4 (kanban t_af890bbf): completing a reset would write
+    // a new credential into a retired workspace. Refused BEFORE the UPDATE below, so the one-shot
+    // token is not consumed by a refusal.
+    let owner = sqlx::query_as::<_, (uuid::Uuid, String)>(
+        "SELECT tenant_id, role FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::BadRequest("Invalid or expired reset token".into()))?;
+    if !crate::handlers::tenant_handler::workspace_access_allowed(&state.pool, owner.0, &owner.1)
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            crate::auth::global_auth::WORKSPACE_INACTIVE.into(),
+        ));
+    }
 
     // Hash new password
     use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};

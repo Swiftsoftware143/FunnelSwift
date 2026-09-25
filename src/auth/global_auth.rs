@@ -68,17 +68,64 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         return next.run(req).await;
     }
 
-    match validate_jwt(&state, &req) {
-        Ok(_) => next.run(req).await,
-        Err(_) => (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Authentication required"})),
-        )
-            .into_response(),
+    let claims = match validate_jwt(&state, &req) {
+        Ok(claims) => claims,
+        Err(_) => {
+            return reject(StatusCode::UNAUTHORIZED, "Authentication required");
+        }
+    };
+
+    // ── tenants.status enforcement (kanban t_af890bbf) ───────────────────────────────────────
+    // This is the ONLY place every authenticated /api/v1 route passes through, so a workspace
+    // retired in the admin Tenants screen stops here — including the sessions minted before the
+    // retirement, which matters because the JWT lives 30 days (a stateless token cannot be
+    // recalled, so the check has to be per request).
+    //
+    // Fail closed: a retired workspace (`inactive`) and a workspace row that no longer exists
+    // both refuse; an unreadable status (Postgres down) refuses too, with a 503 rather than a
+    // misleading 403. `role == "admin"` (the platform operator, i.e. the console that owns the
+    // flag) is exempt so a mis-ticked workspace can always be switched back — see
+    // `tenant_handler::workspace_access_allowed`.
+    //
+    // Deliberately NOT enforced here — and unreachable from here, because every card-serving
+    // surface is public (`is_public`): public card rendering, tracking and lead capture keep
+    // working for a retired workspace. See docs/ADMIN_GUIDE.md -> "Workspace Status".
+    if claims.role != crate::handlers::tenant_handler::PLATFORM_ADMIN_ROLE {
+        let tenant_id = match uuid::Uuid::parse_str(&claims.tenant_id) {
+            Ok(id) => id,
+            Err(_) => return reject(StatusCode::UNAUTHORIZED, "Invalid tenant in token"),
+        };
+        match crate::handlers::tenant_handler::tenant_status_for(&state.pool, tenant_id).await {
+            Ok(Some(status)) if status == "active" => {}
+            Ok(Some(_)) => return reject(StatusCode::FORBIDDEN, WORKSPACE_INACTIVE),
+            Ok(None) => return reject(StatusCode::FORBIDDEN, "Workspace no longer exists"),
+            Err(e) => {
+                tracing::error!("tenant status lookup failed for tenant {tenant_id}: {e}");
+                return reject(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Workspace status unavailable",
+                );
+            }
+        }
     }
+
+    next.run(req).await
 }
 
-fn validate_jwt(state: &AppState, req: &Request) -> Result<(), ()> {
+/// The one user-visible string for a retired workspace, shared by every gate so the SPA, the
+/// login page and the impersonation handler can all match on it.
+pub const WORKSPACE_INACTIVE: &str =
+    "This workspace is inactive. Contact support to restore access.";
+
+fn reject(status: StatusCode, error: &str) -> Response {
+    (
+        status,
+        Json(json!({ "error": error, "status": status.as_u16() })),
+    )
+        .into_response()
+}
+
+fn validate_jwt(state: &AppState, req: &Request) -> Result<Claims, ()> {
     let auth = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -98,6 +145,6 @@ fn validate_jwt(state: &AppState, req: &Request) -> Result<(), ()> {
         &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
         &validation,
     )
-    .map_err(|_| ())?;
-    Ok(())
+    .map(|data| data.claims)
+    .map_err(|_| ())
 }

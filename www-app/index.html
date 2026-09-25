@@ -1657,7 +1657,12 @@ function RTN(id,t){
     // with one and the browser kept the last ("Inactive") for every tenant, active ones included.
     // With `tenants.status` now real, saving that modal without touching Status retired the tenant.
     fst.value = t.status === "inactive" ? "inactive" : "active";
-    mb.appendChild(ff("Status", fst));
+    // kanban t_af890bbf: the dropdown is a LOCKOUT SWITCH, not a label — say so where it is used,
+    // because the 403 the customer sees is the only other warning (docs/ADMIN_GUIDE.md → Workspace Status).
+    var stf = ff("Status", fst);
+    stf.appendChild(El("div",{"style":"font-size:12px;opacity:.7;margin-top:4px"},
+      "Inactive ends this workspace\u2019s logins immediately, existing sessions included. Its public cards keep serving."));
+    mb.appendChild(stf);
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){STN(id)}},(id?"Save":"Create")));
   });

@@ -331,14 +331,41 @@ Cards are **per-tenant** — each portfolio company has its own set of cards. Th
 
 ---
 
+## Workspace Status (`Active` / `Inactive`)
+
+**Admin → Tenants → Edit → Status** writes `tenants.status` (migration 053: `NOT NULL DEFAULT 'active'`,
+`CHECK (status IN ('active','inactive'))`; any other value is rejected as a 400 by the API, never as a
+raw constraint error). New workspaces start `active`, and every workspace in the fleet does today.
+
+**What `Inactive` actually does** — decided and enforced server-side 2026-09-25 (kanban `t_af890bbf`):
+
+| Surface | An `inactive` workspace |
+|---------|------------------------|
+| Login (`POST /api/v1/auth/login`) | **403** `This workspace is inactive. Contact support to restore access.` — checked only *after* the password is verified, so a wrong password is still the usual 401 and the endpoint reveals nothing about which accounts exist |
+| Every authenticated `/api/v1` call — including a token minted **before** the workspace was retired (`/auth/me`, cards, leads, tags, settings, integrations, …) | **403**, same message. A JWT lives 30 days and cannot be recalled, so the flag is re-checked on every request: retiring a workspace also ends its live sessions |
+| `POST /api/v1/auth/forgot-password` | 200 with the usual generic line, but **no reset mail is sent** |
+| `POST /api/v1/auth/reset-password` | **403** — no new credential is written into a retired workspace |
+| Admin → Tenants → 👤 **Login As** (impersonate) | **403** — the session it would mint is refused by the gate above, so handing one out would only look like a console bug |
+| Public cards `/k/ /b/ /c/ /m/ /f/ /h/`, `/card/:id/track`, public card analytics, public lead capture | **unchanged — still served.** This is deliberate: Kinetic cards are physical artifacts whose QR codes are already in customers' hands, and the card is addressed by *their* audience, not by us. Retiring a workspace stops the workspace from being *used*; it must not silently break a live campaign that neither you nor the customer would notice. Take a card down with its own Delete control |
+| A token for a workspace whose row no longer exists (deleted workspace, stale JWT) | **403** `Workspace no longer exists` — fail closed |
+| `role = admin` (platform operator, i.e. this console) | **exempt**, so a workspace retired by mistake can always be switched back from this very screen. Tenant staff (`user`, `company_admin`) are **not** exempt — they are the customer |
+
+### Switching a Workspace Back On
+
+Edit the tenant → Status → **Active** → Save. There is no grace period, no warning mail and no
+scheduled reactivation: the 403 above is the customer's first signal. Treat the dropdown as a
+lockout switch, not a label.
+
+---
+
 ## Admin Impersonation
 
-Admins can impersonate any tenant to view and manage that tenant's data as if logged into their account. This is useful for troubleshooting, verifying data, or performing actions on behalf of a tenant.
+Admins can impersonate any tenant to view and manage that tenant's data as if logged into their account. This is useful for troubleshooting, verifying data, or performing actions on behalf of a tenant. An `inactive` workspace cannot be impersonated (403 — see **Workspace Status** above).
 
 ### How to Impersonate a Tenant
 
 1. Log into FunnelSwift as a **Super Admin**
-2. Go to **Admin** → **Users** in the left sidebar
+2. Go to **Admin** → **Tenants** in the left sidebar
 3. Find the tenant you want to impersonate
 4. Click the **👤 Login As** button on their row
 5. The page reloads with the impersonated tenant's view

@@ -234,6 +234,21 @@ pub async fn impersonate(
     .await?
     .ok_or_else(|| AppError::BadRequest("Tenant not found".into()))?;
 
+    // tenants.status enforcement, part 4 of 4 (kanban t_af890bbf): a retired workspace cannot be
+    // impersonated. The session this would mint carries the tenant's own role, so the central gate
+    // would refuse every call it made — answering 200 here would hand the admin a token that is
+    // dead on arrival and look like a bug in the console. Admin-only route, and the target is a
+    // different tenant than the caller's, so this is the one place the gate cannot cover.
+    if crate::handlers::tenant_handler::tenant_status_for(&state.pool, tid)
+        .await?
+        .as_deref()
+        != Some("active")
+    {
+        return Err(AppError::Forbidden(
+            "This workspace is inactive and cannot be impersonated.".into(),
+        ));
+    }
+
     // Get a user for this tenant to use as the impersonated identity
     let target_user = sqlx::query_as::<_, crate::auth::models::User>(
         "SELECT id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at FROM users WHERE tenant_id = $1 AND is_active = true LIMIT 1"
