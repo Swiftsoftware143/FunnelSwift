@@ -129,7 +129,7 @@ tr:hover{background:#f8fafc}
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
-  <a data-tab="tenants" onclick="S('tenants')">Users</a>
+  <a data-tab="tenants" onclick="S('tenants')">Tenants</a>
   <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a></div></div>
   <a data-tab="plans" onclick="S('plans')">Plans</a>
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
@@ -168,7 +168,7 @@ var helpContent={
   "stags":'<h4>System Tags</h4><p>Special tags that <strong>do something</strong> when applied — like creating a free ADASwift account or adding a contact to CoreSwift CRM.</p><ul><li><strong>Target:</strong> adaswift, coreswift, workflowswift, incentiveswift, missedcall</li><li><strong>Toggle ON/OFF</strong> — Disable without deleting</li></ul>',
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
   "plans":'<h4>Plans</h4><p>Manage subscription plans, pricing, and feature toggles. Each plan is a set of permissions that controls what features tenants can use.</p><ul><li><strong>Free Plan</strong> — 1 card, 8 templates, basic features</li><li><strong>Paid Plans</strong> — Customize card limits, templates, and features per tier</li><li><strong>Plan Features Editor</strong> — Toggle 12+ features per plan (custom colors, video, analytics, etc.)</li></ul>',
-  "tenants":'<h4>Users (Tenants)</h4><p>All registered tenants. View who is on what plan, assign plans, and manage accounts.</p>',
+  "tenants":'<h4>Tenants</h4><p>Every workspace on this install. The row is a <strong>tenant</strong> (its name, plan, status), not a login — view them per workspace, assign plans, and manage accounts. A workspace that has no user yet still appears here.</p>',
   "affiliates":'<h4>Affiliates</h4><p>Manage your affiliate partners. Each gets a unique referral code for tracking clicks and conversions.</p><ul><li><strong>Commission Rate</strong> — Percentage per conversion</li><li><strong>Tier</strong> — Assign Bronze/Silver/Gold</li><li><strong>Payouts</strong> — Track earnings and payment history</li></ul>',
   "tiers":'<h4>Affiliate Tiers</h4><p>Create commission tiers with different rates and minimum payout thresholds.</p><ul><li><strong>+ New Tier</strong> — Create Bronze, Silver, Gold, etc.</li><li>Set commission %, min payout, and requirements</li></ul>',
   "templates":'<h4>Template Gallery</h4><p><strong>54 templates</strong> across 5 archetypes and dozens of industries.</p><ul><li><strong>Free Plan:</strong> 8 templates (4 starters + 4 blank canvases)</li><li><strong>Paid Plans:</strong> All 54 templates unlocked</li><li><strong>Blank Canvas:</strong> Start from scratch with just a title</li><li><strong>Industry:</strong> Real Estate, Cleaning, Gym, VC, Podcast, Photography, SaaS, etc.</li></ul>',
@@ -211,7 +211,7 @@ function S(t){
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Users",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards"};
+  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards"};
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
   var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC};
@@ -234,9 +234,16 @@ function C(){ $("mod").classList.remove("sh"); }
 function El(tag, props, children){
   var e=document.createElement(tag);
   if(props) for(var k in props){
-    if(k==="class") e.className=props[k];
-    else if(k==="onclick") e.onclick=props[k];
-    else e.setAttribute(k, props[k]);
+    var v=props[k];
+    // kanban t_382c37c0: a null/undefined value means "no attribute at all" — writing it put the
+    // LITERAL string "null" on the element. For a PRESENCE-means-true attribute (selected/checked/
+    // disabled) that still means TRUE, so `selected: cond?"selected":null` marked EVERY option and
+    // the browser kept the last one (every lead opened as "lost", every tenant as "Inactive"), and
+    // `checked: cond?"checked":null` left every checkbox checked. Skip them.
+    if(v===null||v===undefined) continue;
+    if(k==="class") e.className=v;
+    else if(k==="onclick") e.onclick=v;
+    else e.setAttribute(k, v);
   }
   if(children){
     if(typeof children==="string") e.innerHTML=children;
@@ -301,7 +308,7 @@ function D(){
     a.forEach(function(l){var st=l.status||"new";counts[st]=(counts[st]||0)+1;});
     var sum="";
     Object.keys(counts).forEach(function(s){sum+='<span class="badge" style="margin-left:4px;font-size:10px;cursor:pointer" data-ld-filter="'+X(s)+'" onclick="LDf(\''+X(s)+'\')">'+X(s)+': '+counts[s]+'</span>';});
-    $("ld-stats").innerHTML=sum;$("ld-add-span").appendChild(El("button",{"class":"btn btn-sm",style:"margin-left:8px",onclick:function(){MF()}},"+ Add Lead"));
+    $("ld-stats").innerHTML=sum;$("ld-add-span").appendChild(El("button",{"class":"btn btn-sm",style:"margin-left:8px",onclick:function(){MFL()}},"+ Add Lead"));
     
     // Search bar
     var sf=$("ld-filters");
@@ -326,7 +333,7 @@ function D(){
       
       tr.setAttribute("data-search",(name+" "+l.email+" "+l.phone+" "+status+" "+l.source).toLowerCase());
       tr.setAttribute("data-status",status);
-      tr.innerHTML='<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td>'+X(l.source||"-")+'</td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MF(\''+l.id+'\')">Edit</button></td>';
+      tr.innerHTML='<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td>'+X(l.source||"-")+'</td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
@@ -348,12 +355,18 @@ function LDf(q){
 function LDC(id,currentStatus){
   var stages=window._ld_stages||["New","Contacted","Qualified","Proposal"];
   if(!stages.length) stages=["New","Contacted","Qualified"];
+  // kanban t_382c37c0: the row's own value must be REPRESENTABLE in the control that edits it.
+  // When no option matches, the browser falls back to the FIRST one, so a save without touching the
+  // field rewrites the stage; `El()` no longer marks every option selected, which is the other half.
+  // (leads.status is stored lowercase while this stage list is the Title-case pipeline — the two
+  // value spaces do not overlap yet, so the stored value is appended; carded separately.)
+  if(currentStatus&&stages.indexOf(currentStatus)<0) stages=stages.concat([currentStatus]);
   var st=El("select",{style:"width:100%;padding:6px"});
   stages.forEach(function(s){st.appendChild(El("option",{value:s,selected:s===currentStatus?"selected":null},s));});
   O("Change Status",function(){
     $("mb").innerHTML=""; 
     var d=El("div");
-    d.appendChild(El("label",{style:"font-size:12px"},["New Status:"]));
+    d.appendChild(El("label",{style:"font-size:12px"},"New Status:"));
     d.appendChild(st); $("mb").appendChild(d);
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){
@@ -381,7 +394,12 @@ function LDV(id){
     });
   });
 }
-function MF(id){
+/* kanban t_382c37c0: this entry point used to be called `MF` — the SAME global name as the card
+   editor's field builder (`function MF(label,id,value,placeholder,type)` further down, line ~1150).
+   A later `function` declaration wins at parse time, so the leads screen's "+ Add Lead" and every
+   row's "Edit" button were calling the FIELD BUILDER and did nothing at all (measured: clicking Edit
+   produced no request and no modal). Renamed to MFL; the card editor keeps MF. */
+function MFL(id){
   if(id) api("/api/v1/leads/"+id).then(function(l){RF(id,l)});
   else RF(null,{});
 }
@@ -395,7 +413,15 @@ function RF(id,l){
     var fw=El("input",{id:"fw",value:l.website||""});
     var fs=El("input",{id:"fs",value:l.source||""});
     var fst=El("select",{id:"fst"});
-    ["new","contacted","qualified","converted","lost"].forEach(function(s){
+    // kanban t_382c37c0: this one line had both halves of the defect. `selected: cond?"selected":null`
+    // wrote the literal "null" on the other options, which is a PRESENT attribute, so every option was
+    // selected and the browser kept the LAST one — every lead opened as "lost" and a save without
+    // touching Status rewrote the lead's stage. `El()` now skips null attributes, and a stored status
+    // outside this list (the quick-change control can write one) is offered rather than falling
+    // through to the first option.
+    var sts=["new","contacted","qualified","converted","lost"];
+    if(l.status&&sts.indexOf(l.status)<0) sts=sts.concat([l.status]);
+    sts.forEach(function(s){
       fst.appendChild(El("option",{value:s,selected:l.status===s?"selected":null},s));
     });
     var fnt=El("textarea",{id:"fnt",rows:"3"});
@@ -1558,11 +1584,11 @@ function LN(){
   if(!U||!U.is_admin) return;
   api("/api/v1/tenants").then(function(d){
     var all=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>Users ('+all.length+') <span id="ln-add-btn"></span></h3><div id="ln-search-wrap" style="margin-bottom:12px"></div><div id="ln-list"></div></div>';
-    $("ln-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ETN()}},"+ Add User"));
+    $("ct").innerHTML='<div class="cc"><h3>Tenants ('+all.length+') <span id="ln-add-btn"></span></h3><div id="ln-search-wrap" style="margin-bottom:12px"></div><div id="ln-list"></div></div>';
+    $("ln-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ETN()}},"+ Add Tenant"));
     
     // Search bar
-    var search=El("input",{style:"width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px",placeholder:"Search users by name or email..."});
+    var search=El("input",{style:"width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px",placeholder:"Search tenants by name or email..."});
     search.oninput=function(){
       var q=search.value.toLowerCase();
       document.querySelectorAll(".ln-row").forEach(function(r){
@@ -1574,7 +1600,7 @@ function LN(){
     $("ln-search-wrap").appendChild(search);
     
     var list=$("ln-list");
-    if(!all.length){list.innerHTML='<p style="color:#64748b;padding:10px">No users.</p>';return;}
+    if(!all.length){list.innerHTML='<p style="color:#64748b;padding:10px">No tenants.</p>';return;}
     var tbl=El("table");
     tbl.innerHTML='<tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th></th></tr>';
     all.forEach(function(t){
@@ -1590,7 +1616,7 @@ function LN(){
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ETN(t.id)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
-      td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){if(confirm("Delete user \""+X(t.name||"")+"\"? This is permanent.")) api("/api/v1/tenants/"+t.id,{method:"DELETE"}).then(function(){S("tenants")});}},"Del"));
+      td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){if(confirm("Delete workspace \""+X(t.name||"")+"\"? This removes its users, cards and leads. Permanent.")) api("/api/v1/tenants/"+t.id,{method:"DELETE"}).then(function(){S("tenants")});}},"Del"));
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
@@ -1618,7 +1644,7 @@ function ETN(id){
   else RTN(null,{status:"active"});
 }
 function RTN(id,t){
-  O(id?"Edit User":"Add User", function(){
+  O(id?"Edit Tenant":"Add Tenant", function(){
     var mb=$("mb");
     mb.appendChild(ff("Name", El("input",{id:"fn",value:t.name||""})));
     mb.appendChild(ff("Email", El("input",{id:"fe",value:t.email||""})));
@@ -1861,7 +1887,11 @@ function LPLL(){
       bools.appendChild(El("p",{style:"font-size:11px;font-weight:600;color:#64748b;margin-bottom:8px"},"Flags"));
       var bg=El("div",{style:"display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px"});
       [{k:"has_dual_routing",l:"Dual Routing"},{k:"has_multi_tenant",l:"Multi-Tenant"},{k:"has_white_label",l:"White Label"}].forEach(function(fb){
-        bg.appendChild(PFC(p.id,fb.k,fb.l,!!p[fb.k]));
+        // kanban t_382c37c0: the arguments were shifted one slot (prefix=fb.k, key=fb.l, label=<bool>,
+        // checked=undefined), so the three Flags checkboxes carried the LABEL as their data-key, drew
+        // the boolean as their label text, and — with the null-attribute bug — were always TICKED.
+        // PFC(pid, prefix, key, label, checked) with no prefix maps them to the top-level plan fields.
+        bg.appendChild(PFC(p.id,null,fb.k,fb.l,!!p[fb.k]));
       });
       bools.appendChild(bg);
       card.appendChild(bools);
