@@ -197,6 +197,11 @@ function api(p,o){
   if(T) o.headers["Authorization"]="Bearer "+T;
   return fetch(p,o).then(function(r){
     if(r.status===401){T="";localStorage.removeItem("ws_fs_token");window.location.href="/login";throw Error("auth")}
+    // kanban t_af890bbf: a retired workspace (or a deleted one) is a session-ENDING condition, not
+    // a per-click error - clear the token and let /login explain it, instead of leaving the user on
+    // a page that can never load anything. Keyed on the API's own message, not on 403 as a class
+    // (403 is also "Admin only" and friends, which must NOT log anyone out).
+    if(r.status===403) return r.json().then(function(e){var t=(e&&e.error)||"";if(/workspace is inactive|no longer exists/i.test(t)){T="";try{localStorage.removeItem("ws_fs_token")}catch(ex){}window.location.href="/login";throw Error("auth")}throw Error(t||"Error 403")});
     if(r.status===402){return r.json().then(function(e){KCUP(e.error||"Plan limit reached. Upgrade to continue.");throw Error("upgrade_required")})}
     if(!r.ok) return r.json().then(function(e){throw Error(e.error||e.message||"Error "+r.status)});
     return r.json();

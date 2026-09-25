@@ -39,7 +39,11 @@ var e=document.getElementById("e").value.trim(),p=document.getElementById("p").v
 if(!e||!p){m.className="msg e";m.textContent="Enter email and password";return}
 m.className="msg i";m.textContent="Signing in...";b.disabled=true;
 fetch("/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:e,password:p})})
-.then(function(r){if(!r.ok)throw new Error("Invalid credentials");return r.json()})
+/* kanban t_af890bbf: surface the SERVER's message instead of a hard-coded one. 401 is still
+   "Invalid email or password" from the API, but a retired workspace answers 403 with
+   "This workspace is inactive..." and this page used to print "Invalid credentials" over it -
+   the one screen that could explain the lockout was the one screen that lied about it. */
+.then(function(r){return r.json().catch(function(){return {}}).then(function(x){if(!r.ok)throw new Error(x.error||"Invalid credentials");return x})})
 .then(function(d){var t=d.token||d.access_token;
 if(!t){m.className="msg e";m.textContent="Login response carried no session token";b.disabled=false;return}
 try{localStorage.setItem("ws_fs_token",t);sessionStorage.setItem("wf_token",t)}catch(ex){}
