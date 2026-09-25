@@ -6,15 +6,22 @@
 !function(){
   var p = window.location.pathname;
   if (p === '/login' || p === '/login.html' || p.startsWith('/api/') || p.startsWith('/ref/')) return;
-  // A signup on a marketing page hands the new session over as ?token=… — the marketing
-  // site is a different origin, so it cannot write this origin's localStorage itself.
-  // Consume that token BEFORE the guard decides, or every marketing signup is dumped on
-  // the login page with a valid token still sitting unused in the URL. Rewriting the URL
-  // to /app also keeps the token out of the address bar, history and referrer.
+  // A signup on a marketing page holds a fresh session for an origin that is NOT this one,
+  // so it hands the session over in the URL FRAGMENT: "https://app.funnelswift.net/#token=…"
+  // (kanban t_a724790f). A fragment is never sent to the server, so it cannot reach an
+  // access log; the previous "?token=…" form put a live 24h bearer in the nginx log on
+  // every signup. Consume it BEFORE the guard decides, or every marketing signup is dumped
+  // on the login page with a valid token still sitting unused in the URL.
   try {
-    var qt = new URLSearchParams(window.location.search).get('token');
-    if (qt) {
-      localStorage.setItem('ws_fs_token', qt);
+    var h = (window.location.hash || '').replace(/^#/, '');
+    var ht = h ? new URLSearchParams(h).get('token') : null;
+    if (ht) {
+      localStorage.setItem('ws_fs_token', ht);
+      window.history.replaceState({}, '', '/app');
+    } else if (new URLSearchParams(window.location.search).get('token')) {
+      // A ?token= supplied in the query string is IGNORED on purpose (session-fixation
+      // guard: a link carrying someone else's token must never log you into their
+      // account) and stripped so a legacy ?token= link is dead weight, not a handoff.
       window.history.replaceState({}, '', '/app');
     }
   } catch (e) {}

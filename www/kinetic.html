@@ -805,11 +805,13 @@
  throw new Error(data.error || data.message || 'Signup failed');
  }
 
- // The API now returns a JWT for the new account. The app lives on its own
- // origin, so hand the token over in the URL exactly like the main landing
- // page's register flow does — the SPA stores it and strips it from the URL.
+ // The API now returns a JWT for the new account. The app lives on its own origin, so the
+ // session is handed over in the URL FRAGMENT (kanban t_a724790f): a fragment is never sent
+ // to the server, so it cannot be logged, while the old "?token=" form wrote a live 24h
+ // session JWT into the nginx access log on every signup. The app origin reads
+ // location.hash before its auth guard runs.
  if (data.token) {
- window.location.href = 'https://app.funnelswift.net/?token=' + encodeURIComponent(data.token);
+ window.location.href = 'https://app.funnelswift.net/#token=' + encodeURIComponent(data.token);
  } else {
  window.location.href = 'https://app.funnelswift.net/login';
  }
