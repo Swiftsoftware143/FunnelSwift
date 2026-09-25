@@ -700,7 +700,7 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/web-to-lead",
             post(web_to_lead_handler::handle_web_to_lead),
         )
-        // Cross-app push routes — FunnelSwift provisions users in sister apps via tags
+        // Cross-app push routes
         // NOTE: the CoreSwift LEAD push below is the canonical BYOK handler in
         // coreswift_integration_handler (src/coreswift.rs is the single CoreSwift client).
         // The legacy env/internal-shared-key lead implementation was deleted on 2026-09-20.
@@ -708,10 +708,27 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/push/coreswift",
             post(coreswift_integration_handler::coreswift_push),
         )
-        .route(
-            "/api/v1/push/coreswift/user",
-            post(coreswift_push::provision_coreswift_user),
-        )
+        // REMOVED 2026-09-25 (kanban t_5a9e4eb7): POST /api/v1/push/coreswift/user is gone.
+        // It POSTed {"name","email","description"} to {CORESWIFT_URL}/api/admin/portfolio-sync
+        // with only an x-internal-key header, so every call was refused at CoreSwift's auth and
+        // the route answered 200 {"status":"error","coreswift_status":401} (measured live:
+        // CoreSwift 401 {"message":"Authentication required"} on the same body + real key).
+        // That CoreSwift router is gated on platform-admin authority
+        // (auth::platform_admin::require_platform_admin_middleware, kanban t_d5cf6cad) — a gate
+        // FunnelSwift does not hold and must not be loosened. CoreSwift's internal-key surface
+        // cannot create a user at all: every route an internal key reaches is contact- or
+        // tenant-scoped and rejects this body (measured: /api/v1/internal/tag-provision -> 422
+        // missing field `contact`; /api/internal/tenants/lookup -> 400 slug is required;
+        // /api/internal/contacts and /api/internal/tags -> 400 tenant_id required), while the
+        // handlers that DO create a user are the platform-admin router, self-serve
+        // /api/auth/* register and billing checkout — none of them reachable by a producer.
+        // FunnelSwift's shipped CoreSwift story is the BYOK Integration Center
+        // (/api/v1/integrations/coreswift/*) plus the lead/contact sync below and in
+        // tag_logic.rs; neither needs a CoreSwift *user* minted from FunnelSwift. Nothing in the
+        // fleet (SPA, mobile, scripts, sibling app) ever called this route, and the same family's
+        // /user legs are stubs that fabricate a "provisioned" reply. Same class and same treatment
+        // as /api/v1/push/coreswift/tag (t_ae84b186), ADASwift (t_65084d8b) and
+        // MissedCallRespondr (t_8803c75e).
         // REMOVED 2026-09-25 (kanban t_ae84b186): POST /api/v1/push/coreswift/tag is gone.
         // It sent {"event","source_app","tags","tenant_id"} to CoreSwift's
         // /api/v1/webhooks/cross-app/tag-sync, whose TagSyncRequest also requires
