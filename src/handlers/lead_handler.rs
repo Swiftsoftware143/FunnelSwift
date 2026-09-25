@@ -463,11 +463,18 @@ pub struct LeadTagsRequest {
 /// rewrites 15 columns from one field and is lossy (`update_lead` bound `tags` from the request
 /// only, so a body without `tags` NULLed a real column). One control, one column.
 ///
-/// The value VOCABULARY is not enforced here: which space is canonical for a lead status
-/// (`leads.status` lowercase vs the tenant's Title-case `tenant_settings.lead_stages`) is decided
-/// by kanban t_adf187f9, and if a value-space check belongs anywhere it belongs in one place for
-/// both leads controls. What IS enforced is what the column physically is: `VARCHAR(50)`, so a
-/// blank or over-long value gets a 400 naming the limit instead of a 500 from the database.
+/// The value VOCABULARY is deliberately NOT enforced here, and kanban t_adf187f9 decided why:
+/// `leads.status` is its OWN five-value lowercase lifecycle — new, contacted, qualified, converted,
+/// lost — and it is NOT the tenant's configured pipeline. The pipeline is the OTHER column,
+/// `leads.stage` (VARCHAR(100) DEFAULT 'New'): it is fed by `tenant_settings.lead_stages`, the list
+/// the "Lead Stages" screen edits, which `GET /api/v1/dashboard/stats` groups `leads_by_stage` by
+/// and which `POST /leads/:id/stage` / the affiliate `to_stage` webhook write. The five status
+/// values are therefore declared in exactly ONE place — the served shell's `LD_STATUS_DEFAULT`
+/// (`www-app/index.html`, read through `ldStatuses()` by both leads controls) — and a second copy
+/// here would be the same three-way drift in a new place. Out-of-list values are accepted on
+/// purpose: the shell appends a row's own value to the control, so a no-touch save cannot rewrite
+/// it. What IS enforced is what the column physically is: `VARCHAR(50)`, so a blank or over-long
+/// value gets a 400 naming the limit instead of a 500 from the database.
 pub async fn update_lead_status(
     auth: AuthUser,
     State(state): State<AppState>,

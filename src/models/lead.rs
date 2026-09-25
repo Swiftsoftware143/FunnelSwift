@@ -94,6 +94,10 @@ pub struct AssignRequest {
     pub assigned_to: Uuid,
 }
 
+/// `POST /api/v1/leads/:id/stage` — the PIPELINE column, not the status. `leads.stage` holds one of
+/// the tenant's `tenant_settings.lead_stages` values (Title-case, edited on the "Lead Stages"
+/// screen); `leads.status` is a different five-value lowercase lifecycle, decided in kanban
+/// t_adf187f9.
 #[derive(Debug, Deserialize)]
 pub struct StageRequest {
     pub stage: String,
@@ -101,6 +105,9 @@ pub struct StageRequest {
 
 /// `PUT /api/v1/leads/:id/status` (kanban t_2f2c184b) — the leads row badge's "Change Status"
 /// quick-change control. `leads.status` is its own column; this is NOT the `stage` write.
+/// kanban t_adf187f9: the canonical space is the five lowercase values the served shell declares in
+/// `LD_STATUS_DEFAULT` (new, contacted, qualified, converted, lost); this route stays vocabulary-free
+/// on purpose, see `lead_handler::update_lead_status`.
 #[derive(Debug, Deserialize)]
 pub struct LeadStatusRequest {
     pub status: String,

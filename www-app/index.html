@@ -177,7 +177,7 @@ initAccordions();
 /* ═══ INLINE HELP SYSTEM — slide-out panel with per-section tips ═══ */
 var helpContent={
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
-  "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — system tags auto-provision accounts in other Swift apps</li><li>Stages track progress: New → Contacted → Qualified → Converted → Lost</li></ul>',
+  "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — system tags auto-provision accounts in other Swift apps</li><li><strong>Status</strong> tracks progress (the leads list badge and the Edit modal both edit it): new → contacted → qualified → converted → lost. The tenant pipeline on the <strong>Lead Stages</strong> screen is a separate field (Stage).</li></ul>',
   "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Each card type has its own URL route:</p><ul><li><code>/k/slug</code> — Kinetic Card (original)</li><li><code>/b/slug</code> — Bio Link</li><li><code>/c/slug</code> — Digital Business Card</li><li><code>/m/slug</code> — Micro Page</li><li><code>/f/slug</code> — Mini Funnel</li><li><code>/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
   "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> that trigger actions in other Swift apps.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are controlled by admins — they auto-provision accounts</li></ul>',
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
@@ -357,9 +357,14 @@ function D(){
       var name=(l.first_name||"")+" "+(l.last_name||"");
       if(!name.trim()) name=l.name||"Unnamed";
       var status=l.status||"new";
+      // kanban t_adf187f9: colour by the CANONICAL space only. This branch used to compare against
+      // "Closed Won" / "Closed Lost" (pipeline spellings) and "inactive" (a TENANT lifecycle value)
+      // — none of the three can occur in `leads.status`, so the whole branch was dead, and
+      // `converted` — the fifth canonical value — was missing from the "positive" arm entirely,
+      // which rendered a converted lead with the neutral badge.
       var sc="#dbeafe"; var sc2="#1e40af";
-      if(status==="Closed Won"||status==="qualified"){sc="#dcfce7";sc2="#166534";}
-      else if(status==="Closed Lost"||status==="inactive"){sc="#fee2e2";sc2="#991b1b";}
+      if(status==="qualified"||status==="converted"){sc="#dcfce7";sc2="#166534";}
+      else if(status==="lost"){sc="#fee2e2";sc2="#991b1b";}
       
       tr.setAttribute("data-search",(name+" "+l.email+" "+l.phone+" "+status+" "+l.source).toLowerCase());
       tr.setAttribute("data-status",status);
@@ -382,16 +387,31 @@ function LDf(q){
     r.style.display=match?"":"none";
   });
 }
-/* kanban t_2f2c184b: ONE status list for BOTH leads controls. The row badge's quick change used to
-   fall back to its own Title-case ["New","Contacted","Qualified","Proposal"] — a fourth value space —
-   while the Edit modal wrote lowercase, so the control could not even offer the value the row holds
-   (patched around in t_382c37c0 by appending it) and a save from it would have written a Title-case
-   status into a lowercase column. It now offers exactly what the app's own working writer, the Edit
-   modal, offers. `window._ld_stages` stays the override hook for a tenant's configured pipeline;
-   which space is canonical is kanban t_adf187f9. */
+/* kanban t_adf187f9 — THE CANONICAL LEAD-STATUS SPACE, DECIDED 2026-09-25. This is the ONE place
+   that names a lead-status value; every other reader/writer goes through it or stores what it says.
+
+   Decision: `leads.status` is its OWN five-value lowercase lifecycle — new, contacted, qualified,
+   converted, lost. It is NOT the tenant's configured pipeline. The pipeline is
+   `tenant_settings.lead_stages` (Title-case, tenant-editable on the Lead Stages screen) and it
+   belongs to a DIFFERENT column: `leads.stage` (VARCHAR(100) DEFAULT 'New'), which the app already
+   reads as the pipeline — GET /api/v1/dashboard/stats groups leads_by_stage on it and counts
+   stage='Closed Won' for the conversion rate, and POST /api/v1/leads/:id/stage / the affiliate
+   `to_stage` webhook write it. Two columns cannot both be the pipeline: the leads badge would read
+   `status` while the dashboard summed `stage`, and they would drift on the first save.
+
+   `window._ld_stages` is GONE on purpose (t_2f2c184b left it as a "tenant pipeline override" hook;
+   it was read here and never assigned anywhere). The only list it could ever hold is
+   `lead_stages` — the pipeline — and wiring it here would write pipeline values into the status
+   column, which is the failure t_2f2c184b measured live ("Qualified" landing in the lowercase
+   column once the route existed).
+
+   This list is a UI convenience, not a tenant-editable vocabulary: there is no tenant_settings key
+   for statuses, and the API deliberately does not enforce it (`PUT /api/v1/leads/:id/status` is
+   free text, 1..50 chars — a second copy of this list in Rust would be a new drift). So the clause
+   below stays: a value stored by ANY path must remain representable in the control that edits it. */
 var LD_STATUS_DEFAULT=["new","contacted","qualified","converted","lost"];
 function ldStatuses(cur){
-  var s=(window._ld_stages&&window._ld_stages.length)?window._ld_stages.slice():LD_STATUS_DEFAULT.slice();
+  var s=LD_STATUS_DEFAULT.slice();
   // the row's own value must be REPRESENTABLE in the control that edits it (t_382c37c0): when no
   // option matches, the browser falls back to the FIRST one, so a save without touching the field
   // would rewrite the status.
