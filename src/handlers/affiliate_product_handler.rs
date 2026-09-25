@@ -3,7 +3,7 @@
 // IncentiveSwift, MultiDirectory, etc.). Admin adds products and assigns a system
 // tag to each. When a lead gets that system tag, the affiliate system records attribution.
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -15,6 +15,11 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
+/// `is_active` is deliberately `Option<Value>` and not `Option<bool>`: the flag is the ONE field
+/// this card is about, and a value that is neither `true` nor `false` must be REFUSED with the app's
+/// own 400 JSON body (`parse_is_active`) rather than swallowed by a serde default — that is the same
+/// arm `tenant_handler::parse_status` gives `tenants.status`. Typing it as `bool` would also answer
+/// a bad value with axum's opaque 422 instead of `{"error":…,"message":…}`.
 #[derive(Debug, Deserialize)]
 pub struct CreateProductRequest {
     pub name: String,
@@ -27,6 +32,7 @@ pub struct CreateProductRequest {
     pub product_type: Option<String>,
     pub owner_name: Option<String>,
     pub system_tag_id: Option<Uuid>,
+    pub is_active: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,13 +41,40 @@ pub struct UpdateProductRequest {
     pub description: Option<String>,
     pub price: Option<f64>,
     pub default_commission_rate: Option<f64>,
-    pub is_active: Option<bool>,
+    pub is_active: Option<Value>,
     pub category_id: Option<Uuid>,
     pub url: Option<String>,
     pub is_third_party: Option<bool>,
     pub product_type: Option<String>,
     pub owner_name: Option<String>,
     pub system_tag_id: Option<Uuid>,
+}
+
+/// Optional list filter on the product's own lifecycle flag (kanban t_db6fa3c0).
+///
+/// ABSENT means "every row", and that default is the decision, not an oversight: this list backs the
+/// admin screen that owns the checkbox (`LP`, www-app/index.html), so filtering it would hide an
+/// inactive product from the only place that can re-tick it — the switch would be one-way. The
+/// affiliate-facing catalog (`LPR`) is the caller that asks for `is_active=true`, because an inactive
+/// product can never be credited: `tag_logic::attribute_affiliate_on_tags` and
+/// `affiliate_tracking_handler::handle_affiliate_upgrade_event` both resolve a product
+/// `WHERE is_active = true` only.
+#[derive(Debug, Deserialize)]
+pub struct ProductListQuery {
+    pub is_active: Option<bool>,
+}
+
+/// The ONE reader of the `is_active` request value. `None`, or an explicit JSON `null`, means "the
+/// caller did not send it" and the fallback (the stored value on update, `true` on create) is used,
+/// so a save that does not touch the checkbox cannot flip the flag. Anything else must be a JSON
+/// boolean; a string/`1`/object is a 400 instead of a silent no-op.
+fn parse_is_active(raw: Option<&Value>, fallback: bool) -> AppResult<bool> {
+    match raw {
+        Some(v) if !v.is_null() => v.as_bool().ok_or_else(|| {
+            AppError::BadRequest(format!("Invalid is_active '{v}': expected true or false"))
+        }),
+        _ => Ok(fallback),
+    }
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -74,9 +107,12 @@ struct AffiliateProductRow {
 pub async fn list_affiliate_products(
     auth: AuthUser,
     State(state): State<AppState>,
+    Query(params): Query<ProductListQuery>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let products: Vec<AffiliateProductRow> = sqlx::query_as(
+        // $2 IS NULL = "no filter" (every row, the admin screen's list); a value filters on the
+        // product's own lifecycle flag. COALESCE because the column is NULLABLE with DEFAULT true.
         "SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.price::float8, ap.default_commission_rate::float8,
                 COALESCE(ap.is_active, true) AS is_active, ap.is_third_party, ap.url, ap.category_id,
                 ap.product_type, ap.owner_name, ap.system_tag_id,
@@ -84,9 +120,11 @@ pub async fn list_affiliate_products(
          FROM affiliate_products ap
          LEFT JOIN tags t ON t.id = ap.system_tag_id
          WHERE (ap.tenant_id = $1 OR ap.tenant_id = '00000000-0000-0000-0000-000000000001')
+           AND ($2::boolean IS NULL OR COALESCE(ap.is_active, true) = $2)
          ORDER BY ap.created_at DESC",
     )
     .bind(tenant_id)
+    .bind(params.is_active)
     .fetch_all(&state.pool)
     .await?;
 
@@ -119,11 +157,12 @@ pub async fn list_affiliate_products(
 pub async fn list_all_affiliate_products_admin(
     auth: AuthUser,
     State(state): State<AppState>,
+    Query(params): Query<ProductListQuery>,
 ) -> AppResult<Json<Value>> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    list_affiliate_products(auth, State(state)).await
+    list_affiliate_products(auth, State(state), Query(params)).await
 }
 
 /// List system tags available for assignment to affiliate products (admin dropdown).
@@ -157,10 +196,12 @@ pub async fn create_affiliate_product(
     let id = Uuid::new_v4();
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // Absent / null keeps the column default (true) exactly as before this change.
+    let is_active = parse_is_active(req.is_active.as_ref(), true)?;
 
     sqlx::query(
         "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name, system_tag_id)
-         VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10, $11, $12)"
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
     )
     .bind(id)
     .bind(tenant_id)
@@ -168,6 +209,7 @@ pub async fn create_affiliate_product(
     .bind(&req.description)
     .bind(req.price.unwrap_or(0.0))
     .bind(req.default_commission_rate.unwrap_or(0.0))
+    .bind(is_active)
     .bind(req.is_third_party.unwrap_or(false))
     .bind(&req.url)
     .bind(req.category_id)
@@ -195,12 +237,14 @@ pub async fn update_affiliate_product(
     // affiliate_products.name is NULLABLE with no default: decoding it as String
     // 500'd the whole update on any row that had none. Option + `.or()` keeps the
     // stored value (NULL included) when the request does not supply one.
-    let existing = sqlx::query_as::<_, (Option<String>, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<Uuid>)>(
+    // `is_active` is read back too (COALESCE, because the column is NULLABLE with DEFAULT true) so a
+    // save that does not carry the key keeps the stored flag instead of re-ticking the row.
+    let existing = sqlx::query_as::<_, (Option<String>, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<Uuid>, bool)>(
         // COALESCE(numeric, 0.0) is still NUMERIC and sqlx refuses to decode NUMERIC
         // into f64 ("mismatched types; Rust type `f64` is not compatible with SQL type
         // `NUMERIC`"), so this route 500'd for EVERY row once the decode was reached.
         // Cast to float8 like the list path above (ap.price::float8, line 73).
-        "SELECT name, description, COALESCE(price,0.0)::float8, COALESCE(default_commission_rate,0.0)::float8, COALESCE(is_third_party,false), url, category_id, product_type, owner_name, system_tag_id
+        "SELECT name, description, COALESCE(price,0.0)::float8, COALESCE(default_commission_rate,0.0)::float8, COALESCE(is_third_party,false), url, category_id, product_type, owner_name, system_tag_id, COALESCE(is_active,true)
          FROM affiliate_products WHERE id = $1 AND tenant_id = $2"
     )
     .bind(id)
@@ -227,11 +271,15 @@ pub async fn update_affiliate_product(
         Some(v) => Some(v),
         None => existing.9,
     };
+    // Absent key / null = keep the stored flag (a no-touch save must not re-tick a retired product);
+    // an explicit true/false persists; anything else is a 400 (see parse_is_active).
+    let is_active = parse_is_active(req.is_active.as_ref(), existing.10)?;
 
     sqlx::query(
         "UPDATE affiliate_products SET name=$1, description=$2, price=$3, default_commission_rate=$4,
-         is_third_party=$5, url=$6, category_id=$7, product_type=$8, owner_name=$9, system_tag_id=$10, updated_at=NOW()
-         WHERE id=$11 AND tenant_id=$12"
+         is_third_party=$5, url=$6, category_id=$7, product_type=$8, owner_name=$9, system_tag_id=$10,
+         is_active=$11, updated_at=NOW()
+         WHERE id=$12 AND tenant_id=$13"
     )
     .bind(&name)
     .bind(&description)
@@ -243,6 +291,7 @@ pub async fn update_affiliate_product(
     .bind(&product_type)
     .bind(&owner_name)
     .bind(system_tag_id)
+    .bind(is_active)
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
