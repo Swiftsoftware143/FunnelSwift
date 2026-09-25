@@ -10,8 +10,7 @@ use uuid::Uuid;
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::features;
-use crate::handlers::adaswift_provision;
-use crate::handlers::workflowswift_push::push_to_workflowswift;
+use crate::handlers::workflowswift_push::{deliver_lead, LeadPush, PushOutcome};
 use crate::models::lead::*;
 use crate::state::AppState;
 
@@ -155,21 +154,42 @@ pub async fn create_lead(
     .execute(&state.pool)
     .await?;
 
-    // Best-effort push to WorkflowSwift
+    // Best-effort push to WorkflowSwift — the REAL POST {WORKFLOWSWIFT_URL}/api/v1/incoming call,
+    // the same `deliver_lead` the /api/v1/push/workflowswift leg uses. Until 2026-09-25 this spawn
+    // was `push_to_workflowswift`, which only wrote a log line while the route beside it fabricated
+    // a success body (kanban t_0a6a93f1); a lead was "pushed" nowhere. Failures are logged and never
+    // fail the lead — the same best-effort contract MissedCallRespondr ships for its contacts.
     tokio::spawn({
-        let pool = state.pool.clone();
         let url = state.workflowswift_url.clone();
+        let push = LeadPush {
+            email: req.email.clone(),
+            name: Some(display_name.clone()),
+            phone: req.phone.clone(),
+            company: req.company.clone(),
+            source_entry_id: Some(lead_id.to_string()),
+            campaign_slug: None,
+            data: json!({
+                "lead_id": lead_id,
+                "tenant_id": tenant_id,
+                "source": req.source,
+                "stage": req.stage,
+            }),
+        };
         async move {
-            push_to_workflowswift(&pool, &url, lead_id, tenant_id).await;
-        }
-    });
-
-    // Best-effort check for ADASwift tags and auto-provision
-    tokio::spawn({
-        let pool = state.pool.clone();
-        let adaswift_url = state.adaswift_url.clone();
-        async move {
-            adaswift_provision::check_and_provision(&pool, &adaswift_url, lead_id, tenant_id).await;
+            match deliver_lead(&url, &push).await {
+                PushOutcome::Pushed => {
+                    tracing::info!("workflowswift: lead {} delivered (workflow matched)", lead_id)
+                }
+                PushOutcome::NoWorkflow => tracing::info!(
+                    "workflowswift: lead {} accepted, no active workflow matches source 'funnelswift' — nothing written there",
+                    lead_id
+                ),
+                PushOutcome::Failed { status, message } => tracing::warn!(
+                    "workflowswift: lead {} not delivered (upstream status {:?}): {message}",
+                    lead_id,
+                    status
+                ),
+            }
         }
     });
 

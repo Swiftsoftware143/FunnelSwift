@@ -13,17 +13,17 @@ use crate::auth::handlers::{
     update_profile,
 };
 use crate::handlers::{
-    adaswift_provision, affiliate_handler, affiliate_lead_handler, affiliate_payout_handler,
-    affiliate_portal_handler, affiliate_product_handler, affiliate_tracking_handler,
-    api_key_handler, bulk_handler, campaigns_handler, checkout_handler,
-    coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
-    email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
-    integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
-    ocr, plan_handler, plan_tag_handler, portfolio_handler, product_category_handler,
-    provider_keys_handler, public_signup_handler, qr_handler, routing_handler, seo_handler,
-    settings_handler, site_handler, site_settings_handler, sync_plan_tag_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    affiliate_handler, affiliate_lead_handler, affiliate_payout_handler, affiliate_portal_handler,
+    affiliate_product_handler, affiliate_tracking_handler, api_key_handler, bulk_handler,
+    campaigns_handler, checkout_handler, coreswift_integration_handler, coreswift_push,
+    cross_app_webhook_handler, dashboard_handler, email_template_handler, funnel_handler,
+    incentiveswift_handler, insight_handler, integration_target_handler, kinetic_handler,
+    lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler, plan_tag_handler,
+    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
+    qr_handler, routing_handler, seo_handler, settings_handler, site_handler,
+    site_settings_handler, sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -753,30 +753,25 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/push/workflowswift",
             post(workflowswift_push::push_lead_to_workflowswift),
         )
-        .route(
-            "/api/v1/push/workflowswift/user",
-            post(workflowswift_push::provision_workflowswift_user),
-        )
-        .route(
-            "/api/v1/push/workflowswift/tag",
-            post(workflowswift_push::sync_workflowswift_tag),
-        )
-        .route(
-            "/api/v1/push/workflowswift/health",
-            get(workflowswift_push::workflowswift_health),
-        )
-        .route(
-            "/api/v1/push/adaswift",
-            post(adaswift_provision::push_lead_to_adaswift),
-        )
-        .route(
-            "/api/v1/push/adaswift/user",
-            post(adaswift_provision::provision_adaswift_user),
-        )
-        .route(
-            "/api/v1/push/adaswift/health",
-            get(adaswift_provision::adaswift_health),
-        )
+        // REMOVED 2026-09-25 (kanban t_0a6a93f1): the rest of this family is gone, because every
+        // leg below answered a 200 with a success body built from the request payload and wrote
+        // NOTHING anywhere (measured live: 0 rows in workflowswift / adaswift / coreswift_crm for a
+        // probe that had been "provisioned"/"synced"). Removal, not rewiring, for each:
+        //   * POST /api/v1/push/workflowswift/user  — no producer exists to call: WorkflowSwift has
+        //     no internal user-provision route at all (t_79d7d1d2 deleted its dead handler and left
+        //     a standing do-not-re-add note; cross-app user minting belongs to the CRM hub).
+        //   * POST /api/v1/push/workflowswift/tag   — a tag-only push has no correct payload:
+        //     WorkflowSwift's /internal/tags/assign needs a WorkflowSwift tenant_id + tag + entity.
+        //   * GET  /api/v1/push/workflowswift/health — hardcoded {"connected":true} with no caller,
+        //     and WorkflowSwift serves no health route to probe (404 on /health and /api/health).
+        //   * POST /api/v1/push/adaswift, /adaswift/user — ADASwift's only FunnelSwift-facing route
+        //     is /api/v1/internal/provision, whose request contract requires name+email+**domain**+
+        //     plan_tier (it writes a website record); FunnelSwift leads carry no domain and no
+        //     shipped surface asks for ADA provisioning, so there is no correct payload here either.
+        //     (t_65084d8b / t_8803c75e / t_ae84b186 / t_5a9e4eb7 are the same class and treatment.)
+        //   * GET  /api/v1/push/adaswift/health    — same constant, and ADASwift gates every /api/*
+        //     path (401), so nothing truthful to report.
+        // Do not re-add one of these without a real caller AND a target route that accepts the body.
         // Serve static files (SPA admin pages)
         .nest_service(
             "/affiliate-admin.html",

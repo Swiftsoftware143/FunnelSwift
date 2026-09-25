@@ -74,8 +74,6 @@ async fn main() -> Result<()> {
         std::env::var("INTERNAL_SYNC_KEY").expect("INTERNAL_SYNC_KEY must be set in environment");
     let workflowswift_url =
         std::env::var("WORKFLOWSWIFT_URL").unwrap_or_else(|_| "http://localhost:8085".to_string());
-    let adaswift_url =
-        std::env::var("ADASWIFT_URL").unwrap_or_else(|_| "http://localhost:8087".to_string());
     let coreswift_url =
         std::env::var("CORESWIFT_URL").unwrap_or_else(|_| "http://localhost:8084".to_string());
     let app_state = AppState::new(
@@ -83,7 +81,6 @@ async fn main() -> Result<()> {
         jwt_secret,
         internal_sync_key,
         workflowswift_url,
-        adaswift_url,
         coreswift_url,
     );
 
