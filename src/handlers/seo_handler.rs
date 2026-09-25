@@ -53,7 +53,13 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
     {
         for row in &rows {
             let slug: String = row.try_get("slug").unwrap_or_default();
-            let created: Option<chrono::DateTime<chrono::Utc>> =
+            // `funnels.created_at` is `timestamp without time zone` (migration 054), because
+            // funnel_handler decodes it as NaiveDateTime; decoding it here as DateTime<Utc>
+            // was a silent type mismatch whose `unwrap_or(None)` dropped every <lastmod> from
+            // the sitemap while still listing the URL (found by the scanner as a new
+            // TIMESTAMP row on this line, kanban t_7197ad72).  The kinetic_cards block above
+            // keeps DateTime<Utc>: that column really is timestamptz.
+            let created: Option<chrono::NaiveDateTime> =
                 row.try_get("created_at").unwrap_or(None);
             let lastmod = created.map(|d| d.format("%Y-%m-%d").to_string());
             urls.push(xml_url(base, &format!("/funnel/{}", slug), "weekly", "0.7", lastmod));
