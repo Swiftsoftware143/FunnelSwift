@@ -807,6 +807,27 @@ function LCT(){
 }
 
 /* === Card Editor — Side-by-Side with Live Preview === */
+/* kanban t_8151c83f — the card editor's two <select> vocabularies, declared ONCE (the save path
+   `SC2` reads `#mc-type` / `#mc-vp`, so these lists ARE the value space of
+   `kinetic_cards.template_type` / `.video_provider` from this screen).
+   Representability clause (the t_382c37c0 / t_adf187f9 class, applied here): a value stored by ANY
+   path must stay SELECTABLE in the control that edits it — when no option matches, the browser
+   falls back to the FIRST option, so a save that never touched the control would rewrite the row.
+   `template_type` is written by TWO vocabularies in this fleet — this editor's underscore ids
+   (business_card, mini_funnel, …) and the hyphenated card kinds `type`/`card_type` clients send
+   ("bio-link") — so an unknown stored value is appended rather than dropped. */
+var CARD_TEMPLATES=[{v:"default",l:"Default"},{v:"bio_link",l:"Bio Link"},{v:"business_card",l:"Business Card"},{v:"mini_page",l:"Mini Page"},{v:"mini_funnel",l:"Mini Funnel"},{v:"hero",l:"Hero"},{v:"thank_you",l:"Thank You"}];
+function cardTemplates(cur){
+  var s=CARD_TEMPLATES.slice();
+  if(cur&&!s.some(function(o){return o.v===cur;})) s=s.concat([{v:cur,l:cur}]);
+  return s;
+}
+var VIDEO_PROVIDERS=[{v:"",l:"None"},{v:"youtube",l:"YouTube"},{v:"vimeo",l:"Vimeo"},{v:"loom",l:"Loom"},{"v":"wistia",l:"Wistia"},{"v":"mp4",l:"MP4 URL"}];
+function videoProviders(cur){
+  var s=VIDEO_PROVIDERS.slice();
+  if(cur&&!s.some(function(o){return o.v===cur;})) s=s.concat([{v:cur,l:cur}]);
+  return s;
+}
 function MFC(data){
   var card=data&&data.id?data:null;
   var tpl=data&&data.template?data.template:null;
@@ -876,10 +897,12 @@ function MFC(data){
   p0.appendChild(MF("Title","mc-title",c.title||"","My Card"));
   p0.appendChild(MF("Slug","mc-slug",c.slug||"","my-card"));
   var ts=El("select",{id:"mc-type"});
-  [{v:"default",l:"Default"},{v:"bio_link",l:"Bio Link"},{v:"business_card",l:"Business Card"},{v:"mini_page",l:"Mini Page"},{v:"mini_funnel",l:"Mini Funnel"},{v:"hero",l:"Hero"},{v:"thank_you",l:"Thank You"}].forEach(function(o){
+  cardTemplates(c.template_type).forEach(function(o){
     ts.appendChild(El("option",{value:o.v,selected:(c.template_type||"default")===o.v?"selected":null},o.l));
   });
-  p0.appendChild(MF("Template Type",ts));
+  // ff(label, control) takes a READY-MADE control. MF(label,id,…) builds the field itself, so
+  // handing it this element made `<input id="[object HTMLSelectElement]">` and dropped the select.
+  p0.appendChild(ff("Template Type",ts));
   p0.appendChild(MF("Bio","mc-bio",c.bio||"","Bio / about section","textarea"));
   p0.appendChild(MF("Tagline","mc-tagline",c.tagline||"","Short headline"));
   p0.appendChild(MF("Meta Description","mc-meta",c.meta_description||"","SEO description","textarea"));
@@ -1077,10 +1100,10 @@ function MFC(data){
   var p3=El("div",{"class":"mc-tab-pane",style:"display:none"});
   p3.appendChild(MF("Avatar/Logo URL","mc-avatar",c.avatar_url||c.logo_url||"","https://..."));
   var vp=El("select",{id:"mc-vp"});
-  [{v:"",l:"None"},{v:"youtube",l:"YouTube"},{v:"vimeo",l:"Vimeo"},{v:"loom",l:"Loom"},{v:"wistia",l:"Wistia"},{"v":"mp4",l:"MP4 URL"}].forEach(function(o){
-    vp.appendChild(El("option",{value:o.v,selected:c.video_provider===o.v?"selected":null},o.l));
+  videoProviders(c.video_provider).forEach(function(o){
+    vp.appendChild(El("option",{value:o.v,selected:(c.video_provider||"")===o.v?"selected":null},o.l));
   });
-  p3.appendChild(MF("Video Provider",vp));
+  p3.appendChild(ff("Video Provider",vp));
   p3.appendChild(MF("Video ID/URL","mc-vid",c.video_id||"","Video ID or URL"));
   left.appendChild(p3);
 
