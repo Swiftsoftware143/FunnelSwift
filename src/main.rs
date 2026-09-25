@@ -6,7 +6,7 @@
 #![allow(clippy::needless_return)]
 
 use axum::Router;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
@@ -90,13 +90,22 @@ async fn main() -> Result<()> {
     // Build router
     let app = create_router(app_state);
 
-    // Get port from environment or default to 8080
+    // Bind address comes from the deploy env, the same keys the rest of the fleet reads
+    // (ADASwift/IncentiveSwift read HOST/PORT; /etc/swift/env/funnelswift.env supplies
+    // HOST=127.0.0.1). Before this change the host was a hardcoded INADDR_ANY inside
+    // SocketAddr::from, so no env could move the bind off every interface and the
+    // operator's old APP_HOST was read by nothing. Defaults unchanged: 0.0.0.0 / 8080.
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse::<u16>()
         .expect("PORT must be a valid u16");
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let ip: IpAddr = host
+        .parse()
+        .unwrap_or_else(|_| panic!("HOST must be a valid IP address, got {host}"));
+
+    let addr = SocketAddr::from((ip, port));
     tracing::info!("FunnelSwift server starting on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
