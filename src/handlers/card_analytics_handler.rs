@@ -369,8 +369,13 @@ pub async fn get_card_analytics(
     .map_err(|e| tracing::error!("card_analytics utm_sources query failed: {:?}", e))
     .unwrap_or_default();
 
+    // kinetic_card_locations.view_count is INTEGER (INT4) while LocationRow.count is
+    // Option<i64>, which sqlx decodes as INT8 only -- so the first row failed to decode,
+    // the error was logged and unwrap_or_default() rendered it as `top_locations: []`
+    // for every card (kanban t_093024d2). Cast in SQL, matching the daily_stats arm below
+    // and the tenant-wide top_countries below (SUM(int4) -> INT8 into the same struct).
     let top_locations: Vec<LocationRow> = sqlx::query_as(
-        "SELECT country, region, city, view_count as count FROM kinetic_card_locations WHERE card_id=$1 ORDER BY view_count DESC LIMIT 20"
+        "SELECT country, region, city, view_count::bigint as count FROM kinetic_card_locations WHERE card_id=$1 ORDER BY view_count DESC LIMIT 20"
     )
     .bind(card_id)
     .fetch_all(&state.pool)
