@@ -185,8 +185,15 @@ pub async fn update_affiliate_product(
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing = sqlx::query_as::<_, (String, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<Uuid>)>(
-        "SELECT name, description, COALESCE(price,0.0), COALESCE(default_commission_rate,0.0), COALESCE(is_third_party,false), url, category_id, product_type, owner_name, system_tag_id
+    // affiliate_products.name is NULLABLE with no default: decoding it as String
+    // 500'd the whole update on any row that had none. Option + `.or()` keeps the
+    // stored value (NULL included) when the request does not supply one.
+    let existing = sqlx::query_as::<_, (Option<String>, Option<String>, f64, f64, bool, Option<String>, Option<Uuid>, Option<String>, Option<String>, Option<Uuid>)>(
+        // COALESCE(numeric, 0.0) is still NUMERIC and sqlx refuses to decode NUMERIC
+        // into f64 ("mismatched types; Rust type `f64` is not compatible with SQL type
+        // `NUMERIC`"), so this route 500'd for EVERY row once the decode was reached.
+        // Cast to float8 like the list path above (ap.price::float8, line 73).
+        "SELECT name, description, COALESCE(price,0.0)::float8, COALESCE(default_commission_rate,0.0)::float8, COALESCE(is_third_party,false), url, category_id, product_type, owner_name, system_tag_id
          FROM affiliate_products WHERE id = $1 AND tenant_id = $2"
     )
     .bind(id)
@@ -195,7 +202,7 @@ pub async fn update_affiliate_product(
     .await?
     .ok_or_else(|| AppError::NotFound("Product not found".into()))?;
 
-    let name = req.name.unwrap_or(existing.0);
+    let name = req.name.or(existing.0);
     let description = req.description.or(existing.1);
     let price = req.price.unwrap_or(existing.2);
     let commission = req.default_commission_rate.unwrap_or(existing.3);

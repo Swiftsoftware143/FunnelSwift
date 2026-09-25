@@ -368,7 +368,10 @@ pub async fn update_lead_stage(
 
     // Log activity
     sqlx::query(
-        "INSERT INTO activity_log (tenant_id, user_id, action, entity_type, entity_id, metadata) VALUES ($1, $2, 'stage_change', 'lead', $3, $4)",
+        // activity_log.id is uuid NOT NULL with no DEFAULT: the INSERT omitted it, so
+        // this route failed 23502 for EVERY caller (not just NULL-email leads) and no
+        // stage change was ever recorded. Mint the id like the other tables' rows.
+        "INSERT INTO activity_log (id, tenant_id, user_id, action, entity_type, entity_id, metadata) VALUES (gen_random_uuid(), $1, $2, 'stage_change', 'lead', $3, $4)",
     )
     .bind(tenant_id)
     .bind(&auth.user_id)
@@ -379,26 +382,38 @@ pub async fn update_lead_stage(
 
     // Best-effort push to CoreSwift CRM on stage change — BYOK path (src/coreswift.rs).
     // A stage change only syncs when the tenant has connected CoreSwift.
-    if let Ok(Some((name, email, company, phone))) =
-        sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
-            "SELECT name, email, company, phone FROM leads WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await
+    //
+    // leads.email is NULLABLE; decoding it as a non-Option String failed the whole
+    // row and the old `if let Ok(..)` swallowed it, so the push silently never
+    // happened for any lead without an email (2 of 53 live rows) — and nothing
+    // logged it. Option + an explicit Err arm makes that state visible.
+    match sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>)>(
+        "SELECT name, email, company, phone FROM leads WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
     {
-        crate::coreswift::spawn_lead_push(
-            state.pool.clone(),
-            tenant_id,
-            crate::coreswift::LeadPayload {
-                email: Some(email),
-                phone,
-                name: Some(name),
-                company,
-                source: Some("stage_change".to_string()),
-                ..Default::default()
-            },
-        );
+        Ok(Some((name, email, company, phone))) => {
+            crate::coreswift::spawn_lead_push(
+                state.pool.clone(),
+                tenant_id,
+                crate::coreswift::LeadPayload {
+                    email,
+                    phone,
+                    name: Some(name),
+                    company,
+                    source: Some("stage_change".to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!(
+            lead_id = %id,
+            error = %e,
+            "stage-change lead lookup failed; CoreSwift push skipped"
+        ),
     }
 
     Ok(Json(json!({"message": "Stage updated"})))
@@ -530,8 +545,14 @@ pub async fn assign_lead_tags(
 
     // Fire cross-app sync to CoreSwift CRM
     if !state.coreswift_url.is_empty() {
-        let lead = sqlx::query_as::<_, (String, String, String)>(
-            "SELECT name, email, company FROM leads WHERE id = $1",
+        // leads.company is NULLABLE and holds NULL for 43 of the 53 live rows;
+        // leads.email likewise for 2. The hub's TagSyncLead wants a required String
+        // email and an Option<String> company
+        // (CoreSwift-CRM src/webhooks/cross_app_tag_sync.rs:32), so email is
+        // COALESCEd to '' (a JSON null would be refused with a 422) while company
+        // decodes as Option and travels as null.
+        let lead = sqlx::query_as::<_, (String, String, Option<String>)>(
+            "SELECT name, COALESCE(email, '') AS email, company FROM leads WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&state.pool)

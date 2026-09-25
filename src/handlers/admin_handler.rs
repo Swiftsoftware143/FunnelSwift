@@ -407,6 +407,14 @@ pub async fn admin_list_all_cards(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
 
+    // Three things this statement got wrong, all read-side:
+    //  * `kc.subdomain` does not exist on kinetic_cards (42703 — the endpoint 500'd for
+    //    every caller). The tenant's subdomain lives in tenant_settings under key
+    //    'subdomain', the same source kinetic_handler::get_subdomain reads;
+    //    UNIQUE(tenant_id, key) means the extra LEFT JOIN cannot multiply rows.
+    //  * kinetic_cards.theme is NULLABLE and NULL for 18 of 27 live cards -> Option,
+    //    rendered as "" exactly like kinetic_handler's own card list (line 87).
+    //  * kinetic_cards.template_type is NULLABLE with DEFAULT 'default' -> COALESCE.
     let rows = sqlx::query_as::<
         _,
         (
@@ -416,19 +424,20 @@ pub async fn admin_list_all_cards(
             String,
             String,
             String,
-            String,
             Option<String>,
+            String,
             Option<String>,
             bool,
         ),
     >(
         r#"SELECT kc.id, kc.tenant_id, COALESCE(pc.name, 'Unknown') as tenant_name,
-               kc.title, kc.slug, kc.template_type, kc.theme,
-               kc.subdomain, kc.avatar_url, kc.is_active
-         FROM kinetic_cards kc
-         LEFT JOIN portfolio_companies pc ON pc.tenant_id = kc.tenant_id
-         ORDER BY kc.updated_at DESC
-         LIMIT 200"#,
+               kc.title, kc.slug, COALESCE(kc.template_type, 'default') as template_type, kc.theme,
+               COALESCE(ts.value #>> '{}', '') as subdomain, kc.avatar_url, kc.is_active
+        FROM kinetic_cards kc
+        LEFT JOIN portfolio_companies pc ON pc.tenant_id = kc.tenant_id
+        LEFT JOIN tenant_settings ts ON ts.tenant_id = kc.tenant_id AND ts.key = 'subdomain'
+        ORDER BY kc.updated_at DESC
+        LIMIT 200"#,
     )
     .fetch_all(&state.pool)
     .await?;
@@ -455,7 +464,7 @@ pub async fn admin_list_all_cards(
                     "title": title,
                     "slug": slug,
                     "template_type": template_type,
-                    "theme": theme,
+                    "theme": theme.as_deref().unwrap_or(""),
                     "subdomain": subdomain,
                     "avatar_url": avatar_url,
                     "is_active": is_active,

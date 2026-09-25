@@ -152,7 +152,7 @@ pub async fn get_seo_settings(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
+        "SELECT COALESCE(key, ''), value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
     )
     .fetch_all(&state.pool)
     .await
@@ -203,7 +203,7 @@ pub async fn update_seo_settings(
 /// GET /api/v1/seo/inject — return meta/script tags for SSR injection
 pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Value>> {
     let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
+        "SELECT COALESCE(key, ''), value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
     )
     .fetch_all(&state.pool)
     .await

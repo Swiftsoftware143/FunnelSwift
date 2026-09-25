@@ -30,7 +30,7 @@ pub async fn list_web_to_lead_configs(
     // NaiveDateTime) then hid the failure behind `.unwrap_or_default()`, so the list came
     // back empty for every tenant no matter how many forms they had.
     let rows: Vec<(Uuid, String, Value, bool, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT id, name, field_mapping, is_active, created_at FROM web_to_lead_configs \
+        "SELECT id, name, COALESCE(field_mapping, '{}'::jsonb) AS field_mapping, is_active, created_at FROM web_to_lead_configs \
          WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
     .bind(tenant_id)

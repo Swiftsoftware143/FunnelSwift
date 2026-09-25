@@ -99,7 +99,7 @@ pub async fn render_funnel(
 ) -> axum::response::Html<String> {
     // Load SEO settings for injection
     let seo_rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT key, value::text FROM site_settings WHERE key LIKE 'seo_%'",
+        "SELECT COALESCE(key, ''), value::text FROM site_settings WHERE key LIKE 'seo_%'",
     )
     .fetch_all(&state.pool)
     .await

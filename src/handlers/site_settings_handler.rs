@@ -29,7 +29,10 @@ pub async fn list_site_settings(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let rows: Vec<(Uuid, String, String)> =
-        sqlx::query_as("SELECT id, key, value::text FROM site_settings ORDER BY key")
+        // site_settings.key is NULLABLE and the list has no WHERE — a single NULL-key
+        // row 500'd the whole endpoint (and get_subdomain/upsert can race a NULL in
+        // from a direct write). COALESCE is read-only: no migration, no invented rows.
+        sqlx::query_as("SELECT id, COALESCE(key, '') AS key, value::text FROM site_settings ORDER BY key")
             .fetch_all(&state.pool)
             .await?;
     let items: Vec<Value> = rows
@@ -44,11 +47,12 @@ pub async fn get_site_settings(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<Value>> {
-    let row: Option<(Uuid, String, String)> =
-        sqlx::query_as("SELECT id, key, value::text FROM site_settings WHERE key = $1")
-            .bind(&slug)
-            .fetch_optional(&state.pool)
-            .await?;
+    let row: Option<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT id, COALESCE(key, '') AS key, value::text FROM site_settings WHERE key = $1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
     let (id, key, raw) = row.ok_or_else(|| AppError::NotFound("Settings not found".into()))?;
     Ok(Json(
         json!({"id": id, "key": key, "value": value_from_text(&raw)}),

@@ -25,14 +25,18 @@ pub async fn list_provider_keys(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // provider_keys.is_active (DEFAULT true) / created_at (DEFAULT now()) are NULLABLE.
+    // is_active is COALESCEd to the schema's own default: a NULL must not render a
+    // working key as switched off. created_at has no honest stand-in for an unset
+    // value, so it decodes as Option (null) instead of inventing "now".
     let rows: Vec<(
         String,
         String,
         Option<String>,
         bool,
-        chrono::DateTime<chrono::Utc>,
+        Option<chrono::DateTime<chrono::Utc>>,
     )> = sqlx::query_as(
-        "SELECT provider, COALESCE(api_key,''), base_url, is_active, created_at \
+        "SELECT provider, COALESCE(api_key,''), base_url, COALESCE(is_active, true) AS is_active, created_at \
              FROM provider_keys WHERE tenant_id = $1 ORDER BY provider",
     )
     .bind(tenant_id)
@@ -184,8 +188,12 @@ pub async fn list_available_providers(
     _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    // available_providers.requires_base_url (DEFAULT false) / requires_metadata
+    // (DEFAULT '[]') are NULLABLE; the catalogue drives whether the Integration Center
+    // shows a base-URL field and a metadata editor, so a NULL is COALESCEd to the
+    // schema's own default rather than handed to the SPA as null.
     let rows: Vec<(String, String, Option<String>, bool, Value, Option<String>)> = sqlx::query_as(
-        "SELECT key, name, description, requires_base_url, requires_metadata, icon \
+        "SELECT key, name, description, COALESCE(requires_base_url, false) AS requires_base_url, COALESCE(requires_metadata, '[]'::jsonb) AS requires_metadata, icon \
          FROM available_providers \
          ORDER BY (key = 'coreswift') DESC, name",
     )

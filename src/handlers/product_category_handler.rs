@@ -108,7 +108,11 @@ pub async fn update_category(
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing: Option<(String, String, Option<String>)> = sqlx::query_as(
+    // product_categories.name / slug are NULLABLE with no default (8 of 15 live rows
+    // carry a NULL slug): a non-Option decode 500'd the whole update on any such row.
+    // Option + `.or()` keeps the stored value — NULL included — when the request does
+    // not supply one, instead of inventing a value.
+    let existing: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT name, slug, description FROM product_categories WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
@@ -117,8 +121,8 @@ pub async fn update_category(
     .await?;
     let ex = existing.ok_or_else(|| AppError::NotFound("Category not found".into()))?;
 
-    let name = req.name.unwrap_or(ex.0);
-    let slug = req.slug.unwrap_or(ex.1);
+    let name = req.name.or(ex.0);
+    let slug = req.slug.or(ex.1);
     let desc = req.description.or(ex.2);
 
     sqlx::query("UPDATE product_categories SET name=$1, slug=$2, description=$3 WHERE id=$4 AND tenant_id=$5")
