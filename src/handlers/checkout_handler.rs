@@ -240,15 +240,3 @@ pub async fn list_checkout_sessions(
 
     Ok(Json(json!({ "sessions": sessions })))
 }
-pub async fn stripe_webhook(
-    State(_state): State<AppState>,
-    Json(_payload): Json<Value>,
-) -> AppResult<(StatusCode, Json<Value>)> {
-    Ok((StatusCode::OK, Json(json!({"received": true}))))
-}
-pub async fn paypal_webhook(
-    State(_state): State<AppState>,
-    Json(_payload): Json<Value>,
-) -> AppResult<(StatusCode, Json<Value>)> {
-    Ok((StatusCode::OK, Json(json!({"received": true}))))
-}

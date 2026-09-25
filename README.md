@@ -97,11 +97,14 @@ All routes are under `/api/v1/`. 161 endpoints total.
 ### Checkout & Payments
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/v1/checkout/create` | Create checkout session |
+| POST | `/api/v1/checkout/create` | Create checkout session (answers 501 until live checkout ships) |
 | GET | `/api/v1/checkout/sessions` | List checkout sessions |
-| POST | `/api/v1/webhooks/stripe` | Stripe webhook |
-| POST | `/api/v1/webhooks/paypal` | PayPal webhook |
 | GET/POST | `/api/v1/payment-providers` | Payment provider config |
+
+> No payment webhook receivers are registered (`/api/v1/webhooks/stripe`,
+> `/api/v1/webhooks/paypal` were removed in kanban `t_6e746b75`): with no live checkout and no writer
+> for `checkout_sessions`, a receiver could only answer `200 {"received":true}` to an event it never
+> verified and never processed. Re-add them together with a real, signature-verified checkout flow.
 
 ### Kinetic Cards & Funnels
 | Method | Path | Purpose |

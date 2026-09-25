@@ -32,9 +32,8 @@ const PUBLIC_EXACT: &[&str] = &[
     // Public SEO
     "/api/v1/seo/sitemap.xml",
     "/api/v1/seo/inject",
-    // Signature-verified payment webhooks + public checkout
-    "/api/v1/webhooks/stripe",
-    "/api/v1/webhooks/paypal",
+    // Public checkout. Payment webhook receivers are deliberately NOT public (and not routed) —
+    // FunnelSwift has no live checkout to receive events for (kanban t_6e746b75).
     "/api/v1/checkout/create",
 ];
 

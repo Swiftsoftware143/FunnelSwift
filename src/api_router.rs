@@ -501,15 +501,10 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/checkout/session/:id",
             get(checkout_handler::get_checkout_session_public),
         )
-        // Webhook receivers (no auth — signature-verified)
-        .route(
-            "/api/v1/webhooks/stripe",
-            post(checkout_handler::stripe_webhook),
-        )
-        .route(
-            "/api/v1/webhooks/paypal",
-            post(checkout_handler::paypal_webhook),
-        )
+        // No payment webhook receivers are registered: FunnelSwift has no live checkout
+        // (checkout_handler::create_checkout_session refuses with 501) and no write path to
+        // checkout_sessions, so a receiver could only ever answer a false "received". They are
+        // re-added together with a real checkout flow, signature-verified (kanban t_6e746b75).
         // Tenant management
         .route(
             "/api/v1/tenants",
