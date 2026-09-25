@@ -17,10 +17,10 @@
   "guard_class": "ARTIFACT-MIRROR",
   "why_not_in_git": "110 MB served-only binary: guard class ARTIFACT-MIRROR, reported not hazardous (/opt/swift/docs/fleet-marketing-www.md). This record is the tracked provenance; the bytes stay out of both repos.",
   "recorded_by": "kanban t_d7606e96",
-  "known_mismatch": {
+  "known_mismatch_resolved": {
     "file": "www/download-app.html",
-    "in_served_page": "advertises v1.0.22, Built Jul 26 2026 14:10 EDT, 106 MB",
-    "measured": "the live APK declares versionName 1.0.21 (size 105.8 MiB = 111.0 MB decimal)",
-    "owner": "kanban t_6ccf6563 (owns www/download-app.html)"
+    "was": "advertised v1.0.22, 'Built: Jul 26, 2026 14:10 EDT', 106 MB - the version was measurably wrong (the linked APK declares versionName 1.0.21) and the build date was unverifiable: every zip entry in the APK carries the 1981 zero sentinel, so the artifact states no build time at all",
+    "now": "v1.0.21 - build 1e573a0b - 106 MB - Android 8.0+ (version = this file's version, build = md5[0:8] of the served mirror, size = this file's size as MiB)",
+    "fixed_by": "kanban t_6ccf6563: one-line replacement in apps/FunnelSwift/www/download-app.html, published through fleet/marketing-www-parity.py --publish and recorded in the frontends repo"
   }
 }
