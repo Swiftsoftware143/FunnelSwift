@@ -1,0 +1,26 @@
+{
+  "app": "FunnelSwift Mobile",
+  "platform": "android",
+  "version": "1.0.21",
+  "version_source": "versionName read out of the APK's own AndroidManifest.xml (2026-09-25)",
+  "size": 110939869,
+  "sha256": "29727fe7aec8b355f2febaa5715b63b95df9667a76f23c6996517ff0f47e7756",
+  "md5": "1e573a0b8d433eba53155d7aadae784d",
+  "live_routes": [
+    "https://funnelswift.net/funnelswift-1e573a0b.apk",
+    "https://funnelswift.net/funnelswift.apk"
+  ],
+  "mirrors_byte_identical": true,
+  "naming": "funnelswift-<md5[0:8]>.apk is the immutable versioned mirror; funnelswift.apk is the stable alias (same bytes)",
+  "binary_in_git": false,
+  "binary_location": "/opt/swift/nginx/www/funnelswift/{funnelswift.apk,funnelswift-1e573a0b.apk} (served by nginx, 110 MB each)",
+  "guard_class": "ARTIFACT-MIRROR",
+  "why_not_in_git": "110 MB served-only binary: guard class ARTIFACT-MIRROR, reported not hazardous (/opt/swift/docs/fleet-marketing-www.md). This record is the tracked provenance; the bytes stay out of both repos.",
+  "recorded_by": "kanban t_d7606e96",
+  "known_mismatch": {
+    "file": "www/download-app.html",
+    "in_served_page": "advertises v1.0.22, Built Jul 26 2026 14:10 EDT, 106 MB",
+    "measured": "the live APK declares versionName 1.0.21 (size 105.8 MiB = 111.0 MB decimal)",
+    "owner": "kanban t_6ccf6563 (owns www/download-app.html)"
+  }
+}
