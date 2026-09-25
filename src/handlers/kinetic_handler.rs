@@ -216,7 +216,7 @@ pub async fn update_card(
         crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
     }
     let social = body.get("social_links").cloned();
-    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), cta_text=COALESCE($16,cta_text), slug=COALESCE($17,slug), theme=COALESCE($18,theme) WHERE id=$1 AND tenant_id=$2")
+    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_provider=COALESCE($14,video_provider), video_id=COALESCE($15,video_id), slug=COALESCE($16,slug), theme=COALESCE($17,theme) WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
@@ -225,7 +225,10 @@ pub async fn update_card(
         .bind(&social)
         .bind(body["tagline"].as_str()).bind(body["meta_description"].as_str())
         .bind(body["video_provider"].as_str()).bind(body["video_id"].as_str())
-        .bind(body["cta_text"].as_str()).bind(body["slug"].as_str())
+        // `cta_text` was dropped: `kinetic_cards` has no such column and nothing reads one —
+        // the footer CTA is the plan feature `kinetic_cta_text` and per-block CTAs live inside
+        // `layout_blocks`. Naming it made this UPDATE fail 42703 on every card edit.
+        .bind(body["slug"].as_str())
         .bind(body["theme"].as_str())
         .execute(&state.pool).await?;
     Ok(Json(json!({"message": "Card updated"})))
@@ -255,9 +258,13 @@ pub async fn list_buttons(
     Path(card_id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // `kinetic_buttons` has no `url` column — migration 0017 declares `destination_url` plus a
+    // NOT NULL `action_type`. The statement named `url`, so this reader raised ERROR 42703 and
+    // `.unwrap_or_default()` turned it into "No buttons yet." for every card. Errors now
+    // propagate (the reason this defect could hide in the first place).
     let rows = sqlx::query(
-        "SELECT b.id, b.card_id, b.label, b.url, b.sort_order, b.created_at FROM kinetic_buttons b JOIN kinetic_cards c ON c.id = b.card_id WHERE b.card_id=$1 AND c.tenant_id=$2 ORDER BY b.sort_order"
-    ).bind(card_id).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+        "SELECT b.id, b.card_id, b.label, b.destination_url, b.action_type, b.sort_order, b.created_at FROM kinetic_buttons b JOIN kinetic_cards c ON c.id = b.card_id WHERE b.card_id=$1 AND c.tenant_id=$2 ORDER BY b.sort_order"
+    ).bind(card_id).bind(tenant_id).fetch_all(&state.pool).await?;
     use sqlx::Row;
     let buttons: Vec<Value> = rows
         .iter()
@@ -266,7 +273,9 @@ pub async fn list_buttons(
                 "id": r.try_get::<Uuid, _>("id").unwrap_or_default().to_string(),
                 "card_id": r.try_get::<Uuid, _>("card_id").unwrap_or_default().to_string(),
                 "label": r.try_get::<String, _>("label").unwrap_or_default(),
-                "url": r.try_get::<String, _>("url").unwrap_or_default(),
+                "url": r.try_get::<Option<String>, _>("destination_url").unwrap_or_default().unwrap_or_default(),
+                "destination_url": r.try_get::<Option<String>, _>("destination_url").unwrap_or_default().unwrap_or_default(),
+                "action_type": r.try_get::<String, _>("action_type").unwrap_or_default(),
                 "sort_order": r.try_get::<i32, _>("sort_order").unwrap_or(0),
                 "created_at": r
                     .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
@@ -300,14 +309,26 @@ pub async fn create_button(
     crate::features::enforce_action_button_limit(&state, tenant_id, card_id).await?;
     let id = Uuid::new_v4();
     let label = body["label"].as_str().unwrap_or("Button");
-    let url = body["url"].as_str().unwrap_or("");
+    // `kinetic_buttons` columns are `destination_url` and a NOT NULL `action_type` (migration
+    // 0017: 'url' | 'lead_form' | 'sms' — no default). The old statement named `url` (42703) and
+    // omitted `action_type` (23502), so no button could ever be created. The SPA posts
+    // {label, url}; the DB names are accepted too.
+    let url = body["url"]
+        .as_str()
+        .or_else(|| body["destination_url"].as_str())
+        .unwrap_or("");
+    let action_type = body["action_type"]
+        .as_str()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("url");
     let sort = body["sort_order"].as_i64().unwrap_or(0) as i32;
     sqlx::query(
-        "INSERT INTO kinetic_buttons (id, card_id, label, url, sort_order) VALUES ($1,$2,$3,$4,$5)",
+        "INSERT INTO kinetic_buttons (id, card_id, label, action_type, destination_url, sort_order) VALUES ($1,$2,$3,$4,$5,$6)",
     )
     .bind(id)
     .bind(card_id)
     .bind(label)
+    .bind(action_type)
     .bind(url)
     .bind(sort)
     .execute(&state.pool)

@@ -482,6 +482,47 @@ pub async fn admin_update_plan_features(
     Ok(Json(json!({"message": "Features updated"})))
 }
 
+/// Activate `plan_id` for `tenant_id` and return `(subscription_id, plan_slug)`.
+///
+/// This is the **only** writer of a tenant's plan. `tenants.plan_id` has never existed in this
+/// database (`ERROR 42703`), and the plan really is the active `tenant_plan_subscriptions` row:
+/// that is what `list_tenants` reads (LATERAL … WHERE status = 'active') and what this module's
+/// own `admin_assign_plan` writes. Returns the slug so callers can run slug-dependent side
+/// effects (sold-tag routing).
+pub(crate) async fn set_active_plan(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    plan_id: Uuid,
+) -> AppResult<(Uuid, String)> {
+    // Get the new plan slug before activating
+    let new_plan_slug: String = sqlx::query_scalar("SELECT slug FROM plans WHERE id = $1")
+        .bind(plan_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+
+    // Deactivate existing subscription first
+    sqlx::query(
+        "UPDATE tenant_plan_subscriptions SET status = 'cancelled' WHERE tenant_id = $1 AND status = 'active'"
+    )
+    .bind(tenant_id)
+    .execute(pool)
+    .await?;
+
+    let subscription_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
+           VALUES ($1, $2, $3, 'active', NOW())"#,
+    )
+    .bind(subscription_id)
+    .bind(tenant_id)
+    .bind(plan_id)
+    .execute(pool)
+    .await?;
+
+    Ok((subscription_id, new_plan_slug))
+}
+
 pub async fn admin_assign_plan(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -502,30 +543,7 @@ pub async fn admin_assign_plan(
         .ok_or_else(|| AppError::BadRequest("Valid plan_id is required".into()))?;
 
     // Get the new plan slug before activating
-    let new_plan_slug: String = sqlx::query_scalar("SELECT slug FROM plans WHERE id = $1")
-        .bind(plan_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
-
-    // Deactivate existing subscription first
-    sqlx::query(
-        "UPDATE tenant_plan_subscriptions SET status = 'cancelled' WHERE tenant_id = $1 AND status = 'active'"
-    )
-    .bind(tenant_id)
-    .execute(&state.pool)
-    .await?;
-
-    let subscription_id = Uuid::new_v4();
-    sqlx::query(
-        r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
-           VALUES ($1, $2, $3, 'active', NOW())"#,
-    )
-    .bind(subscription_id)
-    .bind(tenant_id)
-    .bind(plan_id)
-    .execute(&state.pool)
-    .await?;
+    let (subscription_id, new_plan_slug) = set_active_plan(&state.pool, tenant_id, plan_id).await?;
 
     // Auto-apply Sold tag to all leads in this tenant
     // This only applies when upgrading to paid plans (pro/enterprise)

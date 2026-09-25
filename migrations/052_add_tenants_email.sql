@@ -1,0 +1,12 @@
+-- 052: tenants.email
+--
+-- The admin "Tenants" screen (www/dashboard.js STN/RTN, www-app, www-admin) collects a
+-- contact email per tenant, POSTs/PUTs it to /api/v1/tenants and renders it in the list
+-- (and searches by it), but `tenants` never had an email column: the statement raised
+-- 42703, so no tenant create/edit from that screen could be saved.
+--
+-- Additive and nullable: the 124 existing rows keep NULL, nothing else in the app reads a
+-- tenant email from elsewhere (users.email is the *account* login identity and is UNIQUE;
+-- portfolio_companies.email is a company record, 0-4 rows per tenant), so this is not a
+-- second source of truth for a value that already had a home.
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS email TEXT;
