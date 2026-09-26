@@ -16,13 +16,26 @@ use sqlx::Row;
 // ── Affiliate Product Auto-Sync helpers ──
 
 /// Sync a plan into affiliate_products (INSERT on create, UPDATE on change).
+///
+/// **`is_active` is deliberately NOT synced** (kanban t_9c30ce49). It is a lifecycle flag owned by
+/// the product's own screen (`PUT /api/v1/affiliate-products/:id`) and by
+/// [`deactivate_affiliate_product_for_plan`] when the plan is deleted. This function rewrites the
+/// product's COMMERCIAL fields only: name, description, price, commission. Measured before the
+/// change: an admin retired a plan-derived product and then edited the plan's price → the product
+/// came back `is_active = true` with no mention in the UI.
+///
+/// The alternative ("the plan owns it") is not available in this schema: `plans` has no `is_active`
+/// column at all, so a plan-level flag would have to be invented (column + migration + an admin
+/// control that does not exist) while the product checkbox already writes the real one.
+///
+/// A brand-new product still starts ACTIVE — it takes the column's own `DEFAULT true`, so a new
+/// plan is sellable and this function never mentions the flag.
 async fn sync_plan_to_affiliate_product(
     pool: &sqlx::PgPool,
     plan_id: uuid::Uuid,
     name: &str,
     price: f64,
     tenant_id: Option<uuid::Uuid>,
-    is_active: bool,
     commission_rate: f64,
 ) -> Result<(), crate::error::AppError> {
     // Look up the FunnelSwift Plans category; fall back to any available category
@@ -60,32 +73,35 @@ async fn sync_plan_to_affiliate_product(
     let description = format!("{} — FunnelSwift Plan", name);
 
     if existing > 0 {
-        // Update existing
+        // Update existing. `is_active` is deliberately absent from this SET list: a plan edit must
+        // not resurrect a product an admin retired (kanban t_9c30ce49).
         sqlx::query(
             r#"UPDATE affiliate_products SET
                 name = $1,
                 description = $2,
                 price = $3,
                 default_commission_rate = $4,
-                is_active = $5,
                 updated_at = NOW()
-            WHERE plan_id = $6"#,
+            WHERE plan_id = $5"#,
         )
         .bind(name)
         .bind(&description)
         .bind(price)
         .bind(commission_rate)
-        .bind(is_active)
         .bind(plan_id)
         .execute(pool)
         .await?;
     } else {
-        // Insert new
+        // Insert new. `affiliate_products.id` has NO column default, so the id must be supplied or
+        // the INSERT dies on a NOT NULL violation (measured: every new plan produced no product at
+        // all, because the caller discarded the error — kanban t_9c30ce49). `is_active` is left out
+        // on purpose so the column DEFAULT owns "a new plan is sellable".
         sqlx::query(
             r#"INSERT INTO affiliate_products
-                (tenant_id, name, description, price, default_commission_rate, is_active, category_id, plan_id, owner_name, product_type, source_app)
-            VALUES ($1, $2, $3, $4, $5, true, $6, $7, 'SwiftSoftware', 'software', 'funnelswift')"#
+                (id, tenant_id, name, description, price, default_commission_rate, category_id, plan_id, owner_name, product_type, source_app)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'SwiftSoftware', 'software', 'funnelswift')"#
         )
+        .bind(uuid::Uuid::new_v4())
         .bind(effective_tenant_id)
         .bind(name)
         .bind(&description)
@@ -146,9 +162,18 @@ pub async fn create_plan(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     let plan_id = Uuid::new_v4();
+    // Column list == placeholder list == bind list, or this INSERT dies before it runs. It was
+    // broken twice over (kanban t_9c30ce49, both measured live: `POST /api/v1/plans` answered
+    // 500 "Database error" for every caller):
+    //   1. 29 columns with 30 placeholders -> `INSERT has more expressions than target columns`;
+    //   2. `max_custom_domains` and `max_team_members` are NOT NULL columns with their own DEFAULT,
+    //      and binding `Option<i32> = None` sent an explicit NULL -> `null value in column
+    //      "max_custom_domains" violates not-null constraint`.
+    // Left out here so the COLUMN DEFAULTS own them (0 and 2); the nullable limits below still
+    // accept NULL as "no limit recorded".
     sqlx::query(
-        r#"INSERT INTO plans (id, name, slug, price, annual_price, side, billing_cycle, max_custom_domains, max_cards, max_qr_codes, max_action_buttons, max_forms, max_leads, max_tags, max_team_members, max_ocr_scans, has_webhooks, has_api, has_dual_routing, has_mini_funnels, has_card_gating, has_remove_branding, has_white_label, has_multi_tenant, has_analytics, has_import_export, purchase_url, payment_provider, features)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)"#,
+        r#"INSERT INTO plans (id, name, slug, price, annual_price, side, billing_cycle, max_cards, max_qr_codes, max_action_buttons, max_forms, max_leads, max_tags, max_ocr_scans, has_webhooks, has_api, has_dual_routing, has_mini_funnels, has_card_gating, has_remove_branding, has_white_label, has_multi_tenant, has_analytics, has_import_export, purchase_url, payment_provider, features)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)"#,
     )
     .bind(plan_id)
     .bind(&req.name)
@@ -157,14 +182,12 @@ pub async fn create_plan(
     .bind(req.annual_price)
     .bind(req.side.as_deref().unwrap_or("main"))
     .bind(req.billing_cycle.as_deref().unwrap_or("month"))
-    .bind(req.max_custom_domains)
     .bind(req.max_cards)
     .bind(req.max_qr_codes)
     .bind(req.max_action_buttons)
     .bind(req.max_forms)
     .bind(req.max_leads)
     .bind(req.max_tags)
-    .bind(req.max_team_members)
     .bind(req.max_ocr_scans)
     .bind(req.has_webhooks.unwrap_or(false))
     .bind(req.has_api.unwrap_or(false))
@@ -190,17 +213,20 @@ pub async fn create_plan(
             .await?;
     }
 
-    // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(
+    // Auto-sync to affiliate products. Non-fatal, but never silent: this used to be `let _ =`,
+    // which is how the sync's INSERT failure stayed invisible for every new plan (t_9c30ce49).
+    if let Err(e) = sync_plan_to_affiliate_product(
         &state.pool,
         plan_id,
         &req.name,
         req.price,
         None,
-        true,
         req.commission_rate.unwrap_or(20.0),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(plan_id = %plan_id, error = %e, "affiliate product sync failed");
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -263,17 +289,15 @@ pub async fn update_plan(
     .execute(&state.pool)
     .await?;
 
-    // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(
-        &state.pool,
-        id,
-        &sync_name,
-        sync_price,
-        None,
-        true,
-        sync_rate,
-    )
-    .await;
+    // Auto-sync to affiliate products. NOTE: this rewrites the product's name/description/price/
+    // commission only — never `is_active`, so editing a plan cannot resurrect a product an admin
+    // retired (kanban t_9c30ce49). Non-fatal, but logged: it used to be discarded silently.
+    if let Err(e) =
+        sync_plan_to_affiliate_product(&state.pool, id, &sync_name, sync_price, None, sync_rate)
+            .await
+    {
+        tracing::warn!(plan_id = %id, error = %e, "affiliate product sync failed");
+    }
 
     Ok(Json(json!({"message": "Plan updated"})))
 }
@@ -286,6 +310,24 @@ pub async fn delete_plan_admin(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
+
+    // The plan has to exist BEFORE anything is retired: `affiliate_products.plan_id` is
+    // ON DELETE SET NULL, so the join key is gone the instant the plan row goes.
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plans WHERE id = $1)")
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    if !exists {
+        return Err(AppError::NotFound("Plan not found".into()));
+    }
+
+    // Deactivate the affiliate product FIRST (don't delete it — preserve historical conversion
+    // data). Measured with the old delete-then-deactivate order: plan_id was already NULL by the
+    // time the UPDATE ran, it matched 0 rows, and deleting a plan left its product `is_active =
+    // true` (kanban t_9c30ce49). The error is propagated, not discarded: a retirement that did not
+    // happen must not answer 200.
+    deactivate_affiliate_product_for_plan(&state.pool, id).await?;
+
     let result = sqlx::query("DELETE FROM plans WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
@@ -294,9 +336,6 @@ pub async fn delete_plan_admin(
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Plan not found".into()));
     }
-
-    // Deactivate affiliate product (don't delete — preserve historical conversion data)
-    let _ = deactivate_affiliate_product_for_plan(&state.pool, id).await;
 
     Ok(Json(json!({"message": "Plan deleted"})))
 }
@@ -419,17 +458,13 @@ pub async fn admin_create_plan_json(
             .await?;
     }
 
-    // Auto-sync to affiliate products
-    let _ = sync_plan_to_affiliate_product(
-        &state.pool,
-        plan_id,
-        &name,
-        price,
-        None,
-        true,
-        commission_rate,
-    )
-    .await;
+    // Auto-sync to affiliate products (commercial fields only — never `is_active`, t_9c30ce49).
+    if let Err(e) =
+        sync_plan_to_affiliate_product(&state.pool, plan_id, &name, price, None, commission_rate)
+            .await
+    {
+        tracing::warn!(plan_id = %plan_id, error = %e, "affiliate product sync failed");
+    }
 
     Ok((
         StatusCode::CREATED,
