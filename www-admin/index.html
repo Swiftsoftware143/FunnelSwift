@@ -157,10 +157,50 @@ function showToast(msg, type='info') {
 // ── Helpers ──
 function x(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function $(id) { return document.getElementById(id); }
-function isSuperAdmin() { return USER && (USER.role === 'super_admin' || USER.is_super_admin); }
+/* kanban t_02f8fd6d: this gate asked for a vocabulary the app never issues. /api/v1/auth/me
+   (src/auth/handlers.rs) returns `role` straight from the JWT and `is_admin` (= role === "admin"),
+   and `auth.is_admin` is what every /api/v1/admin/* route checks server-side. `role === "super_admin"`
+   and `is_super_admin` are therefore never true for a real sign-in (users.role is admin | company_admin
+   | user), so the entire SUPER ADMIN nav section was hidden and its screens answered "Access Denied" —
+   including the Tag Groups screen whose Edit button this card fixes. Accept the server's own
+   vocabulary, the way IncentiveSwift's console already does. */
+function isSuperAdmin() { return !!(USER && (USER.role === 'super_admin' || USER.role === 'admin' || USER.is_admin === true)); }
 function canManageAffiliates() { return isSuperAdmin(); }
 function formatDate(d) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); }
+
+/* ── kanban t_02f8fd6d: prefill sources for the Edit modals ──────────────────────────────────
+   The rows each list screen last rendered, keyed by id. These lists are `SELECT *`, so the row an
+   Edit button came from already carries every field its modal reads — prefilling from it is the
+   only source that cannot disagree with what the operator clicked. */
+const EDIT_ROWS = { tags: {}, sysTags: {}, groups: {} };
+/* `rows` is that cache (optional); `fallback(id)` is the detail route for an out-of-band id.
+   NOTE: GET /api/v1/tag-groups/:id is NOT routed (PUT/DELETE only — src/api_router.rs), which is
+   what made the tag-group Edit answer an empty-bodied 405 and open a blank form. Its fallback is
+   the LIST route, which IS served. */
+async function rowForEdit(id, rows, fallback) {
+  if (!id) return {};
+  const hit = rows && rows[String(id)];
+  if (hit) return hit;
+  return (await fallback(String(id))) || {};
+}
+/* A failed prefill must never leave an editable form half-empty (the pre-fix tag-group Edit
+   rendered an empty, `required` Name for a group that HAS one, so a no-touch save was impossible
+   and a retyped name silently renamed the group): close the modal and say what failed instead of
+   swallowing the rejection. */
+function failEdit(e, what) {
+  showToast((what || 'Could not load the record') + ': ' + ((e && e.message) || 'unknown error'), 'error');
+  STATE.modal = null;
+  renderApp();
+}
+/* Fallback for an out-of-band tag-group id: the LIST route, scoped and served. */
+async function loadTagGroupById(id) {
+  const list = await api('/tag-groups');
+  const arr = Array.isArray(list) ? list : ((list && (list.data || list.groups)) || []);
+  const found = arr.filter(g => String(g.id) === String(id))[0];
+  if (!found) throw new Error('Tag group not found');
+  return found;
+}
 
 // ── Login ──
 async function doLogin(email, password) {
@@ -613,7 +653,8 @@ function openPlanModal(id) {
   // Load plan data into modal
   setTimeout(async () => {
     let plan = {};
-    if (id) try { plan = await api('/plans/'+id); } catch(e){}
+    if (id) { try { plan = await rowForEdit(id, null, (i) => api('/plans/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the plan'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     const f = (k, def) => plan[k] !== undefined ? plan[k] : def;
@@ -696,7 +737,8 @@ function openLeadModal(id) {
   renderApp();
   setTimeout(async () => {
     let lead = {};
-    if (id) try { lead = await api('/leads/'+id); } catch(e){}
+    if (id) { try { lead = await rowForEdit(id, null, (i) => api('/leads/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the lead'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="lead-form">
@@ -728,6 +770,8 @@ async function renderTags() {
   let tags = [];
   try { tags = await api('/tags'); } catch(e) { tags = []; }
   if (!Array.isArray(tags)) tags = tags.data || tags.tags || [];
+  EDIT_ROWS.tags = {};
+  tags.forEach(t => { EDIT_ROWS.tags[String(t.id)] = t; });
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -755,7 +799,8 @@ function openTagModal(id) {
   renderApp();
   setTimeout(async () => {
     let tag = {};
-    if (id) try { tag = await api('/tags/'+id); } catch(e){}
+    if (id) { try { tag = await rowForEdit(id, EDIT_ROWS.tags, (i) => api('/tags/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the tag'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="tag-form">
@@ -837,7 +882,8 @@ function openAffiliateModal(id) {
   renderApp();
   setTimeout(async () => {
     let a = {};
-    if (id) try { a = await api('/affiliates/'+id); } catch(e){}
+    if (id) { try { a = await rowForEdit(id, null, (i) => api('/affiliates/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the affiliate'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="affiliate-form">
@@ -901,7 +947,8 @@ function openAffiliateProductModal(id) {
   renderApp();
   setTimeout(async () => {
     let p = {};
-    if (id) try { p = await api('/affiliate-products/'+id); } catch(e){}
+    if (id) { try { p = await rowForEdit(id, null, (i) => api('/affiliate-products/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the affiliate product'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     const isAdmin = isSuperAdmin();
@@ -1090,7 +1137,8 @@ function openEmailTemplateModal(id) {
   renderApp();
   setTimeout(async () => {
     let t = {};
-    if (id) try { t = await api('/admin/email-templates/'+id); } catch(e){}
+    if (id) { try { t = await rowForEdit(id, null, (i) => api('/admin/email-templates/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the email template'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="email-form">
@@ -1150,7 +1198,8 @@ function openCampaignModal(id) {
   renderApp();
   setTimeout(async () => {
     let c = {};
-    if (id) try { c = await api('/campaigns/'+id); } catch(e){}
+    if (id) { try { c = await rowForEdit(id, null, (i) => api('/campaigns/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the campaign'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="campaign-form">
@@ -1208,7 +1257,8 @@ function openWebhookModal(id) {
   renderApp();
   setTimeout(async () => {
     let w = {};
-    if (id) try { w = await api('/webhooks/'+id); } catch(e){}
+    if (id) { try { w = await rowForEdit(id, null, (i) => api('/webhooks/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the webhook'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="webhook-form">
@@ -1493,6 +1543,8 @@ async function renderSystemTags() {
   try { items = await api('/tags?system=true'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tags || [];
   items = items.filter(t => t.is_system === true);
+  EDIT_ROWS.sysTags = {};
+  items.forEach(t => { EDIT_ROWS.sysTags[String(t.id)] = t; });
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1521,7 +1573,8 @@ function openSysTagModal(id) {
   renderApp();
   setTimeout(async () => {
     let t = {};
-    if (id) try { t = await api('/tags/'+id); } catch(e){}
+    if (id) { try { t = await rowForEdit(id, EDIT_ROWS.sysTags, (i) => api('/tags/'+i)); }
+              catch(e) { return failEdit(e, 'Could not load the system tag'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="systag-form">
@@ -1556,6 +1609,8 @@ async function renderTagGroups() {
   let items = [];
   try { items = await api('/tag-groups'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.groups || [];
+  EDIT_ROWS.groups = {};
+  items.forEach(g => { EDIT_ROWS.groups[String(g.id)] = g; });
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1564,11 +1619,16 @@ async function renderTagGroups() {
     </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">📁</div><div class="title">No tag groups yet</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Description</th><th>Tags Count</th><th>Actions</th></tr></thead>
+      <!-- kanban t_02f8fd6d: both of the old cells were fabricated. tag_groups has no
+           description column (so it could only ever print '-') and GET /tag-groups returns
+           TagGroup rows — no tag_count/count — so the count could only ever print 0. The two
+           cells below read columns the row really carries. (No backticks in here: this comment
+           lives inside a JS template literal.) -->
+      <thead><tr><th>Name</th><th>Collapsible</th><th>Sort</th><th>Actions</th></tr></thead>
       <tbody>${items.map(g=>`<tr>
         <td><strong>${x(g.name)}</strong></td>
-        <td>${x(g.description||'-')}</td>
-        <td><span class="badge badge-blue">${g.tag_count||g.count||0}</span></td>
+        <td>${g.is_collapsible?'Yes':'No'}</td>
+        <td>${g.sort_order||0}</td>
         <td><button class="btn btn-secondary btn-xs" onclick="window._editTagGroup('${g.id}')">Edit</button></td>
       </tr>`).join('')}</tbody>
     </table></div></div>`}
@@ -1583,12 +1643,19 @@ function openTagGroupModal(id) {
   renderApp();
   setTimeout(async () => {
     let g = {};
-    if (id) try { g = await api('/tag-groups/'+id); } catch(e){}
+    if (id) { try { g = await rowForEdit(id, EDIT_ROWS.groups, loadTagGroupById); }
+              catch(e) { return failEdit(e, 'Could not load the tag group'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="group-form">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(g.name||'')}" required></div>
-      <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" rows="2">${x(g.description||'')}</textarea></div>
+      <!-- kanban t_02f8fd6d: no Description field. The tag_groups table has no such column
+           (id, tenant_id, name, is_collapsible, sort_order, created_at — migrations/000001_initial.sql)
+           and the update request struct has no such field, so the textarea wrote a key PUT
+           /tag-groups/:id ignores: the operator's only possible outcome was losing what they typed.
+           Removed rather than adding a column — the tenant shell (the customer surface) has no
+           description field and no reader exists, so a column only this panel could write would
+           just be the same lie one layer down. (No backticks in here: inside a JS template literal.) -->
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
