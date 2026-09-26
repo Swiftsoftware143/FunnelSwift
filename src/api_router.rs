@@ -326,7 +326,14 @@ pub fn create_router(
         )
         .route(
             "/api/v1/webhooks/:id",
-            delete(webhook_handler::delete_webhook),
+            // kanban t_ae907da8: this path carried DELETE only, so the admin console's Webhook
+            // editor had no way to save an edit — its Save button issued a PUT that answered 405,
+            // and its prefill called a GET that answered 405 too. `update_webhook` keeps every
+            // field it is not sent, so a no-touch save is a 200 no-op. NO GET detail route is added:
+            // the console prefills from the row GET /api/v1/webhooks already holds (and from that
+            // same list route for an out-of-band id), so a detail GET would be a route with no
+            // caller — the class this card exists to remove.
+            put(webhook_handler::update_webhook).delete(webhook_handler::delete_webhook),
         )
         .route(
             "/api/v1/webhooks/:id/test",

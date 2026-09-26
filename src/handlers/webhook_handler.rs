@@ -109,7 +109,7 @@ pub async fn create_webhook(
     let webhook_id = Uuid::new_v4();
 
     sqlx::query(
-        "INSERT INTO webhooks (id, tenant_id, name, url, events, secret) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO webhooks (id, tenant_id, name, url, events, secret, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(webhook_id)
     .bind(tenant_id)
@@ -117,6 +117,9 @@ pub async fn create_webhook(
     .bind(&req.url)
     .bind(serde_json::to_value(&req.events).map_err(|e| AppError::Internal(format!("Events serialize error: {e}")))?)
     .bind(&req.secret)
+    // kanban t_ae907da8: the Add form's Active toggle used to be dropped on the floor (the key was
+    // not in the request struct, so serde ignored it and every webhook was created active).
+    .bind(req.is_active.unwrap_or(true))
     .execute(&state.pool)
     .await?;
 
@@ -124,6 +127,68 @@ pub async fn create_webhook(
         StatusCode::CREATED,
         Json(json!({"id": webhook_id, "message": "Webhook created"})),
     ))
+}
+
+/// `PUT /api/v1/webhooks/:id` — the Webhook editor's Save (kanban t_ae907da8).
+///
+/// The route was never registered (only DELETE lived on this path), so the console's editor could
+/// not save anything; the arm taken was WIRE, not REMOVE: the screen's list + Add + Test paths are
+/// all live and the resource is plan-gated (`has_webhooks` / `max_webhooks`), so deleting the
+/// editor would have left the only editable field of a sold feature unreachable.
+///
+/// Two deliberate properties:
+/// * an absent key KEEPS the stored value, so a no-touch save is a no-op that still answers 200
+///   (measured: nothing in the console's form is required to change to press Save);
+/// * the URL is validated only when the request actually CHANGES it. Re-validating the stored URL on
+///   every save would refuse to rename a webhook whose hostname has stopped resolving — the same
+///   "read path wedged by a write guard" shape as the max_cards defect on t_8ccc8e6a.
+pub async fn update_webhook(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateWebhookRequest>,
+) -> AppResult<Json<Webhook>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    if let Some(url) = req.url.as_deref() {
+        validate_webhook_url(url)?;
+    }
+
+    let existing =
+        sqlx::query_as::<_, Webhook>("SELECT * FROM webhooks WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Webhook not found".into()))?;
+
+    let name = req.name.unwrap_or(existing.name);
+    let url = req.url.unwrap_or(existing.url);
+    let events = match req.events {
+        Some(events) => serde_json::to_value(&events)
+            .map_err(|e| AppError::Internal(format!("Events serialize error: {e}")))?,
+        None => existing.events,
+    };
+    let is_active = req.is_active.unwrap_or(existing.is_active);
+
+    let updated = sqlx::query_as::<_, Webhook>(
+        "UPDATE webhooks SET name = $1, url = $2, events = $3, is_active = $4, updated_at = NOW()
+         WHERE id = $5 AND tenant_id = $6
+         RETURNING *",
+    )
+    .bind(&name)
+    .bind(&url)
+    .bind(events)
+    .bind(is_active)
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await?;
+
+    Ok(Json(updated))
 }
 
 pub async fn delete_webhook(

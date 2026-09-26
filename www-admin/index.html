@@ -173,7 +173,7 @@ function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'curren
    The rows each list screen last rendered, keyed by id. These lists are `SELECT *`, so the row an
    Edit button came from already carries every field its modal reads — prefilling from it is the
    only source that cannot disagree with what the operator clicked. */
-const EDIT_ROWS = { tags: {}, sysTags: {}, groups: {} };
+const EDIT_ROWS = { tags: {}, sysTags: {}, groups: {}, affiliateProducts: {}, webhooks: {} };
 /* `rows` is that cache (optional); `fallback(id)` is the detail route for an out-of-band id.
    NOTE: GET /api/v1/tag-groups/:id is NOT routed (PUT/DELETE only — src/api_router.rs), which is
    what made the tag-group Edit answer an empty-bodied 405 and open a blank form. Its fallback is
@@ -254,6 +254,18 @@ async function loadAffiliateProductById(id) {
   const arr = Array.isArray(list) ? list : ((list && (list.data || list.products)) || []);
   const found = arr.filter(p => String(p.id) === String(id))[0];
   if (!found) throw new Error('Affiliate product not found');
+  return found;
+}
+
+/* Fallback for an out-of-band WEBHOOK id (kanban t_ae907da8). `GET /api/v1/webhooks/:id` is not
+   routed either (PUT/DELETE only — src/api_router.rs), so the editor's prefill used to reject with
+   an empty-bodied 405 and failEdit closed the modal without a form. The LIST route is served, so
+   resolve the row from it — the same shape as loadAffiliateProductById and loadTagGroupById. */
+async function loadWebhookById(id) {
+  const list = await api('/webhooks');
+  const arr = Array.isArray(list) ? list : ((list && (list.data || list.webhooks)) || []);
+  const found = arr.filter(w => String(w.id) === String(id))[0];
+  if (!found) throw new Error('Webhook not found');
   return found;
 }
 
@@ -972,6 +984,11 @@ async function renderAffiliateProducts() {
   let items = [];
   try { items = await api('/affiliate-products'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.products || [];
+  /* kanban t_ae907da8: the row an Edit button came from already carries every field the modal
+     renders (GET /api/v1/affiliate-products is SELECT *), so the modal prefills from it and never
+     touches the unrouted detail GET. EDIT_ROWS is the same source the Tags/System Tags editors use. */
+  EDIT_ROWS.affiliateProducts = {};
+  items.forEach(p => { EDIT_ROWS.affiliateProducts[String(p.id)] = p; });
 
   const isAdmin = isSuperAdmin();
 
@@ -1004,7 +1021,7 @@ function openAffiliateProductModal(id) {
   renderApp();
   setTimeout(async () => {
     let p = {};
-    if (id) { try { p = await rowForEdit(id, null, loadAffiliateProductById); }
+    if (id) { try { p = await rowForEdit(id, EDIT_ROWS.affiliateProducts, loadAffiliateProductById); }
               catch(e) { return failEdit(e, 'Could not load the affiliate product'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
@@ -1318,6 +1335,9 @@ async function renderWebhooks() {
   let items = [];
   try { items = await api('/webhooks'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.webhooks || [];
+  /* kanban t_ae907da8: prefill source for the editor, exactly as on the Affiliate Products screen. */
+  EDIT_ROWS.webhooks = {};
+  items.forEach(w => { EDIT_ROWS.webhooks[String(w.id)] = w; });
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1326,11 +1346,12 @@ async function renderWebhooks() {
     </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">🔗</div><div class="title">No webhooks yet</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>URL</th><th>Events</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>URL</th><th>Events</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody>${items.map(w=>`<tr>
+        <td><strong>${x(w.name||'-')}</strong></td>
         <td><code style="font-size:11px">${x(w.url||w.webhook_url)}</code></td>
         <td>${(w.events||[]).map(e=>`<span class="badge badge-blue">${x(e)}</span>`).join(' ')}</td>
-        <td><span class="badge ${w.active!==false?'badge-green':'badge-red'}">${w.active!==false?'Active':'Inactive'}</span></td>
+        <td><span class="badge ${w.is_active===false?'badge-red':'badge-green'}">${w.is_active===false?'Inactive':'Active'}</span></td>
         <td>${formatDate(w.created_at)}</td>
         <td><button class="btn btn-secondary btn-xs" onclick="window._editWebhook('${w.id}')">Edit</button></td>
       </tr>`).join('')}</tbody>
@@ -1346,14 +1367,20 @@ function openWebhookModal(id) {
   renderApp();
   setTimeout(async () => {
     let w = {};
-    if (id) { try { w = await rowForEdit(id, null, (i) => api('/webhooks/'+i)); }
+    if (id) { try { w = await rowForEdit(id, EDIT_ROWS.webhooks, loadWebhookById); }
               catch(e) { return failEdit(e, 'Could not load the webhook'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
+    /* kanban t_ae907da8: `name` is REQUIRED by CreateWebhookRequest (webhooks.name is NOT NULL), and
+       the form never sent it, so every Add answered 422 "missing field `name`" (measured on the
+       deployed binary). The toggle now writes `is_active` -- the column and the model field -- where
+       it used to send `active`, a key no request struct accepts (serde ignored it) and no response
+       carries (`w.active` was always undefined, so every row printed Active). */
     body.innerHTML = `<form id="webhook-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(w.name||'')}" placeholder="Lead notifications" required></div>
       <div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(w.url||'')}" placeholder="https://..." required></div>
       <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((w.events||[]).join(', '))}" placeholder="lead.created, tag.updated"></div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${w.active!==false?'on':''}" id="webhook-active-toggle"></span> Active</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${w.is_active!==false?'on':''}" id="webhook-active-toggle"></span> Active</label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
@@ -1364,8 +1391,14 @@ function openWebhookModal(id) {
       e.preventDefault();
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
+      /* The events input is one comma-separated string; CreateWebhookRequest/UpdateWebhookRequest
+         both want Vec<String>, so it becomes an array here (as it always did on this screen). A
+         stray space in the URL would fail the handler's own resolution check, so the two text
+         fields are trimmed. The toggle was renamed from `active` to the column's own `is_active`. */
+      data.name = (data.name || '').trim();
+      data.url = (data.url || '').trim();
       data.events = data.events ? data.events.split(',').map(s=>s.trim()).filter(Boolean) : [];
-      data.active = document.getElementById('webhook-active-toggle').classList.contains('on');
+      data.is_active = document.getElementById('webhook-active-toggle').classList.contains('on');
       try {
         if (id) await api('/webhooks/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/webhooks', { method: 'POST', body: JSON.stringify(data) });
