@@ -116,9 +116,11 @@ struct AffiliateProductRow {
     /// affiliate-facing `LPR`), but this response carried only `category_id`, so the admin list's
     /// Category cell read "-" for every row whatever it held — the same silent-drop class as
     /// `is_active` in t_db6fa3c0. The name arrives through the same LEFT JOIN shape
-    /// `system_tag_name` already uses for `tags`, and it stays a LEFT JOIN (not an inner one)
-    /// because `affiliate_products.category_id` carries NO foreign key: a dangling id must still
-    /// list its row with `category_name: null` rather than drop the product from the list.
+    /// `system_tag_name` already uses for `tags`, and it stays a LEFT JOIN (not an inner one):
+    /// since migration 064 the column carries `affiliate_products_category_id_fkey`
+    /// (`ON DELETE SET NULL`), so a dangling id can no longer be produced by the app — the LEFT JOIN
+    /// is kept as defence, so that even an out-of-band orphan still lists its row with
+    /// `category_name: null` rather than dropping the product out of the list.
     pub category_name: Option<String>,
     pub created_at: Option<chrono::NaiveDateTime>,
     pub updated_at: Option<chrono::NaiveDateTime>,
@@ -164,8 +166,9 @@ pub async fn list_affiliate_products(
                 "url": p.url,
                 "category_id": p.category_id.map(|v| v.to_string()),
                 // The NAME the screen renders next to the id (kanban t_a0214025). Null when the
-                // product has no category OR the stored id points at a row that no longer exists
-                // (there is no FK on this column) — the screen then shows its own "-" placeholder.
+                // product has no category — or when the stored id points at a row that no longer
+                // exists, which migration 064 (FK + ON DELETE SET NULL) makes unreachable through
+                // the app; the screen then shows its own "-" placeholder either way.
                 "category_name": p.category_name,
                 "product_type": p.product_type.as_deref().unwrap_or("software"),
                 "owner_name": p.owner_name.as_deref().unwrap_or("SwiftSoftware"),
