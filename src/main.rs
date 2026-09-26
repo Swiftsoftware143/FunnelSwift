@@ -71,6 +71,9 @@ async fn main() -> Result<()> {
     }
 
     let pool = database.pool().clone();
+    // Boot-time migration verdict (kanban t_c3823fd1): carried into AppState so `GET /api/health`
+    // can report (and 503 on) a schema this binary never managed to apply.
+    let schema = database.schema().clone();
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| std::io::Error::other("JWT_SECRET must be set in environment"))?;
     let internal_sync_key =
@@ -81,6 +84,7 @@ async fn main() -> Result<()> {
         std::env::var("CORESWIFT_URL").unwrap_or_else(|_| "http://localhost:8084".to_string());
     let app_state = AppState::new(
         pool,
+        schema,
         jwt_secret,
         internal_sync_key,
         workflowswift_url,

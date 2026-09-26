@@ -27,12 +27,68 @@ use crate::handlers::{
 };
 use crate::state::AppState;
 
-async fn health() -> axum::Json<serde_json::Value> {
-    axum::Json(serde_json::json!({
-        "status": "ok",
-        "service": "funnelswift",
-        "version": "0.1.0"
-    }))
+/// `GET /api/health` (and `/api/v1/health`) — liveness + the schema gate (kanban t_c3823fd1).
+///
+/// Answers 503 when the migration run at boot failed in a way that leaves the service serving on
+/// a schema it never applied (the database's `_sqlx_migrations` ledger is short of the versions
+/// this binary ships). That is the only non-200 this route has ever produced, and it is what the
+/// fleet uptime watchdog reads (`funnelswift:8080:/api/v1/health`, non-200 => down), so a bad
+/// migration now alerts instead of hiding. A ledger-SHAPE complaint (an already-applied file
+/// changed, `version_mismatch`) keeps answering 200: the schema is present, only the files moved,
+/// and fail-closing on that shape is the measured way to turn a green app into an outage.
+///
+/// The public body carries only a fixed token vocabulary and version numbers — never SQL text.
+async fn health(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    use axum::http::StatusCode;
+
+    let schema = state.schema.snapshot();
+    let status = crate::db::health_schema_status(&schema);
+    let degraded = state.schema.schema_missing();
+
+    let mut schema_json = serde_json::json!({
+        "status": status,
+        "expected_version": schema.expected_version,
+    });
+    if schema.decided {
+        schema_json["ledger_version"] = serde_json::json!(schema
+            .ledger_version
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unreadable".to_string()));
+    }
+    if let Some(class) = schema.error_class {
+        schema_json["error_class"] = serde_json::json!(class);
+    }
+    if degraded {
+        schema_json["detail"] = serde_json::json!(
+            "migrations did not apply at boot and the database ledger is short of the schema this \
+             binary ships — the service is serving degraded; the verbatim migration error is in \
+             the container log on the SCHEMA-GATE FAILED line"
+        );
+    }
+
+    let code = if degraded {
+        tracing::warn!(
+            "GET /api/health answering 503: schema status={status} ledger={:?} shipped={} class={:?}",
+            schema.ledger_version,
+            schema.expected_version,
+            schema.error_class
+        );
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+
+    (
+        code,
+        axum::Json(serde_json::json!({
+            "status": if degraded { "degraded" } else { "ok" },
+            "service": "funnelswift",
+            "version": "0.1.0",
+            "schema": schema_json,
+        })),
+    )
 }
 
 async fn admin_plans_page() -> impl axum::response::IntoResponse {
