@@ -52,7 +52,23 @@ fn reject_retired_feature_keys(features: &serde_json::Value) -> AppResult<()> {
 
 // ── Affiliate Product Auto-Sync helpers ──
 
-/// Sync a plan into affiliate_products (INSERT on create, UPDATE on change).
+/// THE ONE WRITER of a plan-derived affiliate product (kanban t_6d326447).
+///
+/// **The decision: ONE WRITER.** Every plan -> product materialisation in this service goes through
+/// this function, and this function takes NOT ONE commercial value from its caller: it reads
+/// `name`, `price` and `commission_rate` off the `plans` row itself, because the plan is the source
+/// of truth for what its product sells at and pays. Callers only decide WHEN a product must exist
+/// (`create_plan`/`update_plan` sync eagerly, `admin_sync_affiliate_products` backfills the products
+/// that are missing). Neither caller knows a column value any more.
+///
+/// Measured before the change: the two other materialisation routes each carried their own
+/// hand-rolled `INSERT ... VALUES (..., 10.0)` — `POST /api/v1/admin/affiliate-products/sync`
+/// (affiliate_product_handler.rs) and `POST /api/v1/internal/sync-affiliate-plan` (the route this
+/// card calls `cross-app/plan-sync`) — with a LITERAL 10.0 rate, no description and no category_id.
+/// A probe plan with `plans.commission_rate = 7.5` therefore materialised
+/// `default_commission_rate = 10.00` through either route and `7.50` through this one: the
+/// commission a plan product advertised depended on WHICH route created the row. Both routes now
+/// delegate here and carry no value of their own.
 ///
 /// **`is_active` is deliberately NOT synced** (kanban t_9c30ce49). It is a lifecycle flag owned by
 /// the product's own screen (`PUT /api/v1/affiliate-products/:id`) and by
@@ -67,14 +83,30 @@ fn reject_retired_feature_keys(features: &serde_json::Value) -> AppResult<()> {
 ///
 /// A brand-new product still starts ACTIVE — it takes the column's own `DEFAULT true`, so a new
 /// plan is sellable and this function never mentions the flag.
-async fn sync_plan_to_affiliate_product(
+///
+/// Returns the id of the product this plan owns (inserted or refreshed), or `AppError::NotFound`
+/// when there is no such plan — a plan-derived product without its plan has no commission to carry.
+pub async fn sync_plan_to_affiliate_product(
     pool: &sqlx::PgPool,
     plan_id: uuid::Uuid,
-    name: &str,
-    price: f64,
     tenant_id: Option<uuid::Uuid>,
-    commission_rate: f64,
-) -> Result<(), crate::error::AppError> {
+) -> Result<Option<uuid::Uuid>, crate::error::AppError> {
+    // The values come from the PLAN, never from a caller (t_6d326447).
+    let plan: Option<(String, f64, f64)> = sqlx::query_as(
+        "SELECT name, price::float8, commission_rate::float8 FROM plans WHERE id = $1",
+    )
+    .bind(plan_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((plan_name, plan_price, commission_rate)) = plan else {
+        return Err(crate::error::AppError::NotFound(format!(
+            "plan {plan_id} not found — a plan-derived affiliate product takes its name, price and \
+             commission from its plan"
+        )));
+    };
+    let name = plan_name.as_str();
+    let price = plan_price;
+
     // Look up the FunnelSwift Plans category; fall back to any available category
     let category_id: Option<uuid::Uuid> = match sqlx::query_scalar(
         "SELECT id FROM product_categories WHERE slug = 'funnelswift-plans' LIMIT 1",
@@ -150,7 +182,16 @@ async fn sync_plan_to_affiliate_product(
         .await?;
     }
 
-    Ok(())
+    // Hand the caller back the product this plan owns, so a route can report what it touched
+    // without re-deriving the id (the cross-app sync answers with it).
+    let product_id: Option<uuid::Uuid> = sqlx::query_scalar(
+        "SELECT id FROM affiliate_products WHERE plan_id = $1 ORDER BY created_at LIMIT 1",
+    )
+    .bind(plan_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(product_id)
 }
 
 /// Set the affiliate product to inactive when a plan is deleted, preserving historical data.
@@ -255,16 +296,9 @@ pub async fn create_plan(
 
     // Auto-sync to affiliate products. Non-fatal, but never silent: this used to be `let _ =`,
     // which is how the sync's INSERT failure stayed invisible for every new plan (t_9c30ce49).
-    if let Err(e) = sync_plan_to_affiliate_product(
-        &state.pool,
-        plan_id,
-        &req.name,
-        req.price,
-        None,
-        req.commission_rate.unwrap_or(20.0),
-    )
-    .await
-    {
+    // ONE WRITER (t_6d326447): no values are passed — the helper reads them off the plan row it
+    // just wrote, so this call site cannot invent a name, a price or a commission.
+    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, plan_id, None).await {
         tracing::warn!(plan_id = %plan_id, error = %e, "affiliate product sync failed");
     }
 
@@ -310,7 +344,14 @@ pub async fn update_plan(
     let sync_price = req.price.unwrap_or(existing.price);
     let sync_slug = req.slug.clone().unwrap_or_else(|| existing.slug.clone());
 
-    let sync_rate = req.commission_rate.unwrap_or(20.0);
+    // A plan edit that does not mention the rate must KEEP the plan's rate. It used to fall back to
+    // a literal 20.0, so any admin save that left the field out silently rewrote the plan's own
+    // commission (a 50% plan became 20%) — the same "a caller invents a default instead of reading
+    // the plan" defect as the two literal-10.0 product INSERTs this card removes (t_6d326447).
+    let sync_rate = req
+        .commission_rate
+        .or(existing.commission_rate)
+        .unwrap_or(20.0);
     sqlx::query(
         r#"UPDATE plans SET name=$1, slug=$2, price=$3, purchase_url=$4, max_leads=$5, max_tags=$6,
            has_dual_routing=$7, has_multi_tenant=$8, has_white_label=$9, payment_provider=$10, features=$11, commission_rate=$12, updated_at=NOW()
@@ -335,10 +376,9 @@ pub async fn update_plan(
     // Auto-sync to affiliate products. NOTE: this rewrites the product's name/description/price/
     // commission only — never `is_active`, so editing a plan cannot resurrect a product an admin
     // retired (kanban t_9c30ce49). Non-fatal, but logged: it used to be discarded silently.
-    if let Err(e) =
-        sync_plan_to_affiliate_product(&state.pool, id, &sync_name, sync_price, None, sync_rate)
-            .await
-    {
+    // ONE WRITER (t_6d326447): no values are passed — the helper reads the plan row this UPDATE
+    // just wrote, so the product can only ever follow the plan this route persisted.
+    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, id, None).await {
         tracing::warn!(plan_id = %id, error = %e, "affiliate product sync failed");
     }
 
@@ -468,11 +508,6 @@ pub async fn admin_create_plan_json(
     if let Some(f) = &features {
         reject_retired_feature_keys(f)?;
     }
-    let commission_rate = req
-        .get("commission_rate")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(20.0);
-
     if name.is_empty() {
         return Err(AppError::BadRequest("Plan name is required".into()));
     }
@@ -505,10 +540,8 @@ pub async fn admin_create_plan_json(
     }
 
     // Auto-sync to affiliate products (commercial fields only — never `is_active`, t_9c30ce49).
-    if let Err(e) =
-        sync_plan_to_affiliate_product(&state.pool, plan_id, &name, price, None, commission_rate)
-            .await
-    {
+    // ONE WRITER (t_6d326447): the values come from the plan row, never from this payload.
+    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, plan_id, None).await {
         tracing::warn!(plan_id = %plan_id, error = %e, "affiliate product sync failed");
     }
 

@@ -351,6 +351,21 @@ pub async fn delete_affiliate_product(
     Ok(Json(json!({"message": "Product deleted"})))
 }
 
+/// BACKFILL the plan-derived affiliate products that are MISSING (kanban t_6d326447).
+///
+/// **The decision: ONE WRITER.** This route used to be a second, lossy writer of the plan -> product
+/// link: its own hand-rolled `INSERT ... VALUES (..., 10.0)` with a LITERAL `default_commission_rate`
+/// of 10.0, no `description` and no `category_id`. A plan whose `plans.commission_rate` was 7.5
+/// therefore advertised 10.00 through this route and 7.50 through
+/// [`crate::handlers::plan_handler::sync_plan_to_affiliate_product`] — the commission a product
+/// carried depended on WHICH route created the row. The values are no longer decided here: this
+/// route only decides WHEN a product must exist (for a plan that has none) and delegates every
+/// column to that helper, which reads name, price, description, category and commission off the
+/// `plans` row itself.
+///
+/// It deliberately does NOT re-rate the products that already exist: rewriting live commission data
+/// for every plan in one click is a separate decision (the 6 real plan-derived rows are the evidence
+/// that needs it), and a plan edit is what refreshes a product's commercial fields.
 pub async fn admin_sync_affiliate_products(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -358,34 +373,29 @@ pub async fn admin_sync_affiliate_products(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plans: Vec<(Uuid, String, Option<f64>)> =
-        sqlx::query_as("SELECT id, name, price FROM plans LIMIT 50")
-            .fetch_all(&state.pool)
-            .await?;
+    let plan_ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM plans LIMIT 50")
+        .fetch_all(&state.pool)
+        .await?;
 
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let mut count: i64 = 0;
 
-    for (plan_id, plan_name, plan_price) in plans {
-        let exists: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1")
+    for plan_id in plan_ids {
+        let exists: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1")
                 .bind(plan_id)
                 .fetch_one(&state.pool)
                 .await?;
 
-        if exists.0 == 0 {
-            let id = Uuid::new_v4();
-            sqlx::query(
-                "INSERT INTO affiliate_products (id, tenant_id, name, price, plan_id, product_type, owner_name, default_commission_rate)
-                 VALUES ($1, $2, $3, $4, $5, 'software', 'SwiftSoftware', 10.0)"
+        if exists == 0 {
+            // ONE WRITER: every column value comes from the plan row. `?` on purpose — a
+            // materialisation that failed must not answer 200 with a count that never happened.
+            super::plan_handler::sync_plan_to_affiliate_product(
+                &state.pool,
+                plan_id,
+                Some(tenant_id),
             )
-            .bind(id)
-            .bind(tenant_id)
-            .bind(&plan_name)
-            .bind(plan_price)
-            .bind(plan_id)
-            .execute(&state.pool)
             .await?;
             count += 1;
         }
@@ -408,6 +418,19 @@ pub async fn admin_update_affiliate_product(
     update_affiliate_product(auth, State(state), Path(id), Json(req)).await
 }
 
+/// POST /api/v1/internal/sync-affiliate-plan — the internal cross-app plan sync (the card
+/// t_6d326447 calls it `cross-app/plan-sync`; the literal routed path is this one, measured in
+/// `src/api_router.rs`, and no caller in the fleet sends it today).
+///
+/// **The decision: ONE WRITER.** This route used to be a third hand-rolled writer of the plan ->
+/// product link: its own `INSERT ... VALUES (..., 10.0)` with a LITERAL commission rate, taking
+/// `plan_name` and `price` straight from the payload and never reading a plan — so it invented a
+/// product and ignored the plan's own commission rate in the same statement. It now delegates to
+/// [`crate::handlers::plan_handler::sync_plan_to_affiliate_product`], which reads name, price,
+/// description, category and commission off the `plans` row, and therefore REQUIRES the plan to
+/// exist here. The payload's `plan_name`/`price` are deliberately IGNORED (trusting a caller for
+/// money values was the defect). A payload naming a plan this service does not have answers 400
+/// with the id quoted — not a product with an invented 10% rate.
 pub async fn handle_cross_app_plan_sync(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -422,32 +445,47 @@ pub async fn handle_cross_app_plan_sync(
         return Err(AppError::Unauthorized("Invalid internal key".into()));
     }
 
-    let plan_name = payload["plan_name"].as_str().unwrap_or("Unknown Plan");
-    let plan_price = payload["price"].as_f64().unwrap_or(0.0);
     let plan_id_str = payload["plan_id"].as_str().unwrap_or("");
     let source_app = payload["source_app"].as_str().unwrap_or("unknown");
 
-    let plan_id = Uuid::parse_str(plan_id_str).ok();
+    let plan_id = Uuid::parse_str(plan_id_str).map_err(|_| {
+        AppError::BadRequest(format!(
+            "plan_id is required and must be a plan this service has (got {plan_id_str:?}, \
+             source_app={source_app}); a plan-derived affiliate product takes its commission from \
+             its plan (kanban t_6d326447)"
+        ))
+    })?;
     let tenant_id = payload["tenant_id"]
         .as_str()
         .and_then(|s| Uuid::parse_str(s).ok())
         .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
 
-    let id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO affiliate_products (id, tenant_id, name, price, plan_id, source_app, product_type, owner_name, default_commission_rate)
-         VALUES ($1, $2, $3, $4, $5, $6, 'software', 'SwiftSoftware', 10.0)"
+    // ONE WRITER: the helper reads the plan row and owns every column value, so this route cannot
+    // answer with a product whose commission contradicts its plan. A plan we do not have is a 400 —
+    // not a product with an invented 10% rate (which is exactly what this route used to create).
+    let product_id = match super::plan_handler::sync_plan_to_affiliate_product(
+        &state.pool,
+        plan_id,
+        Some(tenant_id),
     )
-    .bind(id)
-    .bind(tenant_id)
-    .bind(plan_name)
-    .bind(plan_price)
-    .bind(plan_id)
-    .bind(source_app)
-    .execute(&state.pool)
-    .await?;
+    .await
+    {
+        Ok(Some(pid)) => pid,
+        Ok(None) => {
+            return Err(AppError::Internal(format!(
+                "the plan sync reported no product for plan {plan_id}"
+            )))
+        }
+        Err(AppError::NotFound(msg)) => {
+            return Err(AppError::BadRequest(format!(
+            "{msg}; source_app={source_app} — this route no longer invents a product for a plan \
+                 it does not have (kanban t_6d326447)"
+        )))
+        }
+        Err(e) => return Err(e),
+    };
 
     Ok(Json(
-        json!({"status": "synced", "product_id": id.to_string()}),
+        json!({"status": "synced", "product_id": product_id.to_string()}),
     ))
 }
