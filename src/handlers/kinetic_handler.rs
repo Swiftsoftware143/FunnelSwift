@@ -2,6 +2,28 @@ use axum::extract::{OriginalUri, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// RECORDED DECISION (kanban t_8ccc8e6a): a numeric plan limit means "you may not EXCEED it", so
+// `enforce_feature_limit(…, "max_cards", …)` belongs on the route that ADDS a card and nowhere
+// else. A tenant AT its limit must still be able to list, read, edit and DELETE what it owns —
+// DELETE is the only way to free a slot, so guarding it wedges the workspace until the plan
+// changes. The same rule holds for the workspace settings on this handler: `max_cards` counts
+// kinetic_cards rows, and `set_subdomain` / `set_site_meta` / `set_custom_domain` add none, so
+// they are not card operations and must not be gated by a card count. The upsell (402
+// UpgradeRequired -> the SPA's upgrade modal) is carried by the ADD that actually exceeds the
+// plan, and by a FIRST claim of a feature the plan does not grant (max_custom_domains=0).
+//
+// Measured on the running container before this change (2026-09-25, binary 48f54fff): a
+// kinetic-free workspace at 1/1 got 402 `Cards limit reached (1/1)` on GET /kinetic/cards,
+// PUT /kinetic/cards/:id, DELETE /kinetic/cards/:id, GET+PUT /kinetic/subdomain,
+// GET /kinetic/custom-domain, GET+PUT /kinetic/site-meta; on kinetic-pro at 3/3 the same card
+// routes 402'd, and a pro tenant that had claimed its one custom domain got
+// `Custom domains limit reached (1/1)` when CHANGING or CLEARING it. Census of the fleet's
+// `enforce_feature_limit` call sites: every other one is on a create handler (or, in
+// WorkflowSwift's set_account_industry, behind an explicit `if is_new` check — the precedent for
+// the first-claim shape used in `set_custom_domain` below).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
 /// Resolve canonical URL from Host header
 /// kntcrd.com subdomain → https://{tenant}.kntcrd.com/k/{slug}
 /// funnelswift.net → 301 redirect to kntcrd.com (never canonical)
@@ -64,7 +86,6 @@ pub async fn list_cards(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let rows = sqlx::query(
         "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, consent_required, age_gate_type, age_gate_message, consent_decline_redirect, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
     ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
@@ -207,7 +228,6 @@ pub async fn update_card(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     // Plan gate: changing to a premium theme / premium catalogue template
     // requires the caller's plan to grant `premium_themes`.
     crate::features::enforce_theme_access(
@@ -284,7 +304,6 @@ pub async fn delete_card(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     sqlx::query("DELETE FROM kinetic_cards WHERE id=$1 AND tenant_id=$2")
         .bind(id)
         .bind(tenant_id)
@@ -473,7 +492,6 @@ pub async fn get_subdomain(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     // NOTE: this used to read a `settings` table that does not exist in this database
     // ('relation "settings" does not exist'), so GET and PUT both 500'd and no tenant could
     // ever claim a subdomain. tenant_settings is the real table; value is jsonb.
@@ -494,7 +512,6 @@ pub async fn set_subdomain(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let val = body["subdomain"]
         .as_str()
         .unwrap_or("")
@@ -582,7 +599,6 @@ pub async fn get_custom_domain(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     // tenant_settings, not the non-existent `settings` table (same bug as the subdomain pair).
     let row = sqlx::query_scalar::<_, String>(
         "SELECT COALESCE(value #>> '{}', '') FROM tenant_settings WHERE tenant_id=$1 AND key='custom_domain'",
@@ -601,13 +617,29 @@ pub async fn set_custom_domain(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(
-        &state,
-        tenant_id,
-        "max_custom_domains",
-        "Custom domains",
+    // `max_custom_domains` counts the tenant's custom-domain SETTING, and that setting is a
+    // singleton row (`tenant_settings` key='custom_domain'), so the count is 0 or 1 — never a
+    // collection. Enforcing the limit unconditionally refused the tenant's own second write:
+    // measured on the pre-fix binary, a kinetic-pro tenant (max_custom_domains=1) that had claimed
+    // its one domain got 402 `Custom domains limit reached (1/1)` when CHANGING it and when
+    // CLEARING it, so the setting was frozen for as long as the plan lasted. The limit is a
+    // first-claim gate, the same shape WorkflowSwift's `set_account_industry` already uses
+    // (`if is_new { enforce… }`): it applies only while this tenant has no domain to manage.
+    let has_domain: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM tenant_settings WHERE tenant_id=$1 AND key='custom_domain' AND value IS NOT NULL)",
     )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
     .await?;
+    if !has_domain {
+        crate::features::enforce_feature_limit(
+            &state,
+            tenant_id,
+            "max_custom_domains",
+            "Custom domains",
+        )
+        .await?;
+    }
     let val = body["custom_domain"].as_str().unwrap_or("");
     if !val.is_empty()
         && (val.contains("://")
@@ -639,7 +671,6 @@ pub async fn get_site_meta(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let row = sqlx::query_as::<_, (Value,)>(
         "SELECT value FROM tenant_settings WHERE tenant_id=$1 AND key='site_meta'",
     )
@@ -658,7 +689,6 @@ pub async fn set_site_meta(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let allowed_keys = [
         "og_title",
         "og_description",
