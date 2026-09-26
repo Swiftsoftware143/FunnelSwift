@@ -88,7 +88,7 @@ pub async fn list_cards(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let rows = sqlx::query(
         "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, consent_required, age_gate_type, age_gate_message, consent_decline_redirect, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_default();
+    ).bind(tenant_id).fetch_all(&state.pool).await?;
     use sqlx::Row;
     let cards: Vec<Value> = rows.iter().map(|r| json!({
         "id": r.try_get::<Uuid, _>("id").unwrap_or_default().to_string(),

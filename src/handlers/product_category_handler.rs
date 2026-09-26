@@ -66,9 +66,11 @@ pub async fn list_categories(
         // represent the stored value, and make a save look like it clears it. The predicate below
         // mirrors the product list's own: the caller's categories plus the fleet's system-tenant ones.
         // Another REAL tenant's categories stay invisible, exactly as before.
-        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000001') ORDER BY sort_order ASC, name ASC"
+        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE (tenant_id = $1 OR tenant_id = $2) ORDER BY sort_order ASC, name ASC"
     )
     .bind(tenant_id)
+    // $2 — the fleet's system tenant, bound (never a UUID literal in the SQL text).
+    .bind(crate::system_tenant::system_tenant_id())
     .fetch_all(&state.pool)
     .await?;
 

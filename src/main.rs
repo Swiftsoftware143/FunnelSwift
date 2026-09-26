@@ -32,6 +32,7 @@ mod models;
 mod security;
 mod smtp;
 mod state;
+mod system_tenant;
 mod tag_logic;
 mod templates;
 

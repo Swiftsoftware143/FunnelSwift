@@ -208,25 +208,35 @@ async fn deactivate_affiliate_product_for_plan(
     Ok(())
 }
 
-/// Explicit column list for `plans`.
+/// The `plans` column list and the `Plan` row shape, in ONE place.
 ///
 /// `SELECT *` broke at runtime because `commission_rate` is NUMERIC in the live DB while
 /// `Plan.commission_rate` is `Option<f64>` — sqlx fails the whole query with
 /// "Rust Option<f64> (FLOAT8) not compatible with SQL type NUMERIC", so `GET /api/v1/plans`
 /// returned HTTP 500. Casting the numeric columns to float8 keeps the struct unchanged.
-pub const PLAN_COLS: &str = "id, name, slug, price::float8 AS price, \
+///
+/// This is a MACRO, not a `const` spliced in with `format!`: `concat!` takes literals, so the
+/// query text is assembled at COMPILE time and no SQL is built at run time (pre-build gate rule
+/// 5d, kanban t_92ce05b3). Values were always bound; only the column list is interpolated.
+macro_rules! plan_select {
+    ($tail:literal) => {
+        concat!(
+            "SELECT id, name, slug, price::float8 AS price, \
     annual_price::float8 AS annual_price, commission_rate::float8 AS commission_rate, \
     side, max_custom_domains, max_cards, max_qr_codes, max_action_buttons, max_forms, \
     max_leads, max_tags, max_team_members, max_ocr_scans, has_webhooks, has_api, \
     has_dual_routing, has_mini_funnels, has_card_gating, has_remove_branding, \
     has_white_label, has_multi_tenant, has_analytics, has_import_export, billing_cycle, \
-    purchase_url, payment_provider, features, created_at, updated_at";
+    purchase_url, payment_provider, features, created_at, updated_at FROM plans ",
+            $tail
+        )
+    };
+}
 
 pub async fn list_plans(State(state): State<AppState>) -> AppResult<Json<Vec<Plan>>> {
-    let plans =
-        sqlx::query_as::<_, Plan>(&format!("SELECT {} FROM plans ORDER BY price", PLAN_COLS))
-            .fetch_all(&state.pool)
-            .await?;
+    let plans = sqlx::query_as::<_, Plan>(plan_select!("ORDER BY price"))
+        .fetch_all(&state.pool)
+        .await?;
 
     Ok(Json(plans))
 }
@@ -312,7 +322,7 @@ pub async fn get_plan(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Plan>> {
-    let plan = sqlx::query_as::<_, Plan>(&format!("SELECT {} FROM plans WHERE id = $1", PLAN_COLS))
+    let plan = sqlx::query_as::<_, Plan>(plan_select!("WHERE id = $1"))
         .bind(id)
         .fetch_optional(&state.pool)
         .await?
@@ -333,12 +343,11 @@ pub async fn update_plan(
     if let Some(f) = &req.features {
         reject_retired_feature_keys(f)?;
     }
-    let existing =
-        sqlx::query_as::<_, Plan>(&format!("SELECT {} FROM plans WHERE id = $1", PLAN_COLS))
-            .bind(id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+    let existing = sqlx::query_as::<_, Plan>(plan_select!("WHERE id = $1"))
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
     let sync_name = req.name.clone().unwrap_or_else(|| existing.name.clone());
     let sync_price = req.price.unwrap_or(existing.price);

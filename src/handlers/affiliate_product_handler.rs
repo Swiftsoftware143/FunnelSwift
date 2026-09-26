@@ -143,12 +143,15 @@ pub async fn list_affiliate_products(
          FROM affiliate_products ap
          LEFT JOIN tags t ON t.id = ap.system_tag_id
          LEFT JOIN product_categories pc ON pc.id = ap.category_id
-         WHERE (ap.tenant_id = $1 OR ap.tenant_id = '00000000-0000-0000-0000-000000000001')
+         WHERE (ap.tenant_id = $1 OR ap.tenant_id = $3)
            AND ($2::boolean IS NULL OR COALESCE(ap.is_active, true) = $2)
          ORDER BY ap.created_at DESC",
     )
     .bind(tenant_id)
     .bind(params.is_active)
+    // $3 — the fleet's system tenant: the plan-derived products it owns are part of every
+    // admin's list. BOUND, never a UUID literal in the SQL text (kanban t_92ce05b3).
+    .bind(crate::system_tenant::system_tenant_id())
     .fetch_all(&state.pool)
     .await?;
 
@@ -461,7 +464,7 @@ pub async fn handle_cross_app_plan_sync(
     let tenant_id = payload["tenant_id"]
         .as_str()
         .and_then(|s| Uuid::parse_str(s).ok())
-        .unwrap_or_else(|| Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+        .unwrap_or_else(crate::system_tenant::system_tenant_id);
 
     // ONE WRITER: the helper reads the plan row and owns every column value, so this route cannot
     // answer with a product whose commission contradicts its plan. A plan we do not have is a 400 —

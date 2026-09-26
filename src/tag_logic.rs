@@ -24,13 +24,16 @@ pub async fn evaluate_tag_rules(
         FROM tag_rules r
         JOIN tags t ON t.id = r.trigger_tag_id
         LEFT JOIN tags at ON at.id = r.action_tag_id
-        WHERE (r.tenant_id = $1 OR r.tenant_id = '00000000-0000-0000-0000-000000000001')
+        WHERE (r.tenant_id = $1 OR r.tenant_id = $3)
           AND r.is_active = true
           AND r.trigger_tag_id = ANY($2)
         "#
     )
     .bind(tenant_id)
     .bind(newly_assigned_tag_ids)
+    // $3 — the fleet's system tenant (its rules apply to every workspace). BOUND, never a UUID
+    // literal in the SQL text: see crate::system_tenant (kanban t_92ce05b3).
+    .bind(crate::system_tenant::system_tenant_id())
     .fetch_all(pool)
     .await?;
 
