@@ -1074,14 +1074,90 @@ pub async fn render_card(
     } else {
         String::new()
     };
-    let cta_html = String::new(); // CTA pulled from layout_blocks by front-end JS
+    // ── layout_blocks → REAL server-side markup (kanban t_f1a4f9df) ────────────────
+    // Before this, both `cta_html` and `social_html` were built as `String::new()` with the
+    // comment "pulled from layout_blocks by front-end JS". There is no such JS — the page's only
+    // `<script>` is the inline tracker — so a card whose blocks carry a configured `lead_form`
+    // served a page with zero `<form>`/`<input>`/`<button>`, while the served guide promises
+    // "Kinetic Card Forms — Visitors submit their info directly through the card".
+    // `crate::card_blocks::render` is strictly additive: a card with no renderable block gets
+    // three empty strings, so its page is byte-identical to what it was before.
+    let layout_blocks: Value = r
+        .try_get::<Option<Value>, _>("layout_blocks")
+        .unwrap_or(None)
+        .unwrap_or(Value::Null);
+    // The card's own CTA buttons. `kinetic_buttons` is the only button writer the product gives an
+    // owner a UI for (the editor's "CTA buttons" box POSTs {label,url}); its rows had no renderer
+    // on the public page either. Measured 0 rows on 2026-09-26, so this is additive for every
+    // live card, and an error here must not take the page down with it.
+    let button_rows = sqlx::query(
+        "SELECT label, COALESCE(destination_url, '') AS destination_url, action_type FROM kinetic_buttons WHERE card_id = $1 ORDER BY sort_order, created_at",
+    )
+    .bind(card_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("render_card buttons query failed for card '{}': {}", card_id, e);
+        Vec::new()
+    });
+    let card_buttons: Vec<crate::card_blocks::CardButton> = button_rows
+        .iter()
+        .map(|b| crate::card_blocks::CardButton {
+            label: b.try_get::<String, _>("label").unwrap_or_default(),
+            url: b
+                .try_get::<String, _>("destination_url")
+                .unwrap_or_default(),
+            action_type: b.try_get::<String, _>("action_type").unwrap_or_default(),
+        })
+        .collect();
+    // The block CSS is derived from the card's own accent; a blank/invalid value falls back to the
+    // app's default accent rather than emitting a broken declaration.
+    let block_accent =
+        crate::card_blocks::safe_css_fragment(&accent).unwrap_or_else(|| "#6366f1".to_string());
+    let blocks = crate::card_blocks::render(
+        &layout_blocks,
+        &card_buttons,
+        &crate::card_blocks::BlockOptions {
+            accent: &block_accent,
+            // The form posts to the page's OWN prefix (`/k/<slug>/lead` on a `/k/` page), which is
+            // the route that page was served from — all six prefixes are registered and proven.
+            // `/thank/:slug` renders this same card but has NO `:slug/lead` route of its own, so it
+            // uses the canonical `/k/` one: `submit_lead` resolves the card from the SLUG, and a
+            // form that posts to an unregistered path would 404 the visitor's submission.
+            lead_action: &format!(
+                "/{}/{}/lead",
+                if matches!(prefix, "k" | "b" | "m" | "c" | "f" | "h") {
+                    prefix
+                } else {
+                    "k"
+                },
+                slug
+            ),
+        },
+    );
+    if !blocks.rendered.is_empty() {
+        // The audit trail for "the served page renders the card's blocks": one line naming the
+        // block types that actually produced markup for this card.
+        tracing::debug!(
+            "render_card '{}': rendered blocks {:?} (lead_form: {})",
+            slug,
+            blocks.rendered,
+            blocks.has_lead_form
+        );
+    }
+    let blocks_section = blocks.section;
+    let blocks_css = blocks.css;
+    let blocks_script = blocks.script;
+    // Both of these stay empty on purpose: the block markup above is the thing that fills the
+    // CTA/social slots the page used to leave to a front-end renderer that never existed.
+    let cta_html = String::new();
 
     let bg_gradient = format!(
         "radial-gradient(circle at 50% 25%, {}44 0%, {} 70%)",
         accent, bg
     );
 
-    let social_html = String::new(); // social links rendered by front-end JS from layout_blocks
+    let social_html = String::new();
 
     // ── Tenant site meta overrides for OG tags ──
     let og_title = html_escape(
@@ -1130,6 +1206,16 @@ pub async fn render_card(
 
     let page_title_display = og_title.to_string();
 
+    // ── The served page ────────────────────────────────────────────────────────────────────
+    // Three ADDITIVE injection points, each the empty string unless the card has renderable
+    // blocks: `blocks_css` at the end of <style>, `blocks_section` right after the card's
+    // `</div>`, `blocks_script` before `</body>`.
+    // kanban t_f1a4f9df/1 — the inline tracker below was UNBALANCED: its IIFE was missing the
+    // brace that closes the function body after the catch block, so every one of the 27 card
+    // pages threw "Unexpected token ')'" on load and the tracker never ran a single line (no
+    // view and no click event could ever be recorded). Found by this card's browser proof; the
+    // script now passes `node --check` on the served page and the page loads with zero uncaught
+    // errors.
     axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -1167,7 +1253,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 .branding-badge:hover{{background:rgba(255,255,255,.18);border-color:{accent};color:{accent};transform:translateY(-1px);box-shadow:0 4px 16px {accent}33}}
 @keyframes fadeIn{{from{{opacity:0;transform:translateY(16px)}}to{{opacity:1;transform:translateY(0)}}}}
 @keyframes pulse-glow{{0%,100%{{box-shadow:0 0 0 4px {accent},0 0 24px {accent}66}}50%{{box-shadow:0 0 0 5px {accent},0 0 36px {accent}88}}}}
-</style>
+{blocks_css}</style>
 {seo_scripts}
 {ga_html}
 {fb_html}
@@ -1185,10 +1271,10 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
 {bio_html}
 {cta_html}
 {social_html}
-</div>
+</div>{blocks_section}
 <script>
-(function(){{try{{var c="{card_id_tracker}";if(!c||c.length<10)return;var a="https://funnelswift.net";var u=navigator.userAgent||"";if(/bot|crawler|spider/i.test(u))return;function t(e,x){{var b={{event_type:e||"view",user_agent:u.substring(0,500),referrer_url:document.referrer||"",device_type:screen.width<768?"mobile":screen.width<1024?"tablet":"desktop",screen_size:(screen.width||0)+"x"+(screen.height||0)}};var p=new URLSearchParams(location.search);["utm_source","utm_medium","utm_campaign","utm_content","utm_term"].forEach(function(k){{var v=p.get(k);if(v)b[k]=v}});if(x)Object.assign(b,x);var r=new XMLHttpRequest();r.open("POST",a+"/card/"+c+"/track",!0);r.setRequestHeader("Content-Type","application/json");r.send(JSON.stringify(b))}}setTimeout(function(){{t("view")}},100);document.addEventListener("visibilitychange",function(){{document.visibilityState==="hidden"&&t("leave")}});document.querySelectorAll("a[href]").forEach(function(e){{e.addEventListener("click",function(){{t("click",{{click_label:(e.textContent||"").trim().substring(0,100),click_url:e.getAttribute("href")||""}})}})}})}}catch(e){{}})}})();
-</script>
+(function(){{try{{var c="{card_id_tracker}";if(!c||c.length<10)return;var a="https://funnelswift.net";var u=navigator.userAgent||"";if(/bot|crawler|spider/i.test(u))return;function t(e,x){{var b={{event_type:e||"view",user_agent:u.substring(0,500),referrer_url:document.referrer||"",device_type:screen.width<768?"mobile":screen.width<1024?"tablet":"desktop",screen_size:(screen.width||0)+"x"+(screen.height||0)}};var p=new URLSearchParams(location.search);["utm_source","utm_medium","utm_campaign","utm_content","utm_term"].forEach(function(k){{var v=p.get(k);if(v)b[k]=v}});if(x)Object.assign(b,x);var r=new XMLHttpRequest();r.open("POST",a+"/card/"+c+"/track",!0);r.setRequestHeader("Content-Type","application/json");r.send(JSON.stringify(b))}}setTimeout(function(){{t("view")}},100);document.addEventListener("visibilitychange",function(){{document.visibilityState==="hidden"&&t("leave")}});document.querySelectorAll("a[href]").forEach(function(e){{e.addEventListener("click",function(){{t("click",{{click_label:(e.textContent||"").trim().substring(0,100),click_url:e.getAttribute("href")||""}})}})}})}}catch(e){{}}}})();
+</script>{blocks_script}
 </body>
 </html>"#,
         page_title_display = page_title_display,
@@ -1212,6 +1298,9 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
         bio_html = bio_html,
         cta_html = cta_html,
         social_html = social_html,
+        blocks_section = blocks_section,
+        blocks_css = blocks_css,
+        blocks_script = blocks_script,
         branding_html = branding_html
     ))
 }

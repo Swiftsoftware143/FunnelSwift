@@ -19,6 +19,7 @@ mod api_router;
 mod app_middleware;
 mod auth;
 mod body_deadline;
+mod card_blocks;
 mod card_types;
 mod coreswift;
 mod db;

@@ -181,6 +181,7 @@ and neither had a consumer. Click tracking in this product is the Kinetic card t
 | GET | `/api/v1/campaigns` | Campaign listing |
 | GET | `/api/v1/incentiveswift/config` | IncentiveSwift config |
 | GET | `/funnel/:slug` | Public funnel page |
+| GET | `/k/:slug` | Kinetic card page — the card's `layout_blocks` (hero, features, lead form, business card, buttons, socials) rendered server-side; also `/b`, `/m`, `/c`, `/f`, `/h`, `/thank` |
 | POST | `/k/:slug/lead` | Kinetic card lead submit (also `/b`, `/m`, `/c`, `/f`, `/h` — all six card prefixes) |
 
 ## Deployment
