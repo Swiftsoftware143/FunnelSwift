@@ -219,22 +219,33 @@ Transactional emails use database-stored templates in the `email_templates` tabl
 
 `template_type` is a free-form string (the API validates nothing); `GET /api/v1/admin/email-templates/types` advertises three types — and only one of them is ever sent by this app:
 
-| Type | When Sent | Merge Fields |
+| Type | When Sent | Merge Fields (what the sender binds) |
 |---|---|---|
-| `password_reset` | User requests a password reset (`src/auth/handlers.rs:448`) — **the only send path in the codebase** | `{{name}}`, `{{token}}`, `{{app_url}}` |
-| `welcome` | **Never sent** — `send_welcome_email()` (`src/email.rs:195`) has no caller; signup does not email anybody | `{{name}}`, `{{email}}`, `{{app_url}}` |
-| `purchase_confirmed` | **Never sent — there is no purchase flow** (see *Account & Plan Flow*); `send_purchase_confirmed_email()` (`src/email.rs:208`) has no caller | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
+| `password_reset` | User requests a password reset (`src/auth/handlers.rs:448`) — **the only send path in the codebase** | `{{name}}`, `{{token}}` |
+| `welcome` | **Never sent** — `send_welcome_email()` (`src/email.rs`) has no caller; signup does not email anybody | `{{name}}`, `{{email}}` |
+| `purchase_confirmed` | **Never sent — there is no purchase flow** (see *Account & Plan Flow*); `send_purchase_confirmed_email()` (`src/email.rs`) has no caller | `{{name}}`, `{{plan_name}}` |
+
+Every type also binds `{{app_name}}` (`FunnelSwift`), `{{app_url}}` (`https://app.funnelswift.net`) and
+`{{login_url}}` (`https://app.funnelswift.net/login`) — the same names
+`GET /api/v1/admin/email-templates/types` advertises, so a body built from that list always renders.
+
+**Only the double-brace form is a placeholder.** `{{name}}` is substituted; `{name}` is not — it reaches
+the recipient verbatim. The renderer logs a warning naming every placeholder left unsubstituted, so a
+half-rendered email appears in the app log instead of going out silently (kanban t_2349e6ce).
 
 ### API Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/email-templates` | List all templates (paginated) |
-| POST | `/api/email-templates` | Create template |
-| GET | `/api/email-templates/:id` | Get single template |
-| PUT | `/api/email-templates/:id` | Update template |
-| DELETE | `/api/email-templates/:id` | Delete template |
-| GET | `/api/email-templates/merge-fields` | List merge fields by type |
+| GET | `/api/v1/admin/email-templates` | List all templates |
+| POST | `/api/v1/admin/email-templates` | Create template (`template_type`, `name`, `subject` are required) |
+| GET | `/api/v1/admin/email-templates/:id` | Get single template |
+| PUT | `/api/v1/admin/email-templates/:id` | Update template |
+| DELETE | `/api/v1/admin/email-templates/:id` | Delete template |
+| GET | `/api/v1/admin/email-templates/types` | Template types **and** their merge fields |
+
+There is no `merge-fields` route: `/api/email-templates/merge-fields` answers 404 and
+`/api/v1/admin/email-templates/merge-fields` is rejected 400 (it matches `/:id` and is not a UUID).
 
 ### Template Fields
 
@@ -248,7 +259,9 @@ Transactional emails use database-stored templates in the `email_templates` tabl
 
 ### Merge Fields Available
 
-All templates: `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}`, `{{plan_name}}`
+Every template type binds the shared `{{app_name}}`, `{{app_url}}`, `{{login_url}}` plus its own fields
+(table above). There is **no `{{password}}` merge field anywhere in the codebase** — no sender holds the
+plaintext password, so a body that uses it sends that literal text.
 
 ### Account & Plan Flow (there is no purchase flow)
 

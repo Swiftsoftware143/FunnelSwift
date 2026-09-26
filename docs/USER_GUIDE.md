@@ -76,11 +76,14 @@ Transactional emails are rendered from database-stored templates in `email_templ
 
 | Template Type | When Sent | Merge Fields |
 |---|---|---|
-| `password_reset` | User requests a password reset — **the only type the app actually sends** | `{{name}}`, `{{token}}`, `{{app_url}}` |
-| `welcome` | **Not sent by any code path** — the template is stored and editable, but `send_welcome_email()` has no caller (signup sends no email) | `{{name}}`, `{{email}}`, `{{app_url}}` |
-| `purchase_confirmed` | **Not sent — there is no payment flow**; `send_purchase_confirmed_email()` has no caller | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
+| `password_reset` | User requests a password reset — **the only type the app actually sends** | `{{name}}`, `{{token}}` |
+| `welcome` | **Not sent by any code path** — the template is stored and editable, but `send_welcome_email()` has no caller (signup sends no email) | `{{name}}`, `{{email}}` |
+| `purchase_confirmed` | **Not sent — there is no payment flow**; `send_purchase_confirmed_email()` has no caller | `{{name}}`, `{{plan_name}}` |
 
-Admins can edit these templates in the admin panel (`Email Templates`) — modify subject lines, HTML body, or plain text fallback. Merge field buttons insert placeholders automatically.
+All types also bind `{{app_name}}`, `{{app_url}}` and `{{login_url}}`. Placeholders must be written with
+**double braces** — `{name}` is treated as literal text and is sent to the recipient as-is.
+
+Admins can edit these templates in the admin panel (`Email Templates`) — modify subject lines, HTML body, or plain text fallback. The panel lists the merge fields each type supports (read from `GET /api/v1/admin/email-templates/types`), but the editor is plain text: the placeholders are typed by hand.
 
 ## Affiliate Program
 

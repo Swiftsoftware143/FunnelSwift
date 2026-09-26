@@ -13,16 +13,74 @@
 //! Unconfigured is never fatal: it is logged and the send is skipped.
 //!
 //! Direct API send (no queue).
+//!
+//! Placeholder contract: **`{{key}}` only** (double braces). A body written with single
+//! braces (`{name}`) is not a placeholder and reaches the recipient verbatim, so `render`
+//! reports every leftover placeholder-shaped token instead of failing silently. Every key a
+//! sender binds must be one of the merge fields the admin UI lists for that type
+//! (`GET /api/v1/admin/email-templates/types`) — see `bound_vars` below.
 
 use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-/// Render a template string by replacing {{key}} placeholders
+/// Product name, base URL and login URL — the URL-shaped merge fields the admin panel
+/// advertises for `welcome` / `password_reset` / `purchase_confirmed`
+/// (`app_name`, `login_url`; `app_url` is kept for the inline fallbacks below).
+/// kanban t_2349e6ce: the types endpoint advertised `app_name`/`login_url` while the senders
+/// bound only `app_url`, so an admin-authored `{{app_name}}` sent literally.
+const APP_NAME: &str = "FunnelSwift";
+const APP_URL: &str = "https://app.funnelswift.net";
+const APP_LOGIN_URL: &str = "https://app.funnelswift.net/login";
+
+/// The variables every template type resolves: the advertised merge fields plus `app_url`.
+/// Bind these on every send path so no advertised field can ever go out as literal text.
+fn bound_vars<'a>(
+    mut vars: std::collections::HashMap<&'a str, &'a str>,
+) -> std::collections::HashMap<&'a str, &'a str> {
+    vars.insert("app_name", APP_NAME);
+    vars.insert("app_url", APP_URL);
+    vars.insert("login_url", APP_LOGIN_URL);
+    vars
+}
+
+/// Placeholder-shaped tokens that survived rendering — i.e. keys no sender bound.
+/// `{name}` and `{{name}}` are both reported as `name`.
+fn unsubstituted(rendered: &str) -> Vec<&str> {
+    let mut out: Vec<&str> = Vec::new();
+    let mut rest = rendered;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else { break };
+        let name = after[..close].trim_matches('{').trim_matches('}').trim();
+        if !name.is_empty()
+            && name.len() < 64
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+            && !out.contains(&name)
+        {
+            out.push(name);
+        }
+        rest = &after[close + 1..];
+    }
+    out
+}
+
+/// Render a template string by replacing {{key}} placeholders. Anything left over is
+/// logged: a half-substituted email is a defect, not a silent default.
 fn render(template: &str, vars: &std::collections::HashMap<&str, &str>) -> String {
     let mut result = template.to_string();
     for (key, value) in vars {
         result = result.replace(&format!("{{{{{}}}}}", key), value);
+    }
+    let missing = unsubstituted(&result);
+    if !missing.is_empty() {
+        tracing::warn!(
+            placeholder = %missing.join(","),
+            "email template placeholder(s) left unsubstituted — the recipient would see them literally. \
+             Use the double-brace form and only the merge fields GET /api/v1/admin/email-templates/types advertises"
+        );
     }
     result
 }
@@ -191,7 +249,9 @@ fn get_inline(
     }
 }
 
-// Convenience wrappers for backwards compatibility
+// Convenience wrappers for backwards compatibility.
+// Each one binds its own merge fields and then `bound_vars` adds the shared
+// `app_name` / `app_url` / `login_url` fields the admin UI advertises.
 pub async fn send_welcome_email(
     pool: &PgPool,
     aid: Uuid,
@@ -201,8 +261,7 @@ pub async fn send_welcome_email(
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("email", to);
-    vars.insert("app_url", "https://app.funnelswift.net");
-    send_template_email(pool, aid, to, "welcome", &vars).await
+    send_template_email(pool, aid, to, "welcome", &bound_vars(vars)).await
 }
 
 pub async fn send_purchase_confirmed_email(
@@ -215,8 +274,7 @@ pub async fn send_purchase_confirmed_email(
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
-    vars.insert("app_url", "https://app.funnelswift.net");
-    send_template_email(pool, aid, to, "purchase_confirmed", &vars).await
+    send_template_email(pool, aid, to, "purchase_confirmed", &bound_vars(vars)).await
 }
 
 pub async fn send_reset_email(
@@ -229,6 +287,90 @@ pub async fn send_reset_email(
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("token", token);
-    vars.insert("app_url", "https://app.funnelswift.net");
-    send_template_email_for_tenant(pool, tenant_id, tenant_id, to, "password_reset", &vars).await
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "password_reset",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vars<'a>(pairs: &[(&'a str, &'a str)]) -> std::collections::HashMap<&'a str, &'a str> {
+        pairs.iter().copied().collect()
+    }
+
+    #[test]
+    fn render_substitutes_double_braces() {
+        let v = bound_vars(vars(&[("name", "PW Test")]));
+        assert_eq!(render("Hi {{name}}", &v), "Hi PW Test");
+    }
+
+    #[test]
+    fn render_leaves_single_braces_literal_and_reports_them() {
+        // The live `welcome` row shipped as `{app_name}` / `{name}`: render() replaced
+        // nothing, so the recipient saw the placeholder text verbatim. The contract is
+        // double braces only — and the leftovers are now reportable, not silent.
+        let v = bound_vars(vars(&[("name", "PW Test")]));
+        let out = render("Hi {name}", &v);
+        assert_eq!(out, "Hi {name}");
+        assert_eq!(unsubstituted(&out), vec!["name"]);
+    }
+
+    #[test]
+    fn unsubstituted_reports_each_missing_key_once() {
+        assert_eq!(unsubstituted("{{a}} {b} {{a}}"), vec!["a", "b"]);
+        assert!(unsubstituted("no placeholders here").is_empty());
+        assert!(unsubstituted("").is_empty());
+    }
+
+    #[test]
+    fn bound_vars_cover_every_advertised_merge_field() {
+        // Exactly the lists served by GET /api/v1/admin/email-templates/types.
+        let advertised: [&[&str]; 3] = [
+            &["name", "email", "login_url", "app_name"],
+            &["name", "token", "app_name"],
+            &["name", "plan_name", "login_url", "app_name"],
+        ];
+        let bound = bound_vars(vars(&[
+            ("name", "n"),
+            ("email", "e"),
+            ("token", "t"),
+            ("plan_name", "p"),
+        ]));
+        for list in advertised {
+            for field in list {
+                assert!(
+                    bound.contains_key(*field),
+                    "advertised merge field {field} is bound by no sender"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn shipped_welcome_row_renders_with_nothing_left_over() {
+        // The live row as rewritten (kanban t_2349e6ce).
+        let tpl = "Welcome to {{app_name}}, {{name}}!\n\nYour Login Credentials:\nEmail: {{email}}\n\nLogin: {{login_url}}\n\nBest,\nThe {{app_name}} Team";
+        let v = bound_vars(vars(&[
+            ("name", "PW Test"),
+            ("email", "pwtest555@yahoo.com"),
+        ]));
+        let out = render(tpl, &v);
+        assert!(
+            unsubstituted(&out).is_empty(),
+            "placeholder left on the wire: {:?}",
+            unsubstituted(&out)
+        );
+        assert!(out.contains("PW Test"));
+        assert!(out.contains("pwtest555@yahoo.com"));
+        assert!(out.contains(APP_LOGIN_URL));
+        assert!(!out.contains('{'));
+    }
 }
