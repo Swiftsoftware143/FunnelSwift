@@ -651,8 +651,12 @@ function LCM(){
   b.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin-bottom:12px"},"Your cards are published at <b>https://"+((KCB&&KCB.subdomain)?X(KCB.subdomain)+".kntcrd.com/k/":"kntcrd.com/k/")+"your-slug</b>"));
   var df=El("div",{id:"lc-df"});
   df.innerHTML='<div class="fld"><label>Your Subdomain</label><div style="display:flex;gap:6px;align-items:center"><input id="lc-sub" value="'+X(KCB.subdomain||"")+'" placeholder="yourname" style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" oninput="if(this.value){this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,\'\')}"><span style="color:#94a3b8;font-size:13px">.kntcrd.com</span></div><p style="font-size:11px;color:#94a3b8;margin-top:4px">3-63 characters — lowercase letters, numbers, hyphens. Your cards then serve from <b id="lc-sub-preview">'+((KCB.subdomain)?X(KCB.subdomain)+".kntcrd.com/k/your-slug":"yourname.kntcrd.com/k/your-slug")+'</b></p></div>';
-  df.appendChild(El("button",{"class":"btn",onclick:function(){LCSV()}},"Save Subdomain"));
+  // t_7caf7873: this footer control is appended BELOW every markup write on the same parent.
+  // A parent markup write re-parses its subtree, recreating children that were appended before
+  // it WITHOUT their property-assigned handlers — the control then renders dead on the served
+  // page: a click issues no request and shows no message. Keep appends after the last write.
   df.innerHTML+='<div class="fld"><label>Custom Domain (optional)</label><input id="lc-cd" value="'+X(KCB.custom_domain)+'" placeholder="mybrand.com" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px"><p style="font-size:11px;color:#94a3b8;margin-top:4px">Point your domain to kntcrd.com with a CNAME record</p></div>';
+  df.appendChild(El("button",{"class":"btn",onclick:function(){LCSV()}},"Save Subdomain"));
   df.appendChild(El("button",{"class":"btn",onclick:function(){LCSD()}},"Save Custom Domain"));
   // Prefill the custom domain from its dedicated endpoint (was read from a settings blob only).
   api("/api/v1/kinetic/custom-domain").then(function(d){
