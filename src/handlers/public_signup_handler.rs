@@ -8,9 +8,25 @@ use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::{json, Value};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::auth::models::Claims;
+
+/// Does this `?ref=` code exist? (kanban t_8101edb5, arm (b)).
+///
+/// The chosen namespace is `tenants.affiliate_code` — the code `kinetic_handler` renders into the
+/// card badge `?ref=` URL and the code `affiliate_referral_handler` publishes as the share link.
+/// The two legacy namespaces (`affiliates.id`, `affiliate_links.tracking_code`) are resolved too,
+/// exactly as the reader does, so this verdict can never disagree with the reader's `resolved`.
+/// Always returns one row (bare SELECT), NULLs when nothing matches.
+const RESOLVE_SQL: &str = "\
+SELECT (SELECT t.id   FROM tenants t WHERE t.affiliate_code = $1 ORDER BY t.created_at LIMIT 1) AS tenant_id,
+       (SELECT t.name FROM tenants t WHERE t.affiliate_code = $1 ORDER BY t.created_at LIMIT 1) AS tenant_name,
+       (SELECT af.name FROM affiliates af
+         WHERE af.id = COALESCE((SELECT al.affiliate_id FROM affiliate_links al
+                                  WHERE al.tracking_code = $1 LIMIT 1), $1)
+         LIMIT 1) AS affiliate_name";
 
 /// POST /api/v1/auth/signup — Public signup (used by Kinetic Cards landing page).
 /// Creates tenant + user, assigns plan from request body (defaults to 'free').
@@ -24,7 +40,19 @@ pub async fn public_signup(
     // Always start on the free tier — never honour a caller-supplied plan slug.
     let plan_slug = "kinetic-free".to_string();
     let source = payload["source"].as_str().unwrap_or("").to_string();
-    let affiliate_code = payload["affiliate_code"].as_str().map(|s| s.to_string());
+    // (b) VALIDATE THE WRITE — decided arm: STILL-RECORD-AND-FLAG (kanban t_8101edb5).
+    //
+    // A `?ref=` that resolves to nothing must NOT refuse the signup: the code is copied by hand,
+    // shared in DMs and printed on cards, so a typo or a dead link is an ordinary event, and
+    // refusing the signup to punish a bad link throws away the customer instead of the code.
+    // Sanitising is enforced (trim, empty -> none, cap 100 = the width of `tenants.affiliate_code`);
+    // the row is then recorded exactly as it always was, and the verdict is FLAGGED in three places
+    // that outlive this request: the `referral.resolved` field below, the log line, and the
+    // recomputed `resolved:false` on `GET /api/v1/affiliate-referrals`.
+    let affiliate_code = payload["affiliate_code"]
+        .as_str()
+        .map(|s| s.trim().chars().take(100).collect::<String>())
+        .filter(|s| !s.is_empty());
 
     if email.is_empty() || password.is_empty() || name.is_empty() {
         return Err(AppError::BadRequest(
@@ -129,20 +157,48 @@ pub async fn public_signup(
         );
     }
 
-    // Handle affiliate referral code
+    // Handle affiliate referral code. The code is resolved against the namespace the rest of the
+    // app publishes; an unresolved code is recorded anyway and FLAGGED (arm (b), t_8101edb5) — see
+    // `RESOLVE_SQL` and the comment where `affiliate_code` is parsed.
+    let mut referral: Option<Value> = None;
     if let Some(ref_code) = affiliate_code {
-        if !ref_code.is_empty() {
-            let _ = sqlx::query(
-                r#"INSERT INTO referral_tracking (id, referrer_code, referred_email, referred_tenant_id, created_at)
-                   VALUES ($1, $2, $3, $4, NOW())"#
-            )
-            .bind(Uuid::new_v4())
+        let row = sqlx::query(RESOLVE_SQL)
             .bind(&ref_code)
-            .bind(&email)
-            .bind(tenant_id)
-            .execute(&state.pool)
-            .await;
+            .fetch_one(&state.pool)
+            .await?;
+        let owner_id: Option<Uuid> = row.try_get("tenant_id")?;
+        let owner_name: Option<String> = row.try_get("tenant_name")?;
+        let affiliate_name: Option<String> = row.try_get("affiliate_name")?;
+        let resolved = owner_id.is_some() || affiliate_name.is_some();
+
+        if !resolved {
+            tracing::warn!(
+                affiliate_code = %ref_code,
+                signup_email = %email,
+                "Unresolved affiliate code: signup recorded and flagged, not refused"
+            );
         }
+
+        let _ = sqlx::query(
+            r#"INSERT INTO referral_tracking (id, referrer_code, referred_email, referred_tenant_id, created_at)
+               VALUES ($1, $2, $3, $4, NOW())"#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(&ref_code)
+        .bind(&email)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await;
+
+        referral = Some(json!({
+            "code": ref_code,
+            "resolved": resolved,
+            "referrer_tenant": owner_id.map(|id| json!({
+                "tenant_id": id.to_string(),
+                "name": owner_name.clone().unwrap_or_default(),
+            })),
+            "affiliate_name": affiliate_name,
+        }));
     }
 
     // Mint the same session JWT the main register path returns. Without it the Kinetic
@@ -176,6 +232,7 @@ pub async fn public_signup(
             "message": "Account created successfully",
             "token": token,
             "plan": plan_slug,
+            "referral": referral,
             "user": {
                 "id": user_id,
                 "email": email,

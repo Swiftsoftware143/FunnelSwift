@@ -1875,7 +1875,16 @@ function stopImpersonation(){
 
 /* === AFFILIATES === */
 function LA(){
-  if(!U||!U.is_admin) return;
+  var ct=$("ct");
+  if(!U||!U.is_admin){
+    /* kanban t_8101edb5 — the Referral Signups panel is the tenant's OWN data (its code, the
+       signups its link produced), so it renders for EVERY signed-in tenant; only the cross-tenant
+       affiliate list further down is an admin view. Before this a non-admin landing here got the
+       "Loading..." placeholder forever, on the very screen the affiliate guide sends them to for
+       the link they are told to share. */
+    if(ct){ ct.innerHTML='<div class="cc" id="la-ref"><p style="color:#64748b;padding:10px">Loading referral signups…</p></div>'; LREF(); }
+    return;
+  }
   api("/api/v1/affiliates").then(function(d){
     var all=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Affiliates ('+all.length+')</h3><div id="la-search-wrap" style="margin-bottom:12px"></div><div id="la-list"></div></div><div class="cc" id="la-ref"><p style="color:#64748b;padding:10px">Loading referral signups…</p></div>';
@@ -1921,9 +1930,23 @@ function LREF(){
     d=d||{};
     var total=d.total_signups||0, codes=d.by_code||[], recent=d.recent||[];
     var h='<h3>Referral Signups (<span id="lref-total">'+total+'</span>)</h3>';
-    h+='<p style="color:#64748b;font-size:12px;margin-bottom:8px">Signups that arrived with an affiliate code (the <code>?ref=</code> link), counted per code.'
-      +' Your code: <code id="lref-code">'+X(d.affiliate_code||"none")+'</code>'
-      +(d.share_url?' \u2014 <a href="'+X(d.share_url)+'" target="_blank" rel="noopener">share link</a>':'')+'</p>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:8px">Signups that arrived with an affiliate code (the <code>?ref=</code> link), counted per code.</p>';
+    /* YOUR REFERRAL LINK (kanban t_8101edb5). `www/guide-affiliate.html` tells every tenant they
+       have a shareable affiliate link, and this panel is the screen that has to hand it over. The
+       code is the workspace's own (`tenants.affiliate_code`) - the same code the card branding badge
+       renders as ?ref= - minted for every workspace by migration 058. */
+    if(d.affiliate_code&&d.share_url){
+      h+='<div id="lref-share" style="margin-bottom:10px">'
+        +'<div style="font-size:13px">Your referral code: <code id="lref-code">'+X(d.affiliate_code)+'</code></div>'
+        +'<div style="display:flex;gap:6px;margin-top:4px;max-width:620px">'
+        +'<input id="lref-link" readonly value="'+X(d.share_url)+'" style="flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#334155">'
+        +'<button class="btn btn-sm" id="lref-copy" type="button">Copy</button>'
+        +'<a class="btn btn-sm btn-o" id="lref-open" style="text-decoration:none" href="'+X(d.share_url)+'" target="_blank" rel="noopener">Open</a>'
+        +'</div>'
+        +'<p style="color:#64748b;font-size:12px;margin-top:4px">Share this link - anyone who signs up through it is counted as your referral below.</p></div>';
+    } else {
+      h+='<p id="lref-nocode" style="color:#b45309;font-size:12px">This workspace has no referral code yet.</p>';
+    }
     if(!total){
       h+='<p style="color:#64748b;padding:10px" id="lref-empty">No referral signups yet. A signup through a referral link appears here.</p>';
     } else {
@@ -1943,6 +1966,13 @@ function LREF(){
       }
     }
     box.innerHTML=h;
+    var cp=document.getElementById("lref-copy");
+    if(cp){cp.onclick=function(){
+      var i=document.getElementById("lref-link"); if(!i) return;
+      i.select(); try{i.setSelectionRange(0,9999)}catch(e){}
+      try{navigator.clipboard.writeText(i.value)}catch(e){}
+      cp.textContent="Copied";
+    };}
   }).catch(function(){
     box.innerHTML='<h3>Referral Signups</h3><p style="color:#b91c1c;padding:10px">Could not load referral signups.</p>';
   });
