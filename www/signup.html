@@ -49,7 +49,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 <div class="form-group">
 <label>Password</label>
-<input type="password" id="signup-password" placeholder="Min 6 characters" required minlength="6" autocomplete="new-password">
+<input type="password" id="signup-password" placeholder="Min 8 characters" required minlength="8" autocomplete="new-password">
 </div>
 <button type="submit" class="btn" id="signup-btn">Create Free Account</button>
 </form>
@@ -96,8 +96,8 @@ try{
   var data = await res.json();
   if (!res.ok) throw new Error(data.error || data.message || 'Signup failed');
   var token = data.token || data.access_token;
-  if (token) localStorage.setItem('token', token);
-  window.location.href = '/dashboard';
+  // Hand the session over in the URL FRAGMENT. localStorage is per-origin, so a write here is dead (this page is served on the marketing origin; the SPA reads ws_fs_token on app.funnelswift.net), and this host has no /dashboard - it 404s. Same contract www/kinetic.html and www/landing.html ship (kanban t_46f15cf3).
+  window.location.href = token ? 'https://app.funnelswift.net/#token=' + encodeURIComponent(token) : 'https://app.funnelswift.net/login';
 } catch(ex) {
   err.textContent = ex.message;
   err.classList.add('show');
