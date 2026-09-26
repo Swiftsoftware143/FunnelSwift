@@ -180,7 +180,7 @@ a no-op with no caller in the fleet.
 | GET | `/api/v1/campaigns` | Campaign listing |
 | GET | `/api/v1/incentiveswift/config` | IncentiveSwift config |
 | GET | `/funnel/:slug` | Public funnel page |
-| POST | `/k/:slug/lead` | Kinetic card lead submit |
+| POST | `/k/:slug/lead` | Kinetic card lead submit (also `/b`, `/m`, `/c`, `/f`, `/h` — all six card prefixes) |
 
 ## Deployment
 

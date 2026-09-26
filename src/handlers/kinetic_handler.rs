@@ -1179,12 +1179,191 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
         branding_html = branding_html
     ))
 }
+/// Public card lead capture — `POST /{k,b,m,c,f,h}/:slug/lead`.
+///
+/// kanban t_c7673a05. This used to be a no-op constant that bound neither the state nor the
+/// body — `Json(json!({"message":"Lead submitted","slug":slug}))` — so every submission from a
+/// card's `lead_form` block answered a success and was never recorded, while the live
+/// funnelswift.net vhost proxies this path (`location ~ ^/(k|b|c|f|m|h)/`) and five live cards
+/// already carry a configured `lead_form` layout block. It is now implemented against the app's
+/// real public capture path (`web_to_lead_handler::handle_web_to_lead`): the durable row lands
+/// in `leads` with `source = 'kinetic_card'`, the raw card event lands in `lead_events`
+/// (migration 0017's card-lead event table: `card_id` + `lead_id` + `event_type='form_submit'`),
+/// and the tenant's inbound CoreSwift push is fired.
+///
+/// The card — and with it the tenant — is resolved from the slug, never from the body: all six
+/// prefixes render the same card, so a body-supplied `tenant_id` would be a cross-tenant write.
+/// `leads.created_by` takes the card owner, which is the affiliate attribution anchor
+/// (`leads.created_by -> affiliates.user_id`), so a card lead attributes to the card's owner.
+///
+/// `leads.name` is NOT NULL: the display name comes from `name`, else `first_name`/`last_name`,
+/// else the email local part (one shipped `lead_form` template configures an email-only waitlist
+/// form), and a submission with no identity at all is refused with a 400 rather than stored as a
+/// nameless row. No plan gate and no duplicate-email refusal, deliberately: the sibling public
+/// capture path (`/api/v1/web-to-lead`) has neither, and a public form that silently refuses a
+/// visitor because of a quota is the same defect class this card closes.
 pub async fn submit_lead(
-    axum::extract::Path(slug): axum::extract::Path<String>,
-    State(_state): State<AppState>,
-    Json(_body): Json<Value>,
-) -> Json<Value> {
-    Json(json!({"message": "Lead submitted", "slug": slug}))
+    Path(slug): Path<String>,
+    State(state): State<AppState>,
+    Json(body): Json<Value>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    let card: Option<(Uuid, Uuid, Uuid)> =
+        sqlx::query_as("SELECT id, tenant_id, user_id FROM kinetic_cards WHERE slug = $1 LIMIT 1")
+            .bind(&slug)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((card_id, tenant_id, owner_id)) = card else {
+        return Err(AppError::NotFound("Card not found".into()));
+    };
+
+    let field = |key: &str| -> Option<String> {
+        body.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+
+    let email = field("email");
+    let name = field("name")
+        .or_else(|| {
+            let joined = format!(
+                "{} {}",
+                body.get("first_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim(),
+                body.get("last_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+            )
+            .trim()
+            .to_string();
+            (!joined.is_empty()).then_some(joined)
+        })
+        .or_else(|| {
+            email
+                .as_deref()
+                .and_then(|e| e.split('@').next())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+    let Some(name) = name else {
+        return Err(AppError::Validation(
+            "A card lead needs a name or an email".into(),
+        ));
+    };
+    let phone = field("phone");
+    let company = field("company");
+    let notes = field("message").or_else(|| field("notes"));
+    let utm_source = field("utm_source");
+    let utm_medium = field("utm_medium");
+    let utm_campaign = field("utm_campaign");
+    let referrer_url = field("referrer_url");
+
+    // The card's `lead_form` fields are configurable, so a field this handler does not name by
+    // hand must still survive on the row instead of being dropped on the floor.
+    let named = [
+        "name",
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "company",
+        "message",
+        "notes",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "referrer_url",
+    ];
+    let mut extra = serde_json::Map::new();
+    if let Some(obj) = body.as_object() {
+        for (k, v) in obj {
+            if !named.contains(&k.as_str()) {
+                extra.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    let custom_fields = json!({
+        "card_id": card_id.to_string(),
+        "card_slug": slug,
+        "utm_source": &utm_source,
+        "utm_medium": &utm_medium,
+        "utm_campaign": &utm_campaign,
+        "referrer_url": &referrer_url,
+        "extra": Value::Object(extra),
+    });
+
+    // `kinetic_cards.user_id` is NOT an FK to `users(id)` and 25 of the 27 live cards carry an
+    // owner id with no `users` row behind it, so binding it straight into `leads.created_by`
+    // (which IS an FK to `users(id)`) raised 23503 and 500'd every submission — found by the
+    // first live probe. Resolve it once: a real user is used, a dangling id becomes NULL, which
+    // is also what the app's other public capture path (`/api/v1/web-to-lead`) leaves there.
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE id = $1")
+        .bind(owner_id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let lead_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO leads (id, tenant_id, name, email, phone, company, source, status, notes, custom_fields, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, 'kinetic_card', 'new', $7, $8, $9)"#,
+    )
+    .bind(lead_id)
+    .bind(tenant_id)
+    .bind(&name)
+    .bind(&email)
+    .bind(&phone)
+    .bind(&company)
+    .bind(&notes)
+    .bind(&custom_fields)
+    .bind(owner)
+    .execute(&state.pool)
+    .await?;
+
+    // The raw card event (migration 0017's `lead_events`) — this is what ties the lead to the
+    // card it was submitted from. `source_param` carries the traffic source, as in the table's
+    // own historical rows ('ig'/'fb'); `ip_hash` stays NULL exactly like those rows. `user_id` is
+    // NOT NULL and has no FK here, so it keeps the card's recorded owner even when that user row
+    // is gone (the durable `leads` row above is what the FK-constrained column follows).
+    sqlx::query(
+        "INSERT INTO lead_events (id, user_id, tenant_id, lead_id, card_id, event_type, source_param) VALUES ($1, $2, $3, $4, $5, 'form_submit', $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(owner_id)
+    .bind(tenant_id)
+    .bind(lead_id)
+    .bind(card_id)
+    .bind(
+        utm_source
+            .as_deref()
+            .map(|s| s.chars().take(30).collect::<String>()),
+    )
+    .execute(&state.pool)
+    .await?;
+
+    // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be able
+    // to land in CoreSwift as a contact. Fire-and-forget, a no-op without a `coreswift` BYOK key.
+    crate::coreswift::spawn_lead_push(
+        state.pool.clone(),
+        tenant_id,
+        crate::coreswift::LeadPayload {
+            email,
+            phone,
+            name: Some(name),
+            company,
+            source: Some("kinetic_card".to_string()),
+            ..Default::default()
+        },
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"id": lead_id.to_string(), "message": "Lead captured", "card": slug})),
+    ))
 }
 // track_click (GET /track/click) was removed here — kanban t_65849ce9. It was a no-op stub
 // that persisted nothing and answered a constant `{}`, with zero callers in src/ or in any
