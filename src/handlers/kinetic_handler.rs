@@ -149,25 +149,18 @@ pub async fn create_card(
     let text_color = body["text_color"].as_str().unwrap_or("#ffffff");
     let sub_color = body["sub_color"].as_str().unwrap_or("#94a3b8");
     let btn_color = body["btn_color"].as_str().unwrap_or("#6366f1");
-    let card_type = body["type"]
-        .as_str()
-        .or(body["card_type"].as_str())
-        .unwrap_or("bio-link");
-    // kanban t_8151c83f: `card_type` is the card KIND vocabulary (`type`/`card_type`), while the card
-    // EDITOR's Template Type select sends `template_type` and no `type` at all — so `card_type` alone
-    // stored the fallback "bio-link" for every card created from the editor and that control was
-    // decorative on create (measured on the running container: POST {"template_type":"thank_you"}
-    // with no `type` -> row template_type='bio-link'). The explicit template wins when it is given;
-    // a client that only sends `type`/`card_type` keeps exactly the previous behaviour.
-    let template_type = body["template_type"]
-        .as_str()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .unwrap_or(card_type);
-    // Mini funnels are a plan-gated card type (has_mini_funnels). The gate reads the EFFECTIVE
-    // template now, because `template_type` reaches the column — otherwise the editor's "Mini Funnel"
-    // option would store a gated type for a plan that does not grant it.
-    if card_type == "mini_funnel" || template_type == "mini_funnel" {
+    let card_kind = body["type"].as_str().or(body["card_type"].as_str());
+    // kanban t_747b4dd6 — ONE value space for `kinetic_cards.template_type`: the card TYPE, spelled
+    // in the editor's underscore ids (`crate::card_types::CARD_TYPES`). The hyphenated card kinds
+    // clients send in `type`/`card_type` ("bio-link") are ALIASES and are normalised here, so the
+    // second vocabulary cannot reach the column again; an unknown value is stored unchanged.
+    // Precedence is the one t_8151c83f established: an explicit `template_type` (what the editor's
+    // Template Type select sends) wins, else the card kind the client sent, else the fallback.
+    let template_type = crate::card_types::stored(body["template_type"].as_str(), card_kind);
+    // Mini funnels are a plan-gated card type (has_mini_funnels). The gate reads the NORMALISED
+    // value now: before t_747b4dd6 it compared the literal "mini_funnel", so a client sending the
+    // hyphenated kind stored a gated card type on a plan without the flag (measured: 201).
+    if template_type == crate::card_types::MINI_FUNNEL {
         crate::features::enforce_feature_flag(
             &state,
             tenant_id,
@@ -210,7 +203,7 @@ pub async fn create_card(
     }
 
     sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)")
-        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
+        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
         .execute(&state.pool).await?;
     Ok((
         StatusCode::CREATED,
@@ -260,10 +253,15 @@ pub async fn update_card(
     // explicit null (or the trimmed "" a select sends) clears `video_provider`. Note the mini-funnel
     // plan gate stays on CREATE only — gating here would make an already-stored mini_funnel card
     // unsavable for a plan that no longer grants the feature.
+    // kanban t_747b4dd6: an explicit `template_type` is normalised to the canonical card type
+    // (`crate::card_types`) before it is written, so the editor cannot re-introduce the hyphenated
+    // card-kind vocabulary either; a value that is neither canonical nor a known alias is written
+    // verbatim. An ABSENT key still leaves the column alone (COALESCE below).
     let template_type = body["template_type"]
         .as_str()
         .map(str::trim)
-        .filter(|t| !t.is_empty());
+        .filter(|t| !t.is_empty())
+        .map(|raw| crate::card_types::canonical(raw).unwrap_or(raw));
     let vp_change: Option<Option<String>> = match body.get("video_provider") {
         None => None,
         Some(Value::Null) => Some(None),
@@ -863,7 +861,12 @@ pub async fn render_card(
     .unwrap_or(None)
     .map(|r| r.0)
     .unwrap_or(json!({}));
-    let _template_type: String = r.try_get("template_type").unwrap_or_default();
+    // kanban t_747b4dd6: the card TYPE (`kinetic_cards.template_type`) is deliberately NOT read in
+    // this renderer. The public page draws from `theme` / the colour columns / `layout_blocks`, and
+    // the per-archetype styling lives in the served SPA's editor preview; wiring a kind-dependent
+    // layout here would invent rendering behaviour, so the dead binding that used to sit on this
+    // line (`let _template_type: String = …`, read by nothing) was DELETED, not wired. The column's
+    // value space is declared once in `crate::card_types`.
     // Branding badge logic:
     //   the plan grants badge removal via `remove_branding` (Kinetic Pro, Suite, Agency/Scale)
     //   OR via `white_label`; the tenant's site_meta.hide_branding_badge is the actual switch.

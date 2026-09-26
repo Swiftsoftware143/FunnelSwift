@@ -554,6 +554,11 @@ pub async fn get_tenant_analytics(
     ).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(0);
 
     let top_cards: Vec<CardPerformanceRow> = sqlx::query_as(
+        // kanban t_747b4dd6 — this aliases `kinetic_cards.template_type` as `card_type`. Same column,
+        // same value space (the canonical card types declared in `crate::card_types`), so the JSON key
+        // is left alone: it is the *name* that differs, not the vocabulary, the column is already the
+        // card type, and renaming a response key of a `has_api` plan's analytics payload would break
+        // consumers for no gain.
         "SELECT k.id as card_id, k.title as card_title, k.template_type as card_type,
                 COALESCE(d.views, 0) as views, COALESCE(d.clicks, 0) as clicks, COALESCE(d.shares, 0) as shares
          FROM kinetic_cards k

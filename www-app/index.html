@@ -623,10 +623,10 @@ function LCM(){
     var grd=El("div",{"class":"grd"});
     cards.forEach(function(c){
       var it=El("div",{"class":"it"});
-      // Type badge colors
+      // Type badge — label + colour come from the ONE card-type list (CARD_TYPES / t_747b4dd6);
+      // a stored value outside it renders as its raw id in the neutral colour.
       var tc=c.template_type||c.card_type||"default";
-      var tcLabel={bio:"Bio Link",bio_link:"Bio Link",business:"Business Card",business_card:"Business Card",mini:"Mini Page",mini_page:"Mini Page",mini_funnel:"Mini Funnel",hero:"Hero",thank_you:"Thank You",default:"Custom"};
-      var tcColor={bio:"#6366f1",bio_link:"#6366f1",business:"#0ea5e9",business_card:"#0ea5e9",mini:"#8b5cf6",mini_page:"#8b5cf6",mini_funnel:"#f59e0b",hero:"#10b981",thank_you:"#ec4899",default:"#64748b"};
+      var tcLabel=CARD_TYPE_LABEL, tcColor=CARD_TYPE_COLOR;
 
       it.innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><h4>'+X(c.title||"Untitled")+'</h4><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:'+(tcColor[tc]||"#64748b")+'15;color:'+(tcColor[tc]||"#64748b")+';font-weight:600">'+(tcLabel[tc]||tc)+'</span></div>';
       it.innerHTML+='<p style="font-size:11px;color:#94a3b8">/'+(c.slug||"")+'</p>';
@@ -696,10 +696,12 @@ function LCT(){
   var b=$("lc-body"); b.innerHTML="";
   var tpls=KCB.templates;
 
-  // Filter bar
+  // Filter bar — the chip vocabulary is the ONE card-type list (t_747b4dd6); a chip is only shown
+  // when the catalogue actually carries that type (unchanged behaviour).
   var filter=El("div",{style:"display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center"});
-  var allTypes=["all","business_card","bio_link","mini_page","mini_funnel","hero","thank_you"];
-  var typeLabels={all:"All",business_card:"Business Cards",bio_link:"Bio Links",mini_page:"Mini Pages",mini_funnel:"Mini Funnels",hero:"Hero Pages",thank_you:"Thank You"};
+  var allTypes=["all"].concat(CARD_TYPES.map(function(o){return o.v;}));
+  var typeLabels={all:"All"};
+  CARD_TYPES.forEach(function(o){typeLabels[o.v]=o.p;});
   var vt=KCB.tplFilter||"all";
 
   allTypes.forEach(function(ty){
@@ -807,16 +809,32 @@ function LCT(){
 }
 
 /* === Card Editor — Side-by-Side with Live Preview === */
-/* kanban t_8151c83f — the card editor's two <select> vocabularies, declared ONCE (the save path
-   `SC2` reads `#mc-type` / `#mc-vp`, so these lists ARE the value space of
-   `kinetic_cards.template_type` / `.video_provider` from this screen).
-   Representability clause (the t_382c37c0 / t_adf187f9 class, applied here): a value stored by ANY
-   path must stay SELECTABLE in the control that edits it — when no option matches, the browser
-   falls back to the FIRST option, so a save that never touched the control would rewrite the row.
-   `template_type` is written by TWO vocabularies in this fleet — this editor's underscore ids
-   (business_card, mini_funnel, …) and the hyphenated card kinds `type`/`card_type` clients send
-   ("bio-link") — so an unknown stored value is appended rather than dropped. */
-var CARD_TEMPLATES=[{v:"default",l:"Default"},{v:"bio_link",l:"Bio Link"},{v:"business_card",l:"Business Card"},{v:"mini_page",l:"Mini Page"},{v:"mini_funnel",l:"Mini Funnel"},{v:"hero",l:"Hero"},{v:"thank_you",l:"Thank You"}];
+/* === THE card-type vocabulary — declared ONCE, here (kanban t_747b4dd6) ===
+   `kinetic_cards.template_type` has ONE value space: these underscore ids. This is what the save
+   path (`SC2` reads `#mc-type`), the card badges, the template-library chips, the admin list and the
+   preview's archetype styling all read — and the Rust side of the same list (`src/card_types.rs`,
+   `CARD_TYPES`) NORMALISES every write into it: the hyphenated card kinds other clients send as
+   `type`/`card_type` ("bio-link", "business-card", …) are API aliases, not a second value space.
+   Every other card-type map in this file is DERIVED from this one list, so there is no second copy
+   to drift; `card_types.rs` has a unit test that fails the build if the two lists stop matching.
+   Representability clause (the t_382c37c0 / t_adf187f9 class): a value stored by ANY path must stay
+   SELECTABLE in the control that edits it — when no option matches, the browser falls back to the
+   FIRST option, so a save that never touched the control would rewrite the row. An unknown stored
+   value is therefore appended rather than dropped.
+   `#mc-vp`'s list (VIDEO_PROVIDERS) is a separate control and stays where it is. */
+var CARD_TYPES=[
+  {v:"default",l:"Default",p:"Default",c:"#64748b"},
+  {v:"bio_link",l:"Bio Link",p:"Bio Links",c:"#6366f1"},
+  {v:"business_card",l:"Business Card",p:"Business Cards",c:"#0ea5e9"},
+  {v:"mini_page",l:"Mini Page",p:"Mini Pages",c:"#8b5cf6"},
+  {v:"mini_funnel",l:"Mini Funnel",p:"Mini Funnels",c:"#f59e0b"},
+  {v:"hero",l:"Hero",p:"Hero Pages",c:"#10b981"},
+  {v:"thank_you",l:"Thank You",p:"Thank You",c:"#ec4899"}
+];
+var CARD_TYPE_LABEL={}, CARD_TYPE_COLOR={}, CARD_TEMPLATES=[];
+CARD_TYPES.forEach(function(o){
+  CARD_TYPE_LABEL[o.v]=o.l; CARD_TYPE_COLOR[o.v]=o.c; CARD_TEMPLATES.push({v:o.v,l:o.l});
+});
 function cardTemplates(cur){
   var s=CARD_TEMPLATES.slice();
   if(cur&&!s.some(function(o){return o.v===cur;})) s=s.concat([{v:cur,l:cur}]);
@@ -1119,7 +1137,9 @@ function MFC(data){
     var bbg=getVal("mc-bbg")||"#1e293b";
     var btc=getVal("mc-btc")||"#ffffff";
     var av=getVal("mc-avatar");
-    var cardType=(getVal("mc-type")||"default").replace(/_/g,"-");
+    // The archetype below matches the STORED value directly: `#mc-type` holds a canonical card type
+    // from CARD_TYPES (t_747b4dd6), so no underscore→hyphen bridging happens here any more.
+    var cardType=getVal("mc-type")||"default";
     var li=getVal("mc-linkedin"), tw=getVal("mc-twitter"), ig=getVal("mc-instagram");
     var tt=getVal("mc-tiktok"), yt=getVal("mc-youtube"), fb=getVal("mc-facebook");
     var socials=[];
@@ -1146,8 +1166,8 @@ function MFC(data){
     // Background with noise overlay for depth
     h+='<div style="position:relative;min-height:380px;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:36px 24px;';
 
-    // Choose background based on card type archetype
-    if(cardType.indexOf("business-card")>=0){
+    // Choose background based on card type archetype (canonical ids from CARD_TYPES, t_747b4dd6)
+    if(cardType.indexOf("business_card")>=0){
       h+='background:radial-gradient(circle at 50% 25%, '+ac+'33 0%, '+bg+' 70%);';
     }else if(cardType.indexOf("funnel")>=0){
       h+='background:'+gradBg+';';
@@ -1975,7 +1995,7 @@ function LAC(){
     h+='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #e5e7eb">';
     h+='<th style="padding:8px 12px">Tenant</th><th style="padding:8px 12px">Title</th><th style="padding:8px 12px">Slug</th><th style="padding:8px 12px">Type</th><th style="padding:8px 12px">Active</th></tr></thead><tbody>';
     cards.forEach(function(c){
-      var typeLabel={business_card:"Business Card",bio_link:"Bio Link",mini_page:"Mini Page",mini_funnel:"Mini Funnel",hero:"Hero",thank_you:"Thank You",default:"Default"}[c.template_type]||c.template_type||"-";
+      var typeLabel=CARD_TYPE_LABEL[c.template_type]||c.template_type||"-";
       h+='<tr style="border-bottom:1px solid #f3f4f6">';
       h+='<td style="padding:8px 12px;font-size:13px">'+E(c.tenant_name)+'</td>';
       h+='<td style="padding:8px 12px"><strong>'+E(c.title)+'</strong></td>';

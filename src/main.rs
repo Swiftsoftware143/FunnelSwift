@@ -18,6 +18,7 @@ mod api_router;
 #[path = "middleware/mod.rs"]
 mod app_middleware;
 mod auth;
+mod card_types;
 mod coreswift;
 mod db;
 mod email;
