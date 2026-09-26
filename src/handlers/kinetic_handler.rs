@@ -1179,6 +1179,69 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
         branding_html = branding_html
     ))
 }
+/// The card `lead_form`'s field names this handler stores by hand. A form configures its own
+/// fields (`layout_blocks[].fields`), so every name NOT in here is kept in `custom_fields.extra`
+/// rather than being dropped on the floor.
+const CARD_LEAD_NAMED_FIELDS: [&str; 12] = [
+    "name",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "company",
+    "message",
+    "notes",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "referrer_url",
+];
+
+/// A trimmed, non-empty string field of a card form submission.
+fn card_lead_field(body: &Value, key: &str) -> Option<String> {
+    body.get(key)
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// The lead's display name (`leads.name` is NOT NULL): the form's `name`, else
+/// `first_name`/`last_name`, else the email local part — one shipped `lead_form` template
+/// configures an email-only waitlist form, and a nameless row is worse than a derived one.
+fn card_lead_name(body: &Value, email: Option<&str>) -> Option<String> {
+    let joined = [
+        card_lead_field(body, "first_name"),
+        card_lead_field(body, "last_name"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ");
+    card_lead_field(body, "name")
+        .or_else(|| (!joined.is_empty()).then_some(joined))
+        .or_else(|| {
+            email?
+                .split('@')
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+}
+
+/// Every field the form configured that this handler does not name by hand.
+fn card_lead_extra_fields(body: &Value) -> serde_json::Map<String, Value> {
+    body.as_object()
+        .map(|obj| {
+            obj.iter()
+                .filter(|(k, _)| !CARD_LEAD_NAMED_FIELDS.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Public card lead capture — `POST /{k,b,m,c,f,h}/:slug/lead`.
 ///
 /// kanban t_c7673a05. This used to be a no-op constant that bound neither the state nor the
@@ -1216,77 +1279,20 @@ pub async fn submit_lead(
         return Err(AppError::NotFound("Card not found".into()));
     };
 
-    let field = |key: &str| -> Option<String> {
-        body.get(key)
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
-
-    let email = field("email");
-    let name = field("name")
-        .or_else(|| {
-            let joined = format!(
-                "{} {}",
-                body.get("first_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .trim(),
-                body.get("last_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .trim()
-            )
-            .trim()
-            .to_string();
-            (!joined.is_empty()).then_some(joined)
-        })
-        .or_else(|| {
-            email
-                .as_deref()
-                .and_then(|e| e.split('@').next())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        });
-    let Some(name) = name else {
+    let email = card_lead_field(&body, "email");
+    let Some(name) = card_lead_name(&body, email.as_deref()) else {
         return Err(AppError::Validation(
             "A card lead needs a name or an email".into(),
         ));
     };
-    let phone = field("phone");
-    let company = field("company");
-    let notes = field("message").or_else(|| field("notes"));
-    let utm_source = field("utm_source");
-    let utm_medium = field("utm_medium");
-    let utm_campaign = field("utm_campaign");
-    let referrer_url = field("referrer_url");
+    let phone = card_lead_field(&body, "phone");
+    let company = card_lead_field(&body, "company");
+    let notes = card_lead_field(&body, "message").or_else(|| card_lead_field(&body, "notes"));
+    let utm_source = card_lead_field(&body, "utm_source");
+    let utm_medium = card_lead_field(&body, "utm_medium");
+    let utm_campaign = card_lead_field(&body, "utm_campaign");
+    let referrer_url = card_lead_field(&body, "referrer_url");
 
-    // The card's `lead_form` fields are configurable, so a field this handler does not name by
-    // hand must still survive on the row instead of being dropped on the floor.
-    let named = [
-        "name",
-        "first_name",
-        "last_name",
-        "email",
-        "phone",
-        "company",
-        "message",
-        "notes",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "referrer_url",
-    ];
-    let mut extra = serde_json::Map::new();
-    if let Some(obj) = body.as_object() {
-        for (k, v) in obj {
-            if !named.contains(&k.as_str()) {
-                extra.insert(k.clone(), v.clone());
-            }
-        }
-    }
     let custom_fields = json!({
         "card_id": card_id.to_string(),
         "card_slug": slug,
@@ -1294,7 +1300,7 @@ pub async fn submit_lead(
         "utm_medium": &utm_medium,
         "utm_campaign": &utm_campaign,
         "referrer_url": &referrer_url,
-        "extra": Value::Object(extra),
+        "extra": Value::Object(card_lead_extra_fields(&body)),
     });
 
     // `kinetic_cards.user_id` is NOT an FK to `users(id)` and 25 of the 27 live cards carry an
@@ -2049,5 +2055,97 @@ mod tests {
         assert!(!html2.contains("data-redirect=\""));
         assert!(html2.contains(&format!("/api/v1/kinetic/cards/{}/gate", cid())));
         assert!(html2.contains("Before you continue"));
+    }
+
+    /// kanban t_c7673a05 — the card lead form's submission parsing. `leads.name` is NOT NULL and
+    /// the name may legitimately arrive in three shapes; a submission with no identity at all must
+    /// be refused (the handler turns `None` into a 400, never a nameless row).
+    #[test]
+    fn card_lead_name_prefers_typed_name_then_parts_then_the_email_local_part() {
+        let named = json!({"name": "  Ada Lovelace  ", "email": "ada@example.com"});
+        assert_eq!(
+            card_lead_name(&named, card_lead_field(&named, "email").as_deref()),
+            Some("Ada Lovelace".to_string())
+        );
+        // parts alone, in either order, and never a stray space when only one part is present
+        let parts = json!({"first_name": "Ada", "last_name": "Lovelace"});
+        assert_eq!(
+            card_lead_name(&parts, None),
+            Some("Ada Lovelace".to_string())
+        );
+        let one_part = json!({"last_name": "Lovelace"});
+        assert_eq!(
+            card_lead_name(&one_part, None),
+            Some("Lovelace".to_string())
+        );
+        // the email-only waitlist template: the local part becomes the display name
+        let email_only = json!({"email": "ada.lovelace@example.com"});
+        assert_eq!(
+            card_lead_name(
+                &email_only,
+                card_lead_field(&email_only, "email").as_deref()
+            ),
+            Some("ada.lovelace".to_string())
+        );
+        // a blank name is not a name, and no identity at all stays absent
+        assert_eq!(card_lead_name(&json!({"name": "   "}), None), None);
+        assert_eq!(
+            card_lead_name(&json!({"name": "", "email": ""}), None),
+            None
+        );
+        assert_eq!(card_lead_name(&json!({}), None), None);
+        assert_eq!(
+            card_lead_name(&json!({"email": "@example.com"}), Some("@example.com")),
+            None
+        );
+    }
+
+    /// The form's field list is configurable, so a field this handler does not name by hand has to
+    /// survive on the lead — that is `custom_fields.extra`, asserted here against a real card's
+    /// `lead_form` field names.
+    #[test]
+    fn card_lead_extra_fields_keeps_configured_fields_and_drops_the_handled_ones() {
+        let body = json!({
+            "name": "Ada", "email": "ada@example.com", "company": "Analytical Engines",
+            "budget": "5000", "message": "hello", "referrer_url": "https://x.test",
+            "extra": {"nested": true},
+        });
+        let extra = card_lead_extra_fields(&body);
+        assert_eq!(extra.get("budget").and_then(|v| v.as_str()), Some("5000"));
+        assert_eq!(extra.get("extra"), Some(&json!({"nested": true})));
+        for handled in [
+            "name",
+            "email",
+            "company",
+            "message",
+            "referrer_url",
+            "first_name",
+            "last_name",
+            "phone",
+            "notes",
+            "utm_source",
+            "utm_medium",
+            "utm_campaign",
+        ] {
+            assert!(
+                !extra.contains_key(handled),
+                "{handled} is stored by hand and must not be duplicated"
+            );
+        }
+        assert_eq!(card_lead_extra_fields(&json!({})).len(), 0);
+        assert_eq!(card_lead_extra_fields(&json!("not an object")).len(), 0);
+    }
+
+    /// Every named field is trimmed and blank-as-absent, and `notes` falls back to `message` —
+    /// the two rules the handler's insert and its 400 rest on.
+    #[test]
+    fn card_lead_field_trims_and_treats_blank_as_absent() {
+        assert_eq!(
+            card_lead_field(&json!({"x": "  y  "}), "x"),
+            Some("y".to_string())
+        );
+        assert_eq!(card_lead_field(&json!({"x": "   "}), "x"), None);
+        assert_eq!(card_lead_field(&json!({"x": 7}), "x"), None);
+        assert_eq!(card_lead_field(&json!({}), "x"), None);
     }
 }
