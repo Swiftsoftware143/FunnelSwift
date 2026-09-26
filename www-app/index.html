@@ -1630,6 +1630,28 @@ function DI(id){if(confirm("Delete target?")) api("/api/v1/integration-targets/"
 }
 
 /* Affiliate Product Form (Admin CRUD) */
+/* Create a product category from the Affiliate Product form (kanban t_d68d95d2) — the caller for
+   POST /api/v1/product-categories, which no shipped surface had. On success the row the API names is
+   appended to the select AND SELECTED, so the product being edited lands on it at the next Save (a
+   category is useless until something carries it). Errors are SAID with the API's own message: api()
+   already turns an unrouted path or an empty body into "Error <status> ...", so a failure can never
+   read as "the button did nothing". The response carries {id, message}; the select needs the id, so a
+   body without one is reported instead of appearing to work. */
+function ACAT(fac){
+  var inp=$("fac-new-name");
+  var nm=((inp&&inp.value)||"").trim();
+  if(!nm){showMsg("Category name is required","me");return;}
+  showMsg("Adding category...","mi");
+  api("/api/v1/product-categories",{method:"POST",body:JSON.stringify({name:nm})}).then(function(r){
+    var id=r&&r.id;
+    if(!id){showMsg("The API answered without a category id","me");return;}
+    fac.appendChild(El("option",{value:id},X(nm)));
+    fac.value=id;
+    if(inp) inp.value="";
+    showMsg("Category "+nm+" added and selected. Press Save to put this product in it.","mk");
+  }).catch(function(e){showMsg(e.message||"Could not add the category","me");});
+}
+
 function LPAF(id){
   if(id) api("/api/v1/affiliate-products").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
@@ -1655,6 +1677,18 @@ function LPAFS(p){
        carries no FK) falls back to "None" on screen; the stored value is still preserved on save. */
     var fac=El("select",{id:"fac"});
     mb.appendChild(ff("Category", fac));
+    /* New category (kanban t_d68d95d2): POST /api/v1/product-categories had ZERO callers in any
+       served tree (census: grep -c product-categories www-app/index.html = 2, both the GET above), so
+       a workspace could only ever pick from the fleet's 7 system-tenant rows and had to call the API
+       by hand to add one of its own. The route IS tenant-scoped — create_category binds the caller's
+       auth.tenant_id — so a workspace OWNS the category it creates here, and the row the response
+       names is immediately offered by the select beside it. Name only: the route derives the slug from
+       the name when the request sends none, and product_categories has no unique index on name or
+       slug, so this control invents no rule the API does not enforce. */
+    var fcw=El("div",{style:"display:flex;gap:6px;margin-top:6px"});
+    fcw.appendChild(El("input",{id:"fac-new-name",placeholder:"New category name",style:"flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"}));
+    fcw.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"fac-new-btn",onclick:function(){ACAT(fac);}},"+ Add category"));
+    mb.appendChild(fcw);
     api("/api/v1/product-categories").then(function(d){
       var cats=Array.isArray(d)?d:(d&&d.data?d.data:[]);
       /* "(None)" is offered ONLY while the product carries no category (the Add form, or an edit of an
