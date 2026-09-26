@@ -62,22 +62,25 @@ Download the APK from: https://funnelswift.net/download-app
 - Import phone contacts in bulk
 - Search, select, and batch upload
 
-## Account & Purchases
+## Account & Plan
 
-### Plans & Checkout
+### Plans
 - **Plans** are managed by admins with configurable features and limits
-- Checkout is handled via Stripe or PayPal — payment provider selectable per plan
-- After successful payment, an account is auto-created with credential delivery via email
+- **Every new account starts on a free plan** — assigned by the signup handler itself (`capture-free` on `/api/v1/auth/register`, `kinetic-free` on `/api/v1/auth/signup`), and the plan a signup request asks for is ignored
+- **Changing plan is an admin action**, stored as the active row in `tenant_plan_subscriptions`; a plan can also carry an optional `purchase_url` / `payment_provider` field (admin plans API) — nothing in the app turns either into a checkout
+- **There is no in-app checkout.** FunnelSwift integrates no payment provider and registers no payment webhook receiver, so no payment can be taken and nothing is triggered by one: `POST /api/v1/checkout/create` always refuses and creates nothing — `503 payment_provider_not_configured` while the account has no provider configured (every account today), `501 checkout_not_implemented` once one is configured
+- **Accounts are created at signup** (or by an admin) and the plan is applied as above — no purchase is involved
 
 ### Email Templates
-Transactional emails (welcome, purchase confirmation) use database-stored templates with `{{variable}}` placeholders:
+Transactional emails are rendered from database-stored templates in `email_templates` with `{{variable}}` placeholders:
 
 | Template Type | When Sent | Merge Fields |
 |---|---|---|
-| `welcome` | Account created | `{{name}}`, `{{email}}`, `{{app_url}}` |
-| `purchase_confirmed` | Payment confirmed | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
+| `password_reset` | User requests a password reset — **the only type the app actually sends** | `{{name}}`, `{{token}}`, `{{app_url}}` |
+| `welcome` | **Not sent by any code path** — the template is stored and editable, but `send_welcome_email()` has no caller (signup sends no email) | `{{name}}`, `{{email}}`, `{{app_url}}` |
+| `purchase_confirmed` | **Not sent — there is no payment flow**; `send_purchase_confirmed_email()` has no caller | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
 
-Admins can edit these templates in the admin panel — modify subject lines, HTML body, or plain text fallback. Merge field buttons insert placeholders automatically.
+Admins can edit these templates in the admin panel (`Email Templates`) — modify subject lines, HTML body, or plain text fallback. Merge field buttons insert placeholders automatically.
 
 ## Affiliate Program
 

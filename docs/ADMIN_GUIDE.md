@@ -211,16 +211,19 @@ Access at: **https://funnelswift.net/admin/plans** (must be logged in as an admi
 }
 ```
 
-## Email Templates (New)
+## Email Templates
 
-Transactional emails use database-stored templates in the `email_templates` table. Templates support `{{variable}}` placeholders for dynamic content in both subject and body fields.
+Transactional emails use database-stored templates in the `email_templates` table. Templates support `{{variable}}` placeholders in `subject`, `body` and `html_body`; the HTML part is sent when `html_body` is non-empty, otherwise the plain-text `body` is used.
 
 ### Template Types
 
+`template_type` is a free-form string (the API validates nothing); `GET /api/v1/admin/email-templates/types` advertises three types — and only one of them is ever sent by this app:
+
 | Type | When Sent | Merge Fields |
 |---|---|---|
-| `welcome` | New account created | `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}` |
-| `purchase_confirmed` | Successful payment | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
+| `password_reset` | User requests a password reset (`src/auth/handlers.rs:448`) — **the only send path in the codebase** | `{{name}}`, `{{token}}`, `{{app_url}}` |
+| `welcome` | **Never sent** — `send_welcome_email()` (`src/email.rs:195`) has no caller; signup does not email anybody | `{{name}}`, `{{email}}`, `{{app_url}}` |
+| `purchase_confirmed` | **Never sent — there is no purchase flow** (see *Account & Plan Flow*); `send_purchase_confirmed_email()` (`src/email.rs:208`) has no caller | `{{name}}`, `{{plan_name}}`, `{{app_url}}` |
 
 ### API Endpoints
 
@@ -236,52 +239,56 @@ Transactional emails use database-stored templates in the `email_templates` tabl
 ### Template Fields
 
 - **name** — display label
-- **template_type** — `welcome` or `purchase_confirmed`
+- **template_type** — free-form string; the admin panel offers `welcome`, `password_reset` and `purchase_confirmed` from `GET /api/v1/admin/email-templates/types`, and the API accepts any value
 - **subject** — subject line with `{{variable}}` insertion
-- **body** — plain text fallback
-- **html_body** — rich HTML content
-- **is_html** — if true, sends HTML; otherwise plain text
-- **is_default** — serves as fallback for this type
+- **body** — plain-text body
+- **html_body** — HTML body; when it is non-empty the email is sent as HTML, otherwise the plain-text `body` is used (there is no `is_html` column)
+- **is_default** — serves as fallback for this type (an account-specific row wins over the default; lookup is `WHERE template_type = $1 AND (aid = $2 OR is_default = true)`)
+- **aid** — account the template belongs to (nullable; a default row carries none)
 
 ### Merge Fields Available
 
 All templates: `{{name}}`, `{{email}}`, `{{password}}`, `{{app_url}}`, `{{plan_name}}`
 
-### Purchase Flow
+### Account & Plan Flow (there is no purchase flow)
 
-1. User completes checkout via Stripe/PayPal
-2. Webhook fires `POST /api/checkout/webhook`
-3. System creates account, seeds tenant settings, applies plan
-4. `send_purchase_confirmed_email()` queues email via `email_templates`
-5. If template exists with `template_type = 'purchase_confirmed'`, it's rendered and sent; otherwise hardcoded fallback
-6. `send_welcome_email()` sends credential details
+FunnelSwift has no checkout and no payment webhook receiver (see README's *Checkout & Payments*), so
+nothing in this app is triggered by a payment. What actually happens:
 
-### Default Seeds
+1. An account is created by signing up (`POST /api/v1/auth/signup`, or `POST /api/v1/auth/register`) or by an admin creating the tenant
+2. The system creates the tenant and seeds `tenant_settings` (e.g. the default lead stages)
+3. The plan is a **hardcoded free slug** — `kinetic-free` on the public signup path (`src/handlers/public_signup_handler.rs:112`), `capture-free` on the register path (`src/auth/handlers.rs:141`) — a plan slug sent in the request is ignored either way
+4. Only an admin can change it: `POST /api/v1/admin/plans/assign` writes the active `tenant_plan_subscriptions` row (`set_active_plan`, `src/handlers/plan_handler.rs`), cancelling the previous one with `status = 'cancelled'` first
+5. **No email is sent at any of these steps.** `send_welcome_email()` and `send_purchase_confirmed_email()` have no callers; the only email this app sends on its own is `password_reset`
 
-- **Welcome Email** — credentials + login URL + next steps
-- **Purchase Confirmation** — plan name + thank-you + login link
+### Fallback Content (not database seeds)
+
+No migration seeds `email_templates` — the table is edited by admins. When no matching row is found,
+the app renders hardcoded fallback content from `get_inline()` in `src/email.rs` for `welcome`,
+`purchase_confirmed` and `password_reset`.
 
 ## Per-Tenant Email (Mailgun) Resolution
 
-Transactional email delivery can be **resolved per tenant** through the Integration Center (`target_software`), enabling each tenant to send from its own configured email/Mailgun/SMTP identity instead of the platform default.
+Transactional email delivery can be **resolved per tenant**, so a tenant can send from its own configured email/Mailgun/SMTP identity instead of the platform default. Everything comes from the **database** — `src/email_provider.rs` reads no environment variables (`EMAIL_API_URL` / `EMAIL_API_KEY` / `EMAIL_FROM` are ignored).
 
 ### How Resolution Works
 
-1. When sending a transactional email, `send_template_email_for_tenant` resolves the tenant's configured email provider from `target_software` rows where the **name matches** `mailgun`, `smtp`, or `email` and the row is `is_active = true` (oldest row wins).
-2. If the tenant has **no** matching active provider (or an empty `webhook_url`), it falls back to the **env-var provider** (`EMAIL_API_URL` / `EMAIL_API_KEY` / `EMAIL_FROM`).
-3. The `webhook_url` in the tenant row is used as the dispatch endpoint with the `api_key` sent as a Bearer token.
+1. `email_provider::resolve` reads `tenant_settings` for the sending tenant, in this order: `email_config` (explicit `provider`: `smtp` | `mailgun` | `sendgrid` | `sendiio`), then the legacy rows `mailgun_config`, then `smtp_config`. The first row that is actually configured (`is_configured()`) wins.
+2. With no usable tenant row it falls back to the global **`admin_settings` key `email`** row — the system-mail identity the admin panel edits.
+3. With neither, the send is **skipped with a logged warning** and the caller gets `Email provider not configured. Set it in Admin > Settings > Email Provider.` There is no env-var fallback and no server-wide default.
 
 ### Admin Bypass
 
-For system/platform emails with no tenant context (e.g. admin-triggered sends), `send_template_email` uses the **env-var provider directly**, bypassing tenant resolution. This is the admin/system path.
+For system/platform emails with no tenant context (e.g. admin-triggered sends), `send_template_email` passes `tenant_id = None` and goes straight to the global `admin_settings.email` row — same DB provider, no environment variables.
 
 ### Admin UI
 
-The FunnelSwift admin SPA exposes email/Integration configuration (search **Mailgun** / **Integration** in the admin panel) for configuring a tenant's sender in the Integration Center. No platform-wide email config change is needed per tenant.
+The admin panel (**Settings > Email Provider**, and the **Email Templates** editor) writes those rows through `GET/POST /api/v1/admin/email-config` (+ `/test`) and `GET/POST /api/v1/admin/email-templates`.
 
 ### API Notes
 
 - No new public endpoint is required — resolution happens inside the transactional send path.
+- Live state: the global `admin_settings.email` row is configured (provider `mailgun`); **0 tenants** have their own `email_config` / `mailgun_config` / `smtp_config` row, so every tenant currently resolves to the global identity.
 - Templates still prioritize account-specific templates, then defaults, then inline fallback, before dispatch.
 
 ## Kinetic Cards Management

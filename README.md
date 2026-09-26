@@ -1,6 +1,6 @@
 # FunnelSwift — Lead Capture & Affiliate Hub
 
-Rust backend for FunnelSwift — multi-tenant lead capture, kinetic cards, funnel builder, affiliate management, checkout, and cross-app provisioning.
+Rust backend for FunnelSwift — multi-tenant lead capture, kinetic cards, funnel builder, affiliate management, plan management, and cross-app provisioning.
 
 ## Architecture
 
@@ -95,11 +95,27 @@ All routes are under `/api/v1/`. 161 endpoints total.
 | POST | `/api/v1/log-lead-movement` | Lead movement logging |
 
 ### Checkout & Payments
+
+**FunnelSwift takes no payments.** No payment provider is integrated, so nothing here can create a
+session or a charge — and that is deliberate rather than broken (the handler used to return a fake
+`cs_test_placeholder` session id, which made a dead checkout look successful):
+
+* `503 payment_provider_not_configured` when the calling account has no active `payment_providers`
+  row (the state of every account today — the table is empty),
+* `501 checkout_not_implemented` once one is configured: the provider is known, live session
+  creation is not built.
+
+Plans are therefore **never** bought in-app: a new account is put on the free plan its signup handler
+hardcodes (`capture-free` on `/api/v1/auth/register`, `kinetic-free` on `/api/v1/auth/signup` — a
+caller-supplied plan slug is ignored) and an admin assigns any other plan with
+`POST /api/v1/admin/plans/assign`, recorded as the active row in `tenant_plan_subscriptions`.
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/v1/checkout/create` | Create checkout session (answers 501 until live checkout ships) |
-| GET | `/api/v1/checkout/sessions` | List checkout sessions |
-| GET/POST | `/api/v1/payment-providers` | Payment provider config |
+| POST | `/api/v1/checkout/create` | Create checkout session — **always refuses, creates nothing**: `503 payment_provider_not_configured` / `501 checkout_not_implemented` |
+| GET | `/api/v1/checkout/sessions` | List this tenant's checkout sessions — always `[]`: no code in `src/` writes `checkout_sessions` |
+| GET/POST | `/api/v1/payment-providers` | Payment provider config (`api_key` stored as `enc:v1:` ciphertext, returned masked). 0 rows live; saving a provider is what turns `checkout/create` from 503 into 501 |
+| DELETE | `/api/v1/payment-providers/:provider_type` | Delete a configured provider |
 
 > No payment webhook receivers are registered (`/api/v1/webhooks/stripe`,
 > `/api/v1/webhooks/paypal` were removed in kanban `t_6e746b75`): with no live checkout and no writer
