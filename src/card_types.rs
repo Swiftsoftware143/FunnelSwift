@@ -203,4 +203,34 @@ mod tests {
         assert_eq!(stored(None, None), DEFAULT_CARD_TYPE);
         assert_eq!(stored(None, Some("digital-card")), "digital-card");
     }
+
+    /// The plan matrix's dead `features.card_types` blurb (kanban t_cbd500ca: RETIRED, migration 063).
+    /// Kept as the negative case of this file's ONE value space: no element of it is a canonical id,
+    /// `digital-card` is not producible at all, and the other two are aliases that `stored()` would
+    /// normalise into `bio_link`/`mini_page` - so the blurb can never be compared verbatim against
+    /// `CARD_TYPES`. Every canonical id is an underscore id; every element of the blurb is hyphenated.
+    const RETIRED_PLAN_CARD_TYPES: &[&str] = &["bio-link", "digital-card", "mini-page"];
+
+    #[test]
+    fn the_retired_plan_matrix_blurb_is_not_a_card_type_space() {
+        for raw in RETIRED_PLAN_CARD_TYPES {
+            assert!(
+                CARD_TYPES.iter().all(|id| *id != *raw),
+                "{raw} is a canonical card id - the retired blurb was right after all"
+            );
+            assert!(
+                raw.contains('-'),
+                "{raw} is not in the retired hyphenated spelling"
+            );
+        }
+        assert!(
+            CARD_TYPES.iter().all(|id| !id.contains('-')),
+            "every canonical card id is an underscore id"
+        );
+        // the blurb offers a card type this service cannot produce...
+        assert_eq!(canonical("digital-card"), None);
+        // ...and a plan gate reading the blurb verbatim would match neither alias.
+        assert_eq!(stored(Some("bio-link"), None), "bio_link");
+        assert_eq!(stored(Some("mini-page"), None), "mini_page");
+    }
 }

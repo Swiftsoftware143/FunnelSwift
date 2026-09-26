@@ -13,6 +13,43 @@ use crate::state::AppState;
 use crate::tag_logic;
 use sqlx::Row;
 
+// ── Retired `features` keys ──
+
+/// Refuse a plan `features` object that carries the RETIRED key `card_types`.
+///
+/// **The decision (kanban t_cbd500ca, 2026-09-26): `plans.features.card_types` is RETIRED**, not
+/// promoted to an enforced per-plan card-kind matrix. Every plan that carried it held
+/// `["bio-link","digital-card","mini-page"]` — a THIRD spelling that was read by no code at all
+/// (`grep -rn "card_types" src/ www-app/ www-admin/ migrations/ docs/ scripts/` found doc comments
+/// only) and that cannot be promoted honestly:
+///
+/// * `digital-card` is not a card type this service can produce (`card_types::canonical` returns
+///   `None` for it), while Suite and Agency — which DO carry `"mini_funnels": true` — omit
+///   `mini-funnel` from the same list, so promoting it verbatim would both offer a bogus kind and
+///   take a real one away from paying plans;
+/// * the enforced per-plan card gate already exists and is BOOLEAN: the `has_mini_funnels` column
+///   with the `mini_funnels` jsonb override (`features.rs::flag_jsonb_key`, applied by
+///   `kinetic_handler.rs::create_card`). The plan matrix's jsonb vocabulary has no list shape at
+///   all, and which plan sells which card archetype is a product decision (architecture lane).
+///
+/// Migration 063 removes the key from every row; this guard is what makes the retirement STICKY —
+/// a future UI, seed or gate cannot re-open the drift by writing the key back. The canonical ids are
+/// named in the refusal from their ONE declaration, [`crate::card_types::CARD_TYPES`].
+fn reject_retired_feature_keys(features: &serde_json::Value) -> AppResult<()> {
+    if features.get("card_types").is_some() {
+        return Err(AppError::BadRequest(format!(
+            "features.card_types is retired (kanban t_cbd500ca) and cannot be written back: it was \
+             dead data in a third spelling of the card kinds ([\"bio-link\",\"digital-card\",\
+             \"mini-page\"]) read by no code, and `digital-card` is not a card type this service can \
+             produce. The card ids are {} (src/card_types.rs); which kinds a plan sells is enforced \
+             by the `has_mini_funnels` column and the `mini_funnels` feature flag. Send the features \
+             map without `card_types`.",
+            crate::card_types::CARD_TYPES.join(", ")
+        )));
+    }
+    Ok(())
+}
+
 // ── Affiliate Product Auto-Sync helpers ──
 
 /// Sync a plan into affiliate_products (INSERT on create, UPDATE on change).
@@ -161,6 +198,9 @@ pub async fn create_plan(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
+    if let Some(f) = &req.features {
+        reject_retired_feature_keys(f)?;
+    }
     let plan_id = Uuid::new_v4();
     // Column list == placeholder list == bind list, or this INSERT dies before it runs. It was
     // broken twice over (kanban t_9c30ce49, both measured live: `POST /api/v1/plans` answered
@@ -255,6 +295,9 @@ pub async fn update_plan(
 ) -> AppResult<Json<serde_json::Value>> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    if let Some(f) = &req.features {
+        reject_retired_feature_keys(f)?;
     }
     let existing =
         sqlx::query_as::<_, Plan>(&format!("SELECT {} FROM plans WHERE id = $1", PLAN_COLS))
@@ -422,6 +465,9 @@ pub async fn admin_create_plan_json(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let features = req.get("features").cloned();
+    if let Some(f) = &features {
+        reject_retired_feature_keys(f)?;
+    }
     let commission_rate = req
         .get("commission_rate")
         .and_then(|v| v.as_f64())
@@ -484,6 +530,7 @@ pub async fn admin_update_plan_features(
     let features = req
         .get("features")
         .ok_or_else(|| AppError::BadRequest("features object is required".to_string()))?;
+    reject_retired_feature_keys(features)?;
     let features_str = features.to_string();
 
     sqlx::query(
@@ -587,4 +634,71 @@ pub async fn admin_assign_plan(
     Ok(Json(
         json!({"message": "Plan assigned to tenant", "subscription_id": subscription_id}),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `features.card_types` blurb every plan carried, kept as the NEGATIVE case of the
+    /// card-type value space (kanban t_cbd500ca: the key is RETIRED, migration 063).
+    const RETIRED_PLAN_CARD_TYPES: &[&str] = &["bio-link", "digital-card", "mini-page"];
+
+    /// Not one element of the retired blurb is a canonical card id, which is what "the value space
+    /// stays single" means for this key: `bio-link`/`mini-page` are ALIASES that the card writes
+    /// normalise (`canonical()` maps them to `bio_link`/`mini_page`), so a gate comparing the stored
+    /// blurb verbatim against `CARD_TYPES` would match neither of them, and `digital-card` maps to
+    /// nothing at all (this service cannot produce it).
+    #[test]
+    fn no_element_of_the_retired_blurb_is_a_canonical_card_id() {
+        for raw in RETIRED_PLAN_CARD_TYPES {
+            assert!(
+                !crate::card_types::CARD_TYPES.contains(raw),
+                "{raw} is a canonical card id after all - the retirement would then be wrong"
+            );
+            assert!(
+                crate::card_types::canonical(raw) != Some(raw),
+                "{raw} normalises to itself - it would be storable as a card type"
+            );
+        }
+        assert_eq!(crate::card_types::canonical("digital-card"), None);
+    }
+
+    #[test]
+    fn the_retired_key_is_refused_wherever_it_appears() {
+        // the shape the four live rows had
+        let err = reject_retired_feature_keys(&json!({
+            "card_types": ["bio-link", "digital-card", "mini-page"],
+            "premium_themes": true
+        }))
+        .expect_err("a features map carrying card_types must be refused");
+        let msg = match err {
+            AppError::BadRequest(m) => m,
+            other => panic!("expected 400 BadRequest, got {other:?}"),
+        };
+        // the refusal names the canonical ids from their ONE declaration, not from prose
+        for id in crate::card_types::CARD_TYPES {
+            assert!(msg.contains(id), "refusal does not name {id}: {msg}");
+        }
+        assert!(msg.contains("card_types") && msg.contains("has_mini_funnels"));
+
+        // the key counts even when it is null - it must not exist at all
+        assert!(reject_retired_feature_keys(&json!({"card_types": null})).is_err());
+        assert!(reject_retired_feature_keys(&json!({"card_types": []})).is_err());
+    }
+
+    #[test]
+    fn every_other_features_map_and_shape_still_sails_through() {
+        assert!(reject_retired_feature_keys(&json!({
+            "description": "A free professional digital business card for networking",
+            "custom_domain": false,
+            "video_background": false,
+            "premium_themes": true,
+            "mini_funnels": true
+        }))
+        .is_ok());
+        // a features value that is not an object has no such key; the guard owns only the key
+        assert!(reject_retired_feature_keys(&json!(null)).is_ok());
+        assert!(reject_retired_feature_keys(&json!({})).is_ok());
+    }
 }
