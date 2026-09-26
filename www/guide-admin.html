@@ -94,7 +94,7 @@
       <a href="#template-gating" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔒</span> Template Gating</a>
       <a href="#branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Branding Toggle</a>
       <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
-      <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Auto-Provisioning</a>
+      <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> What System Tags Do</a>
       <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🤝</span> Affiliates</a>
       <a href="#kinetic-admin" class="section-title" onclick="closeMobile()">Kinetic Admin</a>
       <a href="#kinetic-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🃏</span> Manage Templates</a>
@@ -242,32 +242,24 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <!-- ============ SYSTEM TAGS ============ -->
-      <h2 id="system-tags">🏷️ System Tags & Auto-Provisioning</h2>
+      <h2 id="system-tags">🏷️ System Tags</h2>
 
       <div class="card">
         <h3>What Are System Tags?</h3>
-        <p>System Tags automatically trigger actions in other Swift apps when assigned to a lead — creating accounts, adding contacts, or registering clients. They <strong>do something</strong>, unlike regular tags which just organize.</p>
+        <p>A System Tag is a tag an <strong>admin</strong> creates once and every tenant can see and use. A regular tag belongs only to the account that made it; a System Tag appears in every account's Tags list. Only an admin can create, rename, recolor or delete one.</p>
       </div>
 
       <div class="card">
-        <h3>Available Targets</h3>
-        <table>
-          <tr><th>Value</th><th>App</th><th>What Gets Created</th></tr>
-          <tr><td>adaswift</td><td>ADASwift</td><td>Full ADA widget account (free tier) with login + welcome email</td></tr>
-          <tr><td>coreswift</td><td>CoreSwift CRM</td><td>Contact record tagged "Free"</td></tr>
-          <tr><td>workflowswift</td><td>WorkflowSwift</td><td>Client record</td></tr>
-          <tr><td>incentiveswift</td><td>IncentiveSwift</td><td>Contact record</td></tr>
-          <tr><td>missedcall</td><td>MissedCall Respondr</td><td>Contact record</td></tr>
-        </table>
+        <h3>What They Do Not Do</h3>
+        <p>Assigning a System Tag to a lead does <strong>not</strong> create accounts, contacts or clients in other Swift apps. FunnelSwift has no per-tag target and no provisioning webhook: this app has no <code>system_tags</code> table, and the System Tag form holds a name, a tag group and a color &mdash; nothing to point at another app.</p>
       </div>
 
       <div class="card">
         <h3>How It Works</h3>
         <ol>
-          <li><strong>Lead gets tagged</strong> — Manually or via automation, a System Tag is applied</li>
-          <li><strong>Webhook fires</strong> — FunnelSwift sends lead data to the target app</li>
-          <li><strong>App provisions</strong> — Target app creates free account/contact for that lead</li>
-          <li><strong>No duplicates</strong> — Existing emails are detected and skipped</li>
+          <li><strong>Admin creates a System Tag</strong> &mdash; Super Admin &rarr; Tags &rarr; <em>System Tags</em> &rarr; <em>+ Add System Tag</em> (name, tag group, color)</li>
+          <li><strong>Every tenant sees it</strong> &mdash; it appears in each account's Tags list alongside that account's own tags</li>
+          <li><strong>Admin-managed</strong> &mdash; <em>Edit</em> renames or recolors it for every tenant at once; <em>Del</em> removes it for every tenant. A tenant cannot change or delete it.</li>
         </ol>
       </div>
 
