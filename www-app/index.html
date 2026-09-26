@@ -1592,7 +1592,7 @@ function DI(id){if(confirm("Delete target?")) api("/api/v1/integration-targets/"
     $("ct").innerHTML='<div class="cc"><h3>Affiliate Products ('+all.length+') <span id="lap-add-btn"></span></h3><p style="color:#64748b;font-size:12px;margin-bottom:8px">Products affiliates can promote and earn commission on.</p><div id="lap-search-wrap" style="margin-bottom:12px"></div><div id="lap-list"></div></div>';
     $("lap-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){LPAF()}},"+ Add Product"));
     
-    var search=El("input",{style:"width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px",placeholder:"Search products by name, category..."});
+    var search=El("input",{style:"width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px",placeholder:"Search products by name, category, system tag..."});
     search.oninput=function(){
       var q=search.value.toLowerCase();
       document.querySelectorAll(".ap-row").forEach(function(r){
@@ -1604,12 +1604,18 @@ function DI(id){if(confirm("Delete target?")) api("/api/v1/integration-targets/"
     
     if(!all.length){$("lap-list").innerHTML='<p style="color:#64748b;padding:20px">No products. Add one to let affiliates promote it.</p>';return;}
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Product</th><th>Category</th><th>Price</th><th>Commission</th><th>Active</th><th></th></tr>';
+    tbl.innerHTML='<tr><th>Product</th><th>Category</th><th>Price</th><th>Commission</th><th>System Tag</th><th>Active</th><th></th></tr>';
     all.forEach(function(p){
       var tr=El("tr",{"class":"ap-row"});
-      tr.setAttribute("data-search",(p.name||"")+" "+(p.category_name||"")+" "+(p.description||""));
+      tr.setAttribute("data-search",(p.name||"")+" "+(p.category_name||"")+" "+(p.system_tag_name||"")+" "+(p.description||""));
       tr.innerHTML='<td><strong>'+X(p.name||"Product")+'</strong>'+ (p.description?'<br><span style="font-size:10px;color:#94a3b8">'+X(p.description)+'</span>':'') +'</td><td>'+X(p.category_name||"-")+'</td><td>$'+(p.price||"0")+'</td><td>'+(p.default_commission_rate?p.default_commission_rate+"%":"-")+'</td><td><span class="badge" style="background:'+(p.is_active?"#dcfce7;color:#166534":"#fee2e2;color:#991b1b")+'">'+(p.is_active?"Active":"Inactive")+'</span></td><td></td>';
-      var td=tr.querySelectorAll("td")[5];
+      /* Kanban t_2b82d8f0: the System Tag cell — the list route has always returned it as
+         `system_tag_name` (LEFT JOIN `tags`), it was simply never rendered, so an admin could not see
+         which product carried which attribution tag. Built by DOM insert rather than by rewriting the
+         row template literal above, and the actions cell index moves 5 -> 6 accordingly. */
+      var tagTd=El("td"); tagTd.appendChild(document.createTextNode(p.system_tag_name||"-"));
+      tr.insertBefore(tagTd,tr.lastElementChild);
+      var td=tr.querySelectorAll("td")[6];
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){LPAF(p.id)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){if(confirm("Delete \""+X(p.name)+"\"?")) api("/api/v1/affiliate-products/"+p.id,{method:"DELETE"}).then(function(){S("ap")});}},"Del"));
@@ -1660,6 +1666,26 @@ function LPAFS(p){
         fac.appendChild(El("option",{value:p.category_id},X(p.category_name||"Unknown category")));}
       fac.value=p.category_id||"";
     }).catch(function(){if(!p.category_id) fac.appendChild(El("option",{value:""},"(None)"));});
+    /* System Tag (kanban t_2b82d8f0) — the affiliate-attribution link. `tag_logic::attribute_affiliate_on_tags`
+       (src/tag_logic.rs:319) turns "a lead carries this tag" into a pending `affiliate_commissions` row for
+       the affiliate who brought the lead, resolved through every product whose `system_tag_id` equals the
+       tag: a product with NO tag can be promoted but never attributed. That link was API-only — this form
+       sent no `system_tag_id` at all, and `GET /api/v1/admin/system-tags` (admin-only, rows {id,name,color},
+       built for exactly this dropdown) had no caller in any shipped surface. This select is that caller.
+       "(No system tag)" is a real choice, not decoration: a bare `system_tag_id:null` KEEPS the stored tag
+       (measured on the deployed binary), so the reversal goes out as the API's additive
+       `clear_system_tag` flag — otherwise an admin could attach a tag to a commission path for ever. */
+    var fas=El("select",{id:"fass"});
+    mb.appendChild(ff("System Tag", fas));
+    fas.appendChild(El("option",{value:""},"(No system tag)"));
+    /* The row's own tag first, so the select shows what the product HOLDS even after the tag stops being
+       offered (a deleted tag leaves a dangling id — the column carries no FK, exactly like category_id). */
+    if(p.system_tag_id) fas.appendChild(El("option",{value:p.system_tag_id},X(p.system_tag_name||"Current system tag")));
+    api("/api/v1/admin/system-tags").then(function(d){
+      var sts=Array.isArray(d)?d:(d&&d.data?d.data:[]);
+      sts.forEach(function(t){ if(t.id===p.system_tag_id) return; fas.appendChild(El("option",{value:t.id},X(t.name||""))); });
+    }).catch(function(){});
+    fas.value=p.system_tag_id||"";
     mb.appendChild(ff("Price ($)", El("input",{id:"fap",type:"number",value:p.price||""})));
     mb.appendChild(ff("Commission %", El("input",{id:"far",type:"number",value:p.default_commission_rate||""})));
     mb.appendChild(ff("URL", El("input",{id:"fau",value:p.url||"",placeholder:"Product page URL"})));
@@ -1673,7 +1699,13 @@ function LPAFS(p){
       /* `category_id`, never `category_name` (kanban t_a0214025): the select's empty value must go out
          as JSON null, not as "" — axum answers `""` with a bare 422 ("UUID parsing failed") instead of
          the app's own error body. null = "keep whatever the row has" (see update_affiliate_product). */
-      var d={name:$("fan").value,category_id:($("fac").value||null),price:parseFloat($("fap").value)||0,default_commission_rate:parseFloat($("far").value)||0,url:$("fau").value,description:$("fad").value,is_active:$("faa").checked};
+      var stsp=$("fass").value||"";
+      var d={name:$("fan").value,category_id:($("fac").value||null),price:parseFloat($("fap").value)||0,default_commission_rate:parseFloat($("far").value)||0,url:$("fau").value,description:$("fad").value,is_active:$("faa").checked,system_tag_id:stsp||null};
+      /* `system_tag_id` (kanban t_2b82d8f0): the select's empty value goes out as JSON null and never as
+         "" (axum answers a bare 422 "UUID parsing failed"), exactly like `category_id` above. null alone
+         KEEPS a stored tag, so un-assigning one has to say so: `clear_system_tag` is the API's additive
+         reversal — sent only when the admin moves a product that HAS a tag to "(No system tag)". */
+      if(!stsp&&p.system_tag_id) d.clear_system_tag=true;
       if(!d.name.trim()){showMsg("Name is required","me");return;}
       showMsg("Saving...","mi");
       var m=p.id?"PUT":"POST", u=p.id?"/api/v1/affiliate-products/"+p.id:"/api/v1/affiliate-products";

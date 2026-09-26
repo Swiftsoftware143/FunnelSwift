@@ -80,7 +80,7 @@ FunnelSwift is the affiliate hub. Affiliate products represent the Swift product
 
 | Table / Column | Purpose |
 |---|---|
-| `affiliate_products.system_tag_id` | Optional link to the System Tag whose assignment attributes this product (`src/tag_logic.rs:319`) — API-set; no picker in the product form |
+| `affiliate_products.system_tag_id` | Optional link to the System Tag whose assignment attributes this product (`src/tag_logic.rs:319`) — set from the product form's System Tag picker (`www-app/index.html` `LPAFS`), which is fed by `GET /api/v1/admin/system-tags`; un-set with `clear_system_tag: true` (a bare `null` keeps the stored tag) |
 | `leads.created_by` | The user account a lead flowed through (the affiliate anchor) |
 | `affiliates.user_id` | First-class link: which user account an affiliate is |
 | `affiliate_commissions.product_id` | Which product a commission is for |
@@ -93,9 +93,9 @@ Attribution resolution: `leads.created_by` → `affiliates.user_id`. Admin / non
 | Method | Path | Description |
 |---|---|---|
 | POST | `/api/v1/affiliate-products` | Create a product (admin), accepts `system_tag_id` |
-| PUT | `/api/v1/affiliate-products/:id` | Update a product (admin), incl. `system_tag_id` |
+| PUT | `/api/v1/affiliate-products/:id` | Update a product (admin), incl. `system_tag_id` (`clear_system_tag: true` removes it) |
 | DELETE | `/api/v1/affiliate-products/:id` | Delete a product (admin) |
-| GET | `/api/v1/admin/system-tags` | List System Tags as `{id, name, color}` (`src/handlers/affiliate_product_handler.rs:187`) — answers 200 live, no caller: the product form has no tag dropdown |
+| GET | `/api/v1/admin/system-tags` | List System Tags as `{id, name, color}` (`src/handlers/affiliate_product_handler.rs:187`) — answers 200 live; its caller is the product form's System Tag picker (`www-app/index.html` `LPAFS`) |
 
 ### Cross-App Upgrade Event
 

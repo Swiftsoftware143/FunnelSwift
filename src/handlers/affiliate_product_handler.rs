@@ -48,6 +48,14 @@ pub struct UpdateProductRequest {
     pub product_type: Option<String>,
     pub owner_name: Option<String>,
     pub system_tag_id: Option<Uuid>,
+    /// THE REVERSAL (kanban t_2b82d8f0). `system_tag_id` cannot express "remove the tag": a JSON
+    /// `null` decodes to `None`, and `None` means "keep the stored value", so before this field the
+    /// link the affiliate-attribution reader keys on `tag_logic::attribute_affiliate_on_tags`
+    /// (src/tag_logic.rs:319) was ONE-WAY — an admin could set it and never unset it (measured live
+    /// on c4311cc1: PUT `{"system_tag_id": null}` left the column untouched, so the product form could
+    /// only ever add a tag). Additive on purpose: with this absent/false every existing caller keeps
+    /// today's behaviour byte for byte; `true` with no `system_tag_id` clears the column.
+    pub clear_system_tag: Option<bool>,
 }
 
 /// Optional list filter on the product's own lifecycle flag (kanban t_db6fa3c0).
@@ -284,10 +292,15 @@ pub async fn update_affiliate_product(
     let owner_name = req
         .owner_name
         .unwrap_or(existing.8.unwrap_or_else(|| "SwiftSoftware".to_string()));
-    // system_tag_id: explicit Some(null) clears the tag, None leaves it unchanged.
-    let system_tag_id = match req.system_tag_id {
-        Some(v) => Some(v),
-        None => existing.9,
+    // system_tag_id: an absent key or an explicit null KEEPS the stored tag (measured on the deployed
+    // binary, kanban t_2b82d8f0: a PUT carrying `system_tag_id: null` left the column untouched, so the
+    // comment that used to sit here — "explicit Some(null) clears the tag" — described a behaviour the
+    // route never had). Clearing therefore has its own additive flag, `clear_system_tag`; an explicit id
+    // still wins if a caller somehow sends both.
+    let system_tag_id = match (req.clear_system_tag.unwrap_or(false), req.system_tag_id) {
+        (true, Some(v)) => Some(v),
+        (true, None) => None,
+        (false, v) => v.or(existing.9),
     };
     // Absent key / null = keep the stored flag (a no-touch save must not re-tick a retired product);
     // an explicit true/false persists; anything else is a 400 (see parse_is_active).
