@@ -51,6 +51,9 @@ pub enum AppError {
     Unauthorized(String),
     #[error("Upgrade required: {0}")]
     UpgradeRequired(String),
+    /// Received and understood, but nothing could be done with it (no side effect happened).
+    #[error("Unprocessable: {0}")]
+    UnprocessableEntity(String),
 }
 
 impl IntoResponse for AppError {
@@ -103,6 +106,7 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::UpgradeRequired(msg) => (StatusCode::PAYMENT_REQUIRED, msg),
+            AppError::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
         };
 
         let body = Json(json!({

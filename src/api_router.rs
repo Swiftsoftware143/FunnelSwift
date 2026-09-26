@@ -270,10 +270,8 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/webhooks/conversion",
             post(cross_app_webhook_handler::handle_conversion_webhook),
         )
-        .route(
-            "/api/v1/track/lead",
-            post(cross_app_webhook_handler::track_lead_conversion),
-        )
+        // `/api/v1/track/lead` was deleted (kanban t_f408b7cc): a no-op that answered
+        // 200 {"tracked":true} with zero callers anywhere in the fleet and no consumer.
         .route(
             "/api/v1/affiliate-tiers",
             get(affiliate_payout_handler::list_tiers).post(affiliate_payout_handler::create_tier),

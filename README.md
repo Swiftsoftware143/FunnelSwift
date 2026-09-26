@@ -154,8 +154,14 @@ caller-supplied plan slug is ignored) and an admin assigns any other plan with
 | POST | `/api/v1/push/coreswift` | Push lead to CoreSwift |
 | POST | `/api/v1/push/workflowswift` | Push lead to WorkflowSwift |
 | POST | `/api/v1/push/adaswift` | Push lead to ADASwift |
-| POST | `/api/v1/webhooks/conversion` | Cross-app conversion webhook |
-| POST | `/api/v1/track/lead` | Cross-app lead tracking |
+| POST | `/api/v1/webhooks/conversion` | Cross-app conversion receiver (requires `x-internal-key`; writes `affiliate_commissions`) |
+
+`/api/v1/webhooks/conversion` is posted by sibling apps (WorkflowSwift, ADASwift, missedcallrespondr)
+when a paid checkout carries referral data. It requires the `x-internal-key` header, resolves the
+affiliate through `leads.created_by -> affiliates.user_id` (or a direct `affiliate_id`), and writes the
+commission row the affiliate portal and payout handler read. A 2xx always means the row was written:
+an unattributable conversion answers 422 and records nothing. `/api/v1/track/lead` was removed — it was
+a no-op with no caller in the fleet.
 
 ### Web-to-Lead Configs
 | Method | Path | Purpose |
