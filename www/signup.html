@@ -54,7 +54,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <button type="submit" class="btn" id="signup-btn">Create Free Account</button>
 </form>
 <div class="loading" id="signup-loading">Creating your workspace...</div>
-<p class="login-link">Already have an account? <a href="/login">Sign in</a></p>
+<!-- kanban t_4fc8cfa6: this used to be a RELATIVE /login, which is THIS host's own login page -
+     it authenticated for real and then threw the session away (a different origin), so a visitor
+     who had just created an account retyped the same credentials into a second, empty form. The
+     apex no longer serves a login form at all: /login is a 301 to the canonical login below, and
+     the target is spelled out absolutely so the link cannot land on this host again. -->
+<p class="login-link">Already have an account? <a href="https://app.funnelswift.net/login">Sign in</a></p>
 </div>
 <script>
 // Check for affiliate ref code in URL
