@@ -29,10 +29,13 @@ pub async fn list_site_settings(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let rows: Vec<(Uuid, String, String)> =
-        // site_settings.key is NULLABLE and the list has no WHERE — a single NULL-key
-        // row 500'd the whole endpoint (and get_subdomain/upsert can race a NULL in
-        // from a direct write). COALESCE is read-only: no migration, no invented rows.
-        sqlx::query_as("SELECT id, COALESCE(key, '') AS key, value::text FROM site_settings ORDER BY key")
+        // site_settings.key AND .value are both NULLABLE, and the list has no WHERE that
+        // excludes a NULL — a single NULL in either column 500'd the whole endpoint (and
+        // get_subdomain/upsert can race a NULL in from a direct write). COALESCE is
+        // read-only: no migration, no invented rows. kanban t_98f5292f.
+        sqlx::query_as(
+            "SELECT id, COALESCE(key, '') AS key, COALESCE(value::text, '') FROM site_settings ORDER BY key"
+        )
             .fetch_all(&state.pool)
             .await?;
     let items: Vec<Value> = rows
@@ -48,7 +51,7 @@ pub async fn get_site_settings(
     Path(slug): Path<String>,
 ) -> AppResult<Json<Value>> {
     let row: Option<(Uuid, String, String)> = sqlx::query_as(
-        "SELECT id, COALESCE(key, '') AS key, value::text FROM site_settings WHERE key = $1",
+        "SELECT id, COALESCE(key, '') AS key, COALESCE(value::text, '') FROM site_settings WHERE key = $1",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)

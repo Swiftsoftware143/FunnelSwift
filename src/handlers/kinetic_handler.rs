@@ -714,8 +714,11 @@ pub async fn render_card(
     });
 
     // ── Load global SEO settings for SSO injection ──
+    // site_settings.value is NULLABLE with no DEFAULT and this tuple's element is a plain
+    // String, so a single NULL row broke the whole read (silently: unwrap_or_default).
+    // kanban t_98f5292f.
     let seo_rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT COALESCE(key, ''), value::text FROM site_settings WHERE key LIKE 'seo_%'",
+        "SELECT COALESCE(key, ''), COALESCE(value::text, '') FROM site_settings WHERE key LIKE 'seo_%'",
     )
     .fetch_all(&state.pool)
     .await

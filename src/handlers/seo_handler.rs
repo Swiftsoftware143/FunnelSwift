@@ -111,7 +111,7 @@ pub async fn robots_txt(State(state): State<AppState>) -> Response {
 
     // Load crawl-delay from tenant_settings (global key)
     let crawl_delay = sqlx::query_scalar::<_, String>(
-        "SELECT value::text FROM site_settings WHERE key = 'seo_robots'",
+        "SELECT COALESCE(value::text, '') FROM site_settings WHERE key = 'seo_robots'",
     )
     .fetch_optional(&state.pool)
     .await
@@ -158,7 +158,7 @@ pub async fn get_seo_settings(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT COALESCE(key, ''), value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
+        "SELECT COALESCE(key, ''), COALESCE(value::text, '') FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
     )
     .fetch_all(&state.pool)
     .await
@@ -209,7 +209,7 @@ pub async fn update_seo_settings(
 /// GET /api/v1/seo/inject — return meta/script tags for SSR injection
 pub async fn seo_inject_tags(State(state): State<AppState>) -> AppResult<Json<Value>> {
     let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
-        "SELECT COALESCE(key, ''), value::text FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
+        "SELECT COALESCE(key, ''), COALESCE(value::text, '') FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
     )
     .fetch_all(&state.pool)
     .await
