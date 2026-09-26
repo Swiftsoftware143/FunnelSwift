@@ -550,13 +550,27 @@ pub async fn assign_lead_tags(
         _ => vec![],
     };
 
-    // Determine which tags are new (to evaluate rules against)
+    // Determine which tags are new (to evaluate rules against).
+    //
+    // `is_system = true` is part of the predicate, and that is the whole point (kanban t_c06d643c,
+    // measured live 2026-09-26): the system tag vocabulary lives under the System tenant
+    // (00000000-0000-0000-0000-000000000001), and GET /api/v1/tags — the list this app's own tag
+    // picker loads (tag_handler.rs:22 `WHERE tenant_id = $1 OR is_system = true`, and the served
+    // www-app/index.html `tg-select` that collects the picked ids) — OFFERS those tags. So a caller
+    // can post a system tag name here. With a tenant-only lookup the name resolved to no id, this
+    // route wrote the name into leads.tags and then handed `attribute_affiliate_on_tags` an EMPTY
+    // id list, so tag-based attribution credited nothing at all — measured on the deployed binary
+    // 5376bb3a: POST with `["FunnelSwift — Capture Free"]` returned 200 with the tag stored and
+    // zero affiliate_commissions rows, while the product link it was supposed to credit resolved
+    // (one active product behind that tag). The rule-driven arm below (line ~630) already resolves
+    // names with `OR is_system = true`; this is the same list for a directly-assigned tag.
     let new_tags: Vec<Uuid> = {
-        let all_tags =
-            sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM tags WHERE tenant_id = $1")
-                .bind(tenant_id)
-                .fetch_all(&state.pool)
-                .await?;
+        let all_tags = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, name FROM tags WHERE tenant_id = $1 OR is_system = true",
+        )
+        .bind(tenant_id)
+        .fetch_all(&state.pool)
+        .await?;
         all_tags
             .into_iter()
             .filter(|(_, name)| req.tags.contains(name) && !current_tags.contains(name))

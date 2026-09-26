@@ -315,6 +315,20 @@ pub async fn attribute_affiliate_on_tags(
     };
 
     // Find active affiliate products linked to any of the newly-assigned tags.
+    //
+    // THE DECISION (kanban t_c06d643c, recorded here because this query is the call site that makes
+    // the tag vocabulary load-bearing): the tag vocabulary IS product-owned platform seed data, so
+    // it was RESTORED under the System tenant by migration 0060 rather than the reader being
+    // deleted. Evidence for the restore arm: every tag this query can act on is declared by a
+    // migration (000001_initial.sql:263-285 the 22 shared tags, 043:13-39 the seven per-app Free
+    // tags, 0014:5-12 Sold/Qualified), each Free tag is the routing signal for exactly one app's
+    // free tier, and deleting the System tenant CASCADE-deleted the whole set (tags.is_system = 0 on
+    // a table of 5 rows, every affiliate_products.system_tag_id NULL) which is why this SELECT
+    // resolved zero products and recorded no commission for any tag. 0060 restores the taxonomy and
+    // links each product to its tag, which is the state this query needs; the sibling reader
+    // affiliate_tracking_handler::handle_affiliate_upgrade_event resolves by source_app instead.
+    // Whoever changes this predicate is changing the affiliate money path - keep the link and this
+    // reader in step, and keep `is_active = true` here (a retired product stops being attributable).
     let product_ids: Vec<Uuid> = sqlx::query_scalar(
         "SELECT id FROM affiliate_products WHERE system_tag_id = ANY($1) AND is_active = true",
     )
