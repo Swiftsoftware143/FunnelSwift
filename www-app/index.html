@@ -241,10 +241,10 @@ function S(t){
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards"};
+  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO"};
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
 }
 
@@ -2087,22 +2087,97 @@ function LAC(){
   api("/api/v1/admin/kinetic-cards").then(function(d){
     var cards=(d&&d.cards)?d.cards:[];
     var h='<h4>All Kinetic Cards ('+cards.length+')</h4>';
-    if(!cards.length){ h+='<p>No cards found across tenants.</p>'; M("All Cards",h,false,"allcards"); return; }
+    if(!cards.length){ h+='<p>No cards found across tenants.</p>'; $("ct").innerHTML='<div class="cc">'+h+'</div>'; return; }
     h+='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #e5e7eb">';
     h+='<th style="padding:8px 12px">Tenant</th><th style="padding:8px 12px">Title</th><th style="padding:8px 12px">Slug</th><th style="padding:8px 12px">Type</th><th style="padding:8px 12px">Active</th></tr></thead><tbody>';
     cards.forEach(function(c){
       var typeLabel=CARD_TYPE_LABEL[c.template_type]||c.template_type||"-";
       h+='<tr style="border-bottom:1px solid #f3f4f6">';
-      h+='<td style="padding:8px 12px;font-size:13px">'+E(c.tenant_name)+'</td>';
-      h+='<td style="padding:8px 12px"><strong>'+E(c.title)+'</strong></td>';
-      h+='<td style="padding:8px 12px;font-size:13px;color:#6b7280">'+E(c.slug)+'</td>';
+      h+='<td style="padding:8px 12px;font-size:13px">'+X(c.tenant_name)+'</td>';
+      h+='<td style="padding:8px 12px"><strong>'+X(c.title)+'</strong></td>';
+      h+='<td style="padding:8px 12px;font-size:13px;color:#6b7280">'+X(c.slug)+'</td>';
       h+='<td style="padding:8px 12px;font-size:13px">'+typeLabel+'</td>';
       h+='<td style="padding:8px 12px">'+(c.is_active?'<span style="color:#10b981">●</span>':'<span style="color:#ef4444">○</span>')+'</td>';
       h+='</tr>';
     });
     h+='</tbody></table>';
-    M("All Cards",h,false,"allcards");
-  }).catch(function(e){ M("All Cards",'<p style="color:#ef4444">Failed to load: '+E(e.message||e)+'</p>',false,"allcards"); });
+    $("ct").innerHTML='<div class="cc">'+h+'</div>';
+  }).catch(function(e){ $("ct").innerHTML='<div class="cc"><h4>All Kinetic Cards</h4><p style="color:#ef4444">Failed to load: '+X(e.message||e)+'</p></div>'; });
+}
+
+/* === SEO SETTINGS (admin; platform-wide site_settings `seo_*` keys) === */
+/* Grafted from the sibling generation `www-app/dashboard.js`, a file this box serves nowhere
+   (0 references in any served root) — it is the shipped spec of this panel, and the live shell's
+   own help text for this tab promises exactly these fields, so the panel was lost in a copy rather
+   than dropped on purpose. kanban t_bf60a84c. */
+function LSEO(){
+  if(!U||!U.is_admin) return;
+  api("/api/v1/seo/settings").then(function(d){
+    var seo=(d&&typeof d==="object")?d:{};
+    var fields=[
+      {k:"site_name",l:"Site Name",ph:"FunnelSwift",dc:"Shown in browser tabs & Open Graph"},
+      {k:"description",l:"Meta Description",ph:"Lead generation & affiliate marketing platform",dc:"155-160 chars. Appears in search results."},
+      {k:"keywords",l:"Meta Keywords",ph:"lead generation, affiliate marketing, CRM",dc:"Comma-separated."},
+      {k:"og_image",l:"Open Graph Image URL",ph:"https://funnelswift.net/assets/og-banner.png",dc:"Shown when shared on Facebook/LinkedIn/Slack. 1200x630px."},
+      {k:"twitter_handle",l:"Twitter/X Handle",ph:"@funnelswift",dc:"Twitter card attribution (include @)."},
+      {k:"google_analytics",l:"Google Analytics ID",ph:"G-XXXXXXXXXX",dc:"GA4 or Universal Analytics tracking id; injected on every public card."},
+      {k:"facebook_pixel",l:"Facebook Pixel ID",ph:"1234567890",dc:"Pixel id used for conversion tracking."},
+      {k:"site_verification",l:"Google Site Verification",ph:"verification-token-from-google",dc:"Content value from Google Search Console."}
+    ];
+    var h='<div class="cc"><h3>SEO Settings</h3>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:12px">Global <code>site_settings</code> keys prefixed <code>seo_</code> — injected into every public card, funnel and page. Admin only.</p>';
+    h+='<div id="seo-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    fields.forEach(function(f){
+      h+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">'+f.l+'</label>';
+      h+='<p style="font-size:10px;color:#94a3b8;margin-bottom:6px">'+f.dc+'</p>';
+      h+='<input id="seo-'+f.k+'" value="'+X(seo[f.k]||"")+'" placeholder="'+f.ph+'" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit"></div>';
+    });
+    h+='</div>';
+    var schema=(seo.schema_type&&typeof seo.schema_type==="object")?seo.schema_type:{};
+    var schemaTypes=["Organization","LocalBusiness","SoftwareApplication"];
+    var cur=schema["@type"]||"SoftwareApplication";
+    h+='<div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:14px"><label style="font-size:12px;font-weight:600;color:#475569">Schema Markup Type</label>';
+    h+='<p style="font-size:10px;color:#94a3b8;margin-bottom:6px">JSON-LD written to seo_schema_type and injected as structured data.</p>';
+    h+='<select id="seo-schema_type" style="width:240px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">';
+    schemaTypes.forEach(function(t){ h+='<option value="'+t+'"'+(cur===t?" selected":"")+'>'+t+'</option>'; });
+    h+='</select>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">';
+    [{k:"company_name",l:"Company Name",ph:"FunnelSwift"},{k:"company_logo",l:"Logo URL",ph:"https://funnelswift.net/logo.png"},{k:"company_address",l:"Address",ph:"123 Main St, City, State"},{k:"company_phone",l:"Phone",ph:"+1-555-555-5555"},{k:"company_email",l:"Email",ph:"hello@funnelswift.net"}].forEach(function(cf){
+      h+='<div><label style="font-size:11px;color:#64748b">'+cf.l+'</label><input id="seo-'+cf.k+'" value="'+X(schema[cf.k]||"")+'" placeholder="'+cf.ph+'" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit"></div>';
+    });
+    h+='</div></div>';
+    h+='<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn" onclick="SEOSave()">Save All</button><span id="seo-msg" class="msg"></span></div>';
+    h+='<hr style="margin:20px 0;border-color:#e2e8f0"><h3 style="font-size:14px;margin-bottom:8px">Public Endpoints</h3>';
+    h+='<p style="font-size:12px;color:#64748b"><a href="/api/v1/seo/sitemap.xml" target="_blank" style="color:#6366f1">/api/v1/seo/sitemap.xml</a> — dynamic sitemap (cards + funnels)</p>';
+    h+='<p style="font-size:12px;color:#64748b"><a href="/robots.txt" target="_blank" style="color:#6366f1">/robots.txt</a> — dynamic crawl rules</p></div>';
+    $("ct").innerHTML=h;
+  }).catch(function(e){ $("ct").innerHTML='<div class="cc"><h3>SEO Settings</h3><p class="msg me">Failed to load SEO settings: '+X(e.message||e)+'</p></div>'; });
+}
+function SEOSave(){
+  var keys=["site_name","description","keywords","og_image","twitter_handle","google_analytics","facebook_pixel","site_verification"];
+  var payload={}, msg=$("seo-msg");
+  keys.forEach(function(k){ var el=$("seo-"+k); if(el&&el.value.trim()) payload[k]=el.value.trim(); });
+  var st=$("seo-schema_type");
+  if(st&&st.value){
+    // The pre-fix duplicate double-encoded this (JSON.stringify into a string field), which the
+    // seo_inject_tags reader then emitted as a JSON-LD <script> whose body was a quoted string —
+    // not a valid node. Send the OBJECT: the route stores serde_json::to_string(v) either way and
+    // value_from_text parses it back, so the round trip is a real JSON-LD object.
+    var gn=$("seo-company_name"), gl=$("seo-company_logo"), ga=$("seo-company_address"),
+        gp=$("seo-company_phone"), ge=$("seo-company_email");
+    var schema={"@type":st.value,"name":(gn&&gn.value.trim())||"FunnelSwift"};
+    if(gl&&gl.value.trim()) schema.logo=gl.value.trim();
+    if(st.value==="LocalBusiness"||st.value==="Organization"){
+      if(ga&&ga.value.trim()) schema.address={streetAddress:ga.value.trim()};
+      if(gp&&gp.value.trim()) schema.telephone=gp.value.trim();
+      if(ge&&ge.value.trim()) schema.email=ge.value.trim();
+    }
+    payload.schema_type=schema;
+  }
+  if(msg){ msg.className="msg mi"; msg.textContent="Saving..."; }
+  api("/api/v1/seo/settings",{method:"PUT",body:JSON.stringify(payload)}).then(function(){
+    if(msg){ msg.className="msg ms"; msg.textContent="SEO settings saved."; setTimeout(function(){msg.className="msg"},3000); }
+  }).catch(function(e){ if(msg){ msg.className="msg me"; msg.textContent=e.message||"Save failed"; } });
 }
 
 /* === PLANS === */
