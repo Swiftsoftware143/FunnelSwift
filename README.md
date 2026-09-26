@@ -1,6 +1,6 @@
 # FunnelSwift — Lead Capture & Affiliate Hub
 
-Rust backend for FunnelSwift — multi-tenant lead capture, kinetic cards, funnel builder, affiliate management, plan management, and cross-app provisioning.
+Rust backend for FunnelSwift — multi-tenant lead capture, kinetic cards, funnel builder, affiliate management, plan management, and cross-app lead/tag sync with CoreSwift CRM and WorkflowSwift.
 
 ## Architecture
 

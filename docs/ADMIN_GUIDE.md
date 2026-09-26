@@ -67,12 +67,12 @@ Update `/var/www/funnelswift/funnelswift-capture.js` and reference from HTTPS.
 
 ## Affiliate System (Tag-Based)
 
-FunnelSwift is the affiliate hub. Affiliate products represent the Swift products (FunnelSwift, CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, MissedCallRespondr, MultiDirectory). Each product is linked to a **system tag**, and attribution is tracked on the **user account** a lead flows through — not on a cookie.
+FunnelSwift is the affiliate hub. Affiliate products represent the Swift products (FunnelSwift, CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, MissedCallRespondr, MultiDirectory). A product may carry a **system tag** link (`affiliate_products.system_tag_id`), and attribution is tracked on the **user account** a lead flows through — not on a cookie.
 
 ### The Model
 
-1. **Admin adds an affiliate product** and assigns it a **system tag** (each Swift product = one affiliate product).
-2. The system tag is the signal that a lead has acquired the **free plan** of that product (free-account provisioning already happens on tag assignment).
+1. **Affiliate products are the Swift products** — they sync in from each app's plan sync (below), and a product may carry a `system_tag_id` link to a System Tag.
+2. When a lead is tagged with that System Tag, `tag_logic::attribute_affiliate_on_tags` (`src/tag_logic.rs:319`, fired from `src/handlers/lead_handler.rs:633`) matches it against `affiliate_products.system_tag_id WHERE is_active = true` and records the pending $0 commission. **Assigning a System Tag does not create an account, contact or client in the other app** — see [System Tags](#system-tags). The link is API-only today: the product form has no picker and 0 of 11 products carry one (measured 2026-09-26).
 3. When a lead — created under a user account — is tagged, a pending $0 commission is recorded (the free-plan attribution anchor).
 4. When that lead later **upgrades to a paid plan** in the product, the other app fires an upgrade event back to FunnelSwift, and the referring affiliate is credited. **No expiry — every upgrade, forever.**
 
@@ -80,7 +80,7 @@ FunnelSwift is the affiliate hub. Affiliate products represent the Swift product
 
 | Table / Column | Purpose |
 |---|---|
-| `affiliate_products.system_tag_id` | Links an affiliate product to its system tag |
+| `affiliate_products.system_tag_id` | Optional link to the System Tag whose assignment attributes this product (`src/tag_logic.rs:319`) — API-set; no picker in the product form |
 | `leads.created_by` | The user account a lead flowed through (the affiliate anchor) |
 | `affiliates.user_id` | First-class link: which user account an affiliate is |
 | `affiliate_commissions.product_id` | Which product a commission is for |
@@ -95,7 +95,7 @@ Attribution resolution: `leads.created_by` → `affiliates.user_id`. Admin / non
 | POST | `/api/v1/affiliate-products` | Create a product (admin), accepts `system_tag_id` |
 | PUT | `/api/v1/affiliate-products/:id` | Update a product (admin), incl. `system_tag_id` |
 | DELETE | `/api/v1/affiliate-products/:id` | Delete a product (admin) |
-| GET | `/api/v1/admin/system-tags` | List system tags for the product → tag dropdown |
+| GET | `/api/v1/admin/system-tags` | List System Tags as `{id, name, color}` (`src/handlers/affiliate_product_handler.rs:187`) — answers 200 live, no caller: the product form has no tag dropdown |
 
 ### Cross-App Upgrade Event
 
@@ -138,7 +138,7 @@ Plans from all Swift apps still auto-sync into `affiliate_products` via `POST /a
 - IncentiveSwift (`source_app: incentiveswift`)
 - MissedCallRespondr (`source_app: missedcallrespondr`)
 
-Products are then linked to system tags by the admin. Product categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
+A product can additionally carry a `system_tag_id` link — the API accepts it on create/update (`POST`/`PUT /api/v1/affiliate-products`, `src/handlers/affiliate_product_handler.rs:221`/`:298`) — but no shipped form offers a picker, so 0 of 11 products carry one (measured 2026-09-26). Product categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
 
 ## MultiDirectory Integration (CTA Slots)
 
@@ -502,87 +502,57 @@ The admin sidebar uses accordion groups for cleaner navigation:
 
 State persisted in `localStorage` keys: `fs_acc_tags`, `fs_acc_affiliates`. Clicking a child tab auto-opens its parent accordion.
 
-## System Tags & Auto-Provisioning
+## System Tags
 
-> **Who this is for:** Super Admins who manage integrations between FunnelSwift tags and other Swift apps.
-> These are the same system tags that affiliate products reference via `system_tag_id` (see the [Affiliate System](#affiliate-system-tag-based) section above).
+> **Who this is for:** Super Admins who manage the tags every workspace shares.
+> These are the same System Tags that affiliate products reference via `system_tag_id` (see the [Affiliate System](#affiliate-system-tag-based) section above).
 
 ### What Are System Tags?
 
-System Tags are special tags in FunnelSwift that, when assigned to a lead, automatically trigger an action in another Swift app — like creating a free ADASwift account, adding a contact to CoreSwift CRM, or registering a lead in WorkflowSwift.
-
-They're different from regular tags. Regular tags just organize your leads. System Tags **do something** when applied.
+A System Tag is a tag an **admin** creates once (`tags.is_system = true`). Every workspace sees it in its own tag list — `GET /api/v1/tags` answers `WHERE tenant_id = $1 OR is_system = true` (`src/handlers/tag_handler.rs:22`) — and only an admin can create, change or delete it.
 
 ### Where to Find System Tags
 
 1. Log into **FunnelSwift** as a Super Admin
-2. Go to **Super Admin** → **Tags** → **System Tags**
-3. You'll see a table of all existing System Tags
+2. Go to **Admin** → **Tags** → **System Tags** (the *Tags* accordion in the sidebar)
+3. You'll see a table of all existing System Tags, with **+ Add System Tag**, per-row **Edit** / **Del**, and a bulk delete
 
-### How System Tags Work
+### What an Admin Can Do
 
-| Step | What Happens |
-|------|-------------|
-| 1. Lead gets tagged | A lead in FunnelSwift receives a System Tag (manually or via automation) |
-| 2. Webhook fires | FunnelSwift sends a webhook to the target app with the lead's contact info |
-| 3. App provisions | The target app creates a free account/contact for that lead |
-| 4. Duplicate protection | If the email already exists, nothing happens — no duplicates |
+Writes are **admin-only in the handler**, not merely hidden in the UI (create and delete measured live 2026-09-26):
 
-### Creating a System Tag
+| Action | Route | Non-admin answer |
+|--------|-------|------------------|
+| Create a System Tag | `POST /api/v1/tags` with `is_system: true` (`src/handlers/tag_handler.rs:65`) | `403 Only admins can create system tags` |
+| Rename / recolor | `PUT /api/v1/tags/:id` (`src/handlers/tag_handler.rs:111`) | `403` |
+| Delete it for every workspace | `DELETE /api/v1/tags/:id` (`src/handlers/tag_handler.rs:171`) | `403 Only admins can delete system tags` |
 
-Click **+ New Tag** and fill in:
+The form itself has three fields — **Name**, **Tag Group**, **Color** (`RFT`, `www-app/index.html`). There is no target app, no webhook URL and no on/off switch on a System Tag.
 
-| Field | Description | Example |
-|-------|-------------|---------|
-| **Tag Name** | Display name for this tag | `ADASwift Free` |
-| **Slug** | URL-safe identifier (auto-generated from name) | `adaswift_free` |
-| **Target Software** | Which app this tag triggers | `adaswift` |
-| **Webhook URL** | *(optional)* Override the default webhook URL | Leave blank unless you have a custom endpoint |
+### What System Tags Do NOT Do
 
-#### Available Target Software Options
+- They do **not** create a free account, contact or client in another Swift app. There is no per-tag target, no provisioning webhook and no cross-app caller: the `tags` table carries no target/webhook/payload column (its nine columns are `id`, `tenant_id`, `name`, `color`, `group_id`, `is_system`, `metadata`, `created_at`, `updated_at`), and `to_regclass('public.system_tags')` is NULL (measured 2026-09-26).
+- They do **not** hand a lead a free tier of anything. The free/starter/pro/enterprise tiers of ADASwift, CoreSwift, WorkflowSwift, IncentiveSwift and MissedCallRespondr live in those apps' own plans, which each workspace buys separately.
+- They are **not** a separate object type: the System Tags screen is the same `tags` table filtered on `is_system = true` (0 of 5 rows today).
 
-| Value | App | What gets created |
-|-------|-----|-------------------|
-| `adaswift` | ADASwift | Full ADA widget account (8 pages, free tier) with login credentials |
-| `coreswift` | CoreSwift CRM | Contact record with "Free" tag |
-| `workflowswift` | WorkflowSwift | Client record |
-| `incentiveswift` | IncentiveSwift | Contact record |
-| `missedcall` | MissedCall Respondr | Contact record |
+### Assigning a System Tag
 
-### Managing Existing System Tags
+Applying one to a lead writes the tag name into `leads.tags` like any other tag, and visibility is already covered by `GET /api/v1/tags`. Its one extra effect is **affiliate attribution**: FunnelSwift matches the freshly-applied tag ids against `affiliate_products.system_tag_id WHERE is_active = true` (`tag_logic::attribute_affiliate_on_tags`, `src/tag_logic.rs:319`, fired from `src/handlers/lead_handler.rs:633`) and records a **pending $0 commission** for the affiliate the lead flowed through (`leads.created_by` → `affiliates.user_id`). Nothing is written to another app.
 
-From the System Tags table you can:
+Two conditions have to hold on the tagging path: the tag id must resolve for the workspace doing the tagging (`src/handlers/lead_handler.rs:556` resolves that workspace's own tags; rule-driven adds at `:625` also resolve shared system tags), and the product must still be active. No product carries a `system_tag_id` live today (0 of 11, measured 2026-09-26), so no tag assignment attributes anything yet.
 
-- **Toggle ON/OFF** — Disable a tag without deleting it. While disabled, no webhooks fire.
-- **Delete** — Remove the tag entirely. Won't affect leads already tagged.
-
-### What the Lead Gets
-
-All leads created through System Tags get a **free-tier account**:
-
-| Feature | Free Tier |
-|---------|-----------|
-| Pages | **8 pages max** |
-| Profiles | Visual, Epilepsy, Hearing, Motor, Cognitive |
-| Features | 20 accessibility features |
-| Monthly Scan | ✅ Yes (3rd of every month) |
-| Widget Embed | ✅ Yes |
-
-> **Leads cannot be upgraded by themselves.** Only an admin can manually upgrade an account to Starter (25 pages), Pro (100 pages), or Enterprise (500 pages).
+The pending commission is filled in later, when the product itself fires the upgrade event back (see [Cross-App Upgrade Event](#cross-app-upgrade-event)).
 
 ### FAQ
 
-**Q: Can a lead upgrade themselves?**
-No. Free-tier accounts from System Tags can only be upgraded by an admin.
+**Q: Can a workspace create, rename or delete a System Tag?**
+No. All three are refused with `403` for a non-admin (`src/handlers/tag_handler.rs:65`, `:111`, `:171`). A workspace sees System Tags in its tag list and can apply them to its own leads.
 
-**Q: What if I assign a System Tag and the webhook fails?**
-FunnelSwift logs the attempt. The tag assignment still records in the database, but the target app won't create the account. You can retry by re-assigning the tag.
+**Q: Does assigning a System Tag create anything in another app?**
+No. Nothing is provisioned and no webhook fires — the only write is the tag name on the lead, plus the pending commission described above.
 
-**Q: Can I have multiple System Tags pointing to the same app?**
-Yes. Each tag independently triggers the same webhook.
+**Q: Why is the System Tags list empty?**
+Nothing seeds System Tags; an admin creates the first one (0 rows live today).
 
-**Q: Does the lead get a welcome email?**
-ADASwift sends a welcome email with login credentials and widget embed code. The other apps (CoreSwift, WorkflowSwift, IncentiveSwift, MissedCall) create contact records without emails — they're destination databases.
-
-**Q: What happens if I tag a lead that already exists in the target app?**
-The webhook detects the duplicate email and returns success without creating a duplicate. No error, no data loss.
+**Q: A product's tag link is stale — how do I stop it attributing?**
+Deactivate the product or clear its `system_tag_id`: both attribution readers resolve a product `WHERE is_active = true` only, so a retired product stops producing commissions.
