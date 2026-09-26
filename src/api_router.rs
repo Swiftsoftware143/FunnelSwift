@@ -43,7 +43,10 @@ async fn admin_plans_page() -> impl axum::response::IntoResponse {
     )
 }
 
-pub fn create_router(state: AppState) -> Router {
+pub fn create_router(
+    state: AppState,
+    body_read_deadline: crate::body_deadline::BodyReadDeadline,
+) -> Router {
     Router::new()
         // Public kinetic routes (no auth — SSR bio-link pages + tracking)
         .route("/k/:slug", get(kinetic_handler::render_card))
@@ -788,6 +791,17 @@ pub fn create_router(state: AppState) -> Router {
             "/affiliate-admin.html",
             ServeDir::new("/var/www/funnelswift/affiliate-admin.html"),
         )
+        // Request-body read deadline (kanban t_488a19d4) — mounted INNERMOST, i.e. added BEFORE
+        // `require_auth` below, because in axum the first `.layer()` is the one closest to the
+        // handler. Order for a request is therefore Trace -> require_auth -> body deadline ->
+        // handler, so an unauthenticated request is answered 401 at t+0.00s and never starts
+        // waiting for a body, and a declared body is never buffered before the credential is
+        // checked. It bounds every request that DECLARES a body on a body-carrying method and is a
+        // no-op on the rest (see `src/body_deadline.rs` for the per-route decision).
+        .layer(axum::middleware::from_fn_with_state(
+            body_read_deadline,
+            crate::body_deadline::body_read_deadline_middleware,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             crate::auth::global_auth::require_auth,

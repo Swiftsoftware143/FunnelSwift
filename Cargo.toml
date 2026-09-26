@@ -72,3 +72,10 @@ lettre = { version = "0.11.22", features = ["tokio1", "tokio1-native-tls"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+# Tests only, for `src/body_deadline.rs` (kanban t_488a19d4): a request body that never arrives is
+# built from a `futures_core::Stream` via `Body::from_stream`, held open by returning
+# `Poll::Pending` for ever. futures-core is already in the production graph (axum-core depends on
+# it), so naming it here adds no package — it only makes the trait nameable in tests.
+# `tower`'s `util` feature (needed for `ServiceExt::oneshot`) is already on in the production
+# dependency above, so no dev-dependency is needed for it.
+futures-core = "0.3"

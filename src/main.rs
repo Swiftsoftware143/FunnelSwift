@@ -18,6 +18,7 @@ mod api_router;
 #[path = "middleware/mod.rs"]
 mod app_middleware;
 mod auth;
+mod body_deadline;
 mod card_types;
 mod coreswift;
 mod db;
@@ -85,8 +86,20 @@ async fn main() -> Result<()> {
         coreswift_url,
     );
 
+    // Request-body read deadline (kanban t_488a19d4). Printed here so an operator can see the
+    // bound that is actually in force: every request that DECLARES a body on a body-carrying
+    // method is answered 408 above it; GETs and empty bodies are untouched. BODY_READ_DEADLINE_SECS
+    // overrides the default 30 (clamped 5..=300).
+    let body_read_deadline = body_deadline::BodyReadDeadline::from_env();
+    tracing::info!(
+        "Request body-read deadline: {}s on every request that declares a body \
+         (POST/PUT/PATCH/DELETE), 408 above that; GET routes read no body and are untouched \
+         (BODY_READ_DEADLINE_SECS)",
+        body_read_deadline.duration().as_secs()
+    );
+
     // Build router
-    let app = create_router(app_state);
+    let app = create_router(app_state, body_read_deadline);
 
     // Bind address comes from the deploy env, the same keys the rest of the fleet reads
     // (ADASwift/IncentiveSwift read HOST/PORT; /etc/swift/env/funnelswift.env supplies
@@ -112,7 +125,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn create_router(state: AppState) -> Router {
+fn create_router(state: AppState, body_read_deadline: body_deadline::BodyReadDeadline) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -122,7 +135,7 @@ fn create_router(state: AppState) -> Router {
     let security_mw = axum::middleware::from_fn(app_middleware::security::security_headers);
 
     Router::new()
-        .merge(api_router::create_router(state))
+        .merge(api_router::create_router(state, body_read_deadline))
         .layer(security_mw)
         .layer(cors)
         .layer(CompressionLayer::new())
