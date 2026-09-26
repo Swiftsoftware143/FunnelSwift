@@ -202,6 +202,49 @@ async function loadTagGroupById(id) {
   return found;
 }
 
+/* -- kanban t_5289fd7b: the tags GROUP column and editor -------------------------------------
+   `tags` stores `group_id` (Option<Uuid>, src/models/tag.rs) and has NO `group_name` column, and
+   `UpdateTagRequest` accepts no such field -- so the old cell fell back to a hard-coded badge on
+   every row (it read a key neither that table nor GET /api/v1/tags returns) and the old editor's
+   free-text group box wrote a key serde silently ignored. The vocabulary THIS console can read is
+   the tenant's own tag groups (GET /api/v1/tag-groups is tenant-scoped -- the same list the Tag
+   Groups screen beside it renders); a tag whose group id is not in that list (the shared taxonomy
+   tags belong to the System tenant's groups) prints its real id, never a fabricated name. */
+const TAG_GROUPS = { list: [], names: {} };
+async function loadTagGroups() {
+  let items = [];
+  try { items = await api('/tag-groups'); } catch(e) { items = []; }
+  if (!Array.isArray(items)) items = items.data || items.groups || [];
+  TAG_GROUPS.list = items;
+  TAG_GROUPS.names = {};
+  items.forEach(g => { TAG_GROUPS.names[String(g.id)] = g.name; });
+}
+function tagGroupCell(t) {
+  if (!t || !t.group_id) return '<span style="color:var(--muted)">—</span>';
+  const id = String(t.group_id);
+  const name = TAG_GROUPS.names[id];
+  if (name) return `<span class="badge badge-blue">${x(name)}</span>`;
+  return `<span class="badge badge-blue" title="group id ${x(id)} - not in this console's tag-groups list">${x(id.slice(0,8)+'…')}</span>`;
+}
+/* A tag's group can be SET and CHANGED but not CLEARED: update_tag() binds `req.group_id.or(
+   tag.group_id)`, so a null group_id means "keep the stored one". The control therefore offers
+   "-- No group --" only when there is none to clear (a create, or a tag already ungrouped) -- never
+   an option whose save would silently do nothing. */
+function tagGroupOptions(current) {
+  const cur = current ? String(current) : '';
+  const none = !cur;
+  let opts = none ? '<option value="" selected>— No group —</option>' : '';
+  let found = false;
+  TAG_GROUPS.list.forEach(g => {
+    const id = String(g.id);
+    if (id === cur) found = true;
+    opts += `<option value="${x(id)}"${id === cur ? ' selected' : ''}>${x(g.name)}</option>`;
+  });
+  if (cur && !found)
+    opts += `<option value="${x(cur)}" selected>${x(cur.slice(0,8)+'…')} - not in this console's group list</option>`;
+  return opts;
+}
+
 /* Fallback for the affiliate-product Edit (kanban t_2b82d8f0): `GET
    /api/v1/affiliate-products/:id` is NOT routed either (PUT/DELETE only — src/api_router.rs), so the
    console's Edit prefilled through an empty-bodied 405 and failEdit closed the modal without a form.
@@ -784,6 +827,7 @@ async function renderTags() {
   if (!Array.isArray(tags)) tags = tags.data || tags.tags || [];
   EDIT_ROWS.tags = {};
   tags.forEach(t => { EDIT_ROWS.tags[String(t.id)] = t; });
+  await loadTagGroups();
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -794,7 +838,7 @@ async function renderTags() {
       <thead><tr><th>Name</th><th>Group</th><th>Type</th><th>Actions</th></tr></thead>
       <tbody>${tags.map(t=>`<tr>
         <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px;vertical-align:middle"></span><strong>${x(t.name)}</strong></td>
-        <td><span class="badge badge-blue">${x(t.group_name||t.tag_group||'General')}</span></td>
+        <td>${tagGroupCell(t)}</td>
         <td>${t.is_system?`<span class="badge badge-purple">🔒 System</span>`:`<span class="badge badge-green">Custom</span>`}</td>
         <td>${!t.is_system?`<button class="btn btn-secondary btn-xs" onclick="window._editTag('${t.id}')">Edit</button>`:`<span style="font-size:11px;color:var(--muted)">System managed</span>`}</td>
       </tr>`).join('')}</tbody>
@@ -817,7 +861,7 @@ function openTagModal(id) {
     if (!body) return;
     body.innerHTML = `<form id="tag-form">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(tag.name||'')}" required></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(tag.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><input class="input" name="group_name" value="${x(tag.group_name||'')}" placeholder="e.g. Source, Status"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(tag.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select class="input" name="group_id">${tagGroupOptions(tag.group_id)}</select></div></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         ${id?`<button type="button" class="btn btn-danger" onclick="window._deleteTag('${id}')">Delete</button>`:''}
@@ -828,6 +872,7 @@ function openTagModal(id) {
       e.preventDefault();
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
+      data.group_id = data.group_id || null;   // kanban t_5289fd7b: "" from the select is not a uuid (axum 422); null = no group
       try {
         if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/tags', { method: 'POST', body: JSON.stringify(data) });
@@ -1589,6 +1634,7 @@ async function renderSystemTags() {
   items = items.filter(t => t.is_system === true);
   EDIT_ROWS.sysTags = {};
   items.forEach(t => { EDIT_ROWS.sysTags[String(t.id)] = t; });
+  await loadTagGroups();
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1600,7 +1646,7 @@ async function renderSystemTags() {
       <thead><tr><th>Name</th><th>Group</th><th>Color</th><th>Plan Mapping</th><th>Actions</th></tr></thead>
       <tbody>${items.map(t=>`<tr>
         <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px"></span><strong>${x(t.name)}</strong> <span class="badge badge-purple">System</span></td>
-        <td><span class="badge badge-blue">${x(t.group_name||t.tag_group||'-')}</span></td>
+        <td>${tagGroupCell(t)}</td>
         <td><div style="width:20px;height:20px;border-radius:4px;background:${x(t.color||'#6366f1')};border:1px solid #e2e8f0"></div></td>
         <td>${t.plan_slug?`<span class="badge badge-yellow">${x(t.plan_slug)}</span>`:'-'}</td>
         <td><button class="btn btn-secondary btn-xs" onclick="window._editSysTag('${t.id}')">Edit</button></td>
@@ -1624,7 +1670,7 @@ function openSysTagModal(id) {
     body.innerHTML = `<form id="systag-form">
       <input type="hidden" name="is_system" value="true">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><input class="input" name="group_name" value="${x(t.group_name||'')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select class="input" name="group_id">${tagGroupOptions(t.group_id)}</select></div></div>
       <div class="form-group"><label class="form-label">Plan Slug (optional — maps this tag to a specific plan)</label><input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="e.g., capture-free, kinetic-pro"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
@@ -1635,6 +1681,7 @@ function openSysTagModal(id) {
       e.preventDefault();
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
+      data.group_id = data.group_id || null;   // kanban t_5289fd7b: "" from the select is not a uuid (axum 422); null = keep/no group
       data.is_system = true;
       try {
         if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });
