@@ -1632,7 +1632,34 @@ function LPAFS(p){
   O(p.id?"Edit Product":"Add Product",function(){
     var mb=$("mb"); mb.innerHTML=""; $("mf").innerHTML="";
     mb.appendChild(ff("Name", El("input",{id:"fan",value:p.name||""})));
-    mb.appendChild(ff("Category", El("input",{id:"fac",value:p.category_name||""})));
+    /* Category (kanban t_a0214025): this control used to be a free-text input whose value went out as
+       `category_name` — a field NO request struct has (CreateProductRequest/UpdateProductRequest take
+       `category_id`), so serde dropped it silently: POST answered 201 and the row's category_id stayed
+       NULL, and the list's `p.category_name||"-"` cell therefore read "-" for every row whatever it
+       held (the same silent-drop class as `is_active` in t_db6fa3c0). It is now a select over the
+       categories a product can actually CARRY (`GET /api/v1/product-categories`, which offers the
+       workspace's own categories plus the fleet's system-tenant ones — the same scope the product list
+       itself uses) writing the real `category_id`. An empty choice sends null, which the API treats as
+       "leave the stored value alone", so a no-touch save can never move the product off its category.
+       An id that the route does not offer (a category deleted behind the product's back — the column
+       carries no FK) falls back to "None" on screen; the stored value is still preserved on save. */
+    var fac=El("select",{id:"fac"});
+    mb.appendChild(ff("Category", fac));
+    api("/api/v1/product-categories").then(function(d){
+      var cats=Array.isArray(d)?d:(d&&d.data?d.data:[]);
+      /* "(None)" is offered ONLY while the product carries no category (the Add form, or an edit of an
+         uncategorised product). The API has no way to CLEAR a stored category — `update_affiliate_product`
+         keeps the stored value when the key is null or absent, exactly like `is_active` — so an option
+         that pretended to remove one would be the very kind of decorative control this card deletes. */
+      if(!p.category_id) fac.appendChild(El("option",{value:""},"(None)"));
+      cats.forEach(function(c){fac.appendChild(El("option",{value:c.id},X(c.name||"")));});
+      /* A stored id the route does not offer (its category was deleted behind the product's back — the
+         column carries no FK) still gets its own option, so the select shows what the row HOLDS and a
+         no-touch save leaves it where it is. */
+      if(p.category_id&&!cats.some(function(c){return c.id===p.category_id;})){
+        fac.appendChild(El("option",{value:p.category_id},X(p.category_name||"Unknown category")));}
+      fac.value=p.category_id||"";
+    }).catch(function(){if(!p.category_id) fac.appendChild(El("option",{value:""},"(None)"));});
     mb.appendChild(ff("Price ($)", El("input",{id:"fap",type:"number",value:p.price||""})));
     mb.appendChild(ff("Commission %", El("input",{id:"far",type:"number",value:p.default_commission_rate||""})));
     mb.appendChild(ff("URL", El("input",{id:"fau",value:p.url||"",placeholder:"Product page URL"})));
@@ -1643,7 +1670,10 @@ function LPAFS(p){
     mb.appendChild(ac);
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){
-      var d={name:$("fan").value,category_name:$("fac").value,price:parseFloat($("fap").value)||0,default_commission_rate:parseFloat($("far").value)||0,url:$("fau").value,description:$("fad").value,is_active:$("faa").checked};
+      /* `category_id`, never `category_name` (kanban t_a0214025): the select's empty value must go out
+         as JSON null, not as "" — axum answers `""` with a bare 422 ("UUID parsing failed") instead of
+         the app's own error body. null = "keep whatever the row has" (see update_affiliate_product). */
+      var d={name:$("fan").value,category_id:($("fac").value||null),price:parseFloat($("fap").value)||0,default_commission_rate:parseFloat($("far").value)||0,url:$("fau").value,description:$("fad").value,is_active:$("faa").checked};
       if(!d.name.trim()){showMsg("Name is required","me");return;}
       showMsg("Saving...","mi");
       var m=p.id?"PUT":"POST", u=p.id?"/api/v1/affiliate-products/"+p.id:"/api/v1/affiliate-products";

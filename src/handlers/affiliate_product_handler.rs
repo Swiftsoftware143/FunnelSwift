@@ -103,6 +103,15 @@ struct AffiliateProductRow {
     pub owner_name: Option<String>,
     pub system_tag_id: Option<Uuid>,
     pub system_tag_name: Option<String>,
+    /// CATEGORY-NAME-FOR-THE-SCREEN (kanban t_a0214025). Both served product screens render the
+    /// product's category as a NAME (`p.category_name` in www-app/index.html, `LP` and the
+    /// affiliate-facing `LPR`), but this response carried only `category_id`, so the admin list's
+    /// Category cell read "-" for every row whatever it held — the same silent-drop class as
+    /// `is_active` in t_db6fa3c0. The name arrives through the same LEFT JOIN shape
+    /// `system_tag_name` already uses for `tags`, and it stays a LEFT JOIN (not an inner one)
+    /// because `affiliate_products.category_id` carries NO foreign key: a dangling id must still
+    /// list its row with `category_name: null` rather than drop the product from the list.
+    pub category_name: Option<String>,
     pub created_at: Option<chrono::NaiveDateTime>,
     pub updated_at: Option<chrono::NaiveDateTime>,
 }
@@ -119,9 +128,11 @@ pub async fn list_affiliate_products(
         "SELECT ap.id, ap.tenant_id, ap.name, ap.description, ap.price::float8, ap.default_commission_rate::float8,
                 COALESCE(ap.is_active, true) AS is_active, ap.is_third_party, ap.url, ap.category_id,
                 ap.product_type, ap.owner_name, ap.system_tag_id,
-                t.name AS system_tag_name, ap.created_at::timestamp, ap.updated_at::timestamp
+                t.name AS system_tag_name, pc.name AS category_name,
+                ap.created_at::timestamp, ap.updated_at::timestamp
          FROM affiliate_products ap
          LEFT JOIN tags t ON t.id = ap.system_tag_id
+         LEFT JOIN product_categories pc ON pc.id = ap.category_id
          WHERE (ap.tenant_id = $1 OR ap.tenant_id = '00000000-0000-0000-0000-000000000001')
            AND ($2::boolean IS NULL OR COALESCE(ap.is_active, true) = $2)
          ORDER BY ap.created_at DESC",
@@ -144,6 +155,10 @@ pub async fn list_affiliate_products(
                 "is_third_party": p.is_third_party.unwrap_or(false),
                 "url": p.url,
                 "category_id": p.category_id.map(|v| v.to_string()),
+                // The NAME the screen renders next to the id (kanban t_a0214025). Null when the
+                // product has no category OR the stored id points at a row that no longer exists
+                // (there is no FK on this column) — the screen then shows its own "-" placeholder.
+                "category_name": p.category_name,
                 "product_type": p.product_type.as_deref().unwrap_or("software"),
                 "owner_name": p.owner_name.as_deref().unwrap_or("SwiftSoftware"),
                 "system_tag_id": p.system_tag_id.map(|v| v.to_string()),

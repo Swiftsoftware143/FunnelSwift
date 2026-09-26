@@ -54,7 +54,19 @@ pub async fn list_categories(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let categories: Vec<CategoryRow> = sqlx::query_as(
-        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE tenant_id = $1 ORDER BY sort_order ASC"
+        // FLEET-WIDE-CATEGORY-SCOPE (kanban t_a0214025): this route feeds the Affiliate Product
+        // screen's Category select, so the rows it returns must be the rows a product can actually
+        // CARRY. They come from a producer with no tenant filter at all —
+        // `plan_handler::sync_plan_to_affiliate_product` resolves
+        // `SELECT id FROM product_categories WHERE slug = 'funnelswift-plans' LIMIT 1`, which is the
+        // SYSTEM tenant's row — and `list_affiliate_products` below already shows every caller the
+        // system tenant's products (`ap.tenant_id = $1 OR ap.tenant_id = '…0001'`). A strict
+        // `tenant_id = $1` filter therefore answered `[]` for a real admin (measured live) while the
+        // products they edit carried a category, which would leave the select empty, unable to
+        // represent the stored value, and make a save look like it clears it. The predicate below
+        // mirrors the product list's own: the caller's categories plus the fleet's system-tenant ones.
+        // Another REAL tenant's categories stay invisible, exactly as before.
+        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000001') ORDER BY sort_order ASC, name ASC"
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
