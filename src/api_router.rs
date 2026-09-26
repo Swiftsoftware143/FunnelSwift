@@ -237,10 +237,17 @@ pub fn create_router(
             get(affiliate_tracking_handler::list_conversions)
                 .post(affiliate_tracking_handler::track_conversion),
         )
-        .route(
-            "/api/v1/track-click",
-            get(affiliate_tracking_handler::track_click),
-        )
+        // NOTE: GET /api/v1/track-click was removed (kanban t_813d51d4). It was a no-op stub —
+        // `Query(_params)` discarded, `State(_state)` unused, answered a constant
+        // `{"tracked":true}` and wrote nothing — with zero callers fleet-wide (every app's src/,
+        // every served www*/ root, nginx, n8n) and no consumer of the table it would have written:
+        // `affiliate_clicks` has no reader and no writer anywhere in src/ (0 rows ever). The
+        // affiliate attribution chain is resolved at SIGNUP (`?ref=<code>` ->
+        // affiliate_links.tracking_code in public_signup_handler / affiliate_referral_handler),
+        // never at click time, and the affiliate portal sums `affiliate_commissions` only. Real
+        // click tracking in this product is POST /card/:id/track (event_type=click), which the card
+        // page's own inline tracker calls and which writes kinetic_card_events. Same shape as
+        // GET /track/click (t_65849ce9) and /api/v1/track/lead (t_f408b7cc).
         .route(
             "/api/v1/affiliate/signup",
             post(affiliate_portal_handler::affiliate_signup),

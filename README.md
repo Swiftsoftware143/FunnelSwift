@@ -90,7 +90,6 @@ All routes are under `/api/v1/`. 161 endpoints total.
 | POST | `/api/v1/affiliate/dashboard` | Affiliate dashboard |
 | GET/POST | `/api/v1/affiliate-stats` | Affiliate statistics |
 | GET/POST | `/api/v1/affiliate-conversions` | Conversion tracking |
-| POST | `/api/v1/track-click` | Click tracking |
 | POST | `/api/v1/check-affiliate-email` | Check affiliate by email |
 | POST | `/api/v1/log-lead-movement` | Lead movement logging |
 
@@ -160,8 +159,10 @@ caller-supplied plan slug is ignored) and an admin assigns any other plan with
 when a paid checkout carries referral data. It requires the `x-internal-key` header, resolves the
 affiliate through `leads.created_by -> affiliates.user_id` (or a direct `affiliate_id`), and writes the
 commission row the affiliate portal and payout handler read. A 2xx always means the row was written:
-an unattributable conversion answers 422 and records nothing. `/api/v1/track/lead` was removed — it was
-a no-op with no caller in the fleet.
+an unattributable conversion answers 422 and records nothing. `/api/v1/track/lead` (t_f408b7cc) and
+`/api/v1/track-click` (t_813d51d4) were removed — both were no-ops with zero callers in the fleet,
+and neither had a consumer. Click tracking in this product is the Kinetic card tracker
+`POST /card/:id/track` (`event_type=click`), which writes `kinetic_card_events`.
 
 ### Web-to-Lead Configs
 | Method | Path | Purpose |

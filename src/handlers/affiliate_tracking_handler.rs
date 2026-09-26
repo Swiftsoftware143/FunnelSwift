@@ -1,13 +1,8 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
-use axum::{
-    extract::{Query, State},
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use uuid::Uuid;
 
 pub async fn list_affiliate_links(
@@ -124,14 +119,10 @@ pub async fn track_conversion(
         "status": "pending",
     })))
 }
-pub async fn track_click(
-    Query(_params): Query<HashMap<String, String>>,
-    State(_state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    Ok(Json(json!({"tracked": true})))
-}
-
-/// Cross-app affiliate upgrade event (internal, x-internal-key).
+/// NOTE: `track_click` (GET /api/v1/track-click) was deleted with kanban t_813d51d4 — a no-op
+/// stub that answered a constant `{"tracked":true}` and wrote nothing, with zero callers
+/// fleet-wide and no reader of `affiliate_clicks` (see the note in `src/api_router.rs`).
+/// A cross-app affiliate upgrade event (internal, x-internal-key).
 ///
 /// Called by the other Swift apps (WorkflowSwift, CoreSwift, IncentiveSwift, etc.) when a
 /// user — who was originally a FunnelSwift lead provisioned a free account via a system

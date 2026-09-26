@@ -25,9 +25,9 @@ const PUBLIC_EXACT: &[&str] = &[
     "/api/v1/auth/reset-password",
     // Cross-app webhook. Public only because the senders carry no JWT: the handler gates
     // itself on x-internal-key. `/api/v1/track/lead` was deleted with kanban t_f408b7cc
-    // (a no-op with no caller in the fleet and no consumer).
+    // (a no-op with no caller in the fleet and no consumer), and `/api/v1/track-click` with
+    // kanban t_813d51d4 (a no-op with no caller and no reader of `affiliate_clicks`).
     "/api/v1/webhooks/conversion",
-    "/api/v1/track-click",
     // Public lead capture
     "/api/v1/web-to-lead",
     // Public SEO
