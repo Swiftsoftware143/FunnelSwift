@@ -2053,14 +2053,14 @@ function LTR(){
   if(!U||!U.is_admin) return;
   api("/api/v1/affiliate-tiers").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>Affiliate Tiers <span id="ltr-add-btn"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Set commission tiers based on lead volume or revenue thresholds.</p><div id="ltr-list"></div></div>';
+    $("ct").innerHTML='<div class="cc"><h3>Affiliate Tiers <span id="ltr-add-btn"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Set commission tiers based on sales count or revenue thresholds. A tier's commission rate is the percentage the affiliate earns once the tier is reached.</p><div id="ltr-list"></div></div>';
     $("ltr-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MTR()}},"+ Add Tier"));
     if(!a.length){$("ltr-list").innerHTML='<p style="color:#64748b;padding:10px">No tiers.</p>';return;}
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Name</th><th>Min Leads</th><th>Min Revenue</th><th>Commission %</th><th>Monthly Cap</th><th></th></tr>';
+    tbl.innerHTML='<tr><th>Name</th><th>Min Sales</th><th>Min Revenue</th><th>Commission %</th><th>Description</th><th></th></tr>';
     a.forEach(function(t){
       var tr=El("tr");
-      tr.innerHTML='<td><strong>'+X(t.name||"Tier")+'</strong></td><td>'+(t.min_leads||"-")+'</td><td>$'+(t.min_revenue||"0")+'</td><td>'+(t.commission_percent||"0")+'%</td><td>$'+(t.monthly_cap||"-")+'</td><td></td>';
+      tr.innerHTML='<td><strong>'+X(t.name||"Tier")+'</strong></td><td>'+(t.min_sales||0)+'</td><td>$'+(t.min_revenue||"0")+'</td><td>'+(t.commission_rate||"0")+'%</td><td>'+X(t.description||"-")+'</td><td></td>';
       var td=tr.querySelectorAll("td")[5];
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MTR(t.id)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
@@ -2072,22 +2072,22 @@ function LTR(){
 }
 function MTR(id){
   if(id) api("/api/v1/affiliate-tiers/"+id).then(function(t){RTR(id,t)});
-  else RTR(null,{commission_percent:10});
+  else RTR(null,{commission_rate:10});
 }
 function RTR(id,t){
   O(id?"Edit Tier":"Add Tier", function(){
     var mb=$("mb");
     mb.appendChild(ff("Name", El("input",{id:"fn",value:t.name||""})));
-    mb.appendChild(ff("Min Leads", El("input",{id:"fml",type:"number",value:t.min_leads||""})));
+    mb.appendChild(ff("Min Sales", El("input",{id:"fml",type:"number",value:t.min_sales||""})));
     mb.appendChild(ff("Min Revenue ($)", El("input",{id:"fmr",type:"number",value:t.min_revenue||""})));
-    mb.appendChild(ff("Commission %", El("input",{id:"fcp",type:"number",value:t.commission_percent||10})));
-    mb.appendChild(ff("Monthly Cap ($)", El("input",{id:"fmc",type:"number",value:t.monthly_cap||""})));
+    mb.appendChild(ff("Commission %", El("input",{id:"fcp",type:"number",value:t.commission_rate||10})));
+    mb.appendChild(ff("Description", El("input",{id:"fdsc",value:t.description||""})));
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){STR(id)}},(id?"Save":"Create")));
   });
 }
 function STR(id){
-  var d={name:$("fn").value, min_leads:parseInt($("fml").value)||null, min_revenue:parseFloat($("fmr").value)||null, commission_percent:parseFloat($("fcp").value)||0, monthly_cap:parseFloat($("fmc").value)||null};
+  var d={name:$("fn").value, min_sales:parseInt($("fml").value)||0, min_revenue:parseFloat($("fmr").value)||0, commission_rate:parseFloat($("fcp").value)||0, description:$("fdsc").value||null};
   var m=id?"PUT":"POST", u=id?"/api/v1/affiliate-tiers/"+id:"/api/v1/affiliate-tiers";
   showMsg("Saving...","mi");
   api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("tiers")}).catch(function(e){showMsg(e.message||"Save failed","me")});
