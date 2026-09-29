@@ -124,6 +124,27 @@ pub async fn portfolio_sync(
     .bind(now)
     .execute(&state.pool)
     .await?;
+    // ── David: *"if the admin creates a user the same thing happens."* ───────────────────────────
+    // This function already generated `generated_password` from the OS RNG and hashed it — and then
+    // sent it NOWHERE. The account existed with a password nobody knew, so the user could never sign
+    // in and the admin had nothing to hand over. The generated value is emailed here, loudly on
+    // failure, for the same reason as the signup path.
+    match crate::email::send_credentials_email(
+        &state.pool,
+        tenant_id,
+        &email,
+        &name,
+        &generated_password,
+    )
+    .await
+    {
+        Ok(()) => tracing::info!(email = %email, "admin: login credentials emailed"),
+        Err(e) => tracing::error!(
+            email = %email,
+            error = %e,
+            "admin: user created but the CREDENTIAL EMAIL FAILED — they have no password."
+        ),
+    }
 
     // Create portfolio company record
     sqlx::query(

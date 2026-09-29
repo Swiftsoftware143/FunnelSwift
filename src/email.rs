@@ -242,6 +242,19 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // David's model (2026-09-29): the signup form collects NAME + EMAIL only, the system
+        // generates the first password and sends it here, and the user replaces it in their profile.
+        // Before this arm existed there was NO email in this app that carried a password — the
+        // generated password for an admin-created user was thrown away and the account was unusable.
+        "credentials" => {
+            let password = vars.get("password").unwrap_or(&"").to_string();
+            let subject = "Your FunnelSwift login details".to_string();
+            let text = format!(
+                "Hi {0},\n\nYour FunnelSwift account is ready.\n\nEmail: {1}\nTemporary password: {2}\n\nSign in at {3}/login\n\nThen set your own password in your profile — the temporary one stops being useful once you do.\n\n- FunnelSwift Team",
+                name, email, password, app_url
+            );
+            (subject, Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -262,6 +275,22 @@ pub async fn send_welcome_email(
     vars.insert("name", name);
     vars.insert("email", to);
     send_template_email(pool, aid, to, "welcome", &bound_vars(vars)).await
+}
+
+/// Send the generated first password. David: *"the email should automatically go out with generated
+/// login credentials ... instead of the form saying create their own password."*
+pub async fn send_credentials_email(
+    pool: &PgPool,
+    aid: Uuid,
+    to: &str,
+    name: &str,
+    password: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("email", to);
+    vars.insert("password", password);
+    send_template_email(pool, aid, to, "credentials", &bound_vars(vars)).await
 }
 
 pub async fn send_purchase_confirmed_email(

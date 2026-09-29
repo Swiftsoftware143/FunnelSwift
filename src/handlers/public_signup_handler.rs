@@ -30,6 +30,18 @@ SELECT (SELECT t.id   FROM tenants t WHERE t.affiliate_code = $1 ORDER BY t.crea
 
 /// POST /api/v1/auth/signup — Public signup (used by Kinetic Cards landing page).
 /// Creates tenant + user, assigns plan from request body (defaults to 'free').
+/// A first password the user is expected to replace. 16 characters of UUID-derived entropy from the
+/// OS RNG — long enough that the emailed value is not the weak link, short enough to retype on a
+/// phone. Never logged.
+fn generate_initial_password() -> String {
+    let mut out = String::with_capacity(16);
+    while out.len() < 16 {
+        out.push_str(&Uuid::new_v4().simple().to_string());
+    }
+    out.truncate(16);
+    out
+}
+
 pub async fn public_signup(
     State(state): State<AppState>,
     Json(payload): Json<Value>,
@@ -54,16 +66,24 @@ pub async fn public_signup(
         .map(|s| s.trim().chars().take(100).collect::<String>())
         .filter(|s| !s.is_empty());
 
-    if email.is_empty() || password.is_empty() || name.is_empty() {
-        return Err(AppError::BadRequest(
-            "Name, email, and password are required".into(),
-        ));
+    // ── David's signup model (2026-09-29) ────────────────────────────────────────────────────────
+    // The marketing form collects NAME + EMAIL only. The system generates the first password and
+    // emails it; the user sets their own in their profile once they are in. A caller that still
+    // supplies a password (existing API clients) is honoured and validated exactly as before, so
+    // this widens the contract rather than replacing it.
+    if email.is_empty() || name.is_empty() {
+        return Err(AppError::BadRequest("Name and email are required".into()));
     }
-    if password.len() < 8 {
-        return Err(AppError::BadRequest(
-            "Password must be at least 8 characters".into(),
-        ));
-    }
+    let password = if password.is_empty() {
+        generate_initial_password()
+    } else {
+        if password.len() < 8 {
+            return Err(AppError::BadRequest(
+                "Password must be at least 8 characters".into(),
+            ));
+        }
+        password
+    };
     if !email.contains('@') {
         return Err(AppError::BadRequest("Invalid email format".into()));
     }
@@ -145,6 +165,24 @@ pub async fn public_signup(
         .bind(pid)
         .execute(&state.pool)
         .await;
+    }
+
+    // ── THE CREDENTIAL EMAIL ────────────────────────────────────────────────────────────────────
+    // Sent after the user row and the plan subscription exist, so the login details are true by the
+    // time they arrive. A failure here is LOGGED LOUDLY and never silently swallowed: the signup
+    // still succeeds (the account is real), but the operator must be able to see that the password
+    // never reached the customer — which is exactly why the old flow was invisible: it generated a
+    // password and emailed nobody.
+    match crate::email::send_credentials_email(&state.pool, tenant_id, &email, &name, &password)
+        .await
+    {
+        Ok(()) => tracing::info!(email = %email, "signup: login credentials emailed"),
+        Err(e) => tracing::error!(
+            email = %email,
+            error = %e,
+            "signup: account created but the CREDENTIAL EMAIL FAILED — the customer has no password. \
+             Check Admin > Settings > Email Provider."
+        ),
     }
 
     // Log source if provided
