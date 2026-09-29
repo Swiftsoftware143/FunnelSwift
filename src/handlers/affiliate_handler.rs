@@ -37,7 +37,8 @@ fn generate_affiliate_id() -> String {
 /// struct unchanged, exactly like `PLAN_COLS` in plan_handler.rs.
 pub const AFFILIATE_COLS: &str = "id, tenant_id, name, email, industry, \
     commission_rate::float8 AS commission_rate, tax_docs, is_active, is_visible, tags, \
-    created_at, updated_at";
+    created_at, updated_at, override_commission_rate::float8 AS override_commission_rate, \
+    override_note";
 
 /// Same treatment for `affiliate_commissions.amount` NUMERIC(10,2) vs
 /// `AffiliateCommission::amount: f64`.
@@ -97,7 +98,7 @@ pub async fn create_affiliate(
     let aff_id = generate_affiliate_id();
 
     sqlx::query(
-        "INSERT INTO affiliates (id, tenant_id, name, email, industry, commission_rate, tax_docs, tags, is_visible) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO affiliates (id, tenant_id, name, email, industry, commission_rate, override_commission_rate, override_note, tax_docs, tags, is_visible) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(&aff_id)
     .bind(tenant_id)
@@ -105,6 +106,8 @@ pub async fn create_affiliate(
     .bind(&req.email)
     .bind(&req.industry)
     .bind(req.commission_rate)
+    .bind(req.override_commission_rate)
+    .bind(&req.override_note)
     .bind(&req.tax_docs)
     .bind(&req.tags)
     .bind(req.is_visible)
@@ -165,7 +168,7 @@ pub async fn update_affiliate(
     let visible_val = req.is_visible.or(existing.is_visible);
 
     sqlx::query(
-        "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, updated_at=NOW() WHERE id=$9 AND tenant_id=$10",
+        "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, override_commission_rate=CASE WHEN $9 THEN NULL ELSE COALESCE($10, override_commission_rate) END, override_note=CASE WHEN $9 THEN NULL ELSE COALESCE($11, override_note) END, updated_at=NOW() WHERE id=$12 AND tenant_id=$13",
     )
     .bind(req.name.unwrap_or(existing.name))
     .bind(req.email.unwrap_or(existing.email))
@@ -175,6 +178,9 @@ pub async fn update_affiliate(
     .bind(req.is_active.unwrap_or(existing.is_active))
     .bind(tags_val)
     .bind(visible_val)
+    .bind(req.clear_override.unwrap_or(false))
+    .bind(req.override_commission_rate)
+    .bind(&req.override_note)
     .bind(&id)
     .bind(tenant_id)
     .execute(&state.pool)

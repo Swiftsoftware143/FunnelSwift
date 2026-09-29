@@ -352,14 +352,41 @@ pub async fn attribute_affiliate_on_tags(
             continue;
         }
 
+        // A pending commission used to be written with the amount HARDCODED to 0 and no record of
+        // what rate applied, so the row could never be explained or paid. It now carries the rate the
+        // one resolver decided, an estimate of what it is worth at the product's list price, and the
+        // rule that produced the rate. The authoritative money event remains the conversion webhook,
+        // which recomputes from the real sale amount.
+        let resolved =
+            crate::commission::resolve(pool, Some(product_id), Some(&affiliate_id)).await;
+        let list_price: Option<f64> =
+            sqlx::query_scalar("SELECT price::float8 FROM affiliate_products WHERE id = $1")
+                .bind(product_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+        let estimate = crate::commission::commission_for(list_price.unwrap_or(0.0), resolved.rate);
+        let meta = sqlx::types::Json(serde_json::json!({
+            "rate": resolved.rate,
+            "rate_source": resolved.source,
+            "rate_explanation": resolved.explanation,
+            "rate_group": resolved.group_name,
+            "list_price": list_price,
+            "estimate": estimate,
+            "note": "pending: computed from the product list price; the conversion webhook recomputes from the real sale amount",
+        }));
+
         sqlx::query(
-            "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, product_id, amount, status)
-             VALUES ($1, $2, $3, $4, 0, 'pending')",
+            "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, product_id, amount, status, metadata)
+             VALUES ($1, $2, $3, $4, $5, 'pending', $6)",
         )
         .bind(Uuid::new_v4())
         .bind(&affiliate_id)
         .bind(lead_id)
         .bind(product_id)
+        .bind(estimate)
+        .bind(meta)
         .execute(pool)
         .await?;
     }

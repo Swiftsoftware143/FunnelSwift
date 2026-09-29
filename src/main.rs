@@ -21,6 +21,7 @@ mod auth;
 mod body_deadline;
 mod card_blocks;
 mod card_types;
+mod commission;
 mod coreswift;
 mod db;
 mod email;

@@ -146,7 +146,10 @@ pub async fn handle_conversion_webhook(
             .await?;
         }
     }
-    let Some((affiliate_id, rate)) = affiliate else {
+    // The stored rate is deliberately ignored from here on: it is one input among several, and
+    // `crate::commission::resolve` is the only thing allowed to decide. Kept in the SELECT so the
+    // affiliate lookup itself is unchanged.
+    let Some((affiliate_id, _stored_rate)) = affiliate else {
         // Nothing was written, so this cannot be a 2xx: a false receipt is what this card is
         // about. The senders are fire-and-forget, so the log line is their only trace.
         tracing::warn!(
@@ -186,7 +189,14 @@ pub async fn handle_conversion_webhook(
         .await?;
     }
 
-    let commission = amount * rate.unwrap_or(0.0) / 100.0;
+    // THE rate. Before 2026-09-29 this line was `amount * rate.unwrap_or(0.0) / 100.0` reading only
+    // `affiliates.commission_rate`, so a product's own rate, a group override and a per-affiliate
+    // override were all ignored — and an affiliate with no rate on file earned exactly 0.
+    // `resolve` walks, highest first: this affiliate's override -> the product's group rate -> the
+    // product's own rate -> the product's legacy rate -> the plan's rate -> the default.
+    let resolved = crate::commission::resolve(&state.pool, product_id, Some(&affiliate_id)).await;
+    let rate = resolved.rate;
+    let commission = crate::commission::commission_for(amount, rate);
     let metadata = json!({
         "source_app": source_app,
         "event": event,
@@ -195,6 +205,12 @@ pub async fn handle_conversion_webhook(
         "cookie_id": cookie_id,
         "product_name": payload["product_name"].as_str(),
         "sale_amount": amount,
+        // Which rule produced this rate, in the row itself, so a payout can be explained long after
+        // the rate that produced it has been changed.
+        "rate": rate,
+        "rate_source": resolved.source,
+        "rate_explanation": resolved.explanation,
+        "rate_group": resolved.group_name,
     });
 
     let id = Uuid::new_v4();

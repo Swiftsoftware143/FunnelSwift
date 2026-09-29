@@ -2,6 +2,7 @@
 // 2026-09-25 — kanban t_0a6a93f1. Every one of its four functions either fabricated a success
 // reply while writing nothing, or only wrote a log line. See api_router.rs for the per-leg reason.
 pub mod admin_handler;
+pub mod affiliate_commission_handler;
 pub mod affiliate_handler;
 pub mod affiliate_lead_handler;
 pub mod affiliate_payout_handler;

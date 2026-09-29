@@ -13,17 +13,18 @@ use crate::auth::handlers::{
     update_profile,
 };
 use crate::handlers::{
-    affiliate_handler, affiliate_lead_handler, affiliate_payout_handler, affiliate_portal_handler,
-    affiliate_product_handler, affiliate_referral_handler, affiliate_tracking_handler,
-    api_key_handler, bulk_handler, campaigns_handler, checkout_handler,
-    coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
-    email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
-    integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
-    ocr, plan_handler, plan_tag_handler, portfolio_handler, product_category_handler,
-    provider_keys_handler, public_signup_handler, qr_handler, routing_handler, seo_handler,
-    settings_handler, site_handler, site_settings_handler, sync_plan_tag_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
+    affiliate_payout_handler, affiliate_portal_handler, affiliate_product_handler,
+    affiliate_referral_handler, affiliate_tracking_handler, api_key_handler, bulk_handler,
+    campaigns_handler, checkout_handler, coreswift_integration_handler, coreswift_push,
+    cross_app_webhook_handler, dashboard_handler, email_template_handler, funnel_handler,
+    incentiveswift_handler, insight_handler, integration_target_handler, kinetic_handler,
+    lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler, plan_tag_handler,
+    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
+    qr_handler, routing_handler, seo_handler, settings_handler, site_handler,
+    site_settings_handler, sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -359,6 +360,39 @@ pub fn create_router(
         .route(
             "/api/v1/affiliate-payouts/:id/pay",
             post(affiliate_payout_handler::mark_payout_paid),
+        )
+        // ── David's commission model (2026-09-29, kanban FS-7) ──────────────────────────────
+        // A group gives several products ONE rate ("select which products are the same"); the bulk
+        // route sets one rate across products without naming a group; the resolver says which rule
+        // produced a rate so the admin panel can always explain the number it shows. Every one of
+        // these has a control in www-admin/index.html and www-app/index.html — a backend route with
+        // no UI is a defect here.
+        .route(
+            "/api/v1/affiliate-product-groups",
+            get(affiliate_commission_handler::list_groups)
+                .post(affiliate_commission_handler::create_group),
+        )
+        .route(
+            "/api/v1/affiliate-product-groups/:id",
+            put(affiliate_commission_handler::update_group)
+                .delete(affiliate_commission_handler::delete_group),
+        )
+        .route(
+            "/api/v1/affiliate-product-groups/:id/products",
+            post(affiliate_commission_handler::assign_products),
+        )
+        // Deliberately NOT under /affiliate-products/:id, so `bulk` can never be read as an id.
+        .route(
+            "/api/v1/affiliate-product-rates/bulk",
+            post(affiliate_commission_handler::bulk_set_product_rate),
+        )
+        .route(
+            "/api/v1/affiliate-commission-rules/resolve",
+            get(affiliate_commission_handler::resolve_rate),
+        )
+        .route(
+            "/api/v1/affiliate-commission-rules/preview",
+            get(affiliate_commission_handler::preview_commission),
         )
         .route(
             "/api/v1/plans",

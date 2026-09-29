@@ -11,6 +11,12 @@ pub struct Affiliate {
     pub email: String,
     pub industry: Option<String>,
     pub commission_rate: Option<f64>,
+    /// A deliberate per-person override. Distinct from `commission_rate` on purpose: "their standing
+    /// rate is 10%" and "they were given 25% as an override" must both stay recoverable. Wins over
+    /// every product, group and plan rate.
+    pub override_commission_rate: Option<f64>,
+    /// Why the override exists, in the admin's own words.
+    pub override_note: Option<String>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: bool,
     pub is_visible: Option<bool>,
@@ -25,6 +31,8 @@ pub struct CreateAffiliateRequest {
     pub email: String,
     pub industry: Option<String>,
     pub commission_rate: Option<f64>,
+    pub override_commission_rate: Option<f64>,
+    pub override_note: Option<String>,
     pub tax_docs: Option<serde_json::Value>,
     pub tags: Option<serde_json::Value>,
     pub is_visible: Option<bool>,
@@ -36,6 +44,11 @@ pub struct UpdateAffiliateRequest {
     pub email: Option<String>,
     pub industry: Option<String>,
     pub commission_rate: Option<f64>,
+    pub override_commission_rate: Option<f64>,
+    pub override_note: Option<String>,
+    /// Explicitly remove the override. Needed because "send null" and "leave it alone" are the same
+    /// JSON (`None`) — without this a raised rate could be set and never taken away.
+    pub clear_override: Option<bool>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: Option<bool>,
     pub tags: Option<serde_json::Value>,
