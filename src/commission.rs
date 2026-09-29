@@ -21,8 +21,10 @@
 //! 4. `affiliate_products.commission_rate` — the product's legacy rate column. Only reached when the
 //!    field the UI writes is NULL, so a legacy row still pays something sensible instead of falling
 //!    through to the global default.
-//! 5. `plans.commission_rate` — the plan's rate, when a product is tied to a plan.
-//! 6. [`FALLBACK_RATE`] — the same 20% the old code hardcoded, so behaviour with an empty database is
+//! 5. `affiliates.commission_rate` — the affiliate's own standing rate (what self-signup
+//!    writes from their plan).
+//! 6. `plans.commission_rate` — the plan's rate, when a product is tied to a plan.
+//! 7. [`FALLBACK_RATE`] — the same 20% the old code hardcoded, so behaviour with an empty database is
 //!    unchanged from before this module existed.
 //!
 //! Every outcome carries **which rule produced it** ([`ResolvedRate::source`]) and a sentence a human
@@ -81,18 +83,23 @@ pub async fn resolve(
     let mut considered: Vec<Considered> = Vec::new();
     let mut group_id: Option<Uuid> = None;
     let mut group_name: Option<String> = None;
+    // The affiliate's standing rate, used lower down the chain. Collected in step 1 so the affiliate
+    // row is read once, not twice.
+    let mut affiliate_standing: Option<f64> = None;
 
     // ── 1. the affiliate's deliberate override ───────────────────────────────────────────────────
     if let Some(aid) = affiliate_id {
-        let row: Option<(Option<f64>, Option<String>)> = sqlx::query_as(
-            "SELECT override_commission_rate::float8, override_note FROM affiliates WHERE id = $1",
+        let row: Option<(Option<f64>, Option<String>, Option<f64>)> = sqlx::query_as(
+            "SELECT override_commission_rate::float8, override_note, commission_rate::float8 \
+             FROM affiliates WHERE id = $1",
         )
         .bind(aid)
         .fetch_optional(pool)
         .await
         .unwrap_or(None);
 
-        if let Some((rate, note)) = row {
+        if let Some((rate, note, standing)) = row {
+            affiliate_standing = standing;
             let won = rate.is_some();
             considered.push(Considered {
                 source: "affiliate_override",
@@ -209,7 +216,31 @@ pub async fn resolve(
         }
     }
 
-    // ── 5. the plan the product is tied to ───────────────────────────────────────────────────────
+    // ── 5. the affiliate's own standing rate ─────────────────────────────────────────────────────
+    // `affiliates.commission_rate` is what the self-signup writes from the user's plan. It sits BELOW
+    // the product and group rates on purpose: a rate set on a specific product is a more precise
+    // statement of intent than a general per-person rate, and before this step the column was read by
+    // nothing at all — an affiliate's contractual rate had no effect on any payout.
+    if let Some(r) = affiliate_standing {
+        considered.push(Considered {
+            source: "affiliate_rate",
+            rate: Some(r),
+            detail: None,
+            won: true,
+        });
+        return finish(
+            r,
+            "affiliate_rate",
+            format!("this affiliate's standing rate ({r}%)"),
+            product_id,
+            affiliate_id,
+            group_id,
+            group_name,
+            considered,
+        );
+    }
+
+    // ── 6. the plan the product is tied to ───────────────────────────────────────────────────────
     if let Some(plan) = plan_id {
         let prow: Option<(String, Option<f64>)> =
             sqlx::query_as("SELECT name, commission_rate::float8 FROM plans WHERE id = $1")
@@ -240,7 +271,7 @@ pub async fn resolve(
         }
     }
 
-    // ── 6. nothing anywhere ──────────────────────────────────────────────────────────────────────
+    // ── 7. nothing anywhere ──────────────────────────────────────────────────────────────────────
     considered.push(Considered {
         source: "default",
         rate: Some(FALLBACK_RATE),

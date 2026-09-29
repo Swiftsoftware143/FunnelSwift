@@ -14,17 +14,17 @@ use crate::auth::handlers::{
 };
 use crate::handlers::{
     affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
-    affiliate_payout_handler, affiliate_portal_handler, affiliate_product_handler,
-    affiliate_referral_handler, affiliate_tracking_handler, api_key_handler, bulk_handler,
-    campaigns_handler, checkout_handler, coreswift_integration_handler, coreswift_push,
-    cross_app_webhook_handler, dashboard_handler, email_template_handler, funnel_handler,
-    incentiveswift_handler, insight_handler, integration_target_handler, kinetic_handler,
-    lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler, plan_tag_handler,
-    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, routing_handler, seo_handler, settings_handler, site_handler,
-    site_settings_handler, sync_plan_tag_handler, tag_group_handler, tag_handler, tag_rule_handler,
-    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
-    workflowswift_push,
+    affiliate_onboarding_handler, affiliate_payout_handler, affiliate_portal_handler,
+    affiliate_product_handler, affiliate_referral_handler, affiliate_tracking_handler,
+    api_key_handler, bulk_handler, campaigns_handler, checkout_handler,
+    coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
+    email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
+    integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
+    ocr, plan_handler, plan_tag_handler, portfolio_handler, product_category_handler,
+    provider_keys_handler, public_signup_handler, qr_handler, routing_handler, seo_handler,
+    settings_handler, site_handler, site_settings_handler, sync_plan_tag_handler,
+    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
+    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -385,6 +385,27 @@ pub fn create_router(
         .route(
             "/api/v1/affiliate-product-rates/bulk",
             post(affiliate_commission_handler::bulk_set_product_rate),
+        )
+        // ── affiliate onboarding (2026-09-29) ───────────────────────────────────────────────
+        // `me` answers the two questions the UI cannot work without: is this user an affiliate (which
+        // gates the Affiliate tab) and what rate would pay them (which the banner can show). The
+        // promotable list is joined to each product's TAG, because that link is what makes a
+        // promotion attributable at all.
+        .route(
+            "/api/v1/affiliate/me",
+            get(affiliate_onboarding_handler::affiliate_me),
+        )
+        .route(
+            "/api/v1/affiliate/promotable-products",
+            get(affiliate_onboarding_handler::promotable_products),
+        )
+        .route(
+            "/api/v1/affiliate/promotable-products/select",
+            post(affiliate_onboarding_handler::select_products),
+        )
+        .route(
+            "/api/v1/affiliate/promotable-products/:id/deselect",
+            post(affiliate_onboarding_handler::deselect_product),
         )
         .route(
             "/api/v1/affiliate-commission-rules/resolve",

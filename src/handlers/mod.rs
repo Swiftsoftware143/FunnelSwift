@@ -5,6 +5,7 @@ pub mod admin_handler;
 pub mod affiliate_commission_handler;
 pub mod affiliate_handler;
 pub mod affiliate_lead_handler;
+pub mod affiliate_onboarding_handler;
 pub mod affiliate_payout_handler;
 pub mod affiliate_portal_handler;
 pub mod affiliate_product_handler;
