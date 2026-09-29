@@ -89,6 +89,10 @@ pub async fn promotable_products(
     let mine = my_affiliate(&state, &auth).await?;
     let affiliate_id = mine.as_ref().map(|m| m.0.clone());
 
+    // Each row also carries the tag's PLAN, because a promotion is only meaningful if you can say
+    // which plan it lands the customer on: `tags.plan_id` for FunnelSwift's own plans, and
+    // `tags.source_app` + `tags.plan_slug` for a sibling app's plan, which lives in a different
+    // database and therefore cannot be a foreign key here.
     let rows: Vec<(
         Uuid,
         Option<String>,
@@ -98,12 +102,19 @@ pub async fn promotable_products(
         Option<String>,
         Option<String>,
         bool,
+        Option<String>,
+        Option<String>,
+        Option<Uuid>,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT p.id, p.name, p.price::float8, p.default_commission_rate::float8, \
                 p.system_tag_id, t.name, p.source_app, \
-                COALESCE(s.is_active, false) \
+                COALESCE(s.is_active, false), \
+                COALESCE(t.source_app, p.source_app), t.plan_slug, t.plan_id, \
+                COALESCE(pl.name, t.plan_slug) \
          FROM affiliate_products p \
          LEFT JOIN tags t ON t.id = p.system_tag_id \
+         LEFT JOIN plans pl ON pl.id = t.plan_id \
          LEFT JOIN affiliate_selections s \
                 ON s.product_id = p.id AND s.affiliate_id = $2 \
          WHERE p.is_active IS NOT FALSE \
@@ -132,6 +143,15 @@ pub async fn promotable_products(
                 "tag_name": r.5,
                 "source_app": r.6,
                 "selected": r.7,
+                // ── the tag's FREE PLAN ──────────────────────────────────────────────────────
+                // David: "each tag should connect to their free plan". For a sibling app the plan
+                // lives in that app's own database, so it is named by (app, slug); for FunnelSwift's
+                // own tags it is a real id.
+                "plan_app": r.8,
+                "plan_slug": r.9,
+                "plan_id": r.10,
+                "plan_name": r.11,
+                "connected_to_plan": r.9.is_some() || r.10.is_some(),
                 // A product with no tag can be picked but can never be attributed, so say so
                 // instead of letting the affiliate promote something that cannot pay.
                 "has_tag": r.4.is_some(),
