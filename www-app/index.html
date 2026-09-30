@@ -246,6 +246,8 @@ function S(t){
   $("ct").innerHTML='<div class="loading">Loading...</div>';
   var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
+  // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
+  if(window.inlineGuidePage) window.inlineGuidePage(t);
 }
 
 
@@ -2848,5 +2850,23 @@ function SG(id,returnTab,isSystem){
 })();
 </script>
 
+<script>
+/* Inline guide content, one entry per screen. The widget shows the entry for the tab that is open;
+   FunnelSwift's console switches tabs in JS, so it is told via window.inlineGuidePage(tab). */
+window.appGuidePages = {
+  dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
+  leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms.", actions: ["Filter and search", "Apply tags", "Export"] },
+  myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
+  affiliates:  { title: "Affiliates", desc: "Everyone who promotes SwiftSoftware products. One affiliate account per customer — there is no downline to manage.", actions: ["See each affiliate and their rate", "Give one affiliate a personal higher rate", "Deactivate an affiliate"] },
+  tiers:       { title: "Commission Tiers", desc: "Tiers decide the percentage an affiliate earns once they reach a threshold. Each tier has a name, a commission rate, a minimum sales count and a minimum revenue.", actions: ["Add a tier", "Edit a rate or threshold", "Delete a tier"] },
+  payouts:     { title: "Affiliate Payouts", desc: "What has been earned and what has been paid. Nothing is earned on a free plan — a referral only pays once that customer becomes paying.", actions: ["Review commissions", "Record a payout"] },
+  ap:          { title: "Affiliate Products", desc: "What affiliates can promote. Every product points at a FREE plan, because a referred customer arrives free and upgrades in app, paying for it themselves. Each product is tied to its tag, and the tag is what credits the affiliate.", actions: ["Add a product", "Set its commission rate", "Check it has a tag"] },
+  integrations:{ title: "Integrations", desc: "Connect FunnelSwift to the other SwiftSoftware products and to your own tools.", actions: ["Connect CoreSwift", "Add a webhook"] },
+  plans:       { title: "Plans", desc: "Your plan decides what is available to you. The top tier includes everything.", actions: ["Compare plans", "Upgrade"] },
+  keys:        { title: "API Keys", desc: "Keys for talking to FunnelSwift from your own software.", actions: ["Create a key", "Revoke a key"] },
+  settings:    { title: "Settings", desc: "Your workspace, profile and email provider.", actions: ["Update your profile and password", "Set the email provider so the system can send credentials"] }
+};
+</script>
+<script src="/inline-guide-widget.js"></script>
 </body>
 </html>

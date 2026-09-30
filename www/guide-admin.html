@@ -267,18 +267,52 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       <h2 id="affiliates">🤝 Affiliate Management</h2>
 
       <div class="card">
+        <h3>Your account is the control centre, not an affiliate</h3>
+        <p>Open <strong>My Affiliate</strong> in the sidebar. As an admin you get a control centre: live counts of affiliates, commission tiers, payouts and products, plus buttons that take you straight to each screen. <strong>You are never asked to sign up as an affiliate</strong> — you run the programme, affiliates join it themselves.</p>
+      </div>
+
+      <div class="card">
+        <h3>One affiliate account per customer</h3>
+        <p>A customer account can have <strong>exactly one</strong> affiliate account, on every plan including the free ones. This is enforced by the database, so coming through a different path cannot create a second one. There is <strong>no downline and no hierarchy</strong> — an affiliate is paid directly, and there is nothing to recruit.</p>
+      </div>
+
+      <div class="card">
         <h3>Affiliate Products</h3>
-        <p>Define products that affiliates can promote. Each product has a name, description, price, commission rate, and optional tracking URL. Products are available to all affiliates in their portal.</p>
+        <p>Define what affiliates can promote. Each product has a name, description, price, commission rate, and optional tracking URL.</p>
+        <p><strong>Every product must point at a FREE plan.</strong> This is the rule that stops an affiliate giving a product away fully upgraded for nothing: a referred customer arrives on the free plan and upgrades in app, paying for it themselves. The database refuses to attach a paid plan to a product or a tag, so this cannot be got wrong from any screen.</p>
+        <p>Each product is also tied to its <strong>tag</strong>. The tag is what actually credits the affiliate when a referral arrives, so a product without a tag can be picked in the portal but can never be credited — the affiliate's screen says so plainly.</p>
       </div>
 
       <div class="card">
         <h3>Affiliate Tiers</h3>
-        <p>Create commission tiers (Bronze, Silver, Gold, etc.) with different rates and minimum payout thresholds. Tiers determine what percentage affiliates earn and when they get paid.</p>
+        <p>Create commission tiers (Bronze, Silver, Gold, etc.). Each tier has exactly four editable values:</p>
+        <ul>
+          <li><strong>Name</strong> — what the tier is called</li>
+          <li><strong>Commission Rate (%)</strong> — what an affiliate earns once they reach the tier</li>
+          <li><strong>Min Sales</strong> — how many sales are needed to reach it</li>
+          <li><strong>Min Revenue</strong> — how much revenue is needed to reach it</li>
+        </ul>
+        <p>Everything is editable — change a rate, rename a tier or delete one at any time. Bronze / Silver / Gold are seeded as placeholders with sensible rates; adjust them to your own numbers whenever you like.</p>
+      </div>
+
+      <div class="card">
+        <h3>What rate an affiliate is paid</h3>
+        <p>One order decides it, and the first rule that applies wins:</p>
+        <ol>
+          <li><strong>A personal rate set for that affiliate</strong> — beats everything else</li>
+          <li><strong>The product's group rate</strong> — one rate covering several products</li>
+          <li><strong>The product's own rate</strong></li>
+          <li><strong>The affiliate's standing rate</strong> (their plan's rate)</li>
+          <li><strong>The plan's rate</strong></li>
+          <li><strong>A standard fallback</strong> if nothing is configured</li>
+        </ol>
+        <p>Each recorded commission stores the rate <em>and which rule produced it</em>, so a payout can still be explained months later after the numbers have changed.</p>
+        <p><strong>Nothing is paid on a free plan.</strong> A referral only starts earning when that customer becomes a paying customer, and the credit stays with the referring affiliate from then on.</p>
       </div>
 
       <div class="card">
         <h3>Affiliate Portal</h3>
-        <p>Affiliates log in at <code>/affiliate</code> to view their dashboard, track clicks/conversions, see earnings, and get their referral links. The portal shows real-time stats and payout history.</p>
+        <p>Affiliates log in at <code>/affiliate</code> to see their dashboard, clicks/conversions, earnings and referral links. In the main app, the sidebar's <strong>My Affiliate</strong> tab is where they tick the products they want to promote.</p>
       </div>
 
       <!-- ============ KINETIC ADMIN ============ -->

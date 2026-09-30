@@ -40,9 +40,16 @@
   }
 
   // ── resolve guide entry ────────────────────────────────────────
+  // `forcedKey` is set by a SPA host through window.inlineGuidePage(tab). FunnelSwift's console
+  // switches tabs in JS WITHOUT touching the path or the hash, so path/hash matching alone could
+  // never follow it — the guide would sit on the first tab forever.
+  var forcedKey = null;
+
   function getCurrentEntry() {
     var pages = window.appGuidePages || {};
     if (!Object.keys(pages).length) return null;
+
+    if (forcedKey && pages[forcedKey]) return pages[forcedKey];
 
     var path = window.location.pathname.replace(/\/+$/, '') + window.location.search;
     var pathOnly = window.location.pathname.replace(/\/+$/, '');
@@ -70,8 +77,11 @@
   }
 
   // ── build widget DOM ───────────────────────────────────────────
+  // `widget` (the container element) was NEVER declared - only created. `createWidget()` then threw
+  // "widget is not defined", so the whole guide failed to render anywhere it was loaded, including
+  // the affiliate portal. Found 2026-09-29 by driving the real page in Chromium.
   var widgetCreated = false;
-  var toggle, panel;
+  var widget, toggle, panel;
 
   function createWidget() {
     if (widgetCreated) return;
@@ -95,7 +105,7 @@
       '#ig-actions-title{font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin:0 0 6px}' +
       '#ig-actions{list-style:none;padding:0;margin:0}' +
       '#ig-actions li{font-size:13px;color:#374151;padding:5px 0 5px 20px;position:relative}' +
-      '#ig-actions li::before{content:"\2192";position:absolute;left:2px;color:#4f46e5;font-weight:700}' +
+      '#ig-actions li::before{content:"\u2192";position:absolute;left:2px;color:#4f46e5;font-weight:700}' +
       '#ig-dismiss{display:block;margin-top:12px;padding:8px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#6b7280;font-size:13px;cursor:pointer;text-align:center;width:100%}' +
       '#ig-dismiss:hover{background:#f9fafb}' +
       '</style>' +
@@ -164,6 +174,11 @@
       panel.classList.add('open');
     }
   }
+
+  // ── host hooks ────────────────────────────────────────────────
+  // Let the page tell the guide which screen is open, and let it refresh on demand.
+  window.inlineGuidePage = function (key) { forcedKey = key; updateGuide(); };
+  window.updateInlineGuide = updateGuide;
 
   // ── init ──────────────────────────────────────────────────────
   // Wait a tick for SPA to bootstrap
