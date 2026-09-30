@@ -130,7 +130,7 @@ tr:hover{background:#f8fafc}
   <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
   <a data-tab="tenants" onclick="S('tenants')">Tenants</a>
-  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a></div></div>
+  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a><a data-tab="myaff" onclick="S('myaff')">My Affiliate</a></div></div>
   <a data-tab="plans" onclick="S('plans')">Plans</a>
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
   <a data-tab="keys" onclick="S('keys')">API Keys</a>
@@ -241,13 +241,104 @@ function S(t){
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO"};
+  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO"};
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
 }
 
+
+/* === MY AFFILIATE (David's onboarding model) =================================================
+   Two things he asked for, driven by ONE server call so they can never disagree with it:
+
+   1. A "sign up as an affiliate" BANNER the user can dismiss with an X, which "pops back up when
+      they log back in". The dismissal therefore lives in sessionStorage, NEVER localStorage:
+      localStorage would hide it forever, sessionStorage clears when the session ends, which is
+      exactly the behaviour asked for. It is not rendered at all once /affiliate/me says the person
+      is already an affiliate.
+
+   2. An AFFILIATE TAB that is "gated to anyone who is not an affiliate and open to those who are",
+      where an affiliate picks the products they promote. Each row shows the product's TAG and the
+      FREE PLAN it lands a customer on, because the tag is what credits the affiliate and the free
+      plan is what the customer receives (they upgrade in app and pay for it themselves - an
+      affiliate can never hand out a paid plan; the database refuses it).
+
+   Neither of these decides anything: /api/v1/affiliate/me is the single source of truth for "am I
+   an affiliate", so a stale button can't appear or lock someone out. */
+var AFF={};
+
+function affMe(cb){
+  api("/api/v1/affiliate/me").then(function(d){AFF=d||{};if(cb)cb(AFF);})
+    .catch(function(){AFF={is_affiliate:false};if(cb)cb(AFF);});
+}
+
+function affBanner(){
+  affMe(function(d){
+    if(d.is_affiliate) return;                                  // already an affiliate
+    if(sessionStorage.getItem("affBannerDismissed")) return;     // X'd out this session
+    if($("aff-banner")) return;
+    var b=document.createElement("div");
+    b.id="aff-banner";
+    b.style.cssText="background:linear-gradient(90deg,#1e3a8a,#2563eb);color:#fff;padding:12px 16px;margin:0 0 14px 0;border-radius:10px;display:flex;align-items:center;gap:14px;font-size:14px;line-height:1.4";
+    b.innerHTML='<div style="flex:1"><strong>Earn with the Swift affiliate program.</strong> Promote FunnelSwift, CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift and the rest. Everyone you bring in starts on a free plan, and you earn when they upgrade.</div>'
+      +'<button class="btn btn-sm btn-p" id="aff-join" style="white-space:nowrap">Sign up as an affiliate</button>'
+      +'<button id="aff-x" title="Dismiss" style="background:transparent;border:0;color:#fff;font-size:20px;line-height:1;cursor:pointer">\u2715</button>';
+    var host=$("ct");
+    if(host&&host.parentNode){host.parentNode.insertBefore(b,host);}
+    else{document.body.insertBefore(b,document.body.firstChild);}
+    $("aff-x").onclick=function(){sessionStorage.setItem("affBannerDismissed","1");b.remove();};
+    $("aff-join").onclick=affJoin;
+  });
+}
+function affBannerRemove(){var b=$("aff-banner");if(b)b.remove();}
+
+function affJoin(){
+  api("/api/v1/affiliate/signup",{method:"POST",body:"{}"}).then(function(){
+    sessionStorage.removeItem("affBannerDismissed");
+    affBannerRemove();
+    S("myaff");
+  }).catch(function(e){alert((e&&e.message)||"Could not sign you up just now.");});
+}
+
+function LMA(){
+  affMe(function(d){
+    var c=$("ct");
+    if(!d.is_affiliate){
+      c.innerHTML='<div class="card" style="max-width:640px">'
+        +'<h3>Affiliate program</h3>'
+        +'<p>This tab is for affiliates. Sign up once and this is where you choose what to promote.</p>'
+        +'<p style="opacity:.8">Everyone you bring in starts on a free plan. You earn when they upgrade.</p>'
+        +'<button class="btn btn-p" onclick="affJoin()">Sign up as an affiliate</button></div>';
+      return;
+    }
+    api("/api/v1/affiliate/promotable-products").then(function(r){
+      var ps=(r&&r.products)||[];
+      var h='<div class="card"><h3>What you promote</h3>'
+        +'<p style="opacity:.8">Tick the products you want to promote. Each one is tied to its tag, which is what credits you when someone signs up through it.</p>'
+        +'<table class="tbl"><thead><tr><th></th><th>Product</th><th>Customer gets</th><th>Your rate</th><th>Tag</th></tr></thead><tbody>';
+      if(!ps.length){h+='<tr><td colspan="5" style="opacity:.7">No products are available to promote yet.</td></tr>';}
+      ps.forEach(function(p){
+        var plan=(p.plan_name||p.plan_slug||"\u2014");
+        h+='<tr><td><input type="checkbox" class="aff-pick" value="'+X(p.id)+'"'+(p.selected?" checked":"")+'></td>'
+          +'<td>'+X(p.name)+'</td>'
+          +'<td>'+X(plan)+(p.connected_to_plan?' <span class="badge bb">free</span>':' <span class="badge" style="background:#7f1d1d;color:#fff">no plan</span>')+'</td>'
+          +'<td>'+(p.commission_rate!=null?X(p.commission_rate)+"%":"\u2014")+'</td>'
+          +'<td>'+(p.has_tag?X(p.tag_name||""):'<em>no tag \u2014 cannot be credited</em>')+'</td></tr>';
+      });
+      h+='</tbody></table><div style="margin-top:12px"><button class="btn btn-p" onclick="affSave()">Save</button> <span id="aff-saved" style="opacity:.8"></span></div></div>';
+      h+='<div class="card" style="margin-top:14px"><h3>Your rate</h3><p>You earn '+(d.effective_rate!=null?X(d.effective_rate)+"%":"your plan's rate")+' on a referred sale unless a product or group rate says otherwise, and a personal override always wins.</p></div>';
+      c.innerHTML=h;
+    }).catch(function(e){ c.innerHTML='<div class="card"><p>Could not load products: '+X((e&&e.message)||"unknown")+'</p></div>'; });
+  });
+}
+
+function affSave(){
+  var ids=[]; document.querySelectorAll(".aff-pick").forEach(function(cb){if(cb.checked)ids.push(cb.value);});
+  api("/api/v1/affiliate/promotable-products/select",{method:"POST",body:JSON.stringify({product_ids:ids})})
+    .then(function(r){var s=$("aff-saved");if(s)s.textContent="Saved \u2014 you are promoting "+((r&&r.selected)!=null?r.selected:ids.length)+" product(s).";})
+    .catch(function(e){alert((e&&e.message)||"Could not save.");});
+}
 
 /* Modal */
 function O(title, bodyBuilder){
@@ -292,6 +383,7 @@ if(T){
       $("rb").innerHTML=u.is_admin?'<span class="badge bg">Admin</span>':'<span class="badge bb">User</span>';
       if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}
       S("dashboard");
+      affBanner();   // David: banner the user can X out of, back on next login
     }
   });
 }else{
@@ -2053,7 +2145,7 @@ function LTR(){
   if(!U||!U.is_admin) return;
   api("/api/v1/affiliate-tiers").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>Affiliate Tiers <span id="ltr-add-btn"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Set commission tiers based on sales count or revenue thresholds. A tier's commission rate is the percentage the affiliate earns once the tier is reached.</p><div id="ltr-list"></div></div>';
+    $("ct").innerHTML='<div class="cc"><h3>Affiliate Tiers <span id="ltr-add-btn"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Set commission tiers based on sales count or revenue thresholds. A tier&#39;s commission rate is the percentage the affiliate earns once the tier is reached.</p><div id="ltr-list"></div></div>';
     $("ltr-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MTR()}},"+ Add Tier"));
     if(!a.length){$("ltr-list").innerHTML='<p style="color:#64748b;padding:10px">No tiers.</p>';return;}
     var tbl=El("table");
