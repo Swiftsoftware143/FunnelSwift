@@ -281,7 +281,7 @@ pub async fn log_tag_change(
 /// Attribute affiliate commissions when a lead is tagged with a system tag that is
 /// linked to an affiliate product (the tag-based routing signal).
 ///
-/// David's model: affiliate products = the Swift products; a system tag points at one.
+/// David's model: affiliate products = the SwiftSoftware products; a system tag points at one.
 /// When a lead flowing through FunnelSwift gets that tag, record a pending commission
 /// linking the referring affiliate → lead → product. The actual amount is filled in
 /// later when the upsell happens inside the respective app (the tag is always the

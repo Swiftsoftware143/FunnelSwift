@@ -138,7 +138,7 @@ const AFFILIATE_GUIDE_HTML: &str = r#"<style>
 
 <div class="gcard">
 <h3>What is the Affiliate Program?</h3>
-<p>FunnelSwift pays you a commission for referring people to the Swift products &mdash; FunnelSwift itself, plus CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, and the rest.</p>
+<p>FunnelSwift pays you a commission for referring people to the SwiftSoftware products &mdash; FunnelSwift itself, plus CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, and the rest.</p>
 <p>It works through the leads you already run through FunnelSwift:</p>
 <ol>
 <li>You bring leads through your FunnelSwift account.</li>

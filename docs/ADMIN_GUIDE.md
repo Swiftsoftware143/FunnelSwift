@@ -67,11 +67,11 @@ Update `/var/www/funnelswift/funnelswift-capture.js` and reference from HTTPS.
 
 ## Affiliate System (Tag-Based)
 
-FunnelSwift is the affiliate hub. Affiliate products represent the Swift products (FunnelSwift, CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, MissedCallRespondr, MultiDirectory). A product may carry a **system tag** link (`affiliate_products.system_tag_id`), and attribution is tracked on the **user account** a lead flows through — not on a cookie.
+FunnelSwift is the affiliate hub. Affiliate products represent the SwiftSoftware products (FunnelSwift, CoreSwift, WorkflowSwift, IncentiveSwift, ADASwift, MissedCallRespondr, MultiDirectory). A product may carry a **system tag** link (`affiliate_products.system_tag_id`), and attribution is tracked on the **user account** a lead flows through — not on a cookie.
 
 ### The Model
 
-1. **Affiliate products are the Swift products** — they sync in from each app's plan sync (below), and a product may carry a `system_tag_id` link to a System Tag.
+1. **Affiliate products are the SwiftSoftware products** — they sync in from each app's plan sync (below), and a product may carry a `system_tag_id` link to a System Tag.
 2. When a lead is tagged with that System Tag, `tag_logic::attribute_affiliate_on_tags` (`src/tag_logic.rs:319`, fired from `src/handlers/lead_handler.rs:633`) matches it against `affiliate_products.system_tag_id WHERE is_active = true` and records the pending $0 commission. **Assigning a System Tag does not create an account, contact or client in the other app** — see [System Tags](#system-tags). The link is API-only today: the product form has no picker and 0 of 11 products carry one (measured 2026-09-26).
 3. When a lead — created under a user account — is tagged, a pending $0 commission is recorded (the free-plan attribution anchor).
 4. When that lead later **upgrades to a paid plan** in the product, the other app fires an upgrade event back to FunnelSwift, and the referring affiliate is credited. **No expiry — every upgrade, forever.**

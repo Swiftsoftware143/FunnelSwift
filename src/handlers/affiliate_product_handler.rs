@@ -1,5 +1,5 @@
 // Affiliate product handler - full CRUD with admin variants
-// David's model: affiliate products = the Swift products (CoreSwift, FunnelSwift,
+// David's model: affiliate products = the SwiftSoftware products (CoreSwift, FunnelSwift,
 // IncentiveSwift, MultiDirectory, etc.). Admin adds products and assigns a system
 // tag to each. When a lead gets that system tag, the affiliate system records attribution.
 use axum::{

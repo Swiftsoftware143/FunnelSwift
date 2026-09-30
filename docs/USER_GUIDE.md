@@ -87,7 +87,7 @@ Admins can edit these templates in the admin panel (`Email Templates`) — modif
 
 ## Affiliate Program
 
-Earn a commission by referring people to the Swift products. When a lead that flows through your account upgrades to a paid plan in any Swift product, you're credited — every upgrade, forever, no expiry.
+Earn a commission by referring people to the SwiftSoftware products. When a lead that flows through your account upgrades to a paid plan in any Swift product, you're credited — every upgrade, forever, no expiry.
 
 - **No separate login** — your existing account is your affiliate account.
 - **Opt in** from the Affiliate section of your portal, accept the terms, and you're auto-approved.
