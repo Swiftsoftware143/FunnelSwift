@@ -275,6 +275,10 @@ function affMe(cb){
 
 function affBanner(){
   affMe(function(d){
+    // An admin runs the programme, they do not join it. David: "the affiliate sign up doesn't need to
+    // be in the admin account just to control center for the affiliate program." Your own account is
+    // the control centre, so it must never be pitched at you.
+    if(U && U.is_admin) return;
     if(d.is_affiliate) return;                                  // already an affiliate
     if(sessionStorage.getItem("affBannerDismissed")) return;     // X'd out this session
     if($("aff-banner")) return;
@@ -302,6 +306,33 @@ function affJoin(){
 }
 
 function LMA(){
+  var c0=$("ct");
+  if(U && U.is_admin){
+    // THE CONTROL CENTRE for the affiliate programme: what the admin account is for. Counts plus the
+    // tools, instead of a "sign up as an affiliate" button that made no sense here.
+    c0.innerHTML='<div class="card"><h3>Affiliate programme \u2014 control centre</h3><p style="opacity:.8">You run the programme from here. Affiliates join it themselves; your account manages it.</p><div id="aff-cc" class="loading">Loading...</div></div>';
+    Promise.all([api("/api/v1/affiliates"),api("/api/v1/affiliate-tiers"),api("/api/v1/affiliate-payouts"),api("/api/v1/affiliate-products")])
+      .then(function(r){
+        function n(x){ if(!x) return 0; if(Array.isArray(x)) return x.length; if(Array.isArray(x.items)) return x.items.length; if(Array.isArray(x.data)) return x.data.length; return 0; }
+        var box=$("aff-cc");
+        box.className="";
+        box.innerHTML='<div id="sr" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+          +'<div class="card" style="flex:1;min-width:130px"><h3>Affiliates</h3><div class="val">'+n(r[0])+'</div></div>'
+          +'<div class="card" style="flex:1;min-width:130px"><h3>Commission tiers</h3><div class="val">'+n(r[1])+'</div></div>'
+          +'<div class="card" style="flex:1;min-width:130px"><h3>Payouts</h3><div class="val">'+n(r[2])+'</div></div>'
+          +'<div class="card" style="flex:1;min-width:130px"><h3>Products</h3><div class="val">'+n(r[3])+'</div></div>'
+          +'</div>'
+          +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+          +'<button class="btn btn-p" onclick="S(\'affiliates\')">Manage affiliates</button>'
+          +'<button class="btn" onclick="S(\'tiers\')">Commission tiers</button>'
+          +'<button class="btn" onclick="S(\'payouts\')">Payouts</button>'
+          +'<button class="btn" onclick="S(\'ap\')">Products</button>'
+          +'</div>'
+          +'<p style="opacity:.75;margin-top:12px;font-size:13px">Affiliates promote the free plan of each SwiftSoftware product; the customer upgrades in app and pays, which is what pays the affiliate. An affiliate can never hand out a paid plan \u2014 the database refuses it.</p>';
+      })
+      .catch(function(e){ var b=$("aff-cc"); if(b){b.className=""; b.innerHTML="Could not load the summary: "+X((e&&e.message)||"unknown");} });
+    return;
+  }
   affMe(function(d){
     var c=$("ct");
     if(!d.is_affiliate){
