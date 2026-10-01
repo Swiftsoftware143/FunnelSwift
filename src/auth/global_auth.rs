@@ -33,9 +33,16 @@ const PUBLIC_EXACT: &[&str] = &[
     // Public SEO
     "/api/v1/seo/sitemap.xml",
     "/api/v1/seo/inject",
-    // Public checkout. Payment webhook receivers are deliberately NOT public (and not routed) —
-    // FunnelSwift has no live checkout to receive events for (kanban t_6e746b75).
+    // Public checkout. Public lead capture below.
     "/api/v1/checkout/create",
+    // Stripe's payment receiver (David chose Stripe 2026-10-01). Public by necessity: Stripe cannot
+    // present a JWT, so the ONLY thing that authenticates a delivery is the Stripe-Signature HMAC —
+    // verified in the handler against the tenant's stored signing secret, with the `t=` freshness arm
+    // and a per-event idempotency guard. The previous note here ("payment webhook receivers are
+    // deliberately NOT public … FunnelSwift has no live checkout") is what left a paid upgrade unable
+    // to land: no receiver meant nothing ever called the plan change, so the affiliate was never
+    // credited. Revisit only together with the handler in checkout_handler::stripe_webhook.
+    "/api/v1/webhooks/stripe",
 ];
 
 fn is_public(path: &str) -> bool {

@@ -341,6 +341,15 @@ pub fn create_router(
             "/api/v1/webhooks/conversion",
             post(cross_app_webhook_handler::handle_conversion_webhook),
         )
+        // Stripe delivers here. Public by necessity — Stripe cannot present a session token — so the
+        // ONLY thing that authenticates a delivery is its signature, and every delivery is recorded
+        // before it is acted on (payment_webhook_events). This is the endpoint that makes a paid
+        // upgrade actually land: it calls the same plan change that credits the affiliate and dates
+        // the movement.
+        .route(
+            "/api/v1/webhooks/stripe",
+            post(checkout_handler::stripe_webhook),
+        )
         // `/api/v1/track/lead` was deleted (kanban t_f408b7cc): a no-op that answered
         // 200 {"tracked":true} with zero callers anywhere in the fleet and no consumer.
         .route(

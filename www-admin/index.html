@@ -1559,15 +1559,19 @@ async function renderProviderKeys() {
     <div class="card">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Payment providers</h2>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>Provider</th><th>Key</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody>${payments.length === 0 ? `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No payment provider configured</td></tr>`
+        <thead><tr><th>Provider</th><th>Key</th><th>Signing secret</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${payments.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">No payment provider configured</td></tr>`
           : payments.map(p => {
             const ptype = _rowField(p, 'provider_type', 2);
             const key = _rowField(p, 'api_key_masked', 3);
             const active = _rowField(p, 'is_active', 4);
+            // A provider with a key but no signing secret LOOKS complete and cannot verify a single
+            // payment, so the gap is shown rather than hidden.
+            const wh = p && (p.webhook_secret_set === true || p.webhook_secret_set === 'true');
             return `<tr>
               <td><span class="badge badge-blue">${x(ptype)}</span></td>
               <td><code style="font-size:11px">${x(key || '—')}</code></td>
+              <td>${wh ? '<span class="badge badge-green">Set</span>' : '<span class="badge badge-red">Missing</span>'}</td>
               <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Inactive'}</span></td>
               <td><button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
             </tr>`;
@@ -1581,9 +1585,14 @@ async function renderProviderKeys() {
         </div>
         <div class="form-group" style="margin:0;min-width:260px;flex:1">
           <label class="form-label">Secret key</label>
-          <input class="input" name="api_key" type="password" placeholder="paste the payment secret key" autocomplete="off" required>
+          <input class="input" name="api_key" type="password" placeholder="paste the payment secret key" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin:0;min-width:260px;flex:1">
+          <label class="form-label">Webhook signing secret</label>
+          <input class="input" name="webhook_secret" type="password" placeholder="whsec_… — required, or no payment can be verified" autocomplete="off">
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Save Provider</button>
+        <p style="width:100%;margin:6px 0 0;font-size:12px;color:#64748b">Leave either field blank to keep the value already stored. Stripe's signing secret is on the webhook endpoint page in the Stripe dashboard; the endpoint URL to register there is <code>&lt;this app&gt;/api/v1/webhooks/stripe</code>. Payments are refused, with the reason recorded, until the signing secret is saved.</p>
       </form>
     </div>
   </div>`;

@@ -55,6 +55,8 @@ base64 = "0.21"
 # HMAC & signing for webhook verification
 ring = "0.17"
 hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
 
 # Regex
 regex-lite = "0.1"

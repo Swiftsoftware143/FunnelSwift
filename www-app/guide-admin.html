@@ -342,6 +342,32 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
+        <h3>Taking payments (Stripe)</h3>
+        <p>FunnelSwift uses <strong>Stripe</strong>. Two things are needed, and both live on the
+        <strong>Payment providers</strong> panel in the admin console:</p>
+        <ol>
+          <li><strong>Secret key</strong> — the <code>sk_live_…</code> (or <code>sk_test_…</code>) key
+          from your Stripe dashboard.</li>
+          <li><strong>Webhook signing secret</strong> — the <code>whsec_…</code> value Stripe shows for
+          the endpoint you register.</li>
+        </ol>
+        <p>Register this endpoint in Stripe (Developers &rarr; Webhooks &rarr; Add endpoint), and subscribe
+        it to <code>checkout.session.completed</code>, <code>customer.subscription.deleted</code> and
+        <code>checkout.session.expired</code>:</p>
+        <p><code>https://app.funnelswift.net/api/v1/webhooks/stripe</code></p>
+        <p><strong>Both keys are required.</strong> Until the signing secret is saved, every payment
+        notification is refused with the reason recorded, and the panel's table shows the secret as
+        <strong>Missing</strong> rather than looking complete. Payments are only ever believed when they
+        arrive signed; a forged or replayed notification changes nothing. Leaving either field blank when
+        you save keeps the value already stored, so you can correct one without re-pasting the other.</p>
+        <p>What happens on a real payment: the customer's plan changes, <strong>the day is recorded</strong>,
+        and the affiliate who referred them is credited on that same date &mdash; visible on both this
+        console's Affiliate Leads screen and the affiliate's own dashboard. If the subscription later ends,
+        the customer drops to the free plan of that same product and the affiliate's commission is reversed,
+        dated.</p>
+      </div>
+
+      <div class="card">
         <h3>Affiliate Portal</h3>
         <p>Affiliates log in at <code>/affiliate</code> to see their dashboard, clicks/conversions, earnings and referral links. In the main app, the sidebar's <strong>My Affiliate</strong> tab is where they tick the products they want to promote.</p>
       </div>
