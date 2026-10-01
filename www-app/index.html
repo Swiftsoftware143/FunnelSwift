@@ -130,7 +130,7 @@ tr:hover{background:#f8fafc}
   <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
   <a data-tab="tenants" onclick="S('tenants')">Tenants</a>
-  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a><a data-tab="myaff" onclick="S('myaff')">My Affiliate</a></div></div>
+  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a><a data-tab="myaff" onclick="S('myaff')">My Affiliate</a><a data-tab="afleads" onclick="S('afleads')">Affiliate Leads</a></div></div>
   <a data-tab="plans" onclick="S('plans')">Plans</a>
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
   <a data-tab="keys" onclick="S('keys')">API Keys</a>
@@ -241,10 +241,10 @@ function S(t){
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO"};
+  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -2069,6 +2069,87 @@ function stopImpersonation(){
 })();
 
 /* === AFFILIATES === */
+/* === AFFILIATE LEADS (David, 2026-09-28) =====================================================
+   "The admin should see all the affiliate leads and which affiliate they belong to. Direct signups
+   show system. And a column for whether the lead themselves became an affiliate."
+
+   ONE server call returns the rows AND the totals, so the headline numbers can never disagree with
+   the table under them. That call is programme-wide on purpose: these leads are stored under the
+   AFFILIATES' own tenants, so a tenant-scoped read would show the platform admin an empty screen
+   forever, however many leads the programme produced.
+*/
+function LAL(){
+  var ct=$("ct"); if(!ct) return;
+  if(!U||!U.is_admin){
+    ct.innerHTML='<div class="cc"><h3>Affiliate Leads</h3><p style="color:#64748b;padding:10px">This is part of the programme control centre, so it is for the platform admin.</p></div>';
+    return;
+  }
+  api("/api/v1/admin/affiliate-leads").then(function(d){
+    var leads=(d&&d.leads)||[], s=(d&&d.summary)||{};
+    var total=s.total||0, credited=s.credited||0;
+    ct.innerHTML=
+      '<div class="cc"><h3>Affiliate Leads ('+total+')</h3>'+
+      '<p style="color:#64748b;font-size:12px;margin-bottom:10px">Every lead that came in through the programme. '+
+      '<strong>Affiliate</strong> is who gets credited \u2014 <strong>system</strong> means nobody does. '+
+      'The last column tells you whether that lead later joined the programme themselves.</p>'+
+      '<div class="grd" id="al-grd"></div>'+
+      '<div id="al-search-wrap" style="margin:12px 0"></div><div id="al-list"></div></div>';
+
+    var cards=[
+      ["Leads through the programme", total],
+      ["Credited to an affiliate", credited],
+      ["Not credited (system)", Math.max(0, total-credited)],
+      ["Leads who became affiliates", s.became_affiliates||0],
+      ["Commission value", "$"+(s.commission_value||"0.00")]
+    ];
+    var g=$("al-grd");
+    cards.forEach(function(c){
+      var d1=El("div",{"class":"crd"});
+      d1.innerHTML='<div style="font-size:12px;color:#64748b">'+X(c[0])+'</div><div style="font-size:20px;font-weight:600">'+X(String(c[1]))+'</div>';
+      g.appendChild(d1);
+    });
+
+    var search=El("input",{style:"width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px",
+                           placeholder:"Search by lead, email, or affiliate..."});
+    search.oninput=function(){
+      var q=search.value.toLowerCase();
+      document.querySelectorAll(".al-row").forEach(function(r){
+        r.style.display=(r.getAttribute("data-s")||"").indexOf(q)>-1?"":"none";
+      });
+    };
+    $("al-search-wrap").appendChild(search);
+
+    if(!leads.length){
+      $("al-list").innerHTML='<p style="color:#64748b;padding:20px;text-align:center">No affiliate leads yet. '+
+        'This fills up as affiliates hand out their forms \u2014 every capture shows here with the affiliate it credits.</p>';
+      return;
+    }
+    var tbl=El("table");
+    tbl.innerHTML='<tr><th>Lead</th><th>Contact</th><th>Affiliate</th><th>Tag</th><th>Commission</th><th>Became an affiliate</th><th>Date</th></tr>';
+    leads.forEach(function(x){
+      var comm = (x.commission_count>0)
+        ? '$'+X(x.commission_total||"0.00")+' <span style="color:#64748b">('+X(x.commission_status||"pending")+')</span>'
+        : '<span style="color:#94a3b8">\u2014</span>';
+      var aff = x.attributed
+        ? '<strong>'+X(x.affiliate_name||"")+'</strong>'
+        : '<span style="color:#64748b">system</span>';
+      var tr=El("tr",{"class":"al-row"});
+      tr.setAttribute("data-s",((x.name||"")+" "+(x.email||"")+" "+(x.affiliate_name||"")+" "+((x.tags||[]).join(" "))).toLowerCase());
+      tr.innerHTML='<td><strong>'+X(x.name||"Unnamed")+'</strong></td>'+
+        '<td>'+X(x.email||"\u2014")+(x.phone?'<br><span style="color:#64748b">'+X(x.phone)+'</span>':'')+'</td>'+
+        '<td>'+aff+'</td>'+
+        '<td>'+(((x.tags||[]).length)?X((x.tags||[]).join(", ")):'<span style="color:#94a3b8">\u2014</span>')+'</td>'+
+        '<td>'+comm+'</td>'+
+        '<td>'+(x.became_affiliate?'<span style="color:#16a34a;font-weight:600">Yes</span>':'<span style="color:#94a3b8">No</span>')+'</td>'+
+        '<td>'+X(String(x.created_at||"").slice(0,10))+'</td>';
+      tbl.appendChild(tr);
+    });
+    $("al-list").appendChild(tbl);
+  }).catch(function(e){
+    ct.innerHTML='<div class="cc"><h3>Affiliate Leads</h3><p style="color:#b91c1c">Could not load: '+X(String(e&&e.message?e.message:e))+'</p></div>';
+  });
+}
+
 function LA(){
   var ct=$("ct");
   if(!U||!U.is_admin){
@@ -2857,6 +2938,7 @@ window.appGuidePages = {
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
   leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms.", actions: ["Filter and search", "Apply tags", "Export"] },
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
+  afleads:     { title: "Affiliate Leads", desc: "Every lead that came in through the affiliate programme, and which affiliate gets credited for it. Leads with nobody behind them show as system \u2014 nobody is paid for those. The last column tells you whether that lead later joined the programme themselves.", actions: ["See which affiliate a lead belongs to", "Spot leads that are not credited", "See which leads became affiliates"] },
   affiliates:  { title: "Affiliates", desc: "Everyone who promotes SwiftSoftware products. One affiliate account per customer — there is no downline to manage.", actions: ["See each affiliate and their rate", "Give one affiliate a personal higher rate", "Deactivate an affiliate"] },
   tiers:       { title: "Commission Tiers", desc: "Tiers decide the percentage an affiliate earns once they reach a threshold. Each tier has a name, a commission rate, a minimum sales count and a minimum revenue.", actions: ["Add a tier", "Edit a rate or threshold", "Delete a tier"] },
   payouts:     { title: "Affiliate Payouts", desc: "What has been earned and what has been paid. Nothing is earned on a free plan — a referral only pays once that customer becomes paying.", actions: ["Review commissions", "Record a payout"] },

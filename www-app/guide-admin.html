@@ -311,6 +311,23 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
+        <h3>Affiliate Leads</h3>
+        <p>This screen is the record of everyone the programme actually produced. Each row is one lead,
+        and the <strong>Affiliate</strong> column is the affiliate who gets credited for them &mdash; resolved
+        from the credit stamped on the lead itself, so the column can never disagree with who gets paid.</p>
+        <p><strong>System</strong> in that column means nobody is credited. That is the honest answer for a
+        lead that arrived with no affiliate behind it (a direct signup, or a form with no tag): it is shown
+        rather than hidden, so you can see the traffic the programme is not earning on.</p>
+        <p>The <strong>Became an affiliate</strong> column tells you whether the lead themselves later joined
+        the programme &mdash; matched on their email address, and it stays true even years later. The
+        <strong>Commission</strong> column shows what that lead has earned and whether it is still pending.
+        The counts across the top cover the whole programme, not just the page you are looking at.</p>
+        <p>Leads are matched into this screen three ways: they came through an affiliate's form, they carry
+        the referring account on the record itself, or they carry a product's tag. That means a tagged lead
+        still appears even if the stamp is somehow missing &mdash; the tag alone is enough to be counted.</p>
+      </div>
+
+      <div class="card">
         <h3>Affiliate Portal</h3>
         <p>Affiliates log in at <code>/affiliate</code> to see their dashboard, clicks/conversions, earnings and referral links. In the main app, the sidebar's <strong>My Affiliate</strong> tab is where they tick the products they want to promote.</p>
       </div>

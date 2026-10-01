@@ -63,7 +63,28 @@ pub async fn create_web_to_lead_config(
     let id = Uuid::new_v4();
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    features::enforce_feature_limit(&state, tenant_id, "max_forms", "Web-to-lead forms").await?;
+    // An affiliate is never blocked by the plan's form limit.
+    //
+    // Measured 2026-10-01: public signup puts every new customer on `kinetic-free`, whose
+    // `max_forms` is 0 — and `enforce_feature_limit` reads 0 as "not available on your plan", not as
+    // a quantity. So every new affiliate who tried to build the tag-bound form David's model is
+    // built on got:
+    //     {"error":"Web-to-lead forms is not available on your current plan.","status":402}
+    // An affiliate who cannot build a form cannot hand one out, so the programme produced nothing at
+    // all for anyone who signed up normally — the screen offered them products to promote and then
+    // refused the only tool that could credit them. The form an affiliate hands out is not a plan
+    // feature of theirs to buy; it is how the programme works, so it is carved out here rather than
+    // by editing what every plan advertises.
+    let is_affiliate: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM affiliates WHERE tenant_id = $1 AND is_active = true)",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if !is_affiliate {
+        features::enforce_feature_limit(&state, tenant_id, "max_forms", "Web-to-lead forms")
+            .await?;
+    }
     let fields = payload
         .fields
         .unwrap_or_else(|| vec!["name".to_string(), "email".to_string()]);

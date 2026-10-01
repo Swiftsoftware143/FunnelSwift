@@ -4,6 +4,7 @@ use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, Json};
 use serde_json::{json, Value};
+use sqlx::Row;
 use uuid::Uuid;
 
 pub async fn submit_affiliate_lead(
@@ -102,4 +103,115 @@ pub async fn log_lead_movement(
         .await?;
     }
     Ok(Json(json!({"message": "Movement logged"})))
+}
+
+/// What makes a lead part of the affiliate programme — ONE definition, used by both the list and
+/// the summary below, so the two can never disagree.
+///
+/// Three ways in, and all three are real:
+///   * `source = 'affiliate'`      — submitted through an affiliate's own form
+///   * `created_by IS NOT NULL`    — the capture stamped the referring user account on the lead
+///   * it carries a product's SYSTEM tag — the tag is what credits an affiliate, so a tagged lead
+///     belongs on this screen even if the stamp is somehow missing
+const PROGRAMME_WHERE: &str = "\
+l.source = 'affiliate' \
+ OR l.created_by IS NOT NULL \
+ OR EXISTS (SELECT 1 FROM tags t \
+             WHERE t.is_system = true \
+               AND l.tags ? t.name \
+               AND EXISTS (SELECT 1 FROM affiliate_products p \
+                            WHERE p.system_tag_id = t.id AND p.is_active = true))";
+
+/// GET /api/v1/admin/affiliate-leads
+///
+/// David's Affiliate Leads screen (2026-09-28): *"the admin should see all the affiliate leads and
+/// which affiliate they belong to. Direct signups show system. And a column for whether the lead
+/// themselves became an affiliate."*
+///
+/// Deliberately PROGRAMME-WIDE, not tenant-scoped: the leads this screen is about belong to the
+/// AFFILIATES' tenants (each capture is stored under the tenant whose form took it), so a
+/// tenant-scoped read would show the platform admin an empty screen forever — the very bug the
+/// old `/api/v1/affiliate/leads` endpoint has for this purpose. Admin only.
+pub async fn list_programme_leads(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    // The referrer is resolved from the lead's own `created_by` stamp — that is the attribution
+    // anchor, so this can never disagree with who actually gets paid. `became_affiliate` is a
+    // DIFFERENT question (did the lead join the programme themselves) and is matched on email.
+    let sql = format!(
+        "SELECT l.id, l.name, l.email, l.phone, l.source, COALESCE(l.status, 'new') AS status, \
+                COALESCE(l.tags, '[]'::jsonb) AS tags, l.created_at, \
+                (SELECT a.name FROM affiliates a WHERE a.user_id = l.created_by \
+                  ORDER BY a.created_at LIMIT 1) AS referrer_name, \
+                (SELECT a.id::text FROM affiliates a WHERE a.user_id = l.created_by \
+                  ORDER BY a.created_at LIMIT 1) AS referrer_id, \
+                EXISTS (SELECT 1 FROM affiliates a2 WHERE lower(a2.email) = lower(l.email)) AS became_affiliate, \
+                (SELECT count(*) FROM affiliate_commissions c WHERE c.lead_id = l.id) AS commission_count, \
+                (SELECT COALESCE(sum(c.amount), 0)::float8 FROM affiliate_commissions c WHERE c.lead_id = l.id) AS commission_total, \
+                (SELECT c.status FROM affiliate_commissions c WHERE c.lead_id = l.id \
+                  ORDER BY c.created_at DESC LIMIT 1) AS commission_status \
+         FROM leads l WHERE {PROGRAMME_WHERE} ORDER BY l.created_at DESC LIMIT 200"
+    );
+    let rows = sqlx::query(&sql).fetch_all(&state.pool).await?;
+
+    let leads: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            let referrer: Option<String> = r.try_get("referrer_name").ok().flatten();
+            json!({
+                "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+                "name": r.try_get::<Option<String>, _>("name").ok().flatten(),
+                "email": r.try_get::<Option<String>, _>("email").ok().flatten(),
+                "phone": r.try_get::<Option<String>, _>("phone").ok().flatten(),
+                "source": r.try_get::<Option<String>, _>("source").ok().flatten(),
+                "status": r.try_get::<String, _>("status").unwrap_or_else(|_| "new".into()),
+                "tags": r.try_get::<Value, _>("tags").unwrap_or_else(|_| json!([])),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+                // "system" is the honest answer when nothing refers this lead: nobody gets paid for it.
+                "affiliate_name": referrer.clone().unwrap_or_else(|| "system".into()),
+                "affiliate_id": r.try_get::<Option<String>, _>("referrer_id").ok().flatten(),
+                "attributed": referrer.is_some(),
+                "became_affiliate": r.try_get::<bool, _>("became_affiliate").unwrap_or(false),
+                "commission_count": r.try_get::<i64, _>("commission_count").unwrap_or(0),
+                "commission_total": format!("{:.2}", r.try_get::<f64, _>("commission_total").unwrap_or(0.0)),
+                "commission_status": r.try_get::<Option<String>, _>("commission_status").ok().flatten(),
+            })
+        })
+        .collect();
+
+    // Counts come from the same predicate, over the whole table — not from the 200-row page, so the
+    // headline numbers stay true as the programme grows.
+    let count_sql = format!(
+        "SELECT count(*) AS total, \
+                count(*) FILTER (WHERE l.created_by IS NOT NULL) AS credited, \
+                count(*) FILTER (WHERE l.source = 'affiliate') AS from_affiliate_forms, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliates a2 \
+                                                WHERE lower(a2.email) = lower(l.email))) AS joined \
+         FROM leads l WHERE {PROGRAMME_WHERE}"
+    );
+    let c = sqlx::query(&count_sql).fetch_one(&state.pool).await?;
+    let paid: f64 = sqlx::query_scalar(
+        "SELECT COALESCE(sum(c.amount), 0)::float8 FROM affiliate_commissions c \
+         JOIN leads l ON l.id = c.lead_id",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0.0);
+
+    Ok(Json(json!({
+        "summary": {
+            "total": c.try_get::<i64, _>("total").unwrap_or(0),
+            "credited": c.try_get::<i64, _>("credited").unwrap_or(0),
+            "from_affiliate_forms": c.try_get::<i64, _>("from_affiliate_forms").unwrap_or(0),
+            "became_affiliates": c.try_get::<i64, _>("joined").unwrap_or(0),
+            "commission_value": format!("{:.2}", paid),
+        },
+        "limit": 200,
+        "leads": leads
+    })))
 }

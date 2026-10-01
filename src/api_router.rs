@@ -275,6 +275,10 @@ pub fn create_router(
             get(affiliate_product_handler::list_system_tags),
         )
         .route(
+            "/api/v1/admin/affiliate-leads",
+            get(affiliate_lead_handler::list_programme_leads),
+        )
+        .route(
             "/api/v1/product-categories",
             get(product_category_handler::list_categories)
                 .post(product_category_handler::create_category),
