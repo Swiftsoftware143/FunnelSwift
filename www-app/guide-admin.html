@@ -293,20 +293,43 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>Min Revenue</strong> — how much revenue is needed to reach it</li>
         </ul>
         <p>Everything is editable — change a rate, rename a tier or delete one at any time. Bronze / Silver / Gold are seeded as placeholders with sensible rates; adjust them to your own numbers whenever you like.</p>
+        <p><strong>Where it lives:</strong> <code>admin.funnelswift.net</code> &rarr; <strong>Commission Tiers</strong>
+        in the sidebar (the app console at <code>app.funnelswift.net</code> has the same screen under
+        <strong>Affiliate Tiers</strong>). Saved values are what you typed &mdash; if you enter 12.5%, the
+        tier stores 12.5%.</p>
+      </div>
+
+      <div class="card">
+        <h3>Commission Groups</h3>
+        <p><strong>Commission Groups</strong> in the admin sidebar is how you give <em>several products one
+        rate</em> without changing them one at a time: tick the products that should be treated the same,
+        enter a single rate, and create the group. A group rate then sits above each product's own rate in
+        the order above.</p>
+        <p>The same screen has a <strong>&ldquo;set a rate for selected products&rdquo;</strong> box for changing one
+        product's own rate, or several at once, without making a group. Deleting a group never deletes its
+        products &mdash; they simply go back to their own rates.</p>
       </div>
 
       <div class="card">
         <h3>What rate an affiliate is paid</h3>
-        <p>One order decides it, and the first rule that applies wins:</p>
-        <ol>
-          <li><strong>A personal rate set for that affiliate</strong> — beats everything else</li>
-          <li><strong>The product's group rate</strong> — one rate covering several products</li>
-          <li><strong>The product's own rate</strong></li>
-          <li><strong>The affiliate's standing rate</strong> (their plan's rate)</li>
-          <li><strong>The plan's rate</strong></li>
-          <li><strong>A standard fallback</strong> if nothing is configured</li>
-        </ol>
-        <p>Each recorded commission stores the rate <em>and which rule produced it</em>, so a payout can still be explained months later after the numbers have changed.</p>
+        <p>One order decides it, and the <strong>first rule that applies wins</strong>. The order is fixed,
+        and every recorded commission stores the rate <em>and which rule produced it</em>, so a payout can
+        still be explained months later after the rates have changed.</p>
+        <table class="table" style="margin:10px 0">
+          <thead><tr><th>#</th><th>Rule</th><th>Where you set it</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>A <strong>personal rate for that one affiliate</strong> — beats everything else</td><td>Affiliates &rarr; the affiliate's own rate</td></tr>
+            <tr><td>2</td><td>A <strong>commission group</strong> rate — one rate covering several products</td><td>Commission Groups</td></tr>
+            <tr><td>3</td><td>The <strong>product's own rate</strong></td><td>Affiliate Products</td></tr>
+            <tr><td>4</td><td>The affiliate's <strong>own standing rate</strong> — set on their account when they joined</td><td>Affiliates</td></tr>
+            <tr><td>5</td><td>The <strong>plan's rate</strong> the product is tied to</td><td>Plans</td></tr>
+            <tr><td>6</td><td>A standard fallback of <strong>20%</strong> when nothing above is set</td><td>&mdash;</td></tr>
+          </tbody>
+        </table>
+        <p>Steps 1&ndash;3 are the three you control day to day; 4&ndash;6 exist so an affiliate always has
+        <em>a</em> rate rather than none. A higher <em>group</em> rate therefore beats a product's own rate,
+        and a personal rate beats all of it &mdash; which is what makes &ldquo;give this one person more&rdquo;
+        work without disturbing anyone else.</p>
         <h3>What a commission goes through</h3>
         <p>A commission has a life, and each stage is dated: it starts <strong>pending</strong> while the
         referred customer is on a free plan (nothing is earned yet), becomes <strong>earned</strong> the
