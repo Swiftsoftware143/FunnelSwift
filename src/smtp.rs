@@ -11,7 +11,7 @@ pub struct SmtpConfig {
     pub password: String,
     pub from_email: String,
     pub from_name: Option<String>,
-    pub encryption: Option<String>, // "tls" or "starttls"
+    pub encryption: Option<String>, // "tls" (implicit) | "none" (plain relay) | anything else = STARTTLS
 }
 
 /// Send an email via SMTP using the provided config. Returns Ok(()) on success.
@@ -55,23 +55,35 @@ pub async fn send_via_smtp(
             .map_err(|e| format!("Failed to build email: {}", e))?,
     };
 
-    let creds = Credentials::new(config.username.clone(), config.password.clone());
-
-    let mailer = match config.encryption.as_deref() {
+    // Three transports, matching the three choices the admin panel offers. The middle one is why the
+    // panel's own label — "SMTP (any mail server)" — is now true: a relay that speaks no TLS at all
+    // (a plain internal mail server on :25) could not be used through either of the other two arms,
+    // whatever the admin selected, so that configuration failed at send time with a STARTTLS error
+    // the admin could do nothing about.
+    let mut builder = match config.encryption.as_deref() {
         Some("tls") => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host)
-            .map_err(|e| format!("Failed to create TLS SMTP transport: {}", e))?
-            .port(config.port)
-            .credentials(creds)
-            .build(),
+            .map_err(|e| format!("Failed to create TLS SMTP transport: {}", e))?,
+        Some("none") | Some("plain") | Some("off") => {
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
+        }
         _ => {
             // STARTTLS (default)
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.host)
                 .map_err(|e| format!("Failed to create STARTTLS SMTP transport: {}", e))?
-                .port(config.port)
-                .credentials(creds)
-                .build()
         }
-    };
+    }
+    .port(config.port);
+
+    // Only offer credentials when there is a username. Handing a relay empty credentials makes some
+    // servers reject the session outright, and a relay that needs no login should never be sent AUTH.
+    if !config.username.is_empty() {
+        builder = builder.credentials(Credentials::new(
+            config.username.clone(),
+            config.password.clone(),
+        ));
+    }
+
+    let mailer = builder.build();
 
     mailer
         .send(email)

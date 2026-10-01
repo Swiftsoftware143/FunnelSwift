@@ -1150,7 +1150,7 @@ async function renderEmailTemplates() {
           <div class="form-group"><label class="form-label">SMTP port</label><input class="input" id="ep-smtp-port" placeholder="587"></div>
           <div class="form-group"><label class="form-label">SMTP username</label><input class="input" id="ep-smtp-username"></div>
           <div class="form-group"><label class="form-label">SMTP password</label><input class="input" type="password" id="ep-smtp-password"></div>
-          <div class="form-group"><label class="form-label">SMTP encryption</label><select class="input" id="ep-smtp-encryption"><option value="">STARTTLS (default)</option><option value="tls">TLS</option></select></div>
+          <div class="form-group"><label class="form-label">SMTP encryption</label><select class="input" id="ep-smtp-encryption"><option value="">STARTTLS (default)</option><option value="tls">TLS</option><option value="none">None — plain, no TLS (internal relay)</option></select></div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px">
           <button class="btn btn-primary btn-sm" id="ep-save">Save email provider</button>
