@@ -18,6 +18,10 @@ pub struct CreateWebToLeadConfig {
     pub fields: Option<Vec<String>>,
     pub thank_you_message: Option<String>,
     pub redirect_url: Option<String>,
+    /// The tag this form stamps onto every lead it captures. David's model: *"that lead form ... gets
+    /// assigned to a tag when it's created"*. The column existed and this field did not, so a caller
+    /// could send `tag_ids` all day and it was silently dropped on the floor.
+    pub tag_ids: Option<Vec<Uuid>>,
 }
 
 pub async fn list_web_to_lead_configs(
@@ -71,13 +75,14 @@ pub async fn create_web_to_lead_config(
         "fields": fields,
     });
     let public_key: Option<Uuid> = sqlx::query_scalar(
-        "INSERT INTO web_to_lead_configs (id, tenant_id, name, default_source, field_mapping) \
-         VALUES ($1, $2, $3, 'Web Form', $4) RETURNING public_key",
+        "INSERT INTO web_to_lead_configs (id, tenant_id, name, default_source, field_mapping, tag_ids) \
+         VALUES ($1, $2, $3, 'Web Form', $4, $5) RETURNING public_key",
     )
     .bind(id)
     .bind(tenant_id)
     .bind(&payload.name)
     .bind(&field_mapping)
+    .bind(&payload.tag_ids)
     .fetch_one(&state.pool)
     .await?;
     Ok((
@@ -111,6 +116,7 @@ pub async fn update_web_to_lead_config(
            is_active = COALESCE($4, is_active), \
            default_source = COALESCE($5, default_source), \
            field_mapping = field_mapping || $6::jsonb, \
+           tag_ids = COALESCE($7, tag_ids), \
            updated_at = NOW() \
          WHERE id = $1 AND tenant_id = $2",
     )
@@ -120,6 +126,14 @@ pub async fn update_web_to_lead_config(
     .bind(payload.get("is_active").and_then(|v| v.as_bool()))
     .bind(payload.get("default_source").and_then(|v| v.as_str()))
     .bind(&mapping)
+    // An empty array CLEARS the binding; sending nothing leaves it alone. Parsed from JSON so a
+    // caller can rebind a form to a different tag without recreating it.
+    .bind(payload.get("tag_ids").and_then(|v| v.as_array()).map(|a| {
+        a.iter()
+            .filter_map(|x| x.as_str())
+            .filter_map(|x| Uuid::parse_str(x).ok())
+            .collect::<Vec<Uuid>>()
+    }))
     .execute(&state.pool)
     .await?
     .rows_affected();
@@ -184,11 +198,101 @@ pub async fn handle_web_to_lead(
             .fetch_optional(&state.pool)
             .await?;
     let tenant_id = tenant_id.ok_or_else(|| AppError::BadRequest("Unknown public_key".into()))?;
+    // ── THE FORM IS THE ATTRIBUTION (David, 2026-10-01) ─────────────────────────────────────────
+    // David: *"that lead form that snippet of code or lead form gets assigned to a tag when it's
+    // created so that way they can connect it to their own personal landing page"* and *"they are
+    // permanently assigned to that affiliate no cookies or anything"*.
+    //
+    // MEASURED BEFORE THIS: the config already HAD a `tag_ids` column and nothing ever read it. This
+    // handler looked up the tenant and inserted the lead — that was all. So an affiliate could build a
+    // form, embed it on their own landing page, and every lead it captured arrived UNTAGGED, with no
+    // affiliate behind it and invisible to every affiliate view. The single step that makes the whole
+    // model work did nothing at all.
+    let cfg: Option<(Option<Vec<Uuid>>, Option<String>, Option<bool>)> = sqlx::query_as(
+        "SELECT tag_ids, default_source, is_active FROM web_to_lead_configs WHERE public_key = $1",
+    )
+    .bind(public_key)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (tag_ids, default_source, is_active) = cfg.unwrap_or((None, None, None));
+    if is_active == Some(false) {
+        // An inactive form was still capturing leads.
+        return Err(AppError::BadRequest("This form is switched off".into()));
+    }
+    let tag_ids: Vec<Uuid> = tag_ids.unwrap_or_default();
+
+    // The affiliate anchor. One affiliate per customer (migration 069 makes that unique), so a tenant
+    // resolves to at most one. Their USER id is what matters: `attribute_affiliate_on_tags` reads
+    // `leads.created_by`, so a lead whose created_by is NULL can never be credited no matter how it
+    // was tagged.
+    let anchor: Option<(String, Option<Uuid>)> = sqlx::query_as(
+        "SELECT id, user_id FROM affiliates WHERE tenant_id = $1 AND is_active = true LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let affiliate_user: Option<Uuid> = anchor.as_ref().and_then(|(_, u)| *u);
+
+    // Stamp the tag NAMES onto the lead — that is the shape `leads.tags` uses (a JSON array of names,
+    // measured in lead_handler::assign_lead_tags) — and keep the IDS for the credit below.
+    let tag_names: Vec<String> = if tag_ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_scalar("SELECT name FROM tags WHERE id = ANY($1) ORDER BY name")
+            .bind(&tag_ids)
+            .fetch_all(&state.pool)
+            .await?
+    };
+    let tags_json = serde_json::Value::Array(
+        tag_names
+            .iter()
+            .map(|n| serde_json::Value::String(n.clone()))
+            .collect(),
+    );
+
+    // A lead captured through an affiliate's form IS an affiliate lead — that is what the admin's
+    // Affiliate Leads view reads (`source = 'affiliate'`). A direct capture keeps the form's own
+    // default source and has no affiliate behind it, so it shows as unattributed / "system".
+    let source = if affiliate_user.is_some() {
+        "affiliate".to_string()
+    } else {
+        default_source
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "web".to_string())
+    };
+
     let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO leads (id, tenant_id, name, email, source, status) VALUES ($1, $2, $3, $4, 'web', 'new')")
-        .bind(id).bind(tenant_id)
-        .bind(payload["name"].as_str().unwrap_or("")).bind(payload["email"].as_str().unwrap_or(""))
-        .execute(&state.pool).await?;
+    sqlx::query(
+        "INSERT INTO leads (id, tenant_id, name, email, phone, company, source, status, created_by, tags) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, $9)",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(payload["name"].as_str().unwrap_or(""))
+    .bind(payload["email"].as_str().unwrap_or(""))
+    // phone and company were being dropped on the floor even when the form sent them.
+    .bind(payload["phone"].as_str())
+    .bind(payload["company"].as_str())
+    .bind(&source)
+    .bind(affiliate_user)
+    .bind(&tags_json)
+    .execute(&state.pool)
+    .await?;
+
+    // THE KEYSTONE STEP: stamping the tag is what CREDITS the affiliate. Without this call the tag
+    // would be pure decoration — the lead would carry it and no commission would ever exist.
+    if !tag_ids.is_empty() {
+        if let Err(e) =
+            crate::tag_logic::attribute_affiliate_on_tags(&state.pool, id, &tag_ids).await
+        {
+            // The lead is already stored, so a failed credit must be loud rather than losing the lead.
+            tracing::error!(
+                lead_id = %id,
+                error = %e,
+                "web-to-lead: tag stored but affiliate attribution FAILED — this lead credits nobody"
+            );
+        }
+    }
 
     // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be
     // able to land in CoreSwift as a contact. Fire-and-forget: the visitor's submission above
@@ -219,6 +323,12 @@ pub async fn handle_web_to_lead(
     );
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id": id.to_string(), "message": "Lead captured"})),
+        Json(json!({
+            "id": id.to_string(),
+            "message": "Lead captured",
+            "source": source,
+            "tags": tag_names,
+            "attributed_to_affiliate": affiliate_user.is_some() && !tag_ids.is_empty(),
+        })),
     ))
 }
