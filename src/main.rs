@@ -74,6 +74,23 @@ async fn main() -> Result<()> {
     }
 
     let pool = database.pool().clone();
+
+    // Seal any credential still in the CLEAR in `admin_settings.email` (kanban t_a794cb09).
+    // Both write paths seal before they store, and this makes the row converge at boot as well:
+    // a database restored from a dump taken before the change — or a writer added later that
+    // forgets — otherwise leaves the fleet-wide Mailgun private key readable in a backup.
+    // A failure is logged, never fatal: a broken credential row must not stop the app booting.
+    match email_provider::seal_legacy_config_secrets(&pool).await {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(
+            rows = n,
+            "admin_settings.email: sealed legacy plaintext credential(s) at rest"
+        ),
+        Err(e) => tracing::error!(
+            "admin_settings.email credential backfill failed (plaintext may remain at rest): {}",
+            e
+        ),
+    }
     // Boot-time migration verdict (kanban t_c3823fd1): carried into AppState so `GET /api/health`
     // can report (and 503 on) a schema this binary never managed to apply.
     let schema = database.schema().clone();
