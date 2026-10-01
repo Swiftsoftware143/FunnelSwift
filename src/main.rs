@@ -30,6 +30,7 @@ mod error;
 mod features;
 mod handlers;
 mod models;
+mod plan_movement;
 mod security;
 mod smtp;
 mod state;

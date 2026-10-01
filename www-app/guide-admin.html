@@ -307,6 +307,13 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>A standard fallback</strong> if nothing is configured</li>
         </ol>
         <p>Each recorded commission stores the rate <em>and which rule produced it</em>, so a payout can still be explained months later after the numbers have changed.</p>
+        <h3>What a commission goes through</h3>
+        <p>A commission has a life, and each stage is dated: it starts <strong>pending</strong> while the
+        referred customer is on a free plan (nothing is earned yet), becomes <strong>earned</strong> the
+        day that customer moves onto a plan they pay for, and becomes <strong>reversed</strong> if they
+        later leave a paying plan. A cancellation or a downgrade is therefore visible rather than silent,
+        and a customer who comes back is credited again as a new dated entry. Payouts are separate: marking
+        a commission paid does not change what was earned.</p>
         <p><strong>Nothing is paid on a free plan.</strong> A referral only starts earning when that customer becomes a paying customer, and the credit stays with the referring affiliate from then on.</p>
       </div>
 
@@ -322,6 +329,13 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         the programme &mdash; matched on their email address, and it stays true even years later. The
         <strong>Commission</strong> column shows what that lead has earned and whether it is still pending.
         The counts across the top cover the whole programme, not just the page you are looking at.</p>
+        <p>The <strong>Plan / last movement</strong> column is the one to watch: it shows the plan the
+        referred person is on right now, and <strong>the date of their last movement</strong> &mdash;
+        "Upgraded 3 Oct 2026", "Downgraded 11 Nov 2026". An upgrade credits the affiliate on the day it
+        happens, and the same date appears on the affiliate's own dashboard, which reads the same record.
+        A downgrade reverses the commission and records its own date, so a shrinking number can always be
+        explained months later. The headline counts include how many referrals have upgraded and how many
+        have downgraded.</p>
         <p>Leads are matched into this screen three ways: they came through an affiliate's form, they carry
         the referring account on the record itself, or they carry a product's tag. That means a tagged lead
         still appears even if the stamp is somehow missing &mdash; the tag alone is enough to be counted.</p>

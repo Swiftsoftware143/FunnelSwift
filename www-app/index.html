@@ -2078,6 +2078,22 @@ function stopImpersonation(){
    AFFILIATES' own tenants, so a tenant-scoped read would show the platform admin an empty screen
    forever, however many leads the programme produced.
 */
+/* The plan a referred lead is on, and the DATED movement that put them there. David asked for the
+   upgrade to be visible here AND on the affiliate's own dashboard, and for the date to be recorded
+   on both an upgrade and a downgrade. Both screens read the same endpoint and the same
+   `affiliate_plan_movements` rows, so they cannot disagree. */
+function planCell(x){
+  if(!x.plan && !x.last_movement) return '<span style="color:#94a3b8">\u2014</span>';
+  var out = x.plan ? '<strong>'+X(x.plan)+'</strong>'+(x.pays?'':' <span style="color:#94a3b8;font-size:12px">(free)</span>') : '<span style="color:#94a3b8">no account</span>';
+  if(x.last_movement){
+    var l = x.last_movement==='upgrade' ? 'Upgraded' : (x.last_movement==='downgrade' ? 'Downgraded' : (x.last_movement==='start' ? 'Started' : 'Changed plan'));
+    var c = x.last_movement==='upgrade' ? '#16a34a' : (x.last_movement==='downgrade' ? '#b45309' : '#64748b');
+    out += '<br><span style="color:'+c+';font-size:12px;font-weight:600">'+l+'</span>'+
+           (x.last_movement_date ? ' <span style="color:#64748b;font-size:12px">'+X(x.last_movement_date)+'</span>' : '');
+  }
+  return out;
+}
+
 function LAL(){
   var ct=$("ct"); if(!ct) return;
   if(!U||!U.is_admin){
@@ -2099,6 +2115,8 @@ function LAL(){
       ["Leads through the programme", total],
       ["Credited to an affiliate", credited],
       ["Not credited (system)", Math.max(0, total-credited)],
+      ["Upgraded to a paying plan", s.upgraded||0],
+      ["Downgraded", s.downgraded||0],
       ["Leads who became affiliates", s.became_affiliates||0],
       ["Commission value", "$"+(s.commission_value||"0.00")]
     ];
@@ -2125,22 +2143,24 @@ function LAL(){
       return;
     }
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Lead</th><th>Contact</th><th>Affiliate</th><th>Tag</th><th>Commission</th><th>Became an affiliate</th><th>Date</th></tr>';
+    tbl.innerHTML='<tr><th>Lead</th><th>Affiliate</th><th>Plan / last movement</th><th>Commission</th><th>Became an affiliate</th><th>Tag</th><th>Added</th></tr>';
     leads.forEach(function(x){
-      var comm = (x.commission_count>0)
-        ? '$'+X(x.commission_total||"0.00")+' <span style="color:#64748b">('+X(x.commission_status||"pending")+')</span>'
-        : '<span style="color:#94a3b8">\u2014</span>';
+      var comm = (Number(x.earned) > 0)
+        ? '<strong>$'+X(x.earned)+'</strong> <span style="color:#16a34a;font-size:12px">earned</span>'
+        : ((x.commission_count>0)
+            ? '<span style="color:#64748b">$'+X(x.commission_total||"0.00")+' ('+X(x.commission_status||"pending")+')</span>'
+            : '<span style="color:#94a3b8">\u2014</span>');
       var aff = x.attributed
         ? '<strong>'+X(x.affiliate_name||"")+'</strong>'
         : '<span style="color:#64748b">system</span>';
       var tr=El("tr",{"class":"al-row"});
       tr.setAttribute("data-s",((x.name||"")+" "+(x.email||"")+" "+(x.affiliate_name||"")+" "+((x.tags||[]).join(" "))).toLowerCase());
-      tr.innerHTML='<td><strong>'+X(x.name||"Unnamed")+'</strong></td>'+
-        '<td>'+X(x.email||"\u2014")+(x.phone?'<br><span style="color:#64748b">'+X(x.phone)+'</span>':'')+'</td>'+
+      tr.innerHTML='<td><strong>'+X(x.name||"Unnamed")+'</strong><br><span style="color:#64748b;font-size:12px">'+X(x.email||"\u2014")+(x.phone?' \u00b7 '+X(x.phone):'')+'</span></td>'+
         '<td>'+aff+'</td>'+
-        '<td>'+(((x.tags||[]).length)?X((x.tags||[]).join(", ")):'<span style="color:#94a3b8">\u2014</span>')+'</td>'+
+        '<td>'+planCell(x)+'</td>'+
         '<td>'+comm+'</td>'+
         '<td>'+(x.became_affiliate?'<span style="color:#16a34a;font-weight:600">Yes</span>':'<span style="color:#94a3b8">No</span>')+'</td>'+
+        '<td>'+(((x.tags||[]).length)?X((x.tags||[]).join(", ")):'<span style="color:#94a3b8">\u2014</span>')+'</td>'+
         '<td>'+X(String(x.created_at||"").slice(0,10))+'</td>';
       tbl.appendChild(tr);
     });

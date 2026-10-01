@@ -211,9 +211,13 @@ pub async fn handle_affiliate_upgrade_event(
         "plan_price": plan_price,
         "event_id": event_id,
     });
+    // A sibling app reporting a purchase IS the earning event: the referred customer has started
+    // paying. It was written as 'pending' here and NOTHING in the codebase ever changed it, so an
+    // affiliate's money stayed "pending" for ever however many customers upgraded. `earned_at` dates
+    // it, and a later downgrade reverses it with its own date.
     sqlx::query(
-        "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, product_id, amount, status, metadata)
-         VALUES ($1, $2, $3, $4, $5, 'pending', $6)",
+        "INSERT INTO affiliate_commissions (id, affiliate_id, lead_id, product_id, amount, status, earned_at, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'earned', NOW(), $6)",
     )
     .bind(id)
     .bind(&affiliate_id)
@@ -223,6 +227,26 @@ pub async fn handle_affiliate_upgrade_event(
     .bind(&metadata)
     .execute(&state.pool)
     .await?;
+
+    // And the dated timeline entry, so this shows on both dashboards as "upgraded <date>". The
+    // moving tenant belongs to the SIBLING's database, so it is passed as unknown and the lead is
+    // found by email instead — the affiliate's history is the point, not the workspace id.
+    if let Err(e) = crate::plan_movement::record(
+        &state.pool,
+        crate::plan_movement::Report {
+            tenant_id: None,
+            lead_email: Some(email),
+            to_plan: plan_name,
+            to_price: plan_price,
+            from: None,
+            event_key: event_id.as_deref(),
+            force_movement: Some("upgrade"),
+        },
+    )
+    .await
+    {
+        tracing::error!(%email, error = %e, "could not date this upgrade on the affiliate timeline");
+    }
 
     Ok(Json(json!({
         "status": "credited",

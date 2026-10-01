@@ -625,6 +625,17 @@ pub(crate) async fn set_active_plan(
         .await?
         .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
+    // WHAT THE TENANT IS LEAVING — read before the swap, so the affiliate's timeline can say
+    // "went from X to Y" and the commission can be settled in the right direction. This is the step
+    // whose absence meant an in-app upgrade credited nobody and recorded no date.
+    let previous = crate::plan_movement::current_plan(pool, tenant_id).await;
+    let new_price: f64 =
+        sqlx::query_scalar("SELECT COALESCE(price, 0)::float8 FROM plans WHERE id = $1")
+            .bind(plan_id)
+            .fetch_optional(pool)
+            .await?
+            .unwrap_or(0.0);
+
     // Deactivate existing subscription first
     sqlx::query(
         "UPDATE tenant_plan_subscriptions SET status = 'cancelled' WHERE tenant_id = $1 AND status = 'active'"
@@ -643,6 +654,35 @@ pub(crate) async fn set_active_plan(
     .bind(plan_id)
     .execute(pool)
     .await?;
+
+    // A referred customer's movement is DATED and the affiliate is settled here. A failure must not
+    // undo the plan change the customer asked for, so this is logged and never propagated: the plan
+    // is the customer's, the commission is a consequence of it.
+    match crate::plan_movement::record(
+        pool,
+        crate::plan_movement::Report {
+            tenant_id: Some(tenant_id),
+            lead_email: None,
+            to_plan: &new_plan_slug,
+            to_price: new_price,
+            from: previous,
+            event_key: None,
+            force_movement: None,
+        },
+    )
+    .await
+    {
+        Ok(Some(m)) => tracing::info!(
+            tenant = %tenant_id, movement = %m.movement, to = %m.to_plan,
+            credited = m.affiliate_id.is_some(), pays = m.pays,
+            "affiliate plan movement recorded"
+        ),
+        Ok(None) => {}
+        Err(e) => tracing::error!(
+            tenant = %tenant_id, error = %e,
+            "affiliate plan movement FAILED to record — a referred customer's upgrade may not be credited"
+        ),
+    }
 
     Ok((subscription_id, new_plan_slug))
 }

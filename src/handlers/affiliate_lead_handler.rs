@@ -154,7 +154,21 @@ pub async fn list_programme_leads(
                 (SELECT count(*) FROM affiliate_commissions c WHERE c.lead_id = l.id) AS commission_count, \
                 (SELECT COALESCE(sum(c.amount), 0)::float8 FROM affiliate_commissions c WHERE c.lead_id = l.id) AS commission_total, \
                 (SELECT c.status FROM affiliate_commissions c WHERE c.lead_id = l.id \
-                  ORDER BY c.created_at DESC LIMIT 1) AS commission_status \
+                  ORDER BY c.created_at DESC LIMIT 1) AS commission_status, \
+                (SELECT COALESCE(SUM(c.amount), 0)::float8 FROM affiliate_commissions c \
+                  WHERE c.lead_id = l.id AND c.status IN ('earned', 'paid')) AS earned, \
+                (SELECT p.slug FROM users u \
+                   JOIN tenant_plan_subscriptions tps ON tps.tenant_id = u.tenant_id AND tps.status = 'active' \
+                   JOIN plans p ON p.id = tps.plan_id \
+                  WHERE u.email = l.email ORDER BY tps.start_date DESC LIMIT 1) AS current_plan, \
+                (SELECT COALESCE(p.price, 0)::float8 FROM users u \
+                   JOIN tenant_plan_subscriptions tps ON tps.tenant_id = u.tenant_id AND tps.status = 'active' \
+                   JOIN plans p ON p.id = tps.plan_id \
+                  WHERE u.email = l.email ORDER BY tps.start_date DESC LIMIT 1) AS current_price, \
+                (SELECT m.movement FROM affiliate_plan_movements m WHERE m.lead_id = l.id \
+                  ORDER BY m.occurred_at DESC LIMIT 1) AS last_movement, \
+                (SELECT m.occurred_at FROM affiliate_plan_movements m WHERE m.lead_id = l.id \
+                  ORDER BY m.occurred_at DESC LIMIT 1) AS last_movement_at \
          FROM leads l WHERE {PROGRAMME_WHERE} ORDER BY l.created_at DESC LIMIT 200"
     );
     let rows = sqlx::query(&sql).fetch_all(&state.pool).await?;
@@ -180,6 +194,16 @@ pub async fn list_programme_leads(
                 "commission_count": r.try_get::<i64, _>("commission_count").unwrap_or(0),
                 "commission_total": format!("{:.2}", r.try_get::<f64, _>("commission_total").unwrap_or(0.0)),
                 "commission_status": r.try_get::<Option<String>, _>("commission_status").ok().flatten(),
+                "earned": format!("{:.2}", r.try_get::<f64, _>("earned").unwrap_or(0.0)),
+                "plan": r.try_get::<Option<String>, _>("current_plan").ok().flatten(),
+                "pays": r.try_get::<Option<f64>, _>("current_price").ok().flatten().unwrap_or(0.0) > 0.0,
+                "last_movement": r.try_get::<Option<String>, _>("last_movement").ok().flatten(),
+                "last_movement_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("last_movement_at").ok().flatten(),
+                "last_movement_date": r
+                    .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("last_movement_at")
+                    .ok()
+                    .flatten()
+                    .map(|d| d.format("%Y-%m-%d").to_string()),
             })
         })
         .collect();
@@ -191,7 +215,12 @@ pub async fn list_programme_leads(
                 count(*) FILTER (WHERE l.created_by IS NOT NULL) AS credited, \
                 count(*) FILTER (WHERE l.source = 'affiliate') AS from_affiliate_forms, \
                 count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliates a2 \
-                                                WHERE lower(a2.email) = lower(l.email))) AS joined \
+                                                WHERE lower(a2.email) = lower(l.email))) AS joined, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliate_plan_movements m \
+                                                WHERE m.lead_id = l.id AND m.movement = 'upgrade' \
+                                                  AND m.to_price > 0)) AS upgraded, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliate_plan_movements m \
+                                                WHERE m.lead_id = l.id AND m.movement = 'downgrade')) AS downgraded \
          FROM leads l WHERE {PROGRAMME_WHERE}"
     );
     let c = sqlx::query(&count_sql).fetch_one(&state.pool).await?;
@@ -209,6 +238,8 @@ pub async fn list_programme_leads(
             "credited": c.try_get::<i64, _>("credited").unwrap_or(0),
             "from_affiliate_forms": c.try_get::<i64, _>("from_affiliate_forms").unwrap_or(0),
             "became_affiliates": c.try_get::<i64, _>("joined").unwrap_or(0),
+            "upgraded": c.try_get::<i64, _>("upgraded").unwrap_or(0),
+            "downgraded": c.try_get::<i64, _>("downgraded").unwrap_or(0),
             "commission_value": format!("{:.2}", paid),
         },
         "limit": 200,

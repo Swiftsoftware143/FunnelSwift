@@ -202,17 +202,51 @@ function portalLayout(){
 }
 
 // ── views ─────────────────────────────────────────────────────────────────
+function mvBadge(r){
+  // A lead's plan history, DATED. "System"-style vagueness is worse than nothing here: an affiliate
+  // needs to see that a customer upgraded (and when), and that one who left stopped earning.
+  var m = r.last_movement, d = r.last_movement_date;
+  if(!m) return '<span class="text-muted text-sm">joined '+dstr(r.joined_at)+'</span>';
+  var label = m==='upgrade' ? 'Upgraded' : (m==='downgrade' ? 'Downgraded' : (m==='start' ? 'Started' : 'Changed plan'));
+  var col   = m==='upgrade' ? '#16a34a' : (m==='downgrade' ? '#b45309' : '#64748b');
+  return '<span style="color:'+col+';font-weight:600">'+label+'</span>'+
+         (d ? '<br><span class="text-muted text-sm">'+esc(d)+'</span>' : '');
+}
+
+function referralsTable(){
+  var list = (S.dashboard && S.dashboard.referrals) || [];
+  if(!list.length){
+    return '<p class="text-muted text-sm" style="padding:16px;text-align:center">No referrals yet. '+
+           'Everyone who comes in through your form or link appears here, with the plan they are on and the '+
+           'date they last moved.</p>';
+  }
+  var rows = list.map(function(r){
+    var comm = Number(r.earned) > 0
+      ? '<strong>'+money(r.earned)+'</strong>'
+      : '<span class="text-muted">'+esc(r.commission_status || '\u2014')+'</span>';
+    return '<tr>'+
+      '<td><strong>'+esc(r.name||'Unnamed')+'</strong><br><span class="text-muted text-sm">'+esc(r.email||'')+'</span></td>'+
+      '<td>'+(r.plan ? esc(r.plan)+(r.pays?'':' <span class="text-muted text-sm">(free)</span>') : '<span class="text-muted">\u2014</span>')+'</td>'+
+      '<td>'+mvBadge(r)+'</td>'+
+      '<td>'+comm+'</td>'+
+    '</tr>';
+  }).join('');
+  return '<table><thead><tr><th>Person</th><th>Plan</th><th>Movement</th><th>Earned</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
 function renderDashboard(el){
   const d = S.dashboard || {};
   el.innerHTML =
     '<div class="page-header"><div><h2>Affiliate Dashboard</h2><p>Your performance overview</p></div></div>'+
     '<div class="stat-grid">'+
-    '<div class="stat-card"><div class="label">Leads Attributed</div><div class="value">'+(d.total_leads||0)+'</div><div class="sub">across all apps</div></div>'+
-    '<div class="stat-card"><div class="label">Total Earned</div><div class="value">'+money(d.total_earnings)+'</div><div class="sub">commissions</div></div>'+
-    '<div class="stat-card"><div class="label">Affiliate ID</div><div class="value" style="font-size:16px">'+esc(d.affiliate_id)+'</div><div class="sub">your referral code</div></div>'+
+    '<div class="stat-card"><div class="label">People Referred</div><div class="value">'+(d.total_leads||0)+'</div><div class="sub">attributed to you</div></div>'+
+    '<div class="stat-card"><div class="label">Earned</div><div class="value">'+money(d.earned||0)+'</div><div class="sub">customers paying now</div></div>'+
+    '<div class="stat-card"><div class="label">Pending</div><div class="value">'+money(d.pending||0)+'</div><div class="sub">not paying yet</div></div>'+
+    '<div class="stat-card"><div class="label">Reversed</div><div class="value">'+money(d.reversed||0)+'</div><div class="sub">customers who left</div></div>'+
     '</div>'+
+    '<div class="card"><h3>Your referrals</h3>'+referralsTable()+'</div>'+
     '<div class="card"><h3>About the program</h3>'+
-    '<p class="text-sm" style="color:#475569;line-height:1.6">You earn a commission every time a lead that came through your account upgrades to a paid plan in any Swift product — with no expiry. See the <a onclick="navigate(\'guide\')" style="cursor:pointer;font-weight:600">Guide</a> for full details.</p></div>';
+    '<p class="text-sm" style="color:#475569;line-height:1.6">You earn a commission every time a lead that came through your account upgrades to a paid plan in any Swift product — with no expiry. If a customer downgrades, the commission stops and you can see the date it stopped. See the <a onclick="navigate(\'guide\')" style="cursor:pointer;font-weight:600">Guide</a> for full details.</p></div>';
 }
 
 function renderLeads(el){
@@ -275,11 +309,14 @@ function renderEarnings(el){
   el.innerHTML =
     '<div class="page-header"><div><h2>Earnings</h2><p>Your commission summary</p></div></div>'+
     '<div class="stat-grid">'+
-    '<div class="stat-card"><div class="label">Total Earned</div><div class="value">'+money(d.total_earnings)+'</div><div class="sub">all-time commissions</div></div>'+
-    '<div class="stat-card"><div class="label">Leads</div><div class="value">'+(d.total_leads||0)+'</div><div class="sub">attributed to you</div></div>'+
+    '<div class="stat-card"><div class="label">Earned</div><div class="value">'+money(d.earned||0)+'</div><div class="sub">customers paying now</div></div>'+
+    '<div class="stat-card"><div class="label">Pending</div><div class="value">'+money(d.pending||0)+'</div><div class="sub">on a free plan, nothing yet</div></div>'+
+    '<div class="stat-card"><div class="label">Reversed</div><div class="value">'+money(d.reversed||0)+'</div><div class="sub">customers who downgraded</div></div>'+
+    '<div class="stat-card"><div class="label">All-time</div><div class="value">'+money(d.total_earnings||0)+'</div><div class="sub">every commission row</div></div>'+
     '</div>'+
+    '<div class="card"><h3>What each referral has earned</h3>'+referralsTable()+'</div>'+
     '<div class="card"><h3>How you get paid</h3>'+
-    '<p class="text-sm" style="color:#475569;line-height:1.6">Commissions are credited automatically when a lead upgrades to a paid plan. Payouts are processed on the admin side. See the <a onclick="navigate(\'guide\')" style="cursor:pointer;font-weight:600">Guide</a> for payout rates and how commission works.</p></div>';
+    '<p class="text-sm" style="color:#475569;line-height:1.6">A referral only earns once that customer is on a plan they pay for. If they upgrade, the commission is credited on the day they upgrade &mdash; the date is on the row above. If they later downgrade, the commission is reversed and the date it stopped is recorded too. Payouts are processed on the admin side. See the <a onclick="navigate(\'guide\')" style="cursor:pointer;font-weight:600">Guide</a> for payout rates.</p></div>';
 }
 
 async function renderGuide(el){
