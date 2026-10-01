@@ -124,6 +124,19 @@ struct AffiliateProductRow {
     pub category_name: Option<String>,
     pub created_at: Option<chrono::NaiveDateTime>,
     pub updated_at: Option<chrono::NaiveDateTime>,
+    /// THE FREE PLAN THIS PRODUCT LANDS A REFERRED CUSTOMER ON.
+    ///
+    /// David's rule: *"everyone upgrades in app"* — so a referred customer must arrive on the FREE
+    /// plan of that software and pay for the upgrade themselves. The column has always been in the
+    /// table and the admin guide has always told admins that each row shows it, but the API never
+    /// returned it, so neither the affiliate's picker nor the admin screen could show or audit which
+    /// plan a product points at. `migration 070`'s trigger
+    /// (`enforce_affiliate_products_are_free`) is what refuses a paid plan; this is what lets a
+    /// human SEE what was refused or accepted.
+    pub plan_id: Option<Uuid>,
+    pub plan_slug: Option<String>,
+    pub plan_name: Option<String>,
+    pub plan_price: Option<f64>,
 }
 
 pub async fn list_affiliate_products(
@@ -139,10 +152,13 @@ pub async fn list_affiliate_products(
                 COALESCE(ap.is_active, true) AS is_active, ap.is_third_party, ap.url, ap.category_id,
                 ap.product_type, ap.owner_name, ap.system_tag_id,
                 t.name AS system_tag_name, pc.name AS category_name,
-                ap.created_at::timestamp, ap.updated_at::timestamp
+                ap.created_at::timestamp, ap.updated_at::timestamp,
+                ap.plan_id, pl.slug AS plan_slug, pl.name AS plan_name,
+                COALESCE(pl.price, 0)::float8 AS plan_price
          FROM affiliate_products ap
          LEFT JOIN tags t ON t.id = ap.system_tag_id
          LEFT JOIN product_categories pc ON pc.id = ap.category_id
+         LEFT JOIN plans pl ON pl.id = ap.plan_id
          WHERE (ap.tenant_id = $1 OR ap.tenant_id = $3)
            AND ($2::boolean IS NULL OR COALESCE(ap.is_active, true) = $2)
          ORDER BY ap.created_at DESC",
@@ -179,6 +195,16 @@ pub async fn list_affiliate_products(
                 "system_tag_name": p.system_tag_name,
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
+                // The free plan a referred customer lands on, so both screens can show it.
+                "plan_id": p.plan_id.map(|v| v.to_string()),
+                "plan_slug": p.plan_slug,
+                "plan_name": p.plan_name,
+                "plan_price": p.plan_price.unwrap_or(0.0),
+                // True when the product has no plan to state, which is legitimate for a product
+                // owned by ANOTHER app (its free plan lives in that app's database) and worth
+                // flagging rather than hiding: an unstated plan is exactly where a paid giveaway
+                // could hide if it were ever misused.
+                "plan_stated": p.plan_id.is_some(),
             })
         })
         .collect();

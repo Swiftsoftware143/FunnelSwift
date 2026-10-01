@@ -1008,11 +1008,12 @@ async function renderAffiliateProducts() {
     </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">📦</div><div class="title">No products yet</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Product</th><th>URL</th><th>Commission</th><th>Type</th>${isAdmin?'<th>Tenant</th>':''}<th>Actions</th></tr></thead>
+      <thead><tr><th>Product</th><th>Free plan</th><th>Commission</th><th>Tag</th><th>Type</th>${isAdmin?'<th>Tenant</th>':''}<th>Actions</th></tr></thead>
       <tbody>${items.map(p=>`<tr>
         <td><strong>${x(p.name||p.product_name||'-')}</strong>${p.description?`<div style="font-size:11px;color:var(--muted)">${x(p.description)}</div>`:''}${p.system_tag_name?`<div style="font-size:11px;color:var(--primary)">Tag: ${x(p.system_tag_name)}</div>`:''}</td>
-        <td><a href="${x(p.url||'#')}" target="_blank" style="font-size:12px;color:var(--primary)">${x((p.url||'').substring(0,40))}${(p.url||'').length>40?'...':''}</a></td>
+        <td>${p.plan_stated ? `<span class="badge badge-green">${x(p.plan_name||p.plan_slug||'')}</span>` : `<span style="color:var(--muted);font-size:12px">in that app</span>`}</td>
         <td><strong>${p.default_commission_rate||p.commission_rate||0}%</strong></td>
+        <td>${p.system_tag_name ? `<span style="font-size:12px;color:var(--primary)">${x(p.system_tag_name)}</span>` : `<span style="color:var(--danger,#b91c1c);font-size:12px">no tag — cannot be credited</span>`}</td>
         <td>${p.is_third_party?`<span class="badge badge-yellow">3rd Party</span>`:`<span class="badge badge-blue">Internal</span>`}</td>
         ${isAdmin?`<td><span class="badge badge-green">${x(p.tenant_name||p.tenant_id||'-')}</span></td>`:''}
         <td><button class="btn btn-secondary btn-xs" onclick="window._editAffiliateProduct('${p.id}')">${isAdmin?'Edit':'View'}</button></td>
