@@ -169,15 +169,16 @@ pub async fn list_cards(
         "theme": r.try_get::<Option<String>, _>("theme").unwrap_or_default(),
         "video_provider": r.try_get::<Option<String>, _>("video_provider").unwrap_or_default(),
         "video_id": r.try_get::<Option<String>, _>("video_id").unwrap_or_default(),
-        "is_template": r.try_get::<bool, _>("is_template").unwrap_or(false),
+        // No `is_template` / `template_category` / `category` keys here: no FunnelSwift table has
+        // ever had those columns (fleet census t_d488ea25 / t_4297932d), so the three keys this
+        // payload used to publish were a constant false/null/null that no served consumer reads.
+        // Do not re-add them without a column + migration — that is a product decision, not a read fix.
         // Consent / age gate half of `has_card_gating` — the editor prefills its
         // controls from these, and they are what the renderer acts on.
         "consent_required": r.try_get::<Option<bool>, _>("consent_required").unwrap_or(None).unwrap_or(false),
         "age_gate_type": r.try_get::<Option<String>, _>("age_gate_type").unwrap_or(None),
         "age_gate_message": r.try_get::<Option<String>, _>("age_gate_message").unwrap_or(None),
         "consent_decline_redirect": r.try_get::<Option<String>, _>("consent_decline_redirect").unwrap_or(None),
-        "template_category": r.try_get::<Option<String>, _>("template_category").unwrap_or_default(),
-        "category": r.try_get::<Option<String>, _>("category").unwrap_or_default(),
         "created_at": r
             .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
             .map(|t| t.to_rfc3339())
