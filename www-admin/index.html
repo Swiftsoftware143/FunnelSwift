@@ -29,6 +29,8 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .nav-user:hover{background:#f1f5f9}
 .nav-user .avatar{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
 .nav-user .logout{color:var(--danger);font-size:11px;margin-left:auto;cursor:pointer}
+.nav-guide{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:500;color:var(--muted);text-decoration:none}
+.nav-guide:hover{background:#f1f5f9;color:var(--text)}
 /* Cards & Tables */
 .card{background:var(--surface);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:20px;margin-bottom:16px}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
@@ -402,6 +404,7 @@ function renderShell() {
       </div>
       ${nav}
       <div class="nav-footer">
+        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="https://funnelswift.net/guide-admin.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - tenants, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
         <div class="nav-user">
           <div class="avatar">${initials}</div>
           <div style="flex:1;min-width:0">
