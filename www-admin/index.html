@@ -3022,7 +3022,12 @@ async function wiredAffiliateProductSync() {
   if (!body) return;
   body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates one affiliate product row per plan that does not have one yet.</div>' +
     '<button class="btn btn-primary" id="wired-ap-sync">Sync from plans</button><span id="wired-ap-msg" style="font-size:12px;margin-left:10px"></span>';
-  document.getElementById('wired-ap-sync').onclick = async () => {
+  /* kanban t_b2a9059b: same one-shape bind as the panels below. This panel injects its markup and
+     binds in one synchronous block, so a re-render cannot catch it detached today — guarded anyway
+     so every wired control binds the same way (`const el = $(...); if (!el) return;`). */
+  const apSync = document.getElementById('wired-ap-sync');
+  if (!apSync) return;
+  apSync.onclick = async () => {
     const b = document.getElementById('wired-ap-sync'), m = document.getElementById('wired-ap-msg');
     b.disabled = true; m.textContent = 'Syncing…';
     try {
@@ -3043,7 +3048,10 @@ async function wiredPortfolioSync() {
     wiredInput('wired-ps-name', 'Company name') + wiredInput('wired-ps-email', 'owner@company.com', 'email') +
     wiredInput('wired-ps-desc', 'Description') +
     '<button class="btn btn-primary" id="wired-ps-go">Sync company</button><span id="wired-ps-msg" style="font-size:12px"></span></div>';
-  document.getElementById('wired-ps-go').onclick = async () => {
+  /* kanban t_b2a9059b: as above — synchronous panel, guarded for the same one shape. */
+  const psGo = document.getElementById('wired-ps-go');
+  if (!psGo) return;
+  psGo.onclick = async () => {
     const m = document.getElementById('wired-ps-msg'), b = document.getElementById('wired-ps-go');
     const payload = {
       name: document.getElementById('wired-ps-name').value.trim(),
@@ -3093,7 +3101,14 @@ async function wiredPlanTagMappings() {
     '<select class="input" id="wired-ptm-tag" style="max-width:260px"><option value="">Choose a tag…</option>' +
     tags.map(t => '<option value="' + x(t.id) + '">' + x(t.name || t.id) + '</option>').join('') + '</select>' +
     '<button class="btn btn-primary" id="wired-ptm-sync">Sync mapping</button><span id="wired-ptm-msg" style="font-size:12px"></span></div>';
-  document.getElementById('wired-ptm-sync').onclick = async () => {
+  /* kanban t_b2a9059b: this binder resumes after three awaits. `body` is a reference captured
+     BEFORE them; a re-render landing in that window (nav switch, another panel's showToast, the
+     view's own reload) leaves `body` DETACHED — the markup above went into a subtree nobody can
+     see and this document-wide lookup returns null, so the unguarded property write threw an
+     uncaught TypeError ("Cannot set properties of null (setting 'onclick')") and the control
+     stayed dead. Guarded: a lost panel now costs nothing instead of an uncaught error. */
+  const ptmSync = document.getElementById('wired-ptm-sync');
+  if (ptmSync) ptmSync.onclick = async () => {
     const m = document.getElementById('wired-ptm-msg'), b = document.getElementById('wired-ptm-sync');
     const plan_id = document.getElementById('wired-ptm-plan').value;
     const tag_id = document.getElementById('wired-ptm-tag').value;
@@ -3146,7 +3161,15 @@ async function wiredAffiliateDetail() {
     '<button class="btn" id="wired-aff-tier">Calculate tier</button><button class="btn btn-primary" id="wired-aff-load">Load commissions</button>' +
     '<span id="wired-aff-msg" style="font-size:12px"></span></div><div id="wired-aff-out"></div>';
   const sel = document.getElementById('wired-aff-sel'), out = document.getElementById('wired-aff-out'), msg = document.getElementById('wired-aff-msg');
-  document.getElementById('wired-aff-tier').onclick = async () => {
+  /* kanban t_b2a9059b: `sel`/`out`/`msg` above are references captured BEFORE the /affiliates
+     await; a re-render landing in that window leaves them in a DETACHED subtree (the markup above
+     went where nobody can see it) and a document-wide lookup returns null, so the unguarded
+     property write threw an uncaught TypeError and BOTH controls stayed dead (the throw aborted
+     this binder before the second bind). Each bind is guarded independently so one lost node can
+     never take the other control down with it. */
+  const affTier = document.getElementById('wired-aff-tier');
+  const affLoad = document.getElementById('wired-aff-load');
+  if (affTier) affTier.onclick = async () => {
     if (!sel.value) { msg.textContent = '✗ pick an affiliate'; return; }
     msg.textContent = 'Calculating…';
     try {
@@ -3157,7 +3180,7 @@ async function wiredAffiliateDetail() {
       msg.textContent = '';
     } catch (e) { msg.textContent = '✗ ' + e.message; }
   };
-  document.getElementById('wired-aff-load').onclick = async () => {
+  if (affLoad) affLoad.onclick = async () => {
     if (!sel.value) { msg.textContent = '✗ pick an affiliate'; return; }
     msg.textContent = 'Loading…';
     try {
