@@ -554,3 +554,62 @@ pub async fn reverse_affiliate_on_tags(
     }
     Ok(res.rows_affected())
 }
+
+/// SET-BASED form of the counter-writer above, for the tag DELETE arm (kanban t_ca4693e3).
+///
+/// The SAME rule, the same mark and the same restraint as `reverse_affiliate_on_tags` — and it lives
+/// here, beside it, so the tag-attribution money rule has one home: only a `pending` row is withdrawn,
+/// it is REVERSED (`status='reversed'`, `reversed_at=NOW()`) and marked
+/// `metadata->>'reversed_by' = 'tag_removed'` (never deleted, and a row that has already settled —
+/// `earned`/`paid` — is left exactly as it is), and a product stays attributed when a tag STILL on the
+/// lead points at it.
+///
+/// The only difference is the shape: deleting a tag strips the name from EVERY lead that carried it in
+/// one transaction, so "no remaining tag on this lead points at this product" is evaluated once,
+/// set-based, against each lead's OWN stored list — which the caller has already stripped, so what is
+/// read here IS the remaining list. That is also why the caller must run this BEFORE deleting the tag
+/// row: `affiliate_products.system_tag_id` is `ON DELETE SET NULL`, so after the delete the product
+/// link is gone and the attribution could never be resolved (or retracted) again.
+pub async fn reverse_affiliate_on_tags_bulk(
+    conn: &mut sqlx::PgConnection,
+    lead_ids: &[Uuid],
+    removed_tag_ids: &[Uuid],
+) -> std::result::Result<u64, AppError> {
+    if lead_ids.is_empty() || removed_tag_ids.is_empty() {
+        return Ok(0);
+    }
+
+    // The products the deleted tag(s) pointed at (the same predicate, and the same `is_active`
+    // guard, as `attribute_affiliate_on_tags` and the per-lead withdrawal above), minus the ones a
+    // tag STILL on the lead points at.
+    let res = sqlx::query(
+        "UPDATE affiliate_commissions c
+            SET status = 'reversed', reversed_at = NOW(),
+                metadata = coalesce(c.metadata, '{}'::jsonb)
+                           || jsonb_build_object('reversed_by', 'tag_removed')
+          WHERE c.status = 'pending'
+            AND c.lead_id = ANY($1::uuid[])
+            AND c.product_id IN (SELECT id FROM affiliate_products
+                                  WHERE system_tag_id = ANY($2::uuid[]) AND is_active = true)
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM leads l
+                  JOIN tags t ON (t.tenant_id = l.tenant_id OR t.is_system = true)
+                             AND l.tags @> to_jsonb(t.name)
+                  JOIN affiliate_products p ON p.system_tag_id = t.id AND p.is_active = true
+                 WHERE l.id = c.lead_id AND p.id = c.product_id)",
+    )
+    .bind(lead_ids)
+    .bind(removed_tag_ids)
+    .execute(conn)
+    .await?;
+
+    if res.rows_affected() > 0 {
+        tracing::info!(
+            rows = res.rows_affected(),
+            leads = lead_ids.len(),
+            "affiliate commissions REVERSED — the tag that produced them was DELETED"
+        );
+    }
+    Ok(res.rows_affected())
+}

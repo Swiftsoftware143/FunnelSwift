@@ -261,6 +261,38 @@ pub async fn update_tag(
     ))
 }
 
+/// DELETE /api/v1/tags/:id — kanban t_ca4693e3.
+///
+/// ARM (a), decided by measurement (the card's own `checks-delete-residual.json` measured on the
+/// pre-fix binary, plus this card's `checks-before.json`): the DELETE now does, for EVERY lead that
+/// carries the tag's name, exactly what the removal arm (t_769b93ba) does for one lead — because after
+/// the delete there is no longer any code path that could ever do it again.
+///
+/// The measurements that chose the arm:
+///   * arm (b) — "a deleted label stays on the lead as free text" — is not a neutral choice. Every
+///     resolution in the tag pipeline is name-keyed (`resolve_tag_ids`, the retraction block of
+///     `apply_lead_tags`, `tag_logic::attribute_affiliate_on_tags`), so the leftover name resolves to
+///     ZERO tag ids, the pending `affiliate_commissions` row the tag produced is never retracted, and
+///     the FK `affiliate_products.system_tag_id` is `ON DELETE SET NULL` — the product link dies with
+///     the tag, so a re-created tag of the same name cannot resolve it either (measured: `before` B5/B7,
+///     the row stays `pending` forever). The money would be unretractable from the app permanently.
+///   * arm (c) — refuse with 409 while a lead still carries the tag — pushes the operator through the
+///     removal arm, but nothing guarantees the sweep, and the served Del buttons report ANY non-2xx as
+///     "N failed" with no reason (`www-app/index.html`), so the refusal is invisible and the money
+///     stays pending.
+///   * arm (a) — CHOSEN: the DELETE means "this tag is gone from this workspace", so in ONE
+///     transaction it (1) strips the name from every lead carrying it, in the resolution's OWN scope
+///     (a tenant tag: its tenant; a SYSTEM tag: every tenant — the same scope as the recorded rename
+///     fix, and what the served confirm already promises, "This removes it for ALL tenants"),
+///     (2) writes the `tag_change_log` row each lead's own tag change gets (`added=[]`,
+///     `removed=[name]`, `triggered_by='tag_delete'`), (3) REVERSES the pending attribution of the
+///     products this tag pointed at exactly the way the removal arm does
+///     (`tag_logic::reverse_affiliate_on_tags_bulk`: reversed, never deleted, never settled money,
+///     marked `reversed_by='tag_removed'` so a re-tag can re-open the SAME row), and only then
+///     (4) deletes the tag row — last, because the FK would erase the link step (3) resolves.
+///
+/// Additive on the response: `leads_updated` and `commissions_reversed`. Every shipped caller (the
+/// served System Tags / Tags screens' Del buttons) ignores the body and re-renders the list.
 pub async fn delete_tag(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -285,20 +317,99 @@ pub async fn delete_tag(
             "Only admins can delete system tags".into(),
         ));
     }
-    // System tags can be deleted by admins
 
+    // The resolution's own scope, the same one the rename rewrite uses (see `update_tag`): a SYSTEM tag
+    // is the shared vocabulary every workspace is offered (`GET /api/v1/tags` returns
+    // `tenant_id = $1 OR is_system = true`), so deleting it is not a tenant-scoped act; a tenant tag is
+    // stripped only for its own tenant's leads.
+    let system_scope = tag.is_system && auth.is_admin;
+    let name = tag.name.clone();
+
+    // One transaction: the tag row, the stored names it invalidated and the attribution they produced
+    // are one change. A failure in any half rolls all of them back — no lead is left pointing at a name
+    // the tags table no longer has, and no attribution is withdrawn without the tag actually going.
+    let mut tx = state.pool.begin().await?;
+
+    // ── 1. strip the name from every lead carrying it ─────────────────────────────────────────────
+    // `tags - $1::text` removes every occurrence of that string element from the jsonb array and keeps
+    // the order; `tags @> to_jsonb($1::text)` is the containment test the name-keyed resolvers use, so a
+    // NULL/empty `leads.tags` can never be touched. `updated_at` moves with the write.
+    let affected: Vec<(Uuid, Uuid)> = if system_scope {
+        sqlx::query_as(
+            "UPDATE leads
+                SET tags = tags - $1::text, updated_at = NOW()
+              WHERE tags @> to_jsonb($1::text)
+              RETURNING id, tenant_id",
+        )
+        .bind(&name)
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as(
+            "UPDATE leads
+                SET tags = tags - $1::text, updated_at = NOW()
+              WHERE tenant_id = $2 AND tags @> to_jsonb($1::text)
+              RETURNING id, tenant_id",
+        )
+        .bind(&name)
+        .bind(tenant_id)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+    let leads_updated = affected.len() as i64;
+
+    // ── 2. `tag_change_log` honoured ──────────────────────────────────────────────────────────────
+    // The stored tag really did come off each lead, so each lead gets the audit row a tag change gets.
+    // One set-based INSERT, and every row carries the lead's OWN tenant (a system-tag delete spans
+    // tenants while `tag_change_log.tenant_id` is scoped per lead).
+    if !affected.is_empty() {
+        let lead_ids: Vec<Uuid> = affected.iter().map(|(lead, _)| *lead).collect();
+        let tenant_ids: Vec<Uuid> = affected.iter().map(|(_, tenant)| *tenant).collect();
+        sqlx::query(
+            "INSERT INTO tag_change_log (tenant_id, lead_id, added_tags, removed_tags, triggered_by)
+             SELECT tenant_id, lead_id, '[]'::jsonb, jsonb_build_array($1::text), 'tag_delete'
+               FROM unnest($2::uuid[], $3::uuid[]) AS x(lead_id, tenant_id)",
+        )
+        .bind(&name)
+        .bind(&lead_ids)
+        .bind(&tenant_ids)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // ── 3. REVERSE the attribution the deleted tag produced ───────────────────────────────────────
+    // THE DECISION (the same contract the removal arm recorded): REVERSE the pending row — never delete
+    // it, never touch a row that has already settled. This must run BEFORE the tag row goes, because
+    // `affiliate_products.system_tag_id` is `ON DELETE SET NULL`.
+    let lead_ids: Vec<Uuid> = affected.iter().map(|(lead, _)| *lead).collect();
+    let commissions_reversed =
+        crate::tag_logic::reverse_affiliate_on_tags_bulk(&mut tx, &lead_ids, &[id]).await?;
+
+    // ── 4. delete the tag row, in the same scope as before ────────────────────────────────────────
     if auth.is_admin {
         sqlx::query("DELETE FROM tags WHERE id = $1")
             .bind(id)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
     } else {
         sqlx::query("DELETE FROM tags WHERE id = $1 AND tenant_id = $2")
             .bind(id)
             .bind(tenant_id)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
     }
 
-    Ok(Json(json!({"message": "Tag deleted"})))
+    tx.commit().await?;
+
+    tracing::info!(%id, %name, system_scope, leads_updated, commissions_reversed,
+        "tag deleted — the stored lead tag names and the attribution the tag produced were retired with it");
+
+    // Additive on the response (kanban t_ca4693e3): the number of leads whose stored tag name the delete
+    // retired, and the number of pending attributions it reversed. Every shipped caller reads `message`
+    // only; the numbers are what make the retraction measurable from the API instead of only from the DB.
+    Ok(Json(json!({
+        "message": "Tag deleted",
+        "leads_updated": leads_updated,
+        "commissions_reversed": commissions_reversed,
+    })))
 }
