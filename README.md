@@ -260,11 +260,25 @@ curl -s localhost:8080/api/health
 Each served guide is a real page with exactly one entry point (kanban t_ce486ac7 measured all three:
 before that card `guide.html` and `guide-affiliate.html` were linked and `guide-admin.html` was not).
 
+**"Served on both roots" means ONE tracked copy and TWO served destinations** (kanban t_11d12525).
+The two roots are `/opt/swift/nginx/www/funnelswift/` (`funnelswift.net`) and
+`/opt/swift/nginx/www-app/funnelswift/` (`app.funnelswift.net`);
+`bin/publish-funnelswift-frontend.sh <www path>` installs the one source into BOTH of them,
+sha256-verified per destination, in a single run. The Admin Guide's `www-app/guide-admin.html` twin
+was a SECOND tracked copy of the same document and the two drifted apart twice (t_976121a0 updated
+only the `www-app/` side; t_090f3e00 mirrored it back by hand), so it is RETIRED: edit
+`www/guide-admin.html`, and a re-created `www-app/guide-admin.html` is refused by the publisher.
+`fleet/guide-generation-parity.py` declares that generation (one source, every destination), so the
+30-minute `fleet/marketing-www-watch.sh` alerts if either destination ever lags the source.
+`www/guide.html` and `www/guide-affiliate.html` still carry a per-root `www-app/` twin of their own;
+their cards own that shape.
+
 - `www/guide.html` — Full user guide, served on both roots. Entry points: the marketing footer's
   "User Guide" (`www/index.html`, `www/landing.html`, `www-app/landing.html`), the Affiliate Guide's
   back link, and `sitemap.xml`.
 - `www/guide-admin.html` — Admin guide, the Super Admin reference (tenants, plans, template gating,
-  system tags, bulk operations, admin API), served on both roots. Entry point: the "Admin Guide"
+  system tags, bulk operations, admin API), served on both roots and the ONLY tracked copy of that
+  document (see above). Entry point: the "Admin Guide"
   anchor in the admin console's sidebar (`www-admin/index.html`, `id="admin-guide-link"`, rendered
   only when `isSuperAdmin()` — the document's own audience). Added by kanban t_ce486ac7, which
   measured 0 inbound references anywhere in the served tree before it.
