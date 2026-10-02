@@ -351,7 +351,13 @@ pub const RETIRED_KEYS: &[(&str, &str)] = &[
     ),
     (
         "max_api_calls",
-        "no request meter exists in the crate — no call/usage table and no per-period accounting",
+        "no request meter exists in the crate — no call/usage table and no per-period accounting, and \
+         nothing increments a counter (kanban t_1d600303, DECIDED 2026-10-02: API-call volume stays \
+         UNMETERED on every plan; the rows stay deleted and this reason is the record). A cap needs a \
+         counter AND a price — enforcing 1000/10000 calls per period against live tenants is the \
+         owner's pricing call — so a request meter belongs to the API-surface question already carded \
+         for him (t_f2457903, ARM B), not to this registry. Do not re-register it: with no counter the \
+         gate would read 0 and the cap could never fire (the `max_ocr_scans` trap)",
     ),
     (
         "max_plans",

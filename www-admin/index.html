@@ -2777,12 +2777,15 @@ function planRegistryHTML(d) {
         inert.map(i => x(i.key)).join(', ') + '</div>'
       : '');
   const retired = (d && d.retired_keys) || [];
+  const retiredNames = retired.map(r => '<span title="' + x(r.reason || '') + '">' + x(r.key) + '</span>').join(', ');
   const retiredLine = retired.length
     ? '<div style="font-size:11px;color:#b45309;margin-top:6px">Retired keys — no gate reads them, so ' +
       'they are not editable here and they enforce nothing. The <code>feature_limits</code> rows were ' +
       'DELETED by the migration that retired them (086 the ungated keys, 088 the retired routing ' +
-      'resource, 090 the api-key family): ' +
-      retired.map(r => x(r.key)).join(', ') + '</div>'
+      'resource, 090 the api-key family): ' + retiredNames + '. ' +
+      '<strong>None of them is a usage cap:</strong> no API-call volume and no stored size is metered on ' +
+      'any plan — the app counts no requests and no bytes, so this matrix cannot show a calls-per-period ' +
+      'allowance. Hover a key for why it was retired.</div>'
     : '';
   return '<div style="font-size:12px;margin-bottom:8px">' + status + '</div>' +
     '<div class="table-wrap"><table class="table"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
