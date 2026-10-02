@@ -9,7 +9,8 @@ pub mod lead;
 pub mod plan;
 // RETIRED (kanban t_dc418458): `pub mod plan_tag_mapping;` — the struct only served the CRUD
 // handlers of the write-only, zero-reader `plan_tag_mappings` table (migration 085 drops it).
-pub mod routing;
+// RETIRED (kanban t_0aaf0bc5): `pub mod routing;` — `TargetSoftware` / `CreateTargetSoftwareRequest`
+// only served routing_handler, retired with the table (migration 088).
 pub mod setting;
 pub mod settings;
 pub mod tag;

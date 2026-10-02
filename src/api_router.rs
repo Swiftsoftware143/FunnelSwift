@@ -18,12 +18,11 @@ use crate::handlers::{
     api_key_handler, bulk_handler, campaigns_handler, checkout_handler,
     coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
     email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
-    integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
-    ocr, plan_handler, portfolio_handler, product_category_handler, provider_keys_handler,
-    public_signup_handler, qr_handler, routing_handler, seo_handler, settings_handler,
-    site_handler, site_settings_handler, tag_group_handler, tag_handler, tag_rule_handler,
-    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
-    workflowswift_push,
+    kinetic_handler, lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler,
+    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
+    qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
+    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
+    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -497,18 +496,21 @@ pub fn create_router(
             "/api/v1/settings",
             get(settings_handler::get_settings).put(settings_handler::update_settings),
         )
-        .route(
-            "/api/v1/target-software",
-            get(routing_handler::list_target_software)
-                .post(routing_handler::create_target_software),
-        )
+        // (kanban t_0aaf0bc5) — the retired `target_software` resource (Integrations -> Integration
+        // Targets, and the super-admin "Lead Routing" view) used to be registered here as:
+        //     GET|POST /api/v1/target-software   (routing_handler)
+        //     GET      /api/v1/routing-logs      (routing_handler, reading a table with no writer)
+        // Census (2026-10-02): target_software held 0 rows across 16 tenants and NOTHING read its
+        // `webhook_url` outside that CRUD — the resource stored a URL and never dispatched it, while
+        // `webhooks` (src/webhooks.rs) does dispatch, sign, retry and log. `routing_log` held 0 rows
+        // and had NO writer anywhere in the crate, so the "Recent routing log (100)" table could
+        // never show a row. Handler, model, both routes, the table and the two console views are
+        // retired (migration 088); the one live consumer, the IncentiveSwift config hand-off, now
+        // reads `provider_keys` (provider = 'incentiveswift') — the same credential store the
+        // CoreSwift connection already uses.
         .route(
             "/api/v1/settings/:key",
             delete(settings_handler::delete_setting),
-        )
-        .route(
-            "/api/v1/routing-logs",
-            get(routing_handler::list_routing_logs),
         )
         // Portfolio companies
         .route(
@@ -521,17 +523,6 @@ pub fn create_router(
             get(portfolio_handler::get_portfolio_company)
                 .put(portfolio_handler::update_portfolio_company)
                 .delete(portfolio_handler::delete_portfolio_company),
-        )
-        // Integration targets
-        .route(
-            "/api/v1/integration-targets",
-            get(integration_target_handler::list_integration_targets)
-                .post(integration_target_handler::create_integration_target),
-        )
-        .route(
-            "/api/v1/integration-targets/:id",
-            put(integration_target_handler::update_integration_target)
-                .delete(integration_target_handler::delete_integration_target),
         )
         // API Key management
         .route(

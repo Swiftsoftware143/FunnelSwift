@@ -16,7 +16,7 @@ pub struct Tag {
     // pub updated_at: DateTime<Utc>,
 }
 
-// A `SystemTag` struct (tag_name / target_software / campaign_id / webhook_url / payload_template)
+// A `SystemTag` struct (tag_name / campaign_id / webhook_url / payload_template)
 // used to live here, together with `TagAssignmentResult`, `WebhookResult`, `WebhookPayload`,
 // `ContactPayload` and `TagPayload`. All six were referenced by nothing but their own definitions:
 // there is no `system_tags` table in the `funnelswift` DB, no per-tag target in the System Tags UI,

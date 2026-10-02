@@ -24,7 +24,8 @@ pub mod email_template_handler;
 pub mod funnel_handler;
 pub mod incentiveswift_handler;
 pub mod insight_handler;
-pub mod integration_target_handler;
+// RETIRED (kanban t_0aaf0bc5): `pub mod integration_target_handler;` — a second route family
+// over the same `target_software` table as routing_handler, 0 rows, no dispatcher. See migration 088.
 pub mod kinetic_handler;
 pub mod lead_handler;
 pub mod linkedin;
@@ -40,7 +41,8 @@ pub mod product_category_handler;
 pub mod provider_keys_handler;
 pub mod public_signup_handler;
 pub mod qr_handler;
-pub mod routing_handler;
+// RETIRED (kanban t_0aaf0bc5): `pub mod routing_handler;` — CRUD for the `target_software` table
+// whose only live field (`api_key`) for the IncentiveSwift hand-off moved to `provider_keys`.
 pub mod seo_handler;
 pub mod settings_handler;
 pub mod site_handler;

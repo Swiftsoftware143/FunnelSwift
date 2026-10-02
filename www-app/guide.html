@@ -549,6 +549,18 @@ Content-Type: application/json
       register for a list of events &mdash; for example <code>lead.created</code> &mdash; and the
       <strong>Webhooks</strong> screen is where you create, edit, test and delete them.</p>
 
+      <h3>Integration Targets are gone &mdash; this is the only outbound surface</h3>
+      <div class="alert alert-info">
+        Until 2026-10-02 the console also offered <strong>Integrations &rarr; Integration Targets</strong>:
+        a second place to save a URL and a key. It never sent anything (no dispatcher, no delivery log, no
+        Test button) and it duplicated this screen, so it has been removed &mdash; every outbound
+        destination is a webhook on this page.
+      </div>
+      <p>A connection to <em>another product's API</em> is not a webhook: it is a <strong>provider
+      key</strong> in the <strong>Integrations</strong> screen's Integration Center, next to CoreSwift CRM.
+      That is where the <strong>IncentiveSwift</strong> connection lives now &mdash; store your
+      IncentiveSwift API key there and the mobile app reads it, exactly as before.</p>
+
       <h3>Creating a Webhook</h3>
       <ol class="step-list">
         <li>Go to <strong>Webhooks</strong> from the sidebar (workspace admins).</li>

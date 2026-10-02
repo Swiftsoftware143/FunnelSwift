@@ -132,6 +132,20 @@ pub async fn upsert_provider_key(
         _ => {}
     }
 
+    // The Integration Center's connection cap (kanban t_0aaf0bc5). `max_integrations` counts
+    // `provider_keys` rows, so it fires only when this call CREATES a connection: every arm above
+    // returned for an existing provider row (key kept or base URL touched), and a tenant can always
+    // edit what it already has.
+    if exists.is_none() {
+        crate::features::enforce_feature_limit(
+            &state,
+            tenant_id,
+            "max_integrations",
+            "Integrations",
+        )
+        .await?;
+    }
+
     // Encrypt BEFORE the write: this column only ever holds 'enc:v1:' ciphertext. The call
     // FAILS CLOSED (500) when PROVIDER_KEY_ENC_SECRET is missing rather than storing the
     // plaintext credential. The response mask is computed from the request value.

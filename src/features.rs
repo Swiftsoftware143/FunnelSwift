@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 /// The `plans` column that backs a numeric limit key, when the key has one.
 /// `None` for feature_limits-only keys (max_webhooks / max_api_keys / max_portfolios /
-/// max_affiliates / max_tag_groups / max_routing_targets / max_integrations), which
+/// max_affiliates / max_tag_groups / max_integrations), which
 /// `enforce_feature_limit` resolves from the `feature_limits` table alone.
 ///
 /// ONE allowlist: `plan_limit` and the admin feature registry both read the column through
@@ -304,15 +304,16 @@ async fn get_usage_count(state: &AppState, tenant_id: Uuid, feature_key: &str) -
                 .await
                 .unwrap_or(0)
         }
-        "max_routing_targets" => {
-            sqlx::query_scalar("SELECT COUNT(*) FROM target_software WHERE tenant_id = $1")
-                .bind(tenant_id)
-                .fetch_one(&state.pool)
-                .await
-                .unwrap_or(0)
-        }
+        // RETIRED (kanban t_0aaf0bc5): `max_routing_targets` counted `target_software`, the resource
+        // migration 088 drops. Its authored values are duplicated by the surviving `max_webhooks` on
+        // the same plans (kinetic-free 5/5, kinetic-pro -1/-1), so nothing is lost by the retire.
+        //
+        // `max_integrations` counts the Integration Center's connections (`provider_keys`) — the rows
+        // the gate in `provider_keys_handler::upsert_provider_key` refuses to grow past the cap. It
+        // used to count `target_software`, which is the wrong table for a key named after the
+        // Integrations screen the tenant actually uses.
         "max_integrations" => {
-            sqlx::query_scalar("SELECT COUNT(*) FROM target_software WHERE tenant_id = $1")
+            sqlx::query_scalar("SELECT COUNT(*) FROM provider_keys WHERE tenant_id = $1")
                 .bind(tenant_id)
                 .fetch_one(&state.pool)
                 .await

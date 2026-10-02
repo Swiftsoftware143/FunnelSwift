@@ -1928,14 +1928,13 @@ function LIC(){
   });
 }
 function LI(){
-  Promise.all([api("/api/v1/integration-targets"),api("/api/v1/affiliate-products"),api("/api/v1/api-keys"),api("/api/v1/available-providers"),api("/api/v1/provider-keys")]).then(function(r){
-    var tg=Array.isArray(r[0])?r[0]:(r[0]&&r[0].data?r[0].data:[]);
-    var pr=Array.isArray(r[1])?r[1]:(r[1]&&r[1].data?r[1].data:[]);
-    var ks=Array.isArray(r[2])?r[2]:(r[2]&&r[2].data?r[2].data:[]);
-    var prov=Array.isArray(r[3])?r[3]:[];
+  Promise.all([api("/api/v1/affiliate-products"),api("/api/v1/api-keys"),api("/api/v1/available-providers"),api("/api/v1/provider-keys")]).then(function(r){
+    var pr=Array.isArray(r[0])?r[0]:(r[0]&&r[0].data?r[0].data:[]);
+    var ks=Array.isArray(r[1])?r[1]:(r[1]&&r[1].data?r[1].data:[]);
+    var prov=Array.isArray(r[2])?r[2]:[];
     var pkeys={};
-    (Array.isArray(r[4])?r[4]:[]).forEach(function(k){pkeys[k.provider]=k;});
-    window._icProv=prov; window._icKeys=pkeys; window._itg=tg;
+    (Array.isArray(r[3])?r[3]:[]).forEach(function(k){pkeys[k.provider]=k;});
+    window._icProv=prov; window._icKeys=pkeys;
 
     $("ct").innerHTML='<div id="li-section"></div>';
     var root=$("li-section");
@@ -1973,27 +1972,12 @@ function LI(){
     });
     root.appendChild(ap_div);
 
-    // Integration Targets
-    var tg_div=El("div",{"class":"cc"});
-    tg_div.innerHTML='<h3>Integration Targets <span id="li-tg-btn"></span></h3><div id="li-tg-list"></div>';
-    tg_div.querySelector("#li-tg-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFI()}},"+ Add Target"));
-    var tg_list=tg_div.querySelector("#li-tg-list");
-    if(!tg.length) tg_list.innerHTML='<p style="color:#64748b;padding:10px">No targets. Add webhook endpoints for third-party apps.</p>';
-    else{
-      var tbl=El("table");
-      tbl.innerHTML='<tr><th>Name</th><th>URL</th><th>Events</th><th>Status</th><th></th></tr>';
-      tg.forEach(function(t){
-        var tr=El("tr");
-        tr.innerHTML='<td><strong>'+X(t.name)+'</strong></td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(t.webhook_url||"-")+'</td><td>'+(t.events?t.events.slice(0,3).map(X).join(", "):"-")+'</td><td><span class="badge '+(t.is_active?"bg":"br")+'">'+(t.is_active?"Active":"Off")+'</span></td><td></td>';
-        var td=tr.querySelectorAll("td")[4];
-        td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFI(t.id)}},"Edit"));
-        td.appendChild(document.createTextNode(" "));
-        td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DI(t.id)}},"Del"));
-        tbl.appendChild(tr);
-      });
-      tg_list.appendChild(tbl);
-    }
-    root.appendChild(tg_div);
+    // (kanban t_0aaf0bc5) "Integration Targets" used to be a fourth section here: a second place to
+    // store a URL and a key. It never sent anything (no dispatcher, no log, no test; 0 rows across
+    // 16 tenants) and it duplicated the Webhooks screen, so the resource and its routes are retired
+    // (migration 088). Every outbound destination is a webhook; a connection to another product's
+    // API — IncentiveSwift, whose key this page hands the mobile app — is a provider key in the
+    // Integration Center above, next to CoreSwift CRM.
   });
 }
 function RK(){if(window._ak) $("kd").textContent=window._ak;}
@@ -2001,33 +1985,6 @@ function CK(){var e=$("kd");if(e) navigator.clipboard.writeText(e.textContent).t
 function GK(){api("/api/v1/api-keys",{method:"POST",body:JSON.stringify({name:"Integration Key"})}).then(function(r){if(r&&r.key){window._ak=r.key;S("integrations");}});}
 function CA(id){navigator.clipboard.writeText(window.location.origin+"/ref/"+id).then(function(){alert("Link copied!");});}
 
-function MFI(id){
-  // GET /api/v1/integration-targets/:id is not a route (405), and the list is already loaded, so
-  // the edit modal reads the row from it. The API never returns the stored key (only
-  // api_key_masked), so the key field stays blank and blank means "keep the stored key".
-  if(id){var t=(window._itg||[]).filter(function(x){return x.id===id;})[0]||{};RFI(id,t);}
-  else RFI(null,{events:[],is_active:true});
-}
-function RFI(id,t){
-  O(id?"Edit Target":"Add Integration Target", function(){
-    var mb=$("mb");
-    mb.appendChild(ff("Name", El("input",{id:"fn",value:t.name||""})));
-    mb.appendChild(ff("Webhook URL", El("input",{id:"fu",value:t.webhook_url||""})));
-    mb.appendChild(ff("API Key (optional)", El("input",{id:"fk",type:"password",value:"",placeholder:id?"stored — leave blank to keep it":"optional",autocomplete:"off"})));
-    mb.appendChild(ff("Events (comma-sep)", El("input",{id:"fv",value:(t.events||[]).join(", ")})));
-    mb.appendChild(ff("Active", El("input",{id:"fa",type:"checkbox",checked:t.is_active!==false?"checked":null})));
-    $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
-    $("mf").appendChild(El("button",{"class":"btn",onclick:function(){SI(id)}},(id?"Save":"Create")));
-  });
-}
-function SI(id){
-  var ev=$("fv").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
-  var d={name:$("fn").value, webhook_url:$("fu").value, api_key:$("fk").value||null, events:ev, is_active:$("fa").checked};
-  var m=id?"PUT":"POST", u=id?"/api/v1/integration-targets/"+id:"/api/v1/integration-targets";
-  showMsg("Saving...","mi");
-  api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("integrations")}).catch(function(e){showMsg(e.message||"Save failed","me")});
-}
-function DI(id){if(confirm("Delete target?")) api("/api/v1/integration-targets/"+id,{method:"DELETE"}).then(function(){S("integrations")});}
 
 /* === AFFILIATE PRODUCTS (User) === */function LP(){
   if(!U||!U.is_admin) return;

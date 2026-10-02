@@ -172,23 +172,13 @@ pub const SPECS: &[Spec] = &[
         read_by_gate: true,
     },
     Spec {
-        key: "max_routing_targets",
-        label: "Routing targets",
-        kind: Kind::Limit,
-        unit: "targets",
-        jsonb_key: None,
-        column: None,
-        enforced_by: "POST /api/v1/integration-targets",
-        read_by_gate: true,
-    },
-    Spec {
         key: "max_integrations",
-        label: "Integration targets",
+        label: "Integration Center connections",
         kind: Kind::Limit,
-        unit: "targets",
+        unit: "connections",
         jsonb_key: None,
         column: None,
-        enforced_by: "POST /api/v1/integration-targets",
+        enforced_by: "POST /api/v1/provider-keys",
         read_by_gate: true,
     },
     Spec {
@@ -249,8 +239,13 @@ pub const SPECS: &[Spec] = &[
         unit: "",
         jsonb_key: Some("dual_routing"),
         column: Some("has_dual_routing"),
-        enforced_by: "POST /api/v1/integration-targets",
-        read_by_gate: true,
+        // A capability marker on the plan cards (suite / agency), NOT a gate: the delivery path it
+        // used to switch on was the retired `target_software` writer, and multi-destination delivery
+        // is what the Webhooks engine does for every subscribed webhook — gated by `has_webhooks`.
+        // Removing the key from `plans.features` would be a pricing change, so it stays declared.
+        enforced_by:
+            "(no separate gate — the Webhooks engine, POST /api/v1/webhooks, gated by has_webhooks)",
+        read_by_gate: false,
     },
     Spec {
         key: "has_mini_funnels",
@@ -361,6 +356,13 @@ pub const RETIRED_KEYS: &[(&str, &str)] = &[
         "max_routing_rules",
         "no entity called a routing rule exists in this crate or the served consoles; \
          target_software rows are already counted by `max_routing_targets` and `max_integrations`",
+    ),
+    (
+        "max_routing_targets",
+        "its only mechanism was the `target_software` resource (migration 088 drops it); the \
+         authored values are byte-identical to the surviving `max_webhooks` on the same plans \
+         (kinetic-free 5/5, kinetic-pro -1/-1) and agency carries -1 with no `max_webhooks` row, \
+         where absence means not-configured = allow, so the retire loses no sold allowance",
     ),
     (
         "max_settings",

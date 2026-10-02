@@ -459,7 +459,6 @@ function buildNav() {
   sections.push(`<div class="nav-item ${STATE.view==='campaigns'?'active':''}" data-view="campaigns"><span class="icon">📢</span><span class="nav-text">Campaigns</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='integrations'?'active':''}" data-view="integrations"><span class="icon">🔌</span><span class="nav-text">Integrations</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></div>`);
 
   // Super Admin (divider + admin-only)
@@ -470,7 +469,6 @@ function buildNav() {
     sections.push(`<div class="nav-item ${STATE.view==='systemTags'?'active':''}" data-view="systemTags" style="padding-left:28px"><span class="icon">🔖</span><span class="nav-text">System Tags</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tagGroups'?'active':''}" data-view="tagGroups" style="padding-left:28px"><span class="icon">📁</span><span class="nav-text">Tag Groups</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='siteSettings'?'active':''}" data-view="siteSettings"><span class="icon">🌐</span><span class="nav-text">Site Settings</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='leadRouting'?'active':''}" data-view="leadRouting"><span class="icon">🧭</span><span class="nav-text">Lead Routing</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
@@ -505,7 +503,6 @@ const viewRenderers = {
   emailTemplates: renderEmailTemplates,
   campaigns: renderCampaigns,
   webhooks: renderWebhooks,
-  integrations: renderIntegrations,
   providerKeys: renderProviderKeys,
   superAdmin: renderSuperAdmin,
   systemTags: renderSystemTags,
@@ -514,7 +511,6 @@ const viewRenderers = {
   apiKeys: renderApiKeys,
   settings: renderSettings,
   siteSettings: renderSiteSettings,
-  leadRouting: renderLeadRouting,
   tagRules: renderTagRules,
   checkoutSessions: renderCheckoutSessions,
 };
@@ -561,7 +557,6 @@ function bindView(view) {
     case 'emailTemplates': bindEmailTemplates(); break;
     case 'campaigns': bindCampaigns(); break;
     case 'webhooks': bindWebhooks(); break;
-    case 'integrations': bindIntegrations(); break;
     case 'providerKeys': bindProviderKeys(); break;
     case 'superAdmin': bindSuperAdmin(); break;
     case 'systemTags': bindSystemTags(); break;
@@ -570,7 +565,6 @@ function bindView(view) {
     case 'apiKeys': bindApiKeys(); break;
     case 'settings': bindSettings(); break;
     case 'siteSettings': bindSiteSettings(); break;
-    case 'leadRouting': bindLeadRouting(); break;
     case 'tagRules': bindTagRules(); break;
     case 'checkoutSessions': break;
     case 'cardAnalytics': bindCardAnalytics(); break;
@@ -1802,90 +1796,13 @@ function openWebhookModal(id) {
   }, 100);
 }
 
-// ── INTEGRATION CENTER ──
-let _integrationsCache = [];
-function maskKey(k) { if(!k) return '—'; if(k.length<=4) return '••••'; return '••••••' + k.slice(-4); }
-
-async function renderIntegrations() {
-  let items = [];
-  try { items = await api('/integration-targets'); } catch(e) { items = []; }
-  if (!Array.isArray(items)) items = items.data || items.items || [];
-  _integrationsCache = items;
-
-  return `<div>
-    <div class="card-header" style="padding:0;margin-bottom:20px">
-      <h1 style="font-size:22px;font-weight:700">🔌 Integration Center</h1>
-      <button class="btn btn-primary btn-sm" id="add-integration-btn">+ Add Connection</button>
-    </div>
-    <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px">Connect third-party services (e.g. Mailgun for email). Keys are stored per-tenant and never shared.</p>
-    ${items.length === 0 ? `<div class="empty"><div class="icon">🔌</div><div class="title">No integrations yet</div><div class="desc">Add your first connection (e.g. Mailgun for email)</div></div>` : `
-    <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Endpoint / URL</th><th>API Key</th><th>Events</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>${items.map(t=>`<tr>
-        <td><strong>${x(t.name)}</strong></td>
-        <td><code style="font-size:11px">${x(t.webhook_url)}</code></td>
-        <td><code style="font-size:11px">${x(t.api_key_masked || '—')}</code></td>
-        <td>${(t.events||[]).slice(0,3).map(e=>`<span class="badge badge-blue">${x(e)}</span>`).join(' ')}${(t.events||[]).length>3?' …':''}</td>
-        <td><span class="badge ${t.is_active?'badge-green':'badge-red'}">${t.is_active?'Active':'Inactive'}</span></td>
-        <td>
-          <button class="btn btn-secondary btn-xs" onclick="window._editIntegration('${t.id}')">Edit</button>
-          <button class="btn btn-danger btn-xs" onclick="window._deleteIntegration('${t.id}')">Delete</button>
-        </td>
-      </tr>`).join('')}</tbody>
-    </table></div></div>`}
-  </div>`;
-}
-function bindIntegrations() {
-  document.getElementById('add-integration-btn')?.addEventListener('click', () => openIntegrationModal());
-}
-window._editIntegration = function(id) { openIntegrationModal(id); };
-window._deleteIntegration = async function(id) {
-  if (!confirm('Delete this integration?')) return;
-  try {
-    await api('/integration-targets/'+id, { method: 'DELETE' });
-    showToast('Integration deleted', 'success');
-    renderView();
-  } catch(e) { showToast(e.message, 'error'); }
-};
-
-function openIntegrationModal(id) {
-  STATE.modal = { title: id ? 'Edit Connection' : 'Add Connection', content: `<div class="empty"><div class="icon">⏳</div></div>` };
-  renderApp();
-  setTimeout(() => {
-    const t = id ? (_integrationsCache.find(i => i.id === id) || {}) : {};
-    const body = document.getElementById('modal-body');
-    if (!body) return;
-    body.innerHTML = `<form id="integration-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" placeholder="e.g. Mailgun" required></div>
-      <div class="form-group"><label class="form-label">API Base URL / Webhook URL</label><input class="input" name="webhook_url" value="${x(t.webhook_url||'')}" placeholder="https://api.mailgun.net/v3/your-domain/messages" required></div>
-      <div class="form-group"><label class="form-label">API Key</label><input class="input" name="api_key" value="" placeholder="${id?'Leave blank to keep existing key':'Enter key'}" autocomplete="off"></div>
-      <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((t.events||[]).join(', '))}" placeholder="email.send"></div>
-      ${id?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${t.is_active?'on':''}" id="integration-active-toggle"></span> Active</label>`:''}
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
-      </div>
-    </form>`;
-    document.getElementById('integration-active-toggle')?.addEventListener('click', function(){this.classList.toggle('on');});
-    document.getElementById('integration-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const data = Object.fromEntries(fd);
-      data.events = data.events ? data.events.split(',').map(s=>s.trim()).filter(Boolean) : [];
-      if (data.api_key === '') delete data.api_key;
-      try {
-        if (id) {
-          data.is_active = document.getElementById('integration-active-toggle').classList.contains('on');
-          await api('/integration-targets/'+id, { method: 'PUT', body: JSON.stringify(data) });
-        } else {
-          await api('/integration-targets', { method: 'POST', body: JSON.stringify(data) });
-        }
-        showToast(id?'Connection updated':'Connection created', 'success');
-        STATE.modal = null; renderApp();
-      } catch(e) { showToast(e.message, 'error'); }
-    });
-  }, 100);
-}
+// ── INTEGRATION CENTER — RETIRED (kanban t_0aaf0bc5) ─────────────────────────────────────────
+// This view listed `target_software` rows through the integration-targets route that migration 088
+// retires. Measured 2026-10-02: 0 rows across 16 tenants, no dispatcher (nothing ever POSTed to the
+// stored `webhook_url`), no delivery log and no test button — while the Webhooks view in this same
+// sidebar has all four, and the Integration Center's provider keys (the Provider Keys view here,
+// `provider_keys`) are the real per-provider credential store with a test-connection probe. Two
+// screens for one job, and this was the strictly weaker one, so it is gone rather than repointed.
 
 // ── PROVIDER KEYS + PAYMENT PROVIDERS (DB-backed, admin-entered — nothing hardwired) ──
 let _providerCatalog = [];
@@ -3285,51 +3202,11 @@ function bindSiteSettings() {
   };
 }
 
-// ═══ SIDEBAR VIEW: Lead Routing (target software + routing log) ══════════════
-async function renderLeadRouting() {
-  let targets = [], logs = [];
-  try { targets = await api('/target-software') || []; } catch (e) { }
-  try { logs = await api('/routing-logs') || []; } catch (e) { }
-  if (!Array.isArray(targets)) targets = targets.data || [];
-  if (!Array.isArray(logs)) logs = logs.data || [];
-  return `<div>
-    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Lead Routing</h1>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/POST /api/v1/target-software · GET /api/v1/routing-logs — where this tenant's leads are dual-routed. Needs the <code>has_dual_routing</code> plan flag.</div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Routing targets</span></div>
-      ${wiredTable(['Name', 'Webhook', 'Key', 'Active'], targets.map(t => `<tr><td>${x(t.name)}</td><td style="font-size:12px">${x(t.webhook_url)}</td><td style="font-size:12px;color:var(--muted)">${t.api_key_masked ? x(t.api_key_masked) : '—'}</td><td>${t.is_active ? 'yes' : 'no'}</td></tr>`), 'No routing targets')}
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        ${wiredInput('wired-ts-name', 'Target name')}${wiredInput('wired-ts-url', 'https://…/webhook')}${wiredInput('wired-ts-key', 'API key (optional)')}
-        <button class="btn btn-primary" id="wired-ts-add">Add target</button><span id="wired-ts-msg" style="font-size:12px"></span>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Recent routing log (100)</span></div>
-      ${wiredTable(['Lead', 'Status', 'Target', 'When'], logs.map(l => `<tr><td style="font-size:12px">${x(l.lead_id)}</td><td>${x(l.status)}</td><td style="font-size:12px">${x(l.target_software)}</td><td>${formatDate(l.created_at)}</td></tr>`), 'No routed leads yet')}
-    </div>
-  </div>`;
-}
-
-function bindLeadRouting() {
-  const b = document.getElementById('wired-ts-add');
-  if (!b) return;
-  b.onclick = async () => {
-    const msg = document.getElementById('wired-ts-msg');
-    const body = {
-      name: document.getElementById('wired-ts-name').value.trim(),
-      webhook_url: document.getElementById('wired-ts-url').value.trim(),
-    };
-    const key = document.getElementById('wired-ts-key').value.trim();
-    if (key) body.api_key = key;
-    if (!body.name || !body.webhook_url) { msg.textContent = '✗ name and webhook URL are required'; return; }
-    b.disabled = true; msg.textContent = 'Saving…';
-    try {
-      await api('/target-software', { method: 'POST', body: JSON.stringify(body) });
-      showToast('Routing target created', 'success');
-      renderView();
-    } catch (e) { msg.textContent = '✗ ' + e.message; b.disabled = false; }
-  };
-}
+// ═══ SIDEBAR VIEW: Lead Routing — RETIRED (kanban t_0aaf0bc5) ═════════════════════════════════
+// The view read GET /api/v1/target-software (0 rows) and the routing-log route, whose table had NO
+// writer anywhere in the crate — so its "Recent routing log (100)" table was empty by construction.
+// `routing_log` and `target_software` are dropped by migration 088; the delivery surface is the
+// Webhooks view.
 
 // ═══ SIDEBAR VIEW: Tag Rules ═════════════════════════════════════════════════
 async function renderTagRules() {

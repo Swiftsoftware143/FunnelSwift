@@ -159,14 +159,13 @@
           <tr><td><code>max_api_keys</code></td><td>Number (keys)</td><td>API keys — POST /api/v1/api-keys</td></tr>
           <tr><td><code>max_portfolios</code></td><td>Number (companies)</td><td>Portfolio companies — POST /api/v1/portfolio-companies</td></tr>
           <tr><td><code>max_tag_groups</code></td><td>Number (groups)</td><td>Tag groups — POST /api/v1/tag-groups</td></tr>
-          <tr><td><code>max_routing_targets</code></td><td>Number (targets)</td><td>Routing targets — POST /api/v1/integration-targets</td></tr>
-          <tr><td><code>max_integrations</code></td><td>Number (targets)</td><td>Integration targets — POST /api/v1/integration-targets</td></tr>
+          <tr><td><code>max_integrations</code></td><td>Number (connections)</td><td>Integration Center connections — POST /api/v1/provider-keys</td></tr>
           <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
           <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — (dashboard usage counter only — no gate calls it)</td></tr>
           <tr><td><code>has_api</code></td><td>Toggle</td><td>API access — POST /api/v1/api-keys</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
           <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead export — GET /api/v1/leads/export</td></tr>
-          <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — POST /api/v1/integration-targets</td></tr>
+          <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — a plan-page marker only, with no gate of its own: multi-destination delivery is what the <strong>Webhooks</strong> engine does (POST /api/v1/webhooks, gated by <code>has_webhooks</code>). The resource this key used to switch on was retired on 2026-10-02 (kanban t_0aaf0bc5).</td></tr>
           <tr><td><code>has_mini_funnels</code></td><td>Toggle</td><td>Mini funnels — POST /api/v1/kinetic/cards (mini_funnel type)</td></tr>
           <tr><td><code>has_card_gating</code></td><td>Toggle</td><td>Card gating (password / consent / age) — PUT /api/v1/kinetic/cards/:id/password|gating</td></tr>
           <tr><td><code>has_analytics</code></td><td>Toggle</td><td>Card analytics — GET /api/v1/card-analytics/:card_id</td></tr>
@@ -207,9 +206,12 @@
       <div class="card">
         <h3>Retired plan keys — rows deleted, nothing enforces them</h3>
         <p>A key can sit in <code>feature_limits</code> for months without a single gate reading it: the
-        number looks like an entitlement, you set it, and no request ever consults it. Nine such keys were
-        measured on 2026-10-02 (kanban t_090f3e00) and <strong>retired</strong> —
-        <code>migrations/086_retire_ungated_feature_limit_keys.sql</code> <strong>deletes</strong> their rows.
+        number looks like an entitlement, you set it, and no request ever consults it. Ten such keys have
+        been measured and <strong>retired</strong> — nine on 2026-10-02 (kanban t_090f3e00,
+        <code>migrations/086_retire_ungated_feature_limit_keys.sql</code>), and one more the same day when
+        the resource it counted was itself retired (kanban t_0aaf0bc5,
+        <code>migrations/088_retire_target_software_and_routing_log.sql</code>). Both files
+        <strong>delete</strong> the rows.
         Deactivating a row would not have been enough: the resolver reads any <code>feature_limits</code> row
         for a key the moment a gate is called with it, so a leftover row is a loaded gun. One vocabulary per
         capability. <code>GET /api/v1/admin/plans/registry</code> publishes the retired list under
@@ -220,9 +222,10 @@
           <tr><td><code>max_api_calls</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1000 · capture-free 1000 · kinetic-free 10000</td><td>nothing — the app has no request meter. Carded separately: a counter has to exist before a cap can.</td></tr>
           <tr><td><code>max_plans</code></td><td>agency −1 · kinetic-pro −1</td><td>nothing — “plans” is the global price list you manage on this page, not a per-workspace quantity.</td></tr>
           <tr><td><code>max_portfolio_companies</code></td><td>agency −1 · kinetic-pro 100</td><td><code>max_portfolios</code> — the same portfolio-company count, and the key the create route is actually gated with.</td></tr>
-          <tr><td><code>max_routing_rules</code></td><td>agency −1 · kinetic-pro 100</td><td><code>max_routing_targets</code> / <code>max_integrations</code> — the routing entity in this app is a target-software row, and both keys already count it.</td></tr>
+          <tr><td><code>max_routing_rules</code></td><td>agency −1 · kinetic-pro 100</td><td>nothing now — it named a routing rule, and the "routing entity" this app had was a target-software row, retired on 2026-10-02 (kanban t_0aaf0bc5). Outbound delivery is a webhook, counted by <code>max_webhooks</code>.</td></tr>
+          <tr><td><code>max_routing_targets</code></td><td>kinetic-free 5 · kinetic-pro −1 · agency −1</td><td>nothing — the <code>target_software</code> rows it counted were retired the same day (0 rows across every workspace, and no dispatcher ever read the stored URL). The authored numbers are byte-identical to the surviving <code>max_webhooks</code> on the same plans (kinetic-free 5/5, kinetic-pro −1/−1), so no sold allowance moved.</td></tr>
           <tr><td><code>max_settings</code></td><td>agency −1 · kinetic-pro −1</td><td>nothing — settings are internal key/value storage, not a plan entitlement.</td></tr>
-          <tr><td><code>max_target_software</code></td><td>agency −1 · kinetic-pro 50</td><td>a third name for the same target-software count (see <code>max_routing_targets</code>).</td></tr>
+          <tr><td><code>max_target_software</code></td><td>agency −1 · kinetic-pro 50</td><td>nothing now — a third name for the same target-software count, and that resource (with <code>max_routing_targets</code>) was itself retired (see the row above).</td></tr>
           <tr><td><code>storage_mb</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 50 · capture-free 50 · kinetic-free 500</td><td>nothing — nothing in the app measures bytes stored. Carded separately.</td></tr>
           <tr><td><code>team_members</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1 · capture-free 1 · kinetic-free 3</td><td><code>max_team_members</code> (the same count of active users). No screen adds a second member to an existing workspace, so the cap cannot fire yet — carded separately.</td></tr>
         </table>

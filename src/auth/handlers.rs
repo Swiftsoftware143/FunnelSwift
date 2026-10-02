@@ -320,6 +320,8 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
 
     // `available_products` was REMOVED here (kanban t_e0f9b86b). It was built as
     //   SELECT (row_to_json(t.*)::jsonb - 'api_key') AS p FROM target_software t ORDER BY t.name
+    //   (that table was itself retired by migration 088 — kanban t_0aaf0bc5 — for holding 0 rows
+    //   and dispatching nothing)
     // with no tenant filter, so every authenticated caller got EVERY tenant's routing targets
     // (name, webhook_url, portfolio_company_id, events, is_active). The field is deleted rather
     // than tenant-scoped because no shipped surface reads it (box-wide grep: www-app,

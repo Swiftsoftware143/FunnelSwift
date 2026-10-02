@@ -8,12 +8,14 @@ use sqlx::Row;
 use uuid::Uuid;
 
 /// Returns IncentiveSwift connection config for the FunnelSwift mobile app.
-/// Looks up the user's IncentiveSwift API key from their integration targets
-/// (set via the FunnelSwift Integration Center in the web admin).
+/// Looks up the user's IncentiveSwift API key in the app's per-product credential store
+/// (`provider_keys`, provider = 'incentiveswift'), the same store the CoreSwift connection uses
+/// and the row the Integration Center edits (kanban t_0aaf0bc5 — the `target_software` table it
+/// used to read was retired: 0 rows, no dispatcher, and it duplicated both `webhooks` and this).
 ///
 /// CREDENTIAL CONTRACT (kanban t_63840ff2)
 /// --------------------------------------
-/// `target_software.api_key` is CIPHERTEXT at rest, so it is decrypted here — a ciphertext can
+/// `provider_keys.api_key` is CIPHERTEXT at rest, so it is decrypted here — a ciphertext can
 /// never be a usable bearer. This endpoint is a deliberate CONFIG HAND-OFF, not a read-back: the
 /// caller is the tenant's own authenticated device and the key being handed over is that tenant's
 /// own credential, which the app then uses as `Authorization: Bearer <key>` when it calls
@@ -33,9 +35,10 @@ pub async fn get_incentiveswift_config(
     let base_url =
         std::env::var("IS_BASE_URL").unwrap_or_else(|_| "https://incentiveswift.com".to_string());
 
-    // Look up the tenant's IncentiveSwift integration target
+    // Look up the tenant's IncentiveSwift connection. This is the Integration Center's own
+    // credential store, so the tenant manages it on the Integrations screen — no name matching.
     let row = sqlx::query(
-        "SELECT api_key, webhook_url, is_active FROM target_software WHERE tenant_id = $1 AND LOWER(name) LIKE '%incentiveswift%' AND is_active = true LIMIT 1",
+        "SELECT api_key, is_active FROM provider_keys WHERE tenant_id = $1 AND provider = 'incentiveswift' AND is_active = true LIMIT 1",
     )
     .bind(tenant_id)
     .fetch_optional(&state.pool)
