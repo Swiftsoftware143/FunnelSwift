@@ -693,7 +693,7 @@ function renderModal(m) {
         <span class="modal-title">${x(m.title)}</span>
         <button class="modal-close" onclick="window._closeModal()">✕</button>
       </div>
-      <div class="modal-body" id="modal-body">${m.content||''}</div>
+      <div class="modal-body" id="modal-body">${typeof m.content === 'function' ? m.content() : (m.content||'')}</div>
     </div>
   </div>`;
 }
@@ -2725,41 +2725,81 @@ function bindPlanAdmin() {
   };
 }
 
-window._editPlanFeatures = function (id) {
-  const p = (STATE.data.planAdminPlans || []).find(z => z.id === id) || {};
-  STATE.modal = {
-    title: 'Feature flags — ' + (p.name || id),
-    content: `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">PUT /api/v1/admin/plans/${x(id)}/features — the JSON object is merged into the plan's existing <code>features</code>.</div>
-      <textarea id="planadmin-features-json" class="input" style="width:100%;height:170px;font-family:ui-monospace,monospace;font-size:12px">${x(JSON.stringify(p.features || {}, null, 2))}</textarea>
+/* kanban t_aad42041: the plan-features editor is the one modal whose SUCCESS path calls BOTH
+   showToast() (which re-renders the shell) and an inline status line. STATE.modal.content used to be
+   a STRING captured when the modal opened, so showToast's renderApp() rebuilt the modal from that
+   stale string: #planadmin-features-msg came back empty and the textarea was repainted with the
+   features the plan had at OPEN time. admin_update_plan_features MERGES
+   (`features = features::jsonb || $1::jsonb`), so an operator who saved, saw the reverted box, typed a
+   second change on top of it and saved again re-sent the OLD value of every key the first save had
+   changed -- the first change was silently undone behind a 200 and a green toast. So:
+     * renderModal() now evaluates a FUNCTION content, and this modal's content reads the draft (PFS)
+       below -- that is what makes a repaint show the truth instead of the open-time snapshot;
+     * the Save control is an inline `onclick`, because renderApp() replaces the node and a handler
+       bound as a property on that node is destroyed with it, so a second Save click performed no
+       request at all;
+     * the success path stores the SAVED value in the draft (and in the list row the editor prefills
+       from) BEFORE it toasts, so the box the operator keeps editing holds what the DB holds;
+     * the refusal path (400, e.g. the retired features.card_types key) writes the same draft with NO
+       toast, so the operator's '✗ ...' stays on screen exactly as before.
+   The box is also the draft's authority while typing (oninput), so no repaint can drop a keystroke. */
+const PFS = { id: null, features: '{}', templates: '', msg: '', busy: false };
+window._planFeaturesInput = function (v) { PFS.features = v; };
+window._planTemplatesInput = function (v) { PFS.templates = v; };
+window._planFeaturesHTML = function () {
+  return `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">PUT /api/v1/admin/plans/${x(PFS.id)}/features — the JSON object is merged into the plan's existing <code>features</code>.</div>
+      <textarea id="planadmin-features-json" class="input" style="width:100%;height:170px;font-family:ui-monospace,monospace;font-size:12px" oninput="window._planFeaturesInput(this.value)">${x(PFS.features)}</textarea>
       <div style="font-size:12px;color:var(--muted);margin:10px 0 4px">allowed_template_ids (optional JSON array, leave blank to keep unchanged)</div>
-      <input id="planadmin-templates-json" class="input" style="width:100%" placeholder='["tpl_1","tpl_2"]' value="${p.allowed_template_ids ? x(JSON.stringify(p.allowed_template_ids)) : ''}">
+      <input id="planadmin-templates-json" class="input" style="width:100%" placeholder='["tpl_1","tpl_2"]' value="${x(PFS.templates)}" oninput="window._planTemplatesInput(this.value)">
       <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="btn btn-primary btn-sm" id="planadmin-features-save">Save Features</button>
+        <button class="btn btn-primary btn-sm" id="planadmin-features-save" onclick="window._savePlanFeatures()">Save Features</button>
         <button class="btn btn-secondary btn-sm" onclick="window._closeModal()">Cancel</button>
       </div>
-      <div id="planadmin-features-msg" style="font-size:12px;margin-top:10px;color:var(--muted)"></div>`
-  };
-  renderApp();
-  const sv = document.getElementById('planadmin-features-save');
-  if (!sv) return;
-  sv.onclick = async () => {
-    const msg = document.getElementById('planadmin-features-msg');
-    let features;
-    try { features = JSON.parse(document.getElementById('planadmin-features-json').value || '{}'); }
-    catch (e) { if (msg) msg.textContent = '✗ features must be valid JSON: ' + e.message; return; }
-    const tplRaw = (document.getElementById('planadmin-templates-json').value || '').trim();
-    const body = { features };
-    if (tplRaw) { try { body.allowed_template_ids = JSON.parse(tplRaw); } catch (e) { if (msg) msg.textContent = '✗ allowed_template_ids must be valid JSON array'; return; } }
-    sv.disabled = true; if (msg) msg.textContent = 'Saving…';
-    try {
-      const r = await api('/admin/plans/' + id + '/features', { method: 'PUT', body: JSON.stringify(body) });
-      if (msg) msg.textContent = '✓ ' + (r.message || 'Features updated');
-      showToast('Plan features updated', 'success');
-    } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
-    sv.disabled = false;
-  };
+      <div id="planadmin-features-msg" style="font-size:12px;margin-top:10px;color:var(--muted)">${x(PFS.msg)}</div>`;
 };
-
+window._editPlanFeatures = function (id) {
+  const p = (STATE.data.planAdminPlans || []).find(z => z.id === id) || {};
+  PFS.id = id;
+  PFS.features = JSON.stringify(p.features || {}, null, 2);
+  PFS.templates = p.allowed_template_ids ? JSON.stringify(p.allowed_template_ids) : '';
+  PFS.msg = '';
+  PFS.busy = false;
+  STATE.modal = { title: 'Feature flags — ' + (p.name || id), content: window._planFeaturesHTML };
+  renderApp();
+};
+window._savePlanFeatures = async function () {
+  if (PFS.busy) return;
+  /* snapshot the box FIRST: it is the authority on what the operator typed, and the success path
+     re-renders, so the box is rebuilt from this draft */
+  const ta = document.getElementById('planadmin-features-json');
+  const tp = document.getElementById('planadmin-templates-json');
+  const sv = document.getElementById('planadmin-features-save');
+  const msg = document.getElementById('planadmin-features-msg');
+  if (ta) PFS.features = ta.value;
+  if (tp) PFS.templates = tp.value;
+  /* the NON-success paths write the live status node, exactly as they always did: they raise no toast,
+     so no re-render is involved and the operator's text is left where it is. */
+  const sayMsg = (t) => { PFS.msg = t; if (msg) msg.textContent = t; };
+  let features;
+  try { features = JSON.parse(PFS.features || '{}'); }
+  catch (e) { sayMsg('✗ features must be valid JSON: ' + e.message); return; }
+  const tplRaw = (PFS.templates || '').trim();
+  const body = { features };
+  if (tplRaw) { try { body.allowed_template_ids = JSON.parse(tplRaw); } catch (e) { sayMsg('✗ allowed_template_ids must be valid JSON array'); return; } }
+  PFS.busy = true; sayMsg('Saving…'); if (sv) sv.disabled = true;
+  try {
+    const r = await api('/admin/plans/' + PFS.id + '/features', { method: 'PUT', body: JSON.stringify(body) });
+    PFS.busy = false; if (sv) sv.disabled = false;
+    /* the SAVED value stays in the box (and in the row the editor prefills from) so the toast's
+       re-render repaints the operator's own committed value, and a SECOND change typed on top of it is
+       merged against what the first save wrote rather than against the open-time snapshot. */
+    PFS.features = JSON.stringify(features, null, 2);
+    const row = (STATE.data.planAdminPlans || []).find(z => z.id === PFS.id);
+    if (row) { row.features = features; if (body.allowed_template_ids) row.allowed_template_ids = body.allowed_template_ids; }
+    sayMsg('✓ ' + (r.message || 'Features updated'));
+    showToast('Plan features updated', 'success');
+  } catch (e) { PFS.busy = false; if (sv) sv.disabled = false; sayMsg('✗ ' + e.message); }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // WIRED SURFACES — kanban t_4cc3f695 (dead-endpoint triage)
