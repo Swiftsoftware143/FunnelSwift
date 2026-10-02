@@ -450,74 +450,24 @@ pub async fn admin_update_affiliate_product(
     update_affiliate_product(auth, State(state), Path(id), Json(req)).await
 }
 
-/// POST /api/v1/internal/sync-affiliate-plan — the internal cross-app plan sync (the card
-/// t_6d326447 calls it `cross-app/plan-sync`; the literal routed path is this one, measured in
-/// `src/api_router.rs`, and no caller in the fleet sends it today).
-///
-/// **The decision: ONE WRITER.** This route used to be a third hand-rolled writer of the plan ->
-/// product link: its own `INSERT ... VALUES (..., 10.0)` with a LITERAL commission rate, taking
-/// `plan_name` and `price` straight from the payload and never reading a plan — so it invented a
-/// product and ignored the plan's own commission rate in the same statement. It now delegates to
-/// [`crate::handlers::plan_handler::sync_plan_to_affiliate_product`], which reads name, price,
-/// description, category and commission off the `plans` row, and therefore REQUIRES the plan to
-/// exist here. The payload's `plan_name`/`price` are deliberately IGNORED (trusting a caller for
-/// money values was the defect). A payload naming a plan this service does not have answers 400
-/// with the id quoted — not a product with an invented 10% rate.
-pub async fn handle_cross_app_plan_sync(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-    Json(payload): Json<Value>,
-) -> AppResult<Json<Value>> {
-    // Internal endpoint — verify x-internal-key before doing anything.
-    let key = headers
-        .get("x-internal-key")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if state.internal_sync_key.is_empty() || key != state.internal_sync_key {
-        return Err(AppError::Unauthorized("Invalid internal key".into()));
-    }
-
-    let plan_id_str = payload["plan_id"].as_str().unwrap_or("");
-    let source_app = payload["source_app"].as_str().unwrap_or("unknown");
-
-    let plan_id = Uuid::parse_str(plan_id_str).map_err(|_| {
-        AppError::BadRequest(format!(
-            "plan_id is required and must be a plan this service has (got {plan_id_str:?}, \
-             source_app={source_app}); a plan-derived affiliate product takes its commission from \
-             its plan (kanban t_6d326447)"
-        ))
-    })?;
-    let tenant_id = payload["tenant_id"]
-        .as_str()
-        .and_then(|s| Uuid::parse_str(s).ok())
-        .unwrap_or_else(crate::system_tenant::system_tenant_id);
-
-    // ONE WRITER: the helper reads the plan row and owns every column value, so this route cannot
-    // answer with a product whose commission contradicts its plan. A plan we do not have is a 400 —
-    // not a product with an invented 10% rate (which is exactly what this route used to create).
-    let product_id = match super::plan_handler::sync_plan_to_affiliate_product(
-        &state.pool,
-        plan_id,
-        Some(tenant_id),
-    )
-    .await
-    {
-        Ok(Some(pid)) => pid,
-        Ok(None) => {
-            return Err(AppError::Internal(format!(
-                "the plan sync reported no product for plan {plan_id}"
-            )))
-        }
-        Err(AppError::NotFound(msg)) => {
-            return Err(AppError::BadRequest(format!(
-            "{msg}; source_app={source_app} — this route no longer invents a product for a plan \
-                 it does not have (kanban t_6d326447)"
-        )))
-        }
-        Err(e) => return Err(e),
-    };
-
-    Ok(Json(
-        json!({"status": "synced", "product_id": product_id.to_string()}),
-    ))
-}
+// ── Retired: the cross-app plan -> affiliate-product sync (kanban t_141162e7) ──
+//
+// `POST /api/v1/internal/sync-affiliate-plan` (`handle_cross_app_plan_sync`) used to live here; its
+// ROUTE was deleted from `src/api_router.rs` in the same change. Two recorded decisions, both made
+// after this route was designed, leave it with nothing legitimate to do:
+//
+//   1. ONE WRITER (t_6d326447): the route ended up delegating to
+//      `plan_handler::sync_plan_to_affiliate_product`, which reads the plan's own name, price and
+//      commission and therefore REQUIRES the plan to exist in THIS service's `plans` table. A
+//      sibling app's `plan_id` is a uuid from a different database, so no sibling payload can ever
+//      succeed — measured live: a correctly-keyed sibling-shaped post answers
+//      `400 plan <uuid> not found` and writes nothing.
+//   2. FREE PLANS ONLY (migration 070, David 2026-09-29): `trg_affiliate_products_free_only`
+//      RAISES on any affiliate product linked to a paid plan. The catalogue is exactly one
+//      `… Free` / `$0` row per `source_app` — seeded by FunnelSwift's own migrations — and the live
+//      consumer (`affiliate_tracking_handler::handle_affiliate_upgrade_event`) resolves the product
+//      by `source_app`. A sibling has nothing to push: its paid plans may not become affiliate
+//      products, and its free row is FunnelSwift-owned.
+//
+// The catalogue stays FunnelSwift-owned (admin console: POST/PUT/DELETE /api/v1/affiliate-products).
+// The three senders (ADASwift, IncentiveSwift, WorkflowSwift) were deleted in the same change.

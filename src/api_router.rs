@@ -681,10 +681,13 @@ pub fn create_router(
             "/api/v1/internal/sync-plan-tag",
             post(sync_plan_tag_handler::sync_plan_tag),
         )
-        .route(
-            "/api/v1/internal/sync-affiliate-plan",
-            post(affiliate_product_handler::handle_cross_app_plan_sync),
-        )
+        // RETIRED (kanban t_141162e7): `POST /api/v1/internal/sync-affiliate-plan` used to be
+        // registered here (`affiliate_product_handler::handle_cross_app_plan_sync`). Two recorded
+        // decisions left it nothing legitimate to do — the ONE WRITER contract (t_6d326447) makes
+        // it require a plan that exists in THIS service's `plans` table (no sibling plan can), and
+        // migration 070 forbids an affiliate product for a paid plan, so a sibling free row is
+        // FunnelSwift-owned anyway. The catalogue is FunnelSwift-owned; the three senders
+        // (ADASwift, IncentiveSwift, WorkflowSwift) were deleted in the same change.
         .route(
             "/api/v1/internal/affiliate/upgrade-event",
             post(affiliate_tracking_handler::handle_affiliate_upgrade_event),

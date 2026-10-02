@@ -128,17 +128,25 @@ Each plan carries a `commission_rate` — the payout % an affiliate earns. Admin
 
 Set a plan's rate via `PUT /api/v1/plans/:id` with `{"commission_rate": 50}`. An affiliate's effective rate is stamped from their plan at signup; upgrade the affiliate's plan and their rate follows.
 
-### Plan Sync (unchanged)
+### The Catalogue Is FunnelSwift-Owned (no plan auto-sync)
 
-Plans from all Swift apps still auto-sync into `affiliate_products` via `POST /api/v1/internal/sync-affiliate-plan` (each app fires it on plan create/update/delete with its `source_app`):
+`affiliate_products` is owned here. Nothing pushes plans into it: the endpoint that used to accept
+them, `POST /api/v1/internal/sync-affiliate-plan`, was RETIRED and deleted (kanban t_141162e7) with its
+three senders (ADASwift, IncentiveSwift, WorkflowSwift). It could never have worked — it required the
+plan to exist in this service's own `plans` table (ONE WRITER, kanban t_6d326447), and a sibling's
+`plan_id` is a uuid from another database: a perfectly-keyed sibling call answers `400 plan <uuid> not
+found` and writes nothing (measured 2026-10-01). Migration 070 allows an affiliate product for a **free
+plan only**, so the only legitimate content is one free row per app.
 
-- CoreSwift (`source_app: coreswift`)
-- WorkflowSwift (`source_app: workflowswift`)
-- AdaSwift (`source_app: adaswift`)
-- IncentiveSwift (`source_app: incentiveswift`)
-- MissedCallRespondr (`source_app: missedcallrespondr`)
+The live catalogue is 7 rows (measured 2026-10-01) — one `… Free` / `$0` product per app, each carrying
+its `system_tag_id`: the two FunnelSwift free plans (`funnelswift`, linked by `plan_id`) plus
+`coreswift`, `adaswift`, `workflowswift`, `incentiveswift` and `missedcallrespondr`. Manage them on the
+**Affiliate Products** screen in this console.
 
-A product can additionally carry a `system_tag_id` link — the API accepts it on create/update (`POST`/`PUT /api/v1/affiliate-products`, `src/handlers/affiliate_product_handler.rs:221`/`:298`) — but no shipped form offers a picker, so 0 of 11 products carry one (measured 2026-09-26). Product categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
+The cross-app call the sibling apps DO make is the commission trigger —
+`POST /api/v1/internal/affiliate/upgrade-event` (`x-internal-key` header) when a referred customer
+moves onto a paid plan; it resolves the product by `source_app` and credits the affiliate. Product
+categories are seeded in migration `026_affiliate_product_auto_sync.sql`.
 
 ## MultiDirectory Integration (CTA Slots)
 
@@ -154,7 +162,7 @@ FunnelSwift's SMS/email funnels can appear as **CTA buttons** on MultiDirectory 
 ## Monitoring
 - Check logs: `journalctl -u funnelswift --no-pager -n 50`
 - Health endpoint: `GET /api/health`
-- Database: `psql postgres://swift:SwiftSecure2026!@localhost:5432/funnelswift`
+- Database: `psql postgres://swift:***@localhost:5432/funnelswift`
 
 ## Plan Features Editor
 

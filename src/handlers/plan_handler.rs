@@ -63,12 +63,12 @@ fn reject_retired_feature_keys(features: &serde_json::Value) -> AppResult<()> {
 ///
 /// Measured before the change: the two other materialisation routes each carried their own
 /// hand-rolled `INSERT ... VALUES (..., 10.0)` — `POST /api/v1/admin/affiliate-products/sync`
-/// (affiliate_product_handler.rs) and `POST /api/v1/internal/sync-affiliate-plan` (the route this
-/// card calls `cross-app/plan-sync`) — with a LITERAL 10.0 rate, no description and no category_id.
-/// A probe plan with `plans.commission_rate = 7.5` therefore materialised
-/// `default_commission_rate = 10.00` through either route and `7.50` through this one: the
-/// commission a plan product advertised depended on WHICH route created the row. Both routes now
-/// delegate here and carry no value of their own.
+/// (affiliate_product_handler.rs) and `POST /api/v1/internal/sync-affiliate-plan` (the route the
+/// sibling plan sync posted to — RETIRED in kanban t_141162e7) — with a LITERAL 10.0 rate, no
+/// description and no category_id. A probe plan with `plans.commission_rate = 7.5` therefore
+/// materialised `default_commission_rate = 10.00` through either route and `7.50` through this one:
+/// the commission a plan product advertised depended on WHICH route created the row. The cross-app
+/// route is gone; the one that remains delegates here and carries no value of its own.
 ///
 /// **`is_active` is deliberately NOT synced** (kanban t_9c30ce49). It is a lifecycle flag owned by
 /// the product's own screen (`PUT /api/v1/affiliate-products/:id`) and by
