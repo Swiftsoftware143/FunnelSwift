@@ -170,6 +170,7 @@ pub async fn create_lead(
             tenant_id,
             lead_id,
             &created_tag_names,
+            &[],
             "lead_create",
         )
         .await?;
@@ -357,7 +358,15 @@ pub async fn update_lead(
     // `attribute_affiliate_on_tags` call, one cross-app sync per request).
     let updated_tag_names = resolve_tag_ids(&state.pool, tenant_id, req.tag_ids.as_deref()).await?;
     if !updated_tag_names.is_empty() {
-        apply_lead_tags(&state, tenant_id, id, &updated_tag_names, "lead_update").await?;
+        apply_lead_tags(
+            &state,
+            tenant_id,
+            id,
+            &updated_tag_names,
+            &[],
+            "lead_update",
+        )
+        .await?;
     }
 
     Ok(Json(json!({"message": "Lead updated"})))
@@ -490,7 +499,21 @@ pub async fn update_lead_stage(
 
 #[derive(Deserialize)]
 pub struct LeadTagsRequest {
+    /// Tag NAMES to put ON the lead (merged into the stored list; nothing is removed).
+    #[serde(default)]
     pub tags: Vec<String>,
+    /// Tag NAMES to take OFF the lead — the removal arm (kanban t_769b93ba).
+    ///
+    /// This is the one thing the app never had: the picker could only ADD, so an operator who tagged
+    /// a lead with the wrong system tag could not undo it in-app, and a product-linked system tag
+    /// writes a pending `affiliate_commissions` row (`attribute_affiliate_on_tags`) — a mis-tag was
+    /// also a mis-attribution nothing could retract. Names are matched exactly against the lead's
+    /// OWN stored list (that is how `leads.tags` stores tags) and scoped to the caller's tenant;
+    /// a name that is not on the lead is a no-op. An explicit removal WINS over a re-add of the same
+    /// name in one request (see `apply_lead_tags`), and a tag RULE re-adding it still wins over the
+    /// removal — the rule engine runs after this arm.
+    #[serde(default)]
+    pub remove: Vec<String>,
     pub triggered_by: Option<String>,
 }
 
@@ -580,15 +603,17 @@ async fn resolve_tag_ids(
     Ok(names)
 }
 
-/// THE one implementation of "assign this list of tag NAMES to this lead".
+/// THE one implementation of "make this lead's tag list be this" — the ONE writer of `leads.tags`.
 ///
-/// kanban t_d4ce013c. This body used to be `assign_lead_tags` whole; it is extracted so that the
-/// lead write path (POST /api/v1/leads, PUT /api/v1/leads/:id) can run the picker's `tag_ids`
-/// through the SAME code instead of a second implementation. One caller = one implementation of:
-/// merge the requested names into the stored list, evaluate the tag rules, write `leads.tags` ONCE,
-/// write one `tag_change_log` row, run `attribute_affiliate_on_tags` (the tag-based affiliate money
-/// path t_c06d643c proved) and fire the CoreSwift cross-app sync. `POST /api/v1/leads/:id/tags`
-/// (`assign_lead_tags` below) is now a thin wrapper over this, so its behaviour is unchanged.
+/// kanban t_d4ce013c extracted it out of `assign_lead_tags` so the lead write path
+/// (POST /api/v1/leads, PUT /api/v1/leads/:id) could run the picker's `tag_ids` through the SAME code
+/// instead of a second implementation. kanban t_769b93ba added the other direction: `req_remove`
+/// takes names OFF the lead, which the merge below could never do. One implementation of: merge
+/// `req_tags` into the stored list, take `req_remove` off it, evaluate the tag rules, write
+/// `leads.tags` ONCE, write one `tag_change_log` row, run `attribute_affiliate_on_tags` and its
+/// counter-writer `reverse_affiliate_on_tags` (the tag-based affiliate money path t_c06d643c proved)
+/// and fire the CoreSwift cross-app sync. `POST /api/v1/leads/:id/tags` (`assign_lead_tags` below) is
+/// a thin wrapper over this, so its behaviour is unchanged for a caller that sends only `tags`.
 ///
 /// Returns the lead's final tag list and how many rule actions fired.
 async fn apply_lead_tags(
@@ -596,6 +621,7 @@ async fn apply_lead_tags(
     tenant_id: Uuid,
     id: Uuid,
     req_tags: &[String],
+    req_remove: &[String],
     triggered_by: &str,
 ) -> AppResult<(Vec<String>, usize)> {
     // Get current lead tags.
@@ -658,6 +684,27 @@ async fn apply_lead_tags(
         }
     }
 
+    // ── REMOVE arm (kanban t_769b93ba) ──────────────────────────────────────────────────────────
+    // `req_remove` takes tag NAMES off the lead. Until this card the ONLY thing this function could
+    // do was merge, so an operator who tagged a lead with the wrong system tag could not undo it
+    // in-app — and a product-linked system tag writes a pending `affiliate_commissions` row, so the
+    // mis-tag was also a mis-attribution nothing could retract (see `reverse_affiliate_on_tags`,
+    // called below).
+    //
+    // Applied AFTER the merge on purpose: an explicit removal WINS over a re-add of the same name in
+    // one request, because `remove` is the destructive, explicit retraction and letting the merge
+    // resurrect it would keep the very row this arm exists to retract. Matched by exact name against
+    // the lead's OWN stored list (that is how `leads.tags` stores tags), tenant-scoped through the
+    // SELECT and the UPDATE above; a name that is not on the lead is a no-op and is not logged.
+    // A tag RULE that re-adds the removed name still wins — the rule engine runs AFTER this arm.
+    let mut explicitly_removed: Vec<String> = vec![];
+    for t in req_remove {
+        if current_tags.contains(t) {
+            current_tags.retain(|c| c != t);
+            explicitly_removed.push(t.clone());
+        }
+    }
+
     // Evaluate tag rules
     let (to_remove, to_add) = crate::tag_logic::evaluate_tag_rules(
         &state.pool,
@@ -692,13 +739,23 @@ async fn apply_lead_tags(
         .execute(&state.pool)
         .await?;
 
+    // Every name this request took OFF the lead: the explicit removals plus the rule-driven ones.
+    // The rule engine's removals count because their premise is the same — the tag is no longer on
+    // the lead, so the attribution it produced is no longer true.
+    let mut removed_tags: Vec<String> = explicitly_removed;
+    for t in &to_remove {
+        if !removed_tags.contains(t) {
+            removed_tags.push(t.clone());
+        }
+    }
+
     // Log change
     crate::tag_logic::log_tag_change(
         &state.pool,
         tenant_id,
         id,
         req_tags,
-        &to_remove,
+        &removed_tags,
         triggered_by,
     )
     .await?;
@@ -717,6 +774,35 @@ async fn apply_lead_tags(
         all_new_tag_ids.extend(rule_tag_ids);
     }
     crate::tag_logic::attribute_affiliate_on_tags(&state.pool, id, &all_new_tag_ids).await?;
+
+    // ── RETRACT the attribution for a product-linked tag this request took OFF the lead ─────────
+    // (kanban t_769b93ba). THE DECISION: REVERSE the pending row — `status='reversed',
+    // reversed_at=NOW()` — never delete it, and never touch a row that has already settled. It is
+    // the app's own withdrawal mechanism for this money (`src/plan_movement.rs:189`), it keeps the
+    // audit trail of an attribution that really was made, and it is undone the same way the app
+    // already undoes it: a real conversion sets `earned` and clears `reversed_at`
+    // (`plan_movement.rs:172`), and re-applying the tag re-opens the same row to pending
+    // (`tag_logic::attribute_affiliate_on_tags`). Still at most one row per (lead, product).
+    if !removed_tags.is_empty() {
+        let removed_ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM tags WHERE name = ANY($1) AND (tenant_id = $2 OR is_system = true)",
+        )
+        .bind(&removed_tags)
+        .bind(tenant_id)
+        .fetch_all(&state.pool)
+        .await?;
+        // A tag left on the lead that points at the SAME product keeps the attribution: only the
+        // products no remaining tag points at are withdrawn.
+        let remaining_ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM tags WHERE name = ANY($1) AND (tenant_id = $2 OR is_system = true)",
+        )
+        .bind(&current_tags)
+        .bind(tenant_id)
+        .fetch_all(&state.pool)
+        .await?;
+        crate::tag_logic::reverse_affiliate_on_tags(&state.pool, id, &removed_ids, &remaining_ids)
+            .await?;
+    }
 
     // Fire cross-app sync to CoreSwift CRM
     if !state.coreswift_url.is_empty() {
@@ -746,7 +832,7 @@ async fn apply_lead_tags(
                 },
                 "tags": current_tags,
                 "added_tags": req_tags,
-                "removed_tags": to_remove,
+                "removed_tags": removed_tags,
                 "triggered_by": triggered_by
             });
 
@@ -773,11 +859,17 @@ async fn apply_lead_tags(
 ///
 /// kanban t_d4ce013c: this route had NO caller in any served shell (the served lead form posted
 /// `tag_ids` on the lead write path instead, which dropped them), so the flow t_c06d643c fixed and
-/// proved was reachable only by an API client. The route is unchanged — a thin wrapper over
-/// `apply_lead_tags`, which the lead create/update path now shares. The served picker keeps using
-/// the lead write path (arm (a) of the card, chosen by measurement): the create half cannot call
-/// this route at all without a second round trip, because the lead id it needs only exists after
-/// the create returns.
+/// proved was reachable only by an API client. The route is a thin wrapper over `apply_lead_tags`,
+/// which the lead create/update path now shares. The served picker keeps using the lead write path
+/// for the ADD half (arm (a) of t_d4ce013c, chosen by measurement): the create cannot call this
+/// route at all without a second round trip, because the lead id it needs only exists after the
+/// create returns.
+///
+/// kanban t_769b93ba: this route is where the REMOVE half lands, because a stored tag can only be
+/// removed from a lead that already exists. `{"remove":[<name>]}` takes the name off `leads.tags`,
+/// writes the `tag_change_log` row and REVERSES the pending `affiliate_commissions` row a
+/// product-linked tag produced (see `reverse_affiliate_on_tags`). The served modal's per-tag "×"
+/// calls exactly this.
 pub async fn assign_lead_tags(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -794,7 +886,7 @@ pub async fn assign_lead_tags(
         .clone()
         .unwrap_or_else(|| "manual".to_string());
     let (current_tags, rules_applied) =
-        apply_lead_tags(&state, tenant_id, id, &req.tags, &triggered_by).await?;
+        apply_lead_tags(&state, tenant_id, id, &req.tags, &req.remove, &triggered_by).await?;
 
     Ok(Json(json!({
         "message": "Tags updated",

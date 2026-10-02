@@ -647,11 +647,16 @@ function RF(id,l){
     mb.appendChild(ff("Notes",fnt));
     // Tag assignment
     // kanban t_d4ce013c: show what the lead ALREADY carries, above the picker. The picker only
-    // ASSIGNS (POST/PUT reuses the tags route, which MERGES — it never removes), so the stored tags
-    // are rendered read-only here instead of pre-toggled in the picker, which would offer a remove
-    // the API does not implement. Before this the modal could not show a lead's tags at all, so the
-    // carded defect (the picker saved nothing) looked identical to a tag that HAD been saved.
-    if(id&&(l.tags||[]).length) mb.appendChild(El("div",{id:"tg-current",style:"font-size:11px;color:#64748b;margin-bottom:6px"},[El("span",null,"Current tags: ")].concat((l.tags||[]).map(function(t){return El("span",{style:"display:inline-block;margin-right:4px;padding:1px 7px;border-radius:100px;background:#e0e7ff;color:#3730a3;font-size:10px"},X(String(t)))}))));
+    // ASSIGNS (its save posts the newly toggled chips as `tag_ids` and the write path MERGES), so a
+    // stored tag is NOT pre-toggled inside the picker: a pre-toggled chip would offer a remove the
+    // picker's own save cannot express.
+    // kanban t_769b93ba: a stored tag now carries its OWN "x" (TGCR below) which calls the tags
+    // route with {"remove":[name]} — the same single writer of `leads.tags`, which also retracts the
+    // pending affiliate_commissions row a product-linked tag produced. Before this a mis-tag could
+    // not be undone in-app at all, so it stayed a mis-attribution too.
+    // The line is rendered even when the lead has NO tags, so the element's absence can never be
+    // read as "the modal cannot show tags" (the t_d4ce013c defect).
+    if(id){ mb.appendChild(El("div",{id:"tg-current",style:"font-size:11px;color:#64748b;margin-bottom:6px"})); TGCR(id,l.tags||[]); }
     mb.appendChild(El("div",{},[El("label",{style:"font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"Assign Tags"),El("div",{id:"tg-select",style:"display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow-y:auto;padding:6px;border:1px solid #e2e8f0;border-radius:6px;min-height:36px"},El("span",{style:"color:#94a3b8;font-size:11px"},"Loading tags..."))]));
     api("/api/v1/tags").then(function(td){var all=Array.isArray(td)?td:(td&&td.data?td.data:[]);$("tg-select").innerHTML="";if(!all.length)$("tg-select").innerHTML='<span style="color:#94a3b8;font-size:11px">No tags available</span>';all.forEach(function(t){var tg=El("span",{style:"padding:3px 8px;border-radius:100px;font-size:10px;margin:2px;background:"+X(t.color||"#6366f1")+"20;color:"+X(t.color||"#6366f1")+";border:1px solid "+X(t.color||"#6366f1")+"40;cursor:pointer;user-select:none",onclick:function(){tg.classList.toggle("ts");if(tg.classList.contains("ts")){tg.style.background=t.color||"#6366f1";tg.style.color="#fff";tg.setAttribute("data-tid",t.id)}else{tg.style.background=(t.color||"#6366f1")+"20";tg.style.color=t.color||"#6366f1";tg.removeAttribute("data-tid")}}},t.name);$("tg-select").appendChild(tg)});});
     // Custom fields + Add button
@@ -684,6 +689,31 @@ function SL(id){
   var m=id?"PUT":"POST", u=id?"/api/v1/leads/"+id:"/api/v1/leads";
   showMsg("Saving...","mi");
   api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("leads")}).catch(function(e){showMsg(e.message||"Save failed","me")});
+}
+/* ─── the lead modal's stored-tag line: SHOW + REMOVE (kanban t_769b93ba) ─────────────────────────
+   TGCR renders the lead's stored tags, each with its own "x". TGRX posts {"remove":[<name>]} to
+   POST /api/v1/leads/:id/tags — the ONE writer of `leads.tags` (apply_lead_tags) — which takes the
+   name off the lead, writes the tag_change_log row and REVERSES (never deletes) the pending
+   affiliate_commissions row a product-linked tag produced. The route returns the lead's resulting
+   tag list, so the line re-renders from the server's answer rather than from what we hoped.
+   The confirm is deliberate: removing a product-linked tag retracts money that was attributed. */
+function TGCR(lid,tags){
+  var host=$("tg-current"); if(!host) return;
+  host.innerHTML="";
+  host.appendChild(El("span",null,"Current tags: "));
+  if(!(tags||[]).length){ host.appendChild(El("span",{style:"color:#94a3b8"},"none")); return; }
+  (tags||[]).forEach(function(t){
+    var chip=El("span",{style:"display:inline-block;margin-right:4px;padding:1px 7px;border-radius:100px;background:#e0e7ff;color:#3730a3;font-size:10px"},X(String(t)));
+    chip.appendChild(El("span",{"class":"tg-rm",title:"Remove this tag from the lead",style:"margin-left:5px;cursor:pointer;font-weight:700;color:#b91c1c",onclick:function(){TGRX(lid,String(t))}},"\u00d7"));
+    host.appendChild(chip);
+  });
+}
+function TGRX(lid,name){
+  if(!confirm('Remove tag "'+name+'" from this lead?')) return;
+  showMsg("Removing tag...","mi");
+  api("/api/v1/leads/"+lid+"/tags",{method:"POST",body:JSON.stringify({remove:[name],triggered_by:"lead_modal_remove"})})
+    .then(function(r){ TGCR(lid,(r&&r.tags)||[]); showMsg('Tag "'+name+'" removed',"mi"); })
+    .catch(function(e){ showMsg(e.message||"Remove failed","me"); });
 }
 function DL(id){if(confirm("Delete lead?")) api("/api/v1/leads/"+id,{method:"DELETE"}).then(function(){S("leads")});}
 

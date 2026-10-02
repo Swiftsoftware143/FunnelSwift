@@ -369,16 +369,44 @@ pub async fn attribute_affiliate_on_tags(
     .await?;
 
     for product_id in product_ids {
-        // Idempotent: at most one commission per lead per product.
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM affiliate_commissions WHERE lead_id = $1 AND product_id = $2)",
+        // At most ONE commission row per (lead, product) — the row is never duplicated, and what
+        // happens when the tag is applied AGAIN depends on the STATUS that row is already in
+        // (kanban t_769b93ba):
+        //
+        //   pending  — the attribution already stands; skip. Unchanged, and it is what makes the same
+        //              tag applied twice still leave exactly one row (t_d4ce013c leg C).
+        //   reversed — the row was withdrawn because the tag that produced it came OFF the lead
+        //              (`reverse_affiliate_on_tags` below) or because the customer left a paying plan
+        //              (`plan_movement.rs:189`). Re-applying the tag is the operator asking for the
+        //              attribution back, so the row is RE-OPENED to pending — the same un-reverse
+        //              `plan_movement.rs:172` performs when a real payment lands (`reversed_at = NULL`
+        //              over status IN ('pending','reversed','earned')). It is the SAME row, never a
+        //              second one; its affiliate, amount and metadata are kept.
+        //   earned / paid — settled money. The authoritative money event is the conversion webhook,
+        //              not the tag, so a re-tag never rewrites or re-opens it.
+        let status: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM affiliate_commissions WHERE lead_id = $1 AND product_id = $2 LIMIT 1",
         )
         .bind(lead_id)
         .bind(product_id)
-        .fetch_one(pool)
+        .fetch_optional(pool)
         .await?;
-        if exists {
-            continue;
+        match status.as_deref() {
+            Some("reversed") => {
+                sqlx::query(
+                    "UPDATE affiliate_commissions SET status = 'pending', reversed_at = NULL
+                      WHERE lead_id = $1 AND product_id = $2",
+                )
+                .bind(lead_id)
+                .bind(product_id)
+                .execute(pool)
+                .await?;
+                tracing::info!(%lead_id, %product_id,
+                    "affiliate commission RE-OPENED to pending — the tag that produces it is back on the lead");
+                continue;
+            }
+            Some(_) => continue,
+            None => {}
         }
 
         // A pending commission used to be written with the amount HARDCODED to 0 and no record of
@@ -421,4 +449,88 @@ pub async fn attribute_affiliate_on_tags(
     }
 
     Ok(())
+}
+
+/// RETRACT the tag-based attribution when a product-linked system tag comes OFF a lead.
+///
+/// kanban t_769b93ba. `attribute_affiliate_on_tags` above is the one writer of the tag-driven
+/// commission, and until this card there was no counter-writer: the lead modal's picker can only
+/// ADD tags (`apply_lead_tags` merges), so an operator who tagged a lead with the WRONG
+/// product-linked system tag left a pending `affiliate_commissions` row behind that nothing in the
+/// app could retract — a mis-tag was also a mis-attribution.
+///
+/// THE DECISION (one arm, chosen by measurement, recorded at the call site): a removed tag REVERSES
+/// the row — `status = 'reversed', reversed_at = NOW()` — it does NOT delete it.
+///
+///   * `src/plan_movement.rs:189` is the app's existing withdrawal mechanism for exactly this money
+///     (`status = 'reversed', reversed_at = NOW()` when the customer leaves a paying plan), and
+///     `reversed_at` is the column that records WHEN. Deleting the row would erase the audit trail of
+///     an attribution that really was made, and would leave nothing for the un-reversal below.
+///   * Only a row still `pending` is withdrawn. `pending` means "attributed at tag time, computed
+///     from the product list price" (`attribute_affiliate_on_tags` writes it that way; the
+///     authoritative money event is the conversion webhook). A row that has already moved on —
+///     `earned`/`paid` — is left EXACTLY as it is: withdrawing settled money because a label was
+///     taken off a lead is not this arm's business.
+///   * The withdrawal is not one-way. A real conversion sets `earned` and clears `reversed_at`
+///     (`plan_movement.rs:172`, `WHERE status IN ('pending','reversed','earned')`), and re-applying
+///     the tag re-opens the same row to `pending` (the `Some("reversed")` arm of
+///     `attribute_affiliate_on_tags`) — still at most one row per (lead, product).
+///
+/// `removed_tag_ids` are the tags this request took off the lead; `remaining_tag_ids` are the tags
+/// still on it. A product is withdrawn only if NO tag left on the lead still points at it, so a
+/// product reachable through a second tag keeps its attribution.
+pub async fn reverse_affiliate_on_tags(
+    pool: &PgPool,
+    lead_id: Uuid,
+    removed_tag_ids: &[Uuid],
+    remaining_tag_ids: &[Uuid],
+) -> std::result::Result<u64, AppError> {
+    if removed_tag_ids.is_empty() {
+        return Ok(0);
+    }
+
+    // Products the tags that came OFF the lead point at (the same predicate, and the same
+    // `is_active = true` guard, as the attribution reader above — a retired product is not money).
+    let removed_products: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM affiliate_products WHERE system_tag_id = ANY($1) AND is_active = true",
+    )
+    .bind(removed_tag_ids)
+    .fetch_all(pool)
+    .await?;
+    if removed_products.is_empty() {
+        return Ok(0);
+    }
+
+    // …minus the ones a tag STILL on the lead points at: the attribution survives if the lead is
+    // still reachable to that product through another tag.
+    let still_linked: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM affiliate_products WHERE system_tag_id = ANY($1) AND is_active = true",
+    )
+    .bind(remaining_tag_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let to_reverse: Vec<Uuid> = removed_products
+        .into_iter()
+        .filter(|p| !still_linked.contains(p))
+        .collect();
+    if to_reverse.is_empty() {
+        return Ok(0);
+    }
+
+    let res = sqlx::query(
+        "UPDATE affiliate_commissions
+            SET status = 'reversed', reversed_at = NOW()
+          WHERE lead_id = $1 AND product_id = ANY($2) AND status = 'pending'",
+    )
+    .bind(lead_id)
+    .bind(&to_reverse)
+    .execute(pool)
+    .await?;
+
+    if res.rows_affected() > 0 {
+        tracing::info!(%lead_id, rows = res.rows_affected(),
+            "affiliate commission REVERSED — the tag that produced it was removed from the lead");
+    }
+    Ok(res.rows_affected())
 }
