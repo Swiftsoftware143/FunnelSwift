@@ -1,0 +1,16 @@
+-- t_c02f1dc5 — drop api_keys.full_key: the last place a RAW api key could be stored.
+--
+-- MEASURED (live funnelswift DB, 2026-10-02): 7 of 9 api_keys rows were the legacy shape
+--   key_hash = 'hash:' || full_key
+-- i.e. the column named for a hash held the raw credential, and the raw credential sat AGAIN in
+-- full_key. Nothing read it: the single reader (src/auth/handlers.rs, GET /api/v1/auth/me) selected
+-- full_key and discarded it (`_fk`), no shipped surface (www-app / www-admin) mentions it, and
+-- FunnelSwift verifies API keys nowhere (there is no api-key auth middleware; key_hash is only ever
+-- inserted). The two live write paths (auth/handlers.rs register, handlers/api_key_handler.rs
+-- create_api_key) store an Argon2id digest and never write full_key, so the column has no writer at
+-- all — it is a vestigial bucket whose only remaining effect is to invite the next raw key.
+--
+-- The 7 legacy rows were re-hashed IN PLACE before this migration (Argon2id of the same raw key,
+-- then full_key := NULL), so no credential is lost: each key's digest is preserved and still
+-- verifiable. With the column gone there is no place left in this schema for a raw api key.
+ALTER TABLE api_keys DROP COLUMN IF EXISTS full_key;

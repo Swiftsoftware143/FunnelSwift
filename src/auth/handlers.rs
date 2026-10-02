@@ -280,9 +280,12 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         .await
         .unwrap_or(None);
 
-    // Get user's API key
-    let api_key_row: Option<(String, String, Option<String>)> =
-        match sqlx::query_as::<_, (String, String, Option<String>)>("SELECT prefix, name, full_key FROM api_keys WHERE user_id::text = $1 AND name = 'Auto-generated' LIMIT 1")
+    // Get user's API key. `full_key` is deliberately NOT read here (kanban t_c02f1dc5): it was the
+    // legacy column that held the RAW api key, this query selected it and threw the value away, and
+    // migration 077 drops the column so no raw key has a place to live. Only the prefix — the key's
+    // public identity — is returned, next to the plan.
+    let api_key_row: Option<(String, String)> =
+        match sqlx::query_as::<_, (String, String)>("SELECT prefix, name FROM api_keys WHERE user_id::text = $1 AND name = 'Auto-generated' LIMIT 1")
             .bind(&auth.user_id)
             .fetch_optional(&state.pool)
             .await {
@@ -328,7 +331,7 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "role": auth.role,
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
-        "api_key": api_key_row.map(|(p, n, _fk)| json!({"prefix": p, "name": n})),
+        "api_key": api_key_row.map(|(p, n)| json!({"prefix": p, "name": n})),
         "current_plan": current_plan
     }))
 }
