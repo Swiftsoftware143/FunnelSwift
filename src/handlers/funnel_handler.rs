@@ -72,12 +72,15 @@ pub async fn update_funnel(
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
     if let Some(name) = payload["name"].as_str() {
-        sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2 AND tenant_id=$3")
+        let result = sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2 AND tenant_id=$3")
             .bind(name)
             .bind(id)
             .bind(tenant_id)
             .execute(&state.pool)
             .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("Funnel not found".into()));
+        }
     }
     Ok(Json(json!({"message": "Funnel updated"})))
 }
@@ -87,11 +90,14 @@ pub async fn delete_funnel(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
-    sqlx::query("DELETE FROM funnels WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM funnels WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Funnel not found".into()));
+    }
     Ok(Json(json!({"message": "Funnel deleted"})))
 }
 pub async fn render_funnel(

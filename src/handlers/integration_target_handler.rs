@@ -260,11 +260,14 @@ pub async fn delete_integration_target(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    sqlx::query("DELETE FROM target_software WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM target_software WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Integration target not found".into()));
+    }
 
     Ok(Json(json!({"message": "Integration target deleted"})))
 }

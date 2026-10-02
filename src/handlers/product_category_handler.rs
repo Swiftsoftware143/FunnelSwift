@@ -160,10 +160,13 @@ pub async fn delete_category(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    sqlx::query("DELETE FROM product_categories WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM product_categories WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Category not found".into()));
+    }
     Ok(Json(json!({"message": "Category deleted"})))
 }

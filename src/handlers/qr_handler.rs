@@ -97,11 +97,14 @@ pub async fn delete_qr_code(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    sqlx::query("DELETE FROM kinetic_qr_codes WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM kinetic_qr_codes WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("QR code not found".into()));
+    }
     Ok(Json(json!({"message": "QR code deleted"})))
 }
 pub async fn get_qr_svg(

@@ -125,11 +125,15 @@ pub async fn delete_payment_provider(
     Path(provider_type): Path<String>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    sqlx::query("DELETE FROM payment_providers WHERE provider_type = $1 AND tenant_id = $2")
-        .bind(&provider_type)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+    let result =
+        sqlx::query("DELETE FROM payment_providers WHERE provider_type = $1 AND tenant_id = $2")
+            .bind(&provider_type)
+            .bind(tenant_id)
+            .execute(&state.pool)
+            .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Payment provider not found".into()));
+    }
     Ok(Json(json!({"message": "Provider deleted"})))
 }
 /// POST /api/v1/checkout/create

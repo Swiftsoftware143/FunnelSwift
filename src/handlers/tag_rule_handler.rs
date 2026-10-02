@@ -124,11 +124,14 @@ pub async fn delete_tag_rule(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
-    sqlx::query("DELETE FROM tag_rules WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM tag_rules WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Tag rule not found".into()));
+    }
     Ok(Json(json!({"message": "Tag rule deleted"})))
 }
 

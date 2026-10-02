@@ -192,7 +192,7 @@ pub async fn update_affiliate(
     let tags_val = req.tags.or(existing.tags);
     let visible_val = req.is_visible.or(existing.is_visible);
 
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, override_commission_rate=CASE WHEN $9 THEN NULL ELSE COALESCE($10, override_commission_rate) END, override_note=CASE WHEN $9 THEN NULL ELSE COALESCE($11, override_note) END, updated_at=NOW() WHERE id=$12 AND tenant_id=$13",
     )
     .bind(req.name.unwrap_or(existing.name))
@@ -210,6 +210,9 @@ pub async fn update_affiliate(
     .bind(tenant_id)
     .execute(&state.pool)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Affiliate not found".into()));
+    }
 
     Ok(Json(json!({"message": "Affiliate updated"})))
 }

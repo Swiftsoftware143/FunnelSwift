@@ -344,7 +344,7 @@ pub async fn update_card(
             ))
         }
     };
-    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2")
+    let result = sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
@@ -363,6 +363,9 @@ pub async fn update_card(
         .bind(vp_change.flatten())
         .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
         .execute(&state.pool).await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Card not found".into()));
+    }
     Ok(Json(json!({"message": "Card updated"})))
 }
 
@@ -473,11 +476,14 @@ pub async fn delete_card(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    sqlx::query("DELETE FROM kinetic_cards WHERE id=$1 AND tenant_id=$2")
+    let result = sqlx::query("DELETE FROM kinetic_cards WHERE id=$1 AND tenant_id=$2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Card not found".into()));
+    }
     Ok(Json(json!({"message": "Card deleted"})))
 }
 
@@ -636,13 +642,16 @@ pub async fn delete_button(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    sqlx::query(
+    let result = sqlx::query(
         "DELETE FROM kinetic_buttons b USING kinetic_cards c WHERE b.id=$1 AND b.card_id = c.id AND c.tenant_id=$2",
     )
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Button not found".into()));
+    }
     Ok(Json(json!({"message": "Deleted"})))
 }
 

@@ -397,7 +397,7 @@ pub async fn assign_lead(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
     )
     .bind(req.assigned_to)
@@ -405,6 +405,9 @@ pub async fn assign_lead(
     .bind(tenant_id)
     .execute(&state.pool)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Lead not found".into()));
+    }
 
     Ok(Json(json!({"message": "Lead assigned"})))
 }
@@ -420,12 +423,17 @@ pub async fn update_lead_stage(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    sqlx::query("UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3")
-        .bind(&req.stage)
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+    let result = sqlx::query(
+        "UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+    )
+    .bind(&req.stage)
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Lead not found".into()));
+    }
 
     // Log activity
     sqlx::query(

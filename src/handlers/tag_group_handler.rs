@@ -159,11 +159,14 @@ pub async fn delete_tag_group(
         .execute(&state.pool)
         .await?;
 
-    sqlx::query("DELETE FROM tag_groups WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM tag_groups WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Tag group not found".into()));
+    }
 
     Ok(Json(json!({"message": "Tag group deleted"})))
 }

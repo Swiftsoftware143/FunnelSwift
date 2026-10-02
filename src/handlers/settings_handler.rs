@@ -69,11 +69,14 @@ pub async fn delete_setting(
         ));
     }
 
-    sqlx::query("DELETE FROM tenant_settings WHERE tenant_id = $1 AND key = $2")
+    let result = sqlx::query("DELETE FROM tenant_settings WHERE tenant_id = $1 AND key = $2")
         .bind(tenant_id)
         .bind(&key)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Setting not found".into()));
+    }
 
     Ok(Json(json!({"message": "Setting deleted"})))
 }

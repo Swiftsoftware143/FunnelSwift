@@ -169,11 +169,14 @@ pub async fn delete_web_to_lead_config(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    sqlx::query("DELETE FROM web_to_lead_configs WHERE id = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM web_to_lead_configs WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Config not found".into()));
+    }
     Ok(Json(json!({"message": "Config deleted"})))
 }
 pub async fn get_web_to_lead_embed(

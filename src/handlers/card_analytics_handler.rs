@@ -615,7 +615,7 @@ pub async fn update_card_utm(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE kinetic_cards SET utm_source=$3, utm_medium=$4, utm_campaign=$5, utm_content=$6, utm_term=$7 WHERE id=$1 AND tenant_id=$2"
     )
     .bind(card_id)
@@ -627,6 +627,9 @@ pub async fn update_card_utm(
     .bind(&payload.utm_term)
     .execute(&state.pool)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Card not found".into()));
+    }
 
     Ok(Json(serde_json::json!({"status":"ok"})))
 }

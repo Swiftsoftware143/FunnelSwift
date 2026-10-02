@@ -172,11 +172,14 @@ pub async fn delete_provider_key(
     Path(provider): Path<String>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    sqlx::query("DELETE FROM provider_keys WHERE provider = $1 AND tenant_id = $2")
+    let result = sqlx::query("DELETE FROM provider_keys WHERE provider = $1 AND tenant_id = $2")
         .bind(&provider)
         .bind(tenant_id)
         .execute(&state.pool)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Key not found".into()));
+    }
     Ok(Json(
         json!({ "message": "Key deleted", "provider": provider }),
     ))
