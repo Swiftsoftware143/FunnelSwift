@@ -113,38 +113,25 @@ pub async fn log_lead_movement(
 ///   * `created_by IS NOT NULL`    — the capture stamped the referring user account on the lead
 ///   * it carries a product's SYSTEM tag — the tag is what credits an affiliate, so a tagged lead
 ///     belongs on this screen even if the stamp is somehow missing
-const PROGRAMME_WHERE: &str = "\
+macro_rules! programme_where {
+    () => {
+        "\
 l.source = 'affiliate' \
  OR l.created_by IS NOT NULL \
  OR EXISTS (SELECT 1 FROM tags t \
              WHERE t.is_system = true \
                AND l.tags ? t.name \
                AND EXISTS (SELECT 1 FROM affiliate_products p \
-                            WHERE p.system_tag_id = t.id AND p.is_active = true))";
+                            WHERE p.system_tag_id = t.id AND p.is_active = true))"
+    };
+}
 
-/// GET /api/v1/admin/affiliate-leads
-///
-/// David's Affiliate Leads screen (2026-09-28): *"the admin should see all the affiliate leads and
-/// which affiliate they belong to. Direct signups show system. And a column for whether the lead
-/// themselves became an affiliate."*
-///
-/// Deliberately PROGRAMME-WIDE, not tenant-scoped: the leads this screen is about belong to the
-/// AFFILIATES' tenants (each capture is stored under the tenant whose form took it), so a
-/// tenant-scoped read would show the platform admin an empty screen forever — the very bug the
-/// old `/api/v1/affiliate/leads` endpoint has for this purpose. Admin only.
-pub async fn list_programme_leads(
-    auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    if !auth.is_admin {
-        return Err(AppError::Forbidden("Admin access required".into()));
-    }
-
-    // The referrer is resolved from the lead's own `created_by` stamp — that is the attribution
-    // anchor, so this can never disagree with who actually gets paid. `became_affiliate` is a
-    // DIFFERENT question (did the lead join the programme themselves) and is matched on email.
-    let sql = format!(
-        "SELECT l.id, l.name, l.email, l.phone, l.source, COALESCE(l.status, 'new') AS status, \
+/// The list and the count, assembled at COMPILE time from the ONE where-clause above. The widened
+/// gate rule 5d (2026-10-02) reports SQL BUILT at run time, and `format!("… WHERE {PROGRAMME_WHERE} …")`
+/// was exactly that. Each statement is now a `concat!` of literals, so no statement text exists in a
+/// variable — the sanctioned shape, and byte-identical to what the `format!` produced.
+const SQL_PROGRAMME_LEADS: &str = concat!(
+    "SELECT l.id, l.name, l.email, l.phone, l.source, COALESCE(l.status, 'new') AS status, \
                 COALESCE(l.tags, '[]'::jsonb) AS tags, l.created_at, \
                 (SELECT a.name FROM affiliates a WHERE a.user_id = l.created_by \
                   ORDER BY a.created_at LIMIT 1) AS referrer_name, \
@@ -169,9 +156,50 @@ pub async fn list_programme_leads(
                   ORDER BY m.occurred_at DESC LIMIT 1) AS last_movement, \
                 (SELECT m.occurred_at FROM affiliate_plan_movements m WHERE m.lead_id = l.id \
                   ORDER BY m.occurred_at DESC LIMIT 1) AS last_movement_at \
-         FROM leads l WHERE {PROGRAMME_WHERE} ORDER BY l.created_at DESC LIMIT 200"
-    );
-    let rows = sqlx::query(&sql).fetch_all(&state.pool).await?;
+         FROM leads l WHERE ",
+    programme_where!(),
+    " ORDER BY l.created_at DESC LIMIT 200"
+);
+
+const SQL_PROGRAMME_COUNT: &str = concat!(
+    "SELECT count(*) AS total, \
+                count(*) FILTER (WHERE l.created_by IS NOT NULL) AS credited, \
+                count(*) FILTER (WHERE l.source = 'affiliate') AS from_affiliate_forms, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliates a2 \
+                                                WHERE lower(a2.email) = lower(l.email))) AS joined, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliate_plan_movements m \
+                                                WHERE m.lead_id = l.id AND m.movement = 'upgrade' \
+                                                  AND m.to_price > 0)) AS upgraded, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliate_plan_movements m \
+                                                WHERE m.lead_id = l.id AND m.movement = 'downgrade')) AS downgraded \
+         FROM leads l WHERE ",
+    programme_where!()
+);
+
+/// GET /api/v1/admin/affiliate-leads
+///
+/// David's Affiliate Leads screen (2026-09-28): *"the admin should see all the affiliate leads and
+/// which affiliate they belong to. Direct signups show system. And a column for whether the lead
+/// themselves became an affiliate."*
+///
+/// Deliberately PROGRAMME-WIDE, not tenant-scoped: the leads this screen is about belong to the
+/// AFFILIATES' tenants (each capture is stored under the tenant whose form took it), so a
+/// tenant-scoped read would show the platform admin an empty screen forever — the very bug the
+/// old `/api/v1/affiliate/leads` endpoint has for this purpose. Admin only.
+pub async fn list_programme_leads(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    // The referrer is resolved from the lead's own `created_by` stamp — that is the attribution
+    // anchor, so this can never disagree with who actually gets paid. `became_affiliate` is a
+    // DIFFERENT question (did the lead join the programme themselves) and is matched on email.
+    let rows = sqlx::query(SQL_PROGRAMME_LEADS)
+        .fetch_all(&state.pool)
+        .await?;
 
     let leads: Vec<Value> = rows
         .iter()
@@ -210,20 +238,9 @@ pub async fn list_programme_leads(
 
     // Counts come from the same predicate, over the whole table — not from the 200-row page, so the
     // headline numbers stay true as the programme grows.
-    let count_sql = format!(
-        "SELECT count(*) AS total, \
-                count(*) FILTER (WHERE l.created_by IS NOT NULL) AS credited, \
-                count(*) FILTER (WHERE l.source = 'affiliate') AS from_affiliate_forms, \
-                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliates a2 \
-                                                WHERE lower(a2.email) = lower(l.email))) AS joined, \
-                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliate_plan_movements m \
-                                                WHERE m.lead_id = l.id AND m.movement = 'upgrade' \
-                                                  AND m.to_price > 0)) AS upgraded, \
-                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliate_plan_movements m \
-                                                WHERE m.lead_id = l.id AND m.movement = 'downgrade')) AS downgraded \
-         FROM leads l WHERE {PROGRAMME_WHERE}"
-    );
-    let c = sqlx::query(&count_sql).fetch_one(&state.pool).await?;
+    let c = sqlx::query(SQL_PROGRAMME_COUNT)
+        .fetch_one(&state.pool)
+        .await?;
     let paid: f64 = sqlx::query_scalar(
         "SELECT COALESCE(sum(c.amount), 0)::float8 FROM affiliate_commissions c \
          JOIN leads l ON l.id = c.lead_id",

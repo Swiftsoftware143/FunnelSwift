@@ -14,6 +14,7 @@ use tower_http::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod affiliate_products;
 mod api_router;
 #[path = "middleware/mod.rs"]
 mod app_middleware;

@@ -35,15 +35,49 @@ fn generate_affiliate_id() -> String {
 /// FLOAT8 only (it has no `impl Type<Postgres>` for numeric) -> `GET /affiliates` answered HTTP 500
 /// "Database error" with `mismatched types ... `NUMERIC`` (kanban t_4385aa2c). Casting keeps the
 /// struct unchanged, exactly like `PLAN_COLS` in plan_handler.rs.
-pub const AFFILIATE_COLS: &str = "id, tenant_id, name, email, industry, \
+///
+/// A MACRO, not a `const`, since the widened gate rule 5d (2026-10-02) reports a statement BUILT at
+/// run time: `format!("SELECT {} FROM …", COLS)` assembles SQL in the binary. The sanctioned shape
+/// (gate-pre-build.sh rule 5d, and what WorkflowSwift's handlers already do) is compile-time
+/// assembly — `cols!()` expands to a string LITERAL, so every `concat!` below is ONE literal to the
+/// compiler and `concat!` is blind to it, deliberately. The SQL text is byte-identical to what the
+/// `format!` produced.
+macro_rules! affiliate_cols {
+    () => {
+        "id, tenant_id, name, email, industry, \
     commission_rate::float8 AS commission_rate, tax_docs, is_active, is_visible, tags, \
     created_at, updated_at, override_commission_rate::float8 AS override_commission_rate, \
-    override_note";
+    override_note"
+    };
+}
 
 /// Same treatment for `affiliate_commissions.amount` NUMERIC(10,2) vs
 /// `AffiliateCommission::amount: f64`.
-pub const AFFILIATE_COMMISSION_COLS: &str = "id, affiliate_id, lead_id, \
-    amount::float8 AS amount, status, paid_at, created_at";
+macro_rules! affiliate_commission_cols {
+    () => {
+        "id, affiliate_id, lead_id, \
+    amount::float8 AS amount, status, paid_at, created_at"
+    };
+}
+
+/// The three statements these columns are read by, assembled at COMPILE time (see `affiliate_cols!`).
+const SQL_LIST_AFFILIATES: &str = concat!(
+    "SELECT ",
+    affiliate_cols!(),
+    " FROM affiliates WHERE tenant_id = $1 ORDER BY created_at DESC"
+);
+
+const SQL_AFFILIATE_BY_ID: &str = concat!(
+    "SELECT ",
+    affiliate_cols!(),
+    " FROM affiliates WHERE id = $1 AND tenant_id = $2"
+);
+
+const SQL_COMMISSIONS_BY_AFFILIATE: &str = concat!(
+    "SELECT ",
+    affiliate_commission_cols!(),
+    " FROM affiliate_commissions WHERE affiliate_id = $1 ORDER BY created_at DESC"
+);
 
 pub async fn list_affiliates(
     auth: AuthUser,
@@ -54,13 +88,10 @@ pub async fn list_affiliates(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let affiliates = sqlx::query_as::<_, Affiliate>(&format!(
-        "SELECT {} FROM affiliates WHERE tenant_id = $1 ORDER BY created_at DESC",
-        AFFILIATE_COLS
-    ))
-    .bind(tenant_id)
-    .fetch_all(&state.pool)
-    .await?;
+    let affiliates = sqlx::query_as::<_, Affiliate>(SQL_LIST_AFFILIATES)
+        .bind(tenant_id)
+        .fetch_all(&state.pool)
+        .await?;
 
     Ok(Json(affiliates))
 }
@@ -130,15 +161,12 @@ pub async fn get_affiliate(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let affiliate = sqlx::query_as::<_, Affiliate>(&format!(
-        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
-        AFFILIATE_COLS
-    ))
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let affiliate = sqlx::query_as::<_, Affiliate>(SQL_AFFILIATE_BY_ID)
+        .bind(&id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     Ok(Json(affiliate))
 }
@@ -154,15 +182,12 @@ pub async fn update_affiliate(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let existing = sqlx::query_as::<_, Affiliate>(&format!(
-        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
-        AFFILIATE_COLS
-    ))
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let existing = sqlx::query_as::<_, Affiliate>(SQL_AFFILIATE_BY_ID)
+        .bind(&id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     let tags_val = req.tags.or(existing.tags);
     let visible_val = req.is_visible.or(existing.is_visible);
@@ -200,23 +225,17 @@ pub async fn get_affiliate_commissions(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     // Verify affiliate exists and belongs to tenant
-    let _ = sqlx::query_as::<_, Affiliate>(&format!(
-        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
-        AFFILIATE_COLS
-    ))
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let _ = sqlx::query_as::<_, Affiliate>(SQL_AFFILIATE_BY_ID)
+        .bind(&id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
-    let commissions = sqlx::query_as::<_, AffiliateCommission>(&format!(
-        "SELECT {} FROM affiliate_commissions WHERE affiliate_id = $1 ORDER BY created_at DESC",
-        AFFILIATE_COMMISSION_COLS
-    ))
-    .bind(&id)
-    .fetch_all(&state.pool)
-    .await?;
+    let commissions = sqlx::query_as::<_, AffiliateCommission>(SQL_COMMISSIONS_BY_AFFILIATE)
+        .bind(&id)
+        .fetch_all(&state.pool)
+        .await?;
 
     Ok(Json(commissions))
 }
@@ -230,15 +249,12 @@ pub async fn delete_affiliate(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let _existing = sqlx::query_as::<_, Affiliate>(&format!(
-        "SELECT {} FROM affiliates WHERE id = $1 AND tenant_id = $2",
-        AFFILIATE_COLS
-    ))
-    .bind(&id)
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
+    let _existing = sqlx::query_as::<_, Affiliate>(SQL_AFFILIATE_BY_ID)
+        .bind(&id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
     sqlx::query("DELETE FROM affiliates WHERE id = $1 AND tenant_id = $2")
         .bind(&id)

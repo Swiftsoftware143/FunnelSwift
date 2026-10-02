@@ -193,12 +193,14 @@ pub async fn handle_affiliate_upgrade_event(
         return Ok(Json(json!({"status": "no-affiliate", "email": email})));
     };
 
-    // Resolve the affiliate product by source app.
-    let product_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM affiliate_products WHERE source_app = $1 AND is_active = true LIMIT 1",
+    // Resolve the affiliate product by source app. The ONE reader of this column, with a
+    // deterministic plan-aware tiebreak — see src/affiliate_products.rs for the decision and
+    // migration 075 for the database-side invariant it relies on.
+    let product_id = crate::affiliate_products::resolve_active_by_source_app(
+        &state.pool,
+        source_app,
+        Some(plan_name),
     )
-    .bind(source_app)
-    .fetch_optional(&state.pool)
     .await?;
 
     // Commission = upgrade price x the affiliate's plan-derived rate (percentage).

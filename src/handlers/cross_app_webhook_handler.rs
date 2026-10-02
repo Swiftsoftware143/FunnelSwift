@@ -181,12 +181,15 @@ pub async fn handle_conversion_webhook(
         }
     }
     if product_id.is_none() {
-        product_id = sqlx::query_scalar(
-            "SELECT id FROM affiliate_products WHERE source_app = $1 AND is_active = true LIMIT 1",
-        )
-        .bind(source_app)
-        .fetch_optional(&state.pool)
-        .await?;
+        // The plan (or product) name the caller reported is the plan-aware tiebreak of the ONE
+        // resolver both readers share — see src/affiliate_products.rs and migration 075.
+        let hint = payload["plan_name"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .or_else(|| payload["product_name"].as_str().filter(|s| !s.is_empty()));
+        product_id =
+            crate::affiliate_products::resolve_active_by_source_app(&state.pool, source_app, hint)
+                .await?;
     }
 
     // THE rate. Before 2026-09-29 this line was `amount * rate.unwrap_or(0.0) / 100.0` reading only
