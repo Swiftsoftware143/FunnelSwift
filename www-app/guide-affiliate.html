@@ -1,3 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FunnelSwift Affiliate Guide</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
+<style>
+
+  :root {
+    --indigo: #4f46e5; --indigo-light: #6366f1; --indigo-dark: #3730a3; --indigo-glow: rgba(79, 70, 229, 0.15);
+    --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
+    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: var(--bg-dark); color: var(--text-primary); line-height: 1.6; min-height: 100vh; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-dark); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .app-layout { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 260px; background: var(--bg-card); border-right: 1px solid var(--border); position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 100; display: flex; flex-direction: column; }
+  .sidebar-logo { display: flex; align-items: center; gap: 12px; padding: 24px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo .logo-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--indigo), #8B5CF6); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .sidebar-logo h1 { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+  .sidebar-logo p { font-size: 11px; color: var(--text-muted); }
+  .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+  .sidebar-nav .section-title { padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; cursor: pointer; border: none; background: none; width: 100%; text-align: left; margin-bottom: 2px; }
+  .nav-item:hover { background: var(--border); color: var(--text-primary); }
+  .nav-item.active { background: var(--indigo-glow); color: var(--indigo-light); border-left: 2px solid var(--indigo-light); }
+  .nav-item .nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+  .sidebar-footer { padding: 16px 24px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--text-muted); }
+
+  .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; }
+  .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar h2 { font-size: 16px; font-weight: 600; }
+  .topbar-badge { background: var(--indigo-glow); color: var(--indigo-light); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .content-area { flex: 1; padding: 28px; overflow-y: auto; max-width: 1100px; }
+
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 24px; font-weight: 700; margin: 48px 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 18px; font-weight: 600; margin: 28px 0 12px; color: var(--indigo-light); }
+  h4 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin-bottom: 16px; color: var(--text-secondary); }
+  a { color: var(--indigo-light); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .lead { font-size: 18px; color: var(--text-secondary); margin-bottom: 32px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .card-header .card-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--indigo), #7C3AED); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .card-header h3 { margin: 0; padding: 0; border: none; color: var(--text-primary); font-size: 16px; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+  .feature-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+  .feature-card:hover { border-color: var(--indigo); }
+  .feature-card .fc-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--indigo-glow); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 12px; }
+  .feature-card h4 { margin: 0 0 8px; font-size: 14px; }
+  .feature-card p { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+  code { background: var(--bg-elevated); color: var(--indigo-light); padding: 2px 8px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+  pre { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 16px 0; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-secondary); line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--text-secondary); }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-elevated); font-weight: 600; color: var(--text-primary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { color: var(--text-secondary); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .badge-indigo { background: var(--indigo-glow); color: var(--indigo-light); }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--success); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--warning); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--info); }
+
+  .step-list { list-style: none; counter-reset: step; }
+  .step-list li { counter-increment: step; padding: 16px 16px 16px 52px; position: relative; margin-bottom: 8px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border); }
+  .step-list li::before { content: counter(step); position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--indigo); color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .step-list li strong { color: var(--text-primary); }
+  .step-list li p { margin: 4px 0 0; font-size: 13px; }
+
+  .alert { padding: 14px 18px; border-radius: 8px; margin: 16px 0; border-left: 3px solid; font-size: 14px; }
+  .alert-info { background: rgba(59,130,246,0.08); border-color: var(--info); color: #93C5FD; }
+  .alert-warning { background: rgba(249,115,22,0.08); border-color: var(--warning); color: #FDBA74; }
+  .alert-success { background: rgba(34,197,94,0.08); border-color: var(--success); color: #86EFAC; }
+  .alert-danger { background: rgba(239,68,68,0.08); border-color: var(--danger); color: #FCA5A5; }
+
+  a.section-title { display: block; padding: 8px 12px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); text-decoration: none; cursor: pointer; }
+  a.section-title:hover { color: var(--indigo-light); background: rgba(255,255,255,0.03); border-radius: 6px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
+  .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .stat-card .stat-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
+  .stat-card .stat-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+  .stat-card .stat-change { font-size: 12px; color: var(--success); margin-top: 4px; }
+
+  dl { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0; }
+  dt { font-weight: 600; color: var(--text-primary); font-size: 13px; padding: 6px 0; }
+  dd { color: var(--text-secondary); font-size: 13px; padding: 6px 0; }
+  dd code { font-size: 12px; }
+
+  .faq-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .faq-q { padding: 14px 18px; background: var(--bg-elevated); font-weight: 600; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-primary); border: none; width: 100%; text-align: left; }
+  .faq-q:hover { background: var(--bg-card); }
+  .faq-a { padding: 16px 18px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-secondary); display: none; }
+  .faq-a.open { display: block; }
+
+  .kv-tag { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 13px; font-family: 'SF Mono', monospace; color: var(--text-secondary); }
+  .kv-tag .kv-key { color: var(--text-muted); }
+  .kv-tag .kv-val { color: var(--indigo-light); }
+
+  .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0; }
+  .tmpl-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; transition: border-color 0.2s; }
+  .tmpl-card:hover { border-color: var(--indigo); }
+  .tmpl-card .tmpl-icon { font-size: 36px; margin-bottom: 8px; display: block; }
+  .tmpl-card h4 { margin: 0 0 4px; }
+  .tmpl-card p { margin: 0; font-size: 12px; color: var(--text-muted); }
+  .tmpl-card .tmpl-badge { display: inline-block; margin-top: 8px; }
+
+  ul { color: var(--text-secondary); margin: 8px 0 16px 24px; }
+  ul li { margin-bottom: 4px; }
+
+  .mobile-menu-btn { display: none; position: fixed; top: 14px; left: 14px; z-index: 200; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; font-size: 20px; align-items: center; justify-content: center; }
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+    .main-content { margin-left: 0; }
+    .mobile-menu-btn { display: flex; }
+    .topbar { padding: 14px 16px 14px 64px; }
+    .content-area { padding: 16px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .template-grid { grid-template-columns: 1fr; }
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dt { padding-bottom: 0; }
+  }
+  /* --- page-local: this guide is a standalone page whose card list is the affiliate programme --- */
+  .content-area .section-title { display: block; padding: 0; margin: 0 0 10px; font-size: 22px;
+    font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+  .content-area .card h3 { margin: 0 0 10px; padding: 0; border: none; font-size: 16px;
+    color: var(--indigo-light); }
+  .guide-back { display: inline-block; margin: 0 0 22px; font-size: 13px; color: var(--indigo-light);
+    text-decoration: none; }
+  .guide-back:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header class="topbar"><h2>FunnelSwift Affiliate Guide</h2><span class="topbar-badge">SwiftSoftware Affiliate Programme</span></header>
+<div class="content-area">
+<a class="guide-back" href="/guide.html">&larr; FunnelSwift User Guide</a>
 <h2 class="section-title">Affiliate Guide — How It Works</h2>
 
 <div class="card">
@@ -113,3 +269,6 @@
 </div>
 
 <p style="margin-top:24px;text-align:center;color:#94a3b8;font-size:12px">FunnelSwift — the SwiftSoftware Affiliate Hub</p>
+</div>
+</body>
+</html>
