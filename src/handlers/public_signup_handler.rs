@@ -4,7 +4,11 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    Json,
+};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::{json, Value};
@@ -44,6 +48,7 @@ fn generate_initial_password() -> String {
 
 pub async fn public_signup(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
@@ -119,10 +124,16 @@ pub async fn public_signup(
             .take(8)
             .collect::<String>()
     );
-    sqlx::query("INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)")
+    // Mark the tenant as harness-created if the caller sent a well-formed `X-Swift-Harness`
+    // header (kanban t_fc88ec2a). The marker is read from the header ONLY — never from `payload`,
+    // which is client-controlled data: a body field would let a customer mark their own tenant.
+    // No header (a real customer) => NULL, and the row is byte-identical to before.
+    let probe_harness = crate::probe_harness::from_headers(&headers);
+    sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
         .bind(format!("{}'s Workspace", name))
         .bind(&tenant_slug)
+        .bind(&probe_harness)
         .execute(&state.pool)
         .await?;
 

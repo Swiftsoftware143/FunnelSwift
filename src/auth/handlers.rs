@@ -9,7 +9,11 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    Json,
+};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::Deserialize;
@@ -31,6 +35,7 @@ fn dummy_password_hash() -> &'static str {
 
 pub async fn register(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<RegisterRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     // Check if email already exists
@@ -64,7 +69,11 @@ pub async fn register(
             .replace(' ', "-"),
         Uuid::new_v4().to_string().get(..8).unwrap_or("x")
     );
-    sqlx::query("INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)")
+    // Mark the tenant as harness-created if the caller sent a well-formed `X-Swift-Harness`
+    // header (kanban t_fc88ec2a). A real customer's signup carries no such header, so this is
+    // NULL and the row is byte-identical to what it was before the column existed.
+    let probe_harness = crate::probe_harness::from_headers(&headers);
+    sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
         .bind(
             req.tenant_name
@@ -72,6 +81,7 @@ pub async fn register(
                 .unwrap_or_else(|| "My Workspace".to_string()),
         )
         .bind(&tenant_slug)
+        .bind(&probe_harness)
         .execute(&state.pool)
         .await?;
 
