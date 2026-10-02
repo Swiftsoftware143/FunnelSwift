@@ -43,7 +43,6 @@ pub mod seo_handler;
 pub mod settings_handler;
 pub mod site_handler;
 pub mod site_settings_handler;
-pub mod sync_plan_tag_handler;
 pub mod tag_group_handler;
 pub mod tag_handler;
 pub mod tag_rule_handler;

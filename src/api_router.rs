@@ -21,9 +21,9 @@ use crate::handlers::{
     integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
     ocr, plan_handler, plan_tag_handler, portfolio_handler, product_category_handler,
     provider_keys_handler, public_signup_handler, qr_handler, routing_handler, seo_handler,
-    settings_handler, site_handler, site_settings_handler, sync_plan_tag_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    settings_handler, site_handler, site_settings_handler, tag_group_handler, tag_handler,
+    tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler,
+    webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -681,10 +681,19 @@ pub fn create_router(
             "/api/v1/tenants/:id/plan",
             post(tenant_handler::assign_plan),
         )
-        .route(
-            "/api/v1/internal/sync-plan-tag",
-            post(sync_plan_tag_handler::sync_plan_tag),
-        )
+        // RETIRED (kanban t_d2606968): `POST /api/v1/internal/sync-plan-tag` was registered here
+        // (`sync_plan_tag_handler::sync_plan_tag`). The card's open question — which FunnelSwift plan
+        // + tag a sibling's plan should map to — was settled by measurement: there is nothing to map
+        // TO. `plan_tag_mappings` is read by NO code path (its only readers are its own list/sync CRUD
+        // handlers, `GET|POST /api/v1/plan-tag-mappings*`, which stay), and the sibling→affiliate link
+        // the hook was meant to feed already exists as the per-app system tag
+        // (`tags.source_app` + `tags.plan_id`, e.g. "ADASwift — Free"), consumed through
+        // `affiliate_products.system_tag_id` and resolved at credit time by
+        // `affiliate_tracking_handler::handle_affiliate_upgrade_event` (by source_app). A sibling plan
+        // name can never resolve here either: `tags.plan_id` must reference a plan in THIS service, and
+        // the `enforce_tags_point_at_free_plans` trigger admits free plans only. So the notify was a
+        // no-op by construction; the sender is deleted in ADASwift's own lane. Same class as
+        // `sync-affiliate-plan` immediately below (kanban t_141162e7).
         // RETIRED (kanban t_141162e7): `POST /api/v1/internal/sync-affiliate-plan` used to be
         // registered here (`affiliate_product_handler::handle_cross_app_plan_sync`). Two recorded
         // decisions left it nothing legitimate to do — the ONE WRITER contract (t_6d326447) makes
