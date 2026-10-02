@@ -755,6 +755,12 @@ pub fn create_router(
             "/api/v1/kinetic/cards",
             get(kinetic_handler::list_cards).post(kinetic_handler::create_card),
         )
+        // The card editor's block preview: the SAME renderer the public page uses, on the editor's
+        // unsaved blocks (kanban t_114b706b). Authenticated — it sits in this group.
+        .route(
+            "/api/v1/kinetic/preview-blocks",
+            post(kinetic_handler::preview_blocks),
+        )
         .route(
             "/api/v1/kinetic/cards/:id",
             put(kinetic_handler::update_card).delete(kinetic_handler::delete_card),

@@ -124,7 +124,8 @@ caller-supplied plan slug is ignored) and an admin assigns any other plan with
 ### Kinetic Cards & Funnels
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET/POST | `/api/v1/kinetic/cards` | List / Create cards |
+| GET/POST | `/api/v1/kinetic/cards` | List / Create cards. Blocks are written from **`layout_blocks`** (an array of blocks); `social_links` is accepted as a documented legacy alias for the same array. The six social URLs (`linkedin_url … facebook_url`) are written from the same body keys. |
+| POST | `/api/v1/kinetic/preview-blocks` | Render a block array with the public page's own renderer (`{blocks:[…], accent?, card_id?}` → `{css, html}`) — this is what the card editor's **Blocks** tab previews. Authenticated. |
 | GET/PUT/DELETE | `/api/v1/kinetic/cards/:id` | Get / Update / Delete card |
 | GET/POST | `/api/v1/kinetic/cards/:id/buttons` | Card buttons |
 | GET/POST | `/api/v1/kinetic/cards/:id/sources` | Card traffic sources |
@@ -181,7 +182,18 @@ and neither had a consumer. Click tracking in this product is the Kinetic card t
 | GET | `/api/v1/campaigns` | Campaign listing |
 | GET | `/api/v1/incentiveswift/config` | IncentiveSwift config |
 | GET | `/funnel/:slug` | Public funnel page |
-| GET | `/k/:slug` | Kinetic card page — the card's `layout_blocks` (hero, features, lead form, business card, buttons, socials) rendered server-side; also `/b`, `/m`, `/c`, `/f`, `/h`, `/thank` |
+| GET | `/k/:slug` | Kinetic card page — the card's `layout_blocks` (hero, features, lead form, business card, buttons, socials) and its six social-link columns rendered server-side; also `/b`, `/m`, `/c`, `/f`, `/h`, `/thank` |
+
+### Kinetic card blocks — who writes them
+
+`kinetic_cards.layout_blocks` is authored in the product: the card editor's **Blocks** tab
+(`www-app/index.html`) adds, edits, re-orders and removes blocks, saves the whole array under
+`layout_blocks`, and previews it through `POST /api/v1/kinetic/preview-blocks`, which calls the same
+renderer the public page uses (`src/card_blocks.rs`) — so the preview cannot drift from the page.
+The editor sends back every block it was given, including types it has no fields for, so an unknown
+block is never silently dropped; `src/handlers/kinetic_handler.rs::blocks_from_body` is the ONE
+place the request key is read (both write routes share it). The card's six social-link columns are
+written by the same two routes and rendered into the page's own social row.
 | POST | `/k/:slug/lead` | Kinetic card lead submit (also `/b`, `/m`, `/c`, `/f`, `/h` — all six card prefixes) |
 
 ## Deployment

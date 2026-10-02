@@ -273,26 +273,32 @@
       <ol class="step-list">
         <li><strong>Navigate to Kinetic Cards</strong><p>From the sidebar, click <strong>Cards</strong> under the main navigation.</p></li>
         <li><strong>Choose a Template</strong><p>Click "+ New Card". Choose from 54 templates across 5 archetypes — Bio Link, Business Card, Mini Page, Mini Funnel, or Hero. Or build from scratch with a blank canvas.</p></li>
-        <li><strong>Configure Content</strong><p>Fill in your content fields — name, description, image/logo URL, buttons, social links, lead form fields — depending on the template.</p></li>
+        <li><strong>Configure Content</strong><p>Fill in the fields on the Info / Look &amp; Feel / Social / Media tabs, then open the <strong>Blocks</strong> tab to add, edit, re-order and preview the card's content blocks — hero, lead form, buttons, social icons and the rest. Social links are on the Social tab and render as icons on your card.</p></li>
         <li><strong>Choose a Theme</strong><p>Pick from 8 visual themes — Cyber Dark, Ghost White, Ocean, Forest, Sunset, Ruby, Midnight, or Arctic. Each theme sets the card's color palette, fonts, and visual identity.</p></li>
         <li><strong>Set Your Slug</strong><p>Give your card a unique slug (e.g. "my-link"). It will be available at <code>https://funnelswift.net/k/my-link</code>.</p></li>
         <li><strong>Save &amp; Share</strong><p>Save the card. Share the URL, print a QR code, or embed it anywhere. The card is live immediately.</p></li>
       </ol>
 
       <h3>Layout Blocks</h3>
-      <p>Each Kinetic card is composed of layout blocks that you can arrange:</p>
+      <p>Each Kinetic card is composed of layout blocks that you arrange yourself. Open a card, go to the <strong>Blocks</strong> tab, pick a block type, fill in its fields, re-order with the arrows and remove the ones you do not want. Blocks are saved with the card (Save), and the <strong>Block preview</strong> beside the editor is drawn by the same code that renders your public page — so you see a block change before it is public.</p>
+      <p>Anything the editor has no fields for is kept exactly as it is stored: a block type with no editor form is never deleted or rewritten by a save, and each block's <strong>Advanced (JSON)</strong> box edits the stored block directly.</p>
       <table>
         <thead><tr><th>Block Type</th><th>What It Does</th></tr></thead>
         <tbody>
-          <tr><td>Hero</td><td>Large header with title, subtitle, and background image/video</td></tr>
-          <tr><td>Bio</td><td>Avatar, name, title, short bio text</td></tr>
-          <tr><td>Buttons</td><td>List of CTA buttons with labels, URLs, and optional icons</td></tr>
-          <tr><td>Lead Form</td><td>Inline lead capture form with configurable fields (name, email, phone, message)</td></tr>
-          <tr><td>Social Icons</td><td>Social media profile links with platform icons</td></tr>
+          <tr><td>Hero</td><td>Large header with a title, subtitle, optional background image, optional background video (MP4) and an optional CTA link</td></tr>
+          <tr><td>Bio / Links</td><td>Avatar, name, short bio, plus button and social rows</td></tr>
+          <tr><td>Features</td><td>A heading and a list of feature rows (title + description)</td></tr>
+          <tr><td>Buttons</td><td>List of CTA buttons with labels and URLs</td></tr>
+          <tr><td>Lead Form</td><td>Inline lead capture form with configurable fields — each field has its own name, label, input type and required flag; submissions arrive in your Leads</td></tr>
+          <tr><td>Social Icons</td><td>Social media profile links rendered as buttons on the card</td></tr>
+          <tr><td>Business Card</td><td>Avatar/logo, name, job title, company, headline, biography and website</td></tr>
           <tr><td>Mini Funnel</td><td>Product image/video + CTA — the affiliate bridge block</td></tr>
-          <tr><td>QR Code</td><td>Embed a QR code that links to the card or any URL</td></tr>
+          <tr><td>Thank You</td><td>Confirmation headline and message with an optional next step</td></tr>
+          <tr><td>Link, Image, Video</td><td>A single link button, a captioned image, or an MP4 video</td></tr>
+          <tr><td>QR Code</td><td>Shows a QR code IMAGE on the card — paste the URL of a QR image, such as one you generate in the QR Codes section below. The card does not generate QR images itself.</td></tr>
         </tbody>
       </table>
+      <div class="alert alert-info"><strong>Social links</strong> are the six fields on the card editor's <strong>Social</strong> tab (LinkedIn, X, Instagram, TikTok, YouTube, Facebook). They are stored on the card and rendered as a row of icons on your public card page.</div>
 
       <h2 id="kinetic-templates">📐 Template Library</h2>
       <p>FunnelSwift ships with <strong>54 pre-built templates</strong> organized across <strong>5 archetypes</strong>, each available in <strong>8 visual themes</strong>. Whether you're a real estate agent, musician, fitness coach, restaurant owner, or consultant — there's a template built for your industry.</p>

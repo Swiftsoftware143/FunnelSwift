@@ -575,6 +575,40 @@ fn qr_html(block: &Value) -> String {
     }
 }
 
+/// The card row's OWN social links — the six `kinetic_cards.*_url` columns — as the page's
+/// `.socials` row. `items` is `[{platform, url}]`.
+///
+/// kanban t_114b706b, measured 2026-09-26: the card editor has always SENT all six `*_url` fields
+/// on every save, `kinetic_cards` has all six columns, and nothing bound or read them — this slot
+/// was hard-coded to the empty string while the page's own `<style>` already carried
+/// `.socials`/`.s-icon`. Hence a dedicated row (not `socials_html`, whose output is styled by the
+/// BLOCK css, which a card with no blocks does not get). Same escaping / href allowlist as every
+/// other link this renderer emits.
+pub fn social_links_row(items: &[Value]) -> String {
+    let mut out = String::new();
+    for it in items {
+        let label = s(it, "platform")
+            .or_else(|| s(it, "label"))
+            .or_else(|| s(it, "name"));
+        let url = s(it, "url").or_else(|| s(it, "href"));
+        let (Some(label), Some(url)) = (label, url) else {
+            continue;
+        };
+        let Some(href) = safe_url(url) else {
+            continue;
+        };
+        out.push_str(&format!(
+            "<a class=\"s-icon\" href=\"{}\" rel=\"noopener\">{}</a>",
+            html_escape(&href),
+            html_escape(label)
+        ));
+    }
+    if out.is_empty() {
+        return out;
+    }
+    format!("<div class=\"socials\">{out}</div>")
+}
+
 fn single_block(block: &Value, opts: &BlockOptions<'_>, form_index: &mut usize) -> Option<String> {
     let ty = s(block, "type")?;
     let html = match ty {
@@ -994,5 +1028,56 @@ mod tests {
         assert!(!f.css.is_empty());
         assert!(f.css.starts_with(".kblocks{"));
         assert!(f.css.ends_with('\n'));
+    }
+}
+
+#[cfg(test)]
+mod t114_social_row_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_cards_own_social_columns_render_as_the_pages_socials_row() {
+        let items = vec![
+            json!({"platform":"LinkedIn","url":"https://linkedin.com/in/x"}),
+            json!({"platform":"X","url":"https://x.com/x"}),
+        ];
+        let html = social_links_row(&items);
+        assert!(html.starts_with("<div class=\"socials\">"), "{html}");
+        assert_eq!(html.matches("class=\"s-icon\"").count(), 2, "{html}");
+        assert!(html.contains("https://linkedin.com/in/x"), "{html}");
+    }
+
+    #[test]
+    fn a_social_value_that_must_not_become_a_link_is_dropped_not_rendered() {
+        let items = vec![
+            json!({"platform":"Bad","url":"javascript:alert(1)"}),
+            json!({"platform":"Data","url":"data:text/html,<script>x</script>"}),
+        ];
+        assert_eq!(social_links_row(&items), "");
+    }
+
+    #[test]
+    fn a_blank_or_unlabelled_social_entry_produces_nothing() {
+        let items = vec![
+            json!({"platform":"LinkedIn","url":"   "}),
+            json!({"url":"https://x.com/x"}),
+            json!({"platform":"X"}),
+        ];
+        assert_eq!(social_links_row(&items), "");
+    }
+
+    #[test]
+    fn no_social_columns_is_the_empty_string_so_the_page_is_unchanged() {
+        assert_eq!(social_links_row(&[]), "");
+    }
+
+    #[test]
+    fn a_social_label_is_html_escaped() {
+        let items =
+            vec![json!({"platform":"<img src=x onerror=alert(1)>","url":"https://x.com/x"})];
+        let html = social_links_row(&items);
+        assert!(!html.contains("<img"), "{html}");
+        assert!(html.contains("&lt;img"), "{html}");
     }
 }

@@ -671,6 +671,10 @@ function DL(id){if(confirm("Delete lead?")) api("/api/v1/leads/"+id,{method:"DEL
 
 ;(function(){var s=document.createElement("style");s.textContent=".lc-tab{display:inline-block;padding:8px 16px;font-size:13px;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:600}.lc-tab:hover{color:#6366f1}.lc-tab-a{color:#6366f1;border-bottom-color:#6366f1}.mc-tab{}.ts{outline:2px solid #6366f1 !important;outline-offset:1px}.kc-lock{position:absolute;top:2px;right:2px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1c1105;font-size:7px;font-weight:800;padding:1px 4px;border-radius:6px;line-height:1.5;letter-spacing:.3px;box-shadow:0 1px 3px rgba(0,0,0,.35);z-index:3;pointer-events:none}.kc-tpl-lock{font-size:8px;padding:2px 6px;border-radius:8px}.kc-locked{opacity:.62}.kc-locked:hover{opacity:.85}";document.head.appendChild(s);})();/* === KINETIC CARDS — Full: Templates, Preview, Themes, Domains === */
 var KCB={cards:[],templates:[],themes:[],tab:"my"}; // Kinetic Card Binder state
+// The card editor's working copy of the card's `layout_blocks` (kanban t_114b706b). Module level on
+// purpose: the modal builder FILLS it and SC2 — the card modal's save function — SENDS it, and a
+// `var` inside the builder would be invisible to the save.
+var mcBlocks=[];
 
 /* === PLAN GATING — premium themes / templates =====================
    The server sends EVERY theme and template with "tier" ("free"/"premium")
@@ -999,6 +1003,157 @@ function MFC(data){
   mb._slug_orig=card?card.slug:"";
   mb._card=c;
 
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+  // LAYOUT BLOCKS — the REAL authoring path for `kinetic_cards.layout_blocks` (kanban t_114b706b)
+  //
+  // Before this the editor's save body carried NO blocks at all, so the vocabulary the public page
+  // renders (src/card_blocks.rs) could only be produced with SQL: the five live lead forms came
+  // from outside the product and their owners could not edit one. The API's only block-writing key
+  // was `social_links`, which nothing in any served shell ever sent.
+  //
+  // The editor is a faithful round trip, not a re-modeller: `mcBlocks` is a DEEP COPY of the card's
+  // stored array, fields write in place, and Save posts the whole array back. A block type this
+  // editor has no fields for — or a key inside one it does — is carried through untouched, which is
+  // the same "an unknown type is ignored, never an error" rule the renderer follows. The per-block
+  // Advanced (JSON) box is the escape hatch for anything the fields do not cover.
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+  mcBlocks=[];
+  if(c && Array.isArray(c.layout_blocks)) mcBlocks=JSON.parse(JSON.stringify(c.layout_blocks));
+
+  // The vocabulary the served renderer consumes (src/card_blocks.rs `single_block`), plus the
+  // guide's QR Code block — the renderer draws one from a QR IMAGE URL, so the editor asks for one
+  // instead of promising a generator the app does not have.
+  var MC_BLOCK_TYPES=[
+    ["hero","Hero"],["features","Features"],["lead_form","Lead Form"],["business_card","Business Card"],
+    ["bio_link","Bio / Links"],["mini_funnel","Mini Funnel"],["thank_you","Thank You"],
+    ["buttons","Buttons"],["socials","Social Icons"],["link","Link"],["image","Image"],
+    ["video","Video"],["qr","QR Code"]
+  ];
+  // Aliases the renderer accepts, so a stored `hero_page`/`form`/`social_links` block still gets
+  // real fields in the editor (the alias itself is NOT rewritten unless the owner changes it).
+  var MC_ALIAS={hero_page:"hero",feature_grid:"features",form:"lead_form",bio:"bio_link",links:"bio_link",
+    button_list:"buttons",social:"socials",social_links:"socials",social_icons:"socials",
+    link_button:"link",image_block:"image",video_block:"video",qr_code:"qr"};
+  var MC_SCHEMA={
+    hero:[["title","Title"],["subtitle","Subtitle"],["hero_image_url","Background image URL"],["cta_text","CTA button text"],["cta_url","CTA button URL"]],
+    features:[["title","Section heading"]],
+    lead_form:[["form_title","Form title"],["button_text","Submit button text"]],
+    business_card:[["name","Name"],["title","Job title"],["company","Company"],["headline","Headline"],["biography","Biography"],["website","Website"]],
+    bio_link:[["name","Name"],["bio","Bio"]],
+    mini_funnel:[["title","Title"],["subtitle","Subtitle"],["product_image_url","Product image URL"],["cta_text","CTA button text"],["cta_url","CTA button URL"]],
+    thank_you:[["headline","Headline"],["message","Message"]],
+    link:[["label","Label"],["url","URL"]],
+    image:[["image_url","Image URL"],["caption","Caption"],["alt_text","Alt text"]],
+    video:[["video_url","MP4 video URL"]],
+    qr:[["url","QR image URL"]]
+  };
+  var MC_LISTS={
+    features:["items",[["title","Title"],["description","Description"]]],
+    lead_form:["fields",[["name","Field name"],["label","Label"],["field_type","Input type"],["required","Required"]]],
+    socials:["items",[["platform","Platform"],["url","URL"]]],
+    buttons:["items",[["label","Label"],["url","URL"]]]
+  };
+  function mcCanon(b){var t=(b&&b.type)||"";return MC_SCHEMA[t]?t:(MC_SCHEMA[MC_ALIAS[t]]?MC_ALIAS[t]:"");}
+  function mcTypeLabel(b){
+    var t=(b&&b.type)||"(no type)";
+    for(var i=0;i<MC_BLOCK_TYPES.length;i++) if(MC_BLOCK_TYPES[i][0]===t) return MC_BLOCK_TYPES[i][1];
+    return t+" (no editor fields — kept exactly as stored)";
+  }
+  var mcPrevT=null;
+  function mcQueuePreview(){ if(mcPrevT) clearTimeout(mcPrevT); mcPrevT=setTimeout(mcPreviewBlocks,350); }
+  function mcBlocksChanged(){ mcRenderList(); mcQueuePreview(); }
+
+  function mcField(b,key,label,multi){
+    var val=(b[key]===undefined||b[key]===null)?"":String(b[key]);
+    var el=multi?El("textarea",{rows:"2"}):El("input",{type:"text"});
+    el.value=val;
+    el.style.cssText="width:100%;padding:4px 6px;font-size:11px;border:1px solid #e2e8f0;border-radius:5px;box-sizing:border-box";
+    el.addEventListener("input",function(){ b[key]=el.value; mcQueuePreview(); });
+    var w=El("div",{style:"margin:3px 0"});
+    w.appendChild(El("label",{style:"font-size:9px;font-weight:600;color:#64748b;display:block"},label));
+    w.appendChild(el);
+    return w;
+  }
+  function mcListEditor(b,spec){
+    var arrK=spec[0], cols=spec[1];
+    if(!Array.isArray(b[arrK])) b[arrK]=[];
+    var wrap=El("div",{style:"margin:4px 0 6px"});
+    wrap.appendChild(El("label",{style:"font-size:9px;font-weight:600;color:#64748b;display:block"},arrK));
+    b[arrK].forEach(function(item,idx){
+      var rowEl=El("div",{style:"display:flex;gap:4px;align-items:center;margin:3px 0"});
+      cols.forEach(function(col){
+        var ck=col[0];
+        var inp=El("input",{type:"text",placeholder:col[1],style:"flex:1;min-width:0;padding:3px 5px;font-size:10px;border:1px solid #e2e8f0;border-radius:4px;box-sizing:border-box"});
+        inp.value=(item[ck]===undefined||item[ck]===null)?"":String(item[ck]);
+        inp.addEventListener("input",function(){
+          // `required` is a BOOLEAN in the renderer (`f.get("required").and_then(as_bool)`), so the
+          // text box is coerced — storing the string "true" would silently render nothing required.
+          if(ck==="required") item[ck]=/^(true|1|yes|on)$/i.test(inp.value.trim()); else item[ck]=inp.value;
+          mcQueuePreview();
+        });
+        rowEl.appendChild(inp);
+      });
+      var del=El("button",{"class":"btn btn-sm",type:"button",style:"font-size:10px;padding:2px 6px"},"\u2715");
+      del.onclick=function(){ b[arrK].splice(idx,1); mcBlocksChanged(); };
+      rowEl.appendChild(del);
+      wrap.appendChild(rowEl);
+    });
+    var add=El("button",{"class":"btn btn-sm",type:"button",style:"font-size:10px;padding:2px 6px"},"+ field");
+    add.onclick=function(){ var o={}; cols.forEach(function(col){o[col[0]]="";}); b[arrK].push(o); mcBlocksChanged(); };
+    wrap.appendChild(add);
+    return wrap;
+  }
+  function mcBlockRow(b,i){
+    var row=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;padding:6px 8px"});
+    var head=El("div",{style:"display:flex;align-items:center;gap:4px;margin-bottom:2px"});
+    head.appendChild(El("span",{style:"flex:1;font-size:11px;font-weight:700;color:#334155;word-break:break-word"},(i+1)+". "+mcTypeLabel(b)));
+    function mbtn(label,fn,title){
+      var el=El("button",{"class":"btn btn-sm",type:"button",title:title||"",style:"font-size:10px;padding:2px 5px"},label);
+      el.onclick=fn; return el;
+    }
+    head.appendChild(mbtn("\u2191",function(){ if(i>0){ var t=mcBlocks[i-1]; mcBlocks[i-1]=mcBlocks[i]; mcBlocks[i]=t; mcBlocksChanged(); } },"Move up"));
+    head.appendChild(mbtn("\u2193",function(){ if(i<mcBlocks.length-1){ var t=mcBlocks[i+1]; mcBlocks[i+1]=mcBlocks[i]; mcBlocks[i]=t; mcBlocksChanged(); } },"Move down"));
+    head.appendChild(mbtn("\u2715",function(){ mcBlocks.splice(i,1); mcBlocksChanged(); },"Remove this block"));
+    row.appendChild(head);
+    // Type — every vocabulary value, plus the block's own value when it is one the editor does not
+    // list, so an unknown type can never be silently rewritten just by opening the editor.
+    var sel=El("select",{style:"width:100%;padding:3px 5px;font-size:10px;border:1px solid #e2e8f0;border-radius:4px;box-sizing:border-box;margin-bottom:3px"});
+    MC_BLOCK_TYPES.forEach(function(o){ sel.appendChild(El("option",{value:o[0],selected:o[0]===b.type?"selected":null},o[1])); });
+    if(!MC_BLOCK_TYPES.some(function(o){return o[0]===b.type;})) sel.appendChild(El("option",{value:b.type||"",selected:"selected"},(b.type||"(none)")+" — kept as stored"));
+    sel.addEventListener("change",function(){ b.type=sel.value; mcBlocksChanged(); });
+    row.appendChild(sel);
+    var can=mcCanon(b);
+    (MC_SCHEMA[can]||[]).forEach(function(f){
+      row.appendChild(mcField(b,f[0],f[1],(f[0]==="bio"||f[0]==="biography"||f[0]==="message")));
+    });
+    if(MC_LISTS[can]) row.appendChild(mcListEditor(b,MC_LISTS[can]));
+    if(!can) row.appendChild(El("p",{style:"font-size:9px;color:#94a3b8;margin:2px 0;line-height:1.4"},"The public renderer has no fields for this block type, so it is stored and carried through exactly as it is. Use Advanced (JSON) to edit it."));
+    var det=El("details",{style:"margin-top:4px"});
+    det.appendChild(El("summary",{style:"font-size:10px;color:#6366f1;cursor:pointer"},"Advanced (JSON)"));
+    var jt=El("textarea",{rows:"4",style:"width:100%;font-family:monospace;font-size:10px;border:1px solid #e2e8f0;border-radius:5px;box-sizing:border-box;margin-top:3px"});
+    jt.value=JSON.stringify(b,null,1);
+    var jmsg=El("span",{style:"font-size:9px;color:#64748b;display:block"});
+    var jbtn=El("button",{"class":"btn btn-sm",type:"button",style:"font-size:10px;padding:3px 8px;margin-top:3px"},"Apply JSON");
+    jbtn.onclick=function(){
+      var parsed; try{ parsed=JSON.parse(jt.value); }catch(e){ jmsg.style.color="#dc2626"; jmsg.textContent="Invalid JSON — nothing applied."; return; }
+      if(!parsed||Object.prototype.toString.call(parsed)!=="[object Object]"){ jmsg.style.color="#dc2626"; jmsg.textContent="A block must be a JSON object."; return; }
+      mcBlocks[i]=parsed; jmsg.style.color="#16a34a"; jmsg.textContent="Applied \u2713"; mcBlocksChanged();
+    };
+    det.appendChild(jt); det.appendChild(jbtn); det.appendChild(jmsg);
+    row.appendChild(det);
+    return row;
+  }
+  function mcRenderList(){
+    var list=$("mc-blk-list"); if(!list) return;
+    list.innerHTML="";
+    if(!mcBlocks.length){
+      list.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin:4px 0;line-height:1.4"},"No blocks yet. Everything you add here is stored in the card's layout_blocks and rendered on your public card page, in this order."));
+      return;
+    }
+    mcBlocks.forEach(function(b,i){ list.appendChild(mcBlockRow(b,i)); });
+  }
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+
   // Make modal wider for split-pane
   document.querySelector(".modal").style.width="900px";
 
@@ -1015,6 +1170,14 @@ function MFC(data){
   right.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em"},"Live Preview"));
   right.appendChild(previewBox);
   right.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin-top:6px;text-align:center"},(c.title||"Untitled")+" at kntcrd.com/k/"+(c.slug||"your-slug")));
+  // The block preview is the SAME server renderer the public page uses (POST /api/v1/kinetic/preview-blocks),
+  // on the blocks currently in the editor — so a block change can be seen BEFORE it is public. The old
+  // preview here was the template-gallery wireframe, which drew a lead form as a grey bar.
+  right.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin:10px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em"},"Block preview"));
+  var blkPrev=El("div",{id:"mc-blk-preview",style:"border:1px dashed #cbd5e1;border-radius:8px;min-height:60px;background:#0b1120;color:#e2e8f0;padding:4px"});
+  blkPrev.addEventListener("submit",function(ev){ev.preventDefault();},true);
+  right.appendChild(blkPrev);
+  right.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin-top:6px;text-align:center"},"Rendered by the same code as your public page. Symbols show here but not on the live card."));
 
   split.appendChild(left);
   split.appendChild(right);
@@ -1025,7 +1188,7 @@ function MFC(data){
   var tabStyle="padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:#64748b";
   var tabActive="color:#6366f1;border-bottom-color:#6366f1";
 
-  var tabs=["Info","Look & Feel","Social","Media"];
+  var tabs=["Info","Look & Feel","Social","Media","Blocks"];
   var tabEls=[];
   tabs.forEach(function(n,i){
     var t=El("span",{style:tabStyle+(i===0?";"+tabActive:""),onclick:function(){showTab(i);}},n);
@@ -1254,6 +1417,49 @@ function MFC(data){
   p3.appendChild(MF("Video ID/URL","mc-vid",c.video_id||"","Video ID or URL"));
   left.appendChild(p3);
 
+  // TAB 4: Blocks — author the card's layout_blocks (see the block comment above `mcBlocks`).
+  var p4=El("div",{"class":"mc-tab-pane",style:"display:none"});
+  p4.appendChild(El("p",{style:"font-size:10px;color:#64748b;margin:0 0 8px;line-height:1.4"},"Your card's own content blocks, in the order they appear on the public page. Blocks are saved with the card; anything this editor has no fields for is kept exactly as stored."));
+  p4.appendChild(El("div",{id:"mc-blk-list",style:"margin-bottom:8px"}));
+  var mcAddSel=El("select",{id:"mc-blk-new",style:"width:100%;padding:4px 6px;font-size:11px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;margin-bottom:4px"});
+  MC_BLOCK_TYPES.forEach(function(o){ mcAddSel.appendChild(El("option",{value:o[0]},o[1])); });
+  p4.appendChild(mcAddSel);
+  var mcAddMsg=El("span",{style:"font-size:10px;margin-left:8px;color:#64748b"});
+  var mcAddBtn=El("button",{"class":"btn",type:"button",style:"font-size:11px;padding:5px 12px"},"Add Block");
+  mcAddBtn.onclick=function(){
+    var t=(($("mc-blk-new")||{}).value)||"hero";
+    var seed={type:t};
+    if(t==="lead_form"){ seed.form_title="Get in touch"; seed.button_text="Send";
+      seed.fields=[{name:"name",label:"Name",field_type:"text",required:true},
+                   {name:"email",label:"Email",field_type:"email",required:true}]; }
+    if(t==="socials"||t==="buttons") seed.items=[];
+    if(t==="features") seed.items=[{title:"",description:""}];
+    mcBlocks.push(seed);
+    mcAddMsg.style.color="#16a34a"; mcAddMsg.textContent="Block added — Save to publish it.";
+    mcBlocksChanged();
+  };
+  p4.appendChild(El("div",{style:"margin-top:2px"},[mcAddBtn,mcAddMsg]));
+  p4.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin:6px 0 0;line-height:1.4"},"Tip: a Lead Form block captures submissions on the card itself; the QR Code block takes a URL to a QR image (the app does not generate QR images)."));
+  // → POST /api/v1/kinetic/preview-blocks : the served renderer, on the UNSAVED blocks.
+  function mcPreviewBlocks(){
+    var box=$("mc-blk-preview"); if(!box) return;
+    if(!mcBlocks.length){ box.innerHTML='<p style="font-size:11px;color:#94a3b8;padding:8px;margin:0">No blocks yet — the page shows only your title, bio, avatar and CTA.</p>'; return; }
+    var body={blocks:mcBlocks,accent:getVal("mc-accent")||"#6366f1"};
+    if(mb._cid) body.card_id=mb._cid;
+    var sl=(getVal("mc-slug")||mb._slug_orig||"").trim();
+    if(sl) body.slug=sl;
+    api("/api/v1/kinetic/preview-blocks",{method:"POST",body:JSON.stringify(body)}).then(function(r){
+      var old=$("mc-blk-css"); if(old&&old.parentNode) old.parentNode.removeChild(old);
+      var st=document.createElement("style"); st.id="mc-blk-css"; st.textContent=(r&&r.css)||"";
+      document.head.appendChild(st);
+      box.innerHTML=(r&&r.html)?r.html:'<p style="font-size:11px;color:#94a3b8;padding:8px;margin:0">These blocks render nothing on the public page yet (a block with no renderer, or empty values).</p>';
+    }).catch(function(e){ box.innerHTML='<p style="font-size:11px;color:#dc2626;padding:8px;margin:0">Preview failed: '+X((e&&e.message)||"")+'</p>'; });
+  }
+  left.appendChild(p4);
+  // AFTER the append: mcRenderList looks the list up by id, and a node that is not in the document
+  // yet is not found — rendering before the append left the tab blank until something else redrew it.
+  mcRenderList();
+
   // Live Preview update function
   // Live Preview update function — 4-layer kinetic rendering
   function updatePreview(){
@@ -1360,6 +1566,9 @@ function MFC(data){
       el.addEventListener("change", updatePreview);
     });
     updatePreview();
+    // The block preview is rendered by the SERVER (same function as the public page), so it is
+    // asked for once the modal is up rather than drawn client-side.
+    mcPreviewBlocks();
   }, 100);
 
   // Footer
@@ -1404,7 +1613,11 @@ function SC2(id){
     instagram_url:getVal("mc-instagram"), tiktok_url:getVal("mc-tiktok"),
     youtube_url:getVal("mc-youtube"), facebook_url:getVal("mc-facebook"),
     avatar_url:getVal("mc-avatar"),
-    video_provider:getVal("mc-vp")||null, video_id:getVal("mc-vid")||null
+    video_provider:getVal("mc-vp")||null, video_id:getVal("mc-vid")||null,
+    // kanban t_114b706b: the block array is sent WHOLE under the honest key (`layout_blocks`) — the
+    // same key `create_card`/`update_card` now read. Blocks the editor has no fields for are carried
+    // through untouched, so a save can never silently drop one.
+    layout_blocks:mcBlocks
   };
   if(!d.title.trim()){showMsg("Title is required","me");return;}
   if(!d.slug.trim()){showMsg("Slug is required","me");return;}

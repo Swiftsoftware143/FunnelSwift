@@ -77,6 +77,58 @@ pub struct CardQuery {
     pub type_: Option<String>,
 }
 
+/// The card's six social URL columns, in a FIXED order.
+///
+/// kanban t_114b706b — measured 2026-09-26: the card editor has always sent all six on every save
+/// (`linkedin_url … facebook_url`), `kinetic_cards` has all six columns, and **no statement bound
+/// any of them** — `create_card`'s INSERT and `update_card`'s SET list both omitted them, and
+/// `list_cards` did not even SELECT them. Every social link an owner typed was silently dropped on
+/// the way in and could never be read back. `render_card` had a waiting `{social_html}` slot and
+/// the `.socials`/`.s-icon` CSS, so the only missing pieces were the writers and the SELECT.
+const SOCIAL_COLUMNS: [(&str, &str); 6] = [
+    ("linkedin_url", "LinkedIn"),
+    ("twitter_url", "X"),
+    ("instagram_url", "Instagram"),
+    ("tiktok_url", "TikTok"),
+    ("youtube_url", "YouTube"),
+    ("facebook_url", "Facebook"),
+];
+
+/// The six social values a card body carries, in [`SOCIAL_COLUMNS`] order. An ABSENT key is
+/// `None`: the UPDATE statements bind them through `COALESCE`, so a body that omits the key leaves
+/// the stored value alone, while the editor's `""` (an emptied field) clears it, as it should.
+fn social_column_values(body: &Value) -> Vec<Option<String>> {
+    SOCIAL_COLUMNS
+        .iter()
+        .map(|(k, _)| body.get(*k).and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .collect()
+}
+
+/// The ONE key that carries `kinetic_cards.layout_blocks`, plus the documented legacy alias.
+///
+/// `create_card` and `update_card` used to read the block array out of `body["social_links"]`, so
+/// the only way to put blocks on a card was to POST an array of *blocks* under a name that promises
+/// social links — and nothing in any served shell ever sent that key (measured 0 hits across
+/// `www/`, `www-app/`, `www-admin/`), which is why the five live `lead_form` cards got their blocks
+/// from outside the product. The honest key is `layout_blocks`; `social_links` is still ACCEPTED as
+/// a legacy alias when it is an array (so an existing API client that used it keeps working), and
+/// the real social links are the six `*_url` columns above. Both write routes share this function so
+/// they cannot drift apart again.
+///
+/// Returns `None` when the body carries neither key (leave the column alone / take the default).
+fn blocks_from_body(body: &Value) -> Option<Value> {
+    if let Some(v) = body.get("layout_blocks") {
+        // An explicit `null` means "not supplied", like an absent key: `[]` is how a client CLEARS
+        // every block, and binding a JSON null into the jsonb column would store the literal
+        // `null` there instead of leaving it alone.
+        return (!v.is_null()).then(|| v.clone());
+    }
+    match body.get("social_links") {
+        Some(v) if v.is_array() => Some(v.clone()),
+        _ => None,
+    }
+}
+
 pub async fn list_cards(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -87,7 +139,7 @@ pub async fn list_cards(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let rows = sqlx::query(
-        "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, consent_required, age_gate_type, age_gate_message, consent_decline_redirect, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
+        "SELECT id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active, consent_required, age_gate_type, age_gate_message, consent_decline_redirect, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, created_at, updated_at FROM kinetic_cards WHERE tenant_id = $1 ORDER BY created_at DESC"
     ).bind(tenant_id).fetch_all(&state.pool).await?;
     use sqlx::Row;
     let cards: Vec<Value> = rows.iter().map(|r| json!({
@@ -105,6 +157,14 @@ pub async fn list_cards(
         "meta_description": r.try_get::<Option<String>, _>("meta_description").unwrap_or_default(),
         "avatar_url": r.try_get::<Option<String>, _>("avatar_url").unwrap_or_default(),
         "layout_blocks": r.try_get::<Option<Value>, _>("layout_blocks").unwrap_or_default(),
+        // The editor's Social tab prefills from these six; before t_114b706b they were not even
+        // SELECTed here, so an owner could never see (or keep) a link they had typed.
+        "linkedin_url": r.try_get::<Option<String>, _>("linkedin_url").unwrap_or_default(),
+        "twitter_url": r.try_get::<Option<String>, _>("twitter_url").unwrap_or_default(),
+        "instagram_url": r.try_get::<Option<String>, _>("instagram_url").unwrap_or_default(),
+        "tiktok_url": r.try_get::<Option<String>, _>("tiktok_url").unwrap_or_default(),
+        "youtube_url": r.try_get::<Option<String>, _>("youtube_url").unwrap_or_default(),
+        "facebook_url": r.try_get::<Option<String>, _>("facebook_url").unwrap_or_default(),
         "theme": r.try_get::<Option<String>, _>("theme").unwrap_or_default(),
         "video_provider": r.try_get::<Option<String>, _>("video_provider").unwrap_or_default(),
         "video_id": r.try_get::<Option<String>, _>("video_id").unwrap_or_default(),
@@ -172,7 +232,13 @@ pub async fn create_card(
     let tagline = body["tagline"].as_str().unwrap_or("");
     let meta_desc = body["meta_description"].as_str().unwrap_or("");
     let avatar = body["avatar_url"].as_str();
-    let social = body.get("social_links").cloned();
+    // kanban t_114b706b — HONEST KEYS. This route used to take the block array out of
+    // `body["social_links"]`; blocks now come from `layout_blocks` (the misnamed key survives only
+    // as a documented legacy alias for an array — see `blocks_from_body`). The card's six social
+    // URLs, which the editor has always sent and no statement ever bound, are written too.
+    // A new card starts with an empty block list (`[]`), never SQL NULL: the column's own default.
+    let blocks = blocks_from_body(&body).unwrap_or_else(|| json!([]));
+    let socials = social_column_values(&body);
     let theme = body["theme_slug"].as_str();
     let video_provider = body["video_provider"].as_str();
     let video_id = body["video_id"].as_str();
@@ -202,8 +268,9 @@ pub async fn create_card(
         crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
     }
 
-    sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)")
-        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&social).bind(theme).bind(video_provider).bind(video_id)
+    sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
+        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
+        .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
         .execute(&state.pool).await?;
     Ok((
         StatusCode::CREATED,
@@ -241,7 +308,11 @@ pub async fn update_card(
     {
         crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
     }
-    let social = body.get("social_links").cloned();
+    // kanban t_114b706b — same honest keys as `create_card` (shared helpers, so the two routes
+    // cannot drift): blocks come from `layout_blocks`, and the six social columns the editor has
+    // always sent are finally written (they were in NEITHER statement before).
+    let blocks = blocks_from_body(&body);
+    let socials = social_column_values(&body);
     // kanban t_8151c83f — TWO columns this screen edits were not writable through this route:
     //  * `template_type` was missing from the SET list entirely, so the editor's Template Type select
     //    could never change it (measured: PUT {"template_type":"hero"} left the row at business_card).
@@ -272,13 +343,13 @@ pub async fn update_card(
             ))
         }
     };
-    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END WHERE id=$1 AND tenant_id=$2")
+    sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
         .bind(body["text_color"].as_str()).bind(body["sub_color"].as_str())
         .bind(body["btn_color"].as_str()).bind(body["avatar_url"].as_str())
-        .bind(&social)
+        .bind(&blocks)
         .bind(body["tagline"].as_str()).bind(body["meta_description"].as_str())
         .bind(body["video_id"].as_str())
         // `cta_text` was dropped: `kinetic_cards` has no such column and nothing reads one —
@@ -289,8 +360,107 @@ pub async fn update_card(
         .bind(template_type)
         .bind(vp_change.is_some())
         .bind(vp_change.flatten())
+        .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
         .execute(&state.pool).await?;
     Ok(Json(json!({"message": "Card updated"})))
+}
+
+#[derive(Deserialize)]
+pub struct PreviewBlocksBody {
+    pub blocks: Option<Value>,
+    pub accent: Option<String>,
+    pub card_id: Option<Uuid>,
+    /// The card's slug, so the previewed form posts to the SAME path the public page uses.
+    pub slug: Option<String>,
+}
+
+/// `POST /api/v1/kinetic/preview-blocks` — render the blocks the card editor is CURRENTLY holding
+/// with the SAME renderer the public page uses (kanban t_114b706b).
+///
+/// Before this, the editor's only block preview was the template-gallery wireframe
+/// (`blk.type==="lead_form"` → a grey rounded bar), so a block change could not be seen before it
+/// was public. This endpoint exists so the editor's preview cannot drift from the served page: it
+/// calls `crate::card_blocks::render`, the same function `render_card` calls, with the editor's
+/// UNSAVED blocks and accent, and returns a FRAGMENT (`css` + `html`) rather than a page. Every
+/// value still passes the renderer's escaping, href allowlist and CSS-fragment check.
+///
+/// Bounded on purpose: the route sits inside the authenticated router (a valid `AuthUser` is
+/// required), the block array is capped, and a non-array body is a 400.
+pub async fn preview_blocks(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<PreviewBlocksBody>,
+) -> AppResult<Json<Value>> {
+    let blocks = body.blocks.unwrap_or(Value::Null);
+    if !(blocks.is_null() || blocks.is_array()) {
+        return Err(AppError::BadRequest("blocks must be an array".into()));
+    }
+    if blocks.as_array().map(|a| a.len()).unwrap_or(0) > 64 {
+        return Err(AppError::BadRequest("too many blocks (max 64)".into()));
+    }
+    // The card's saved CTA buttons belong in the preview too — they are rendered on the public page
+    // beside these blocks, so leaving them out would preview something the visitor never sees.
+    let mut card_buttons: Vec<crate::card_blocks::CardButton> = Vec::new();
+    if let Some(card_id) = body.card_id {
+        let tenant_id: Uuid = auth
+            .tenant_id
+            .parse()
+            .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+        use sqlx::Row;
+        // Same JOIN as `list_buttons`: `kinetic_buttons` has no tenant column of its own, so the
+        // card is what scopes the read to the caller's tenant.
+        let rows = sqlx::query(
+            "SELECT b.label, COALESCE(b.destination_url,'') AS destination_url, b.action_type FROM kinetic_buttons b JOIN kinetic_cards c ON c.id = b.card_id WHERE b.card_id=$1 AND c.tenant_id=$2 ORDER BY b.sort_order, b.created_at",
+        )
+        .bind(card_id)
+        .bind(tenant_id)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("preview_blocks buttons query failed for card '{}': {}", card_id, e);
+            Vec::new()
+        });
+        card_buttons = rows
+            .iter()
+            .map(|b| crate::card_blocks::CardButton {
+                label: b.try_get::<String, _>("label").unwrap_or_default(),
+                url: b
+                    .try_get::<String, _>("destination_url")
+                    .unwrap_or_default(),
+                action_type: b.try_get::<String, _>("action_type").unwrap_or_default(),
+            })
+            .collect();
+    }
+    let block_accent = crate::card_blocks::safe_css_fragment(body.accent.as_deref().unwrap_or(""))
+        .unwrap_or_else(|| "#6366f1".to_string());
+    // The previewed form posts to the card's real path when the editor names the slug, so the
+    // preview cannot disagree with the page. The value lands in an HTML attribute, so it is
+    // restricted to the slug charset and length; anything else falls back to a dead `#`.
+    let lead_action = match body.slug.as_deref().map(str::trim) {
+        Some(s)
+            if !s.is_empty()
+                && s.len() <= 60
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') =>
+        {
+            format!("/k/{s}/lead")
+        }
+        _ => "#".to_string(),
+    };
+    let rendered = crate::card_blocks::render(
+        &blocks,
+        &card_buttons,
+        &crate::card_blocks::BlockOptions {
+            accent: &block_accent,
+            lead_action: &lead_action,
+        },
+    );
+    Ok(Json(json!({
+        "css": rendered.css,
+        "html": rendered.section,
+        "rendered": rendered.rendered,
+        "has_lead_form": rendered.has_lead_form,
+    })))
 }
 
 pub async fn delete_card(
@@ -733,7 +903,7 @@ pub async fn render_card(
         // `tenant_plans` table that does not exist, and the error was swallowed by
         // `.unwrap_or(None)` below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
-        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
+        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.linkedin_url, k.twitter_url, k.instagram_url, k.tiktok_url, k.youtube_url, k.facebook_url, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
     ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or_else(|e| {
         // Never swallow this again: a failed lookup is indistinguishable from a missing
         // card on the public page, which is exactly how the phantom-table bug hid.
@@ -1157,7 +1327,23 @@ pub async fn render_card(
         accent, bg
     );
 
-    let social_html = String::new();
+    // kanban t_114b706b — the card's OWN social links. `kinetic_cards` has six `*_url` columns,
+    // the editor has always sent all six on every save, and NOTHING bound or read any of them:
+    // this slot was hard-coded empty while `.socials`/`.s-icon` CSS sat in the page waiting for
+    // content. The columns are the social links now, and the (legacy) `social_links` request key
+    // no longer has anything to do with them.
+    let mut social_items: Vec<Value> = Vec::new();
+    for (col, label) in SOCIAL_COLUMNS.iter() {
+        if let Some(v) = r
+            .try_get::<Option<String>, _>(*col)
+            .ok()
+            .flatten()
+            .filter(|v| !v.trim().is_empty())
+        {
+            social_items.push(json!({ "platform": label, "url": v }));
+        }
+    }
+    let social_html = crate::card_blocks::social_links_row(&social_items);
 
     // ── Tenant site meta overrides for OG tags ──
     let og_title = html_escape(
@@ -2272,5 +2458,70 @@ mod tests {
         assert_eq!(card_lead_field(&json!({"x": "   "}), "x"), None);
         assert_eq!(card_lead_field(&json!({"x": 7}), "x"), None);
         assert_eq!(card_lead_field(&json!({}), "x"), None);
+    }
+}
+
+#[cfg(test)]
+mod t114_write_key_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// The honest key wins, and an explicit empty array CLEARS the column (`Some([])`), which is
+    /// what "remove every block" means.
+    #[test]
+    fn layout_blocks_is_the_key_that_carries_blocks() {
+        let b = json!({"layout_blocks":[{"type":"hero","title":"Hi"}]});
+        assert_eq!(
+            blocks_from_body(&b),
+            Some(json!([{"type":"hero","title":"Hi"}]))
+        );
+        let empty = json!({"layout_blocks":[]});
+        assert_eq!(blocks_from_body(&empty), Some(json!([])));
+    }
+
+    /// The documented legacy alias still works when it is an ARRAY of blocks, and is ignored when
+    /// it is not (a `social_links` that is an object is not a block list).
+    #[test]
+    fn social_links_is_only_an_alias_for_an_array_of_blocks() {
+        let legacy = json!({"social_links":[{"type":"hero"}]});
+        assert_eq!(blocks_from_body(&legacy), Some(json!([{"type":"hero"}])));
+        assert_eq!(
+            blocks_from_body(&json!({"social_links":{"linkedin":"https://x"}})),
+            None
+        );
+        assert_eq!(blocks_from_body(&json!({"social_links":"https://x"})), None);
+    }
+
+    /// A body with neither key leaves the column alone on update (None -> COALESCE keeps it).
+    #[test]
+    fn neither_key_means_leave_the_column_alone() {
+        assert_eq!(blocks_from_body(&json!({"title":"x"})), None);
+        // An explicit null is "not supplied" too: `[]` is how a client clears the column, and
+        // binding a JSON null would store the literal `null` there.
+        assert_eq!(blocks_from_body(&json!({"layout_blocks":null})), None);
+    }
+
+    /// `layout_blocks` present and `social_links` present: the honest key wins.
+    #[test]
+    fn layout_blocks_wins_over_the_legacy_alias() {
+        let b = json!({"layout_blocks":[{"type":"features"}],"social_links":[{"type":"hero"}]});
+        assert_eq!(blocks_from_body(&b), Some(json!([{"type":"features"}])));
+    }
+
+    /// The six social columns are read in a fixed order, and an ABSENT key is None (leave alone)
+    /// while the editor's `""` is Some("") (clear it).
+    #[test]
+    fn the_six_social_columns_are_read_by_column_name() {
+        let v = social_column_values(&json!({
+            "linkedin_url":"https://linkedin.com/in/x", "twitter_url":"",
+            "instagram_url":"https://instagram.com/x", "tiktok_url":"https://tiktok.com/@x",
+            "youtube_url":"https://youtube.com/@x", "facebook_url":"https://facebook.com/x"
+        }));
+        assert_eq!(v.len(), 6);
+        assert_eq!(v[0].as_deref(), Some("https://linkedin.com/in/x"));
+        assert_eq!(v[1].as_deref(), Some(""));
+        assert_eq!(v[5].as_deref(), Some("https://facebook.com/x"));
+        let absent = social_column_values(&json!({"title":"x"}));
+        assert!(absent.iter().all(|v| v.is_none()));
     }
 }
