@@ -71,16 +71,23 @@ pub async fn update_funnel(
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
-    if let Some(name) = payload["name"].as_str() {
-        let result = sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2 AND tenant_id=$3")
-            .bind(name)
-            .bind(id)
-            .bind(tenant_id)
-            .execute(&state.pool)
-            .await?;
-        if result.rows_affected() == 0 {
-            return Err(AppError::NotFound("Funnel not found".into()));
-        }
+    // This route's only writable field is `name`. A body that carries no writable field can never
+    // write, so it is refused here instead of answering 200 "Funnel updated" for a call that
+    // changed no row (kanban t_c2259356). The refusal precedes the lookup on purpose: the answer is
+    // then identical for a real id and a random uuid, so it cannot become an existence oracle.
+    let Some(name) = payload["name"].as_str() else {
+        return Err(AppError::BadRequest(
+            "No writable field: 'name' (string) is required".into(),
+        ));
+    };
+    let result = sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2 AND tenant_id=$3")
+        .bind(name)
+        .bind(id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Funnel not found".into()));
     }
     Ok(Json(json!({"message": "Funnel updated"})))
 }
