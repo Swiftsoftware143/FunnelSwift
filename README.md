@@ -89,7 +89,7 @@ All routes are under `/api/v1/`. 161 endpoints total.
 | POST | `/api/v1/affiliate/login` | Affiliate portal login |
 | POST | `/api/v1/affiliate/dashboard` | Affiliate dashboard |
 | GET/POST | `/api/v1/affiliate-stats` | Affiliate statistics |
-| GET/POST | `/api/v1/affiliate-conversions` | Conversion tracking |
+| POST | `/api/v1/affiliate-conversions` | Record a commission for a conversion (writes `affiliate_commissions`; the GET reader was retired with migration 080, kanban t_4c634069) |
 | POST | `/api/v1/check-affiliate-email` | Check affiliate by email |
 | POST | `/api/v1/log-lead-movement` | Lead movement logging |
 

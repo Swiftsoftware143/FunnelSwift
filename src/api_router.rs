@@ -296,10 +296,14 @@ pub fn create_router(
             get(affiliate_tracking_handler::list_affiliate_links)
                 .post(affiliate_tracking_handler::create_affiliate_link),
         )
+        // NOTE: the GET arm of this route (`list_conversions`) was REMOVED with kanban t_4c634069 —
+        // it was the only reader of `affiliate_conversions`, a table with a reader and no writer
+        // (0 rows ever, no INSERT in any app's src/) and zero callers fleet-wide. Migration 080
+        // dropped the table. The POST arm is real and live: `track_conversion` writes the money
+        // ledger `affiliate_commissions` ('pending'), like `tag_logic.rs` and the cross-app webhook.
         .route(
             "/api/v1/affiliate-conversions",
-            get(affiliate_tracking_handler::list_conversions)
-                .post(affiliate_tracking_handler::track_conversion),
+            post(affiliate_tracking_handler::track_conversion),
         )
         // NOTE: GET /api/v1/track-click was removed (kanban t_813d51d4). It was a no-op stub —
         // `Query(_params)` discarded, `State(_state)` unused, answered a constant

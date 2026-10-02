@@ -55,29 +55,12 @@ pub async fn create_affiliate_link(
         ),
     ))
 }
-pub async fn list_conversions(
-    auth: AuthUser,
-    State(state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
-    // affiliate_conversions.converted_at is TIMESTAMPTZ; the NaiveDateTime tuple made the decode
-    // fail — swallowed by unwrap_or_default(), so this list answered [] forever. The tuple also
-    // listed ac.affiliate_user_id as Option<String> (it is UUID) and the two NUMERIC money columns
-    // as f64 (sqlx decodes f64 from FLOAT8 only) — every one of those was a silent decode error.
-    let rows: Vec<(Uuid, Option<Uuid>, Option<Uuid>, Option<Uuid>, Option<f64>, Option<f64>, Option<String>, Option<chrono::DateTime<chrono::Utc>>)> = sqlx::query_as(
-        "SELECT ac.id, ac.click_id, ac.affiliate_user_id, ac.customer_id, ac.amount::float8, ac.commission::float8, ac.status, ac.converted_at FROM affiliate_conversions ac JOIN affiliate_users au ON au.user_id = ac.affiliate_user_id WHERE au.tenant_id = $1 ORDER BY ac.converted_at DESC LIMIT 50"
-    ).bind(tenant_id).fetch_all(&state.pool).await.unwrap_or_else(|e| {
-        // Swallowing this is how three decode mismatches hid inside one query: the list just
-        // answered []. Keep answering [] (the shell tolerates it) but never silently.
-        tracing::error!("affiliate conversions list failed: {e}");
-        Vec::new()
-    });
-    let items: Vec<Value> = rows
-        .iter()
-        .map(|r| json!({"id": r.0.to_string(), "amount": r.4, "commission": r.5, "status": r.6}))
-        .collect();
-    Ok(Json(json!(items)))
-}
+/// NOTE: `list_conversions` -> `GET /api/v1/affiliate-conversions` was DELETED with kanban
+/// t_4c634069. It was the last reader of `affiliate_conversions`, a table nothing in the product
+/// could write (0 rows ever; no INSERT in any app's `src/`) and whose row shape duplicated the real
+/// money ledger `affiliate_commissions`. The route had zero callers fleet-wide (every app's `src/`,
+/// every served `www*` root, nginx, n8n). Migration 080 dropped the table. The POST on the same path
+/// is a different handler and stays: `track_conversion` below writes `affiliate_commissions`.
 pub async fn track_conversion(
     auth: AuthUser,
     State(state): State<AppState>,

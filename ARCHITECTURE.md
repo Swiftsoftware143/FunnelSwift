@@ -71,7 +71,7 @@ All apps share one Postgres instance (Docker: swift-postgres-1).
 
 ### 1. FunnelSwift — The Affiliate Hub
 - **AFFILIATE SYSTEM**: Codes, links, tracking, conversions, commissions, payouts
-- **Owns**: `affiliate_products`, `affiliate_users`, `affiliate_conversions`, `affiliate_links` (`affiliate_clicks` was DROPPED by migration 073, kanban t_6a7e77e1 — it had 0 rows, no reader and no writer; the portal's metrics come from `affiliate_commissions` and the Kinetic card tracker)
+- **Owns**: `affiliate_products`, `affiliate_users`, `affiliate_links` (`affiliate_clicks` was DROPPED by migration 073, kanban t_6a7e77e1 — it had 0 rows, no reader and no writer; `affiliate_conversions` was DROPPED by migration 080, kanban t_4c634069 — it had a reader and no writer, 0 rows ever, and the route that read it had zero callers. Both residue; the portal's metrics come from `affiliate_commissions` and the Kinetic card tracker)
 - **Two free entry points**: Kinetic modal + standard signup page
 - **Cross-app call**: `POST /api/v1/internal/affiliate/upgrade-event` (`x-internal-key` header) — a sibling's paid upgrade credits the referring affiliate. The plan→product sync route was RETIRED (kanban t_141162e7).
 
@@ -111,17 +111,28 @@ All apps share one Postgres instance (Docker: swift-postgres-1).
 
 ## Cross-App Flow: Affiliate Signup → Commission
 
+Every row of money in this flow is an `affiliate_commissions` row. There is no separate
+"conversions" ledger — the table that carried that name was dropped by migration 080 (kanban
+t_4c634069) because nothing had ever written one, and this block used to describe that phantom
+write. The shipped flow is below (`affiliate_commissions` = the ledger, `affiliate_plan_movements`
+= the dated timeline).
+
 ```
-1. Affiliate signs up on FunnelSwift → gets affiliate code (AFF-XXXX)
-2. Affiliate creates Kinetic card → gets /k/:slug with ?src= param tracking
+1. Affiliate signs up on FunnelSwift → gets a link + tracking code (affiliate_links.tracking_code)
+2. Affiliate creates a Kinetic card → gets /k/:slug with ?src= param tracking
 3. Lead finds card → submits info on the card
    → Auto-created account on FunnelSwift (kinetic_free plan)
-   → Tagged with affiliate's tag
-   → affiliate_conversions row (pending, $5.00)
-4. Lead upgrades to paid plan on FunnelSwift
-   → Commission calculated by plan price × commission_rate
-   → affiliate_conversions updated to "approved"
-5. Affiliate sees earnings in FunnelSwift dashboard
+   → Tagged with the affiliate's tag; attribution resolves at SIGNUP, permanently
+     (?ref=<code> → affiliate_links.tracking_code → leads.created_by; no cookie expiry)
+   → pending affiliate_commissions row for that lead, estimated from the product list price
+     (tag_logic.rs; deduped on lead_id + product_id)
+4. Lead upgrades to paid plan (in-app set_active_plan, or a sibling app's upgrade event)
+   → Commission re-derived from the price ACTUALLY paid × the rate the row was priced with
+     (the rate lives in the row's metadata, so a later rate change cannot re-price history)
+   → that affiliate_commissions row moves pending → "earned" (earned_at set; plan_movement.rs)
+   → a downgrade off a paying plan moves it to "reversed" (reversed_at set); upgrading again
+     re-earns it. The dated record of each movement is affiliate_plan_movements (migration 071)
+5. Affiliate sees earnings in the FunnelSwift affiliate portal, which sums affiliate_commissions
 ```
 
 ## Anti-Rules (Never Do These)
