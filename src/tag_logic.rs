@@ -375,13 +375,19 @@ pub async fn attribute_affiliate_on_tags(
         //
         //   pending  — the attribution already stands; skip. Unchanged, and it is what makes the same
         //              tag applied twice still leave exactly one row (t_d4ce013c leg C).
-        //   reversed — the row was withdrawn because the tag that produced it came OFF the lead
-        //              (`reverse_affiliate_on_tags` below) or because the customer left a paying plan
-        //              (`plan_movement.rs:189`). Re-applying the tag is the operator asking for the
-        //              attribution back, so the row is RE-OPENED to pending — the same un-reverse
-        //              `plan_movement.rs:172` performs when a real payment lands (`reversed_at = NULL`
-        //              over status IN ('pending','reversed','earned')). It is the SAME row, never a
-        //              second one; its affiliate, amount and metadata are kept.
+        //   reversed — there are TWO ways a row gets here and they must NOT be conflated:
+        //                * `reverse_affiliate_on_tags` below withdrew it because the tag that
+        //                  produced it came OFF the lead. It marks the row
+        //                  `metadata->>'reversed_by' = 'tag_removed'`, and for THAT row re-applying
+        //                  the tag is the operator asking for the attribution back, so the row is
+        //                  RE-OPENED to pending (and the mark is consumed).
+        //                * `plan_movement.rs:189` withdrew it because the customer LEFT a paying
+        //                  plan. That one stays reversed: a tag coming back is not a payment, and
+        //                  re-opening it would invent money the customer is not paying. Only the
+        //                  authoritative money event un-reverses this one (a real conversion sets
+        //                  `earned` and clears `reversed_at`, `plan_movement.rs:172`).
+        //              Either way it is the SAME row, never a second one; its affiliate, amount and
+        //              metadata are kept.
         //   earned / paid — settled money. The authoritative money event is the conversion webhook,
         //              not the tag, so a re-tag never rewrites or re-opens it.
         let status: Option<String> = sqlx::query_scalar(
@@ -393,16 +399,21 @@ pub async fn attribute_affiliate_on_tags(
         .await?;
         match status.as_deref() {
             Some("reversed") => {
-                sqlx::query(
-                    "UPDATE affiliate_commissions SET status = 'pending', reversed_at = NULL
-                      WHERE lead_id = $1 AND product_id = $2",
+                let reopened = sqlx::query(
+                    "UPDATE affiliate_commissions
+                        SET status = 'pending', reversed_at = NULL,
+                            metadata = metadata - 'reversed_by'
+                      WHERE lead_id = $1 AND product_id = $2 AND status = 'reversed'
+                        AND metadata->>'reversed_by' = 'tag_removed'",
                 )
                 .bind(lead_id)
                 .bind(product_id)
                 .execute(pool)
                 .await?;
-                tracing::info!(%lead_id, %product_id,
-                    "affiliate commission RE-OPENED to pending — the tag that produces it is back on the lead");
+                if reopened.rows_affected() > 0 {
+                    tracing::info!(%lead_id, %product_id,
+                        "affiliate commission RE-OPENED to pending — the tag that produces it is back on the lead");
+                }
                 continue;
             }
             Some(_) => continue,
@@ -471,10 +482,13 @@ pub async fn attribute_affiliate_on_tags(
 ///     authoritative money event is the conversion webhook). A row that has already moved on —
 ///     `earned`/`paid` — is left EXACTLY as it is: withdrawing settled money because a label was
 ///     taken off a lead is not this arm's business.
-///   * The withdrawal is not one-way. A real conversion sets `earned` and clears `reversed_at`
-///     (`plan_movement.rs:172`, `WHERE status IN ('pending','reversed','earned')`), and re-applying
-///     the tag re-opens the same row to `pending` (the `Some("reversed")` arm of
-///     `attribute_affiliate_on_tags`) — still at most one row per (lead, product).
+///   * The withdrawal is not one-way, and its un-doing is PRECISE. This arm marks the row it
+///     withdrew (`metadata->>'reversed_by' = 'tag_removed'`), so re-applying the tag re-opens exactly
+///     that row to `pending` (the `Some("reversed")` arm of `attribute_affiliate_on_tags`) — while a
+///     row `plan_movement.rs` reversed because the customer left a paying plan keeps no such mark and
+///     STAYS reversed, because a tag coming back is not a payment. A real conversion un-reverses that
+///     one the only other way there is (`earned` + `reversed_at = NULL`, `plan_movement.rs:172`).
+///     Still at most one row per (lead, product).
 ///
 /// `removed_tag_ids` are the tags this request took off the lead; `remaining_tag_ids` are the tags
 /// still on it. A product is withdrawn only if NO tag left on the lead still points at it, so a
@@ -518,9 +532,15 @@ pub async fn reverse_affiliate_on_tags(
         return Ok(0);
     }
 
+    // `reversed_by` is what makes the un-reversal precise: `attribute_affiliate_on_tags` re-opens a
+    // reversed row ONLY when this arm is the one that reversed it. A row `plan_movement.rs` reversed
+    // (the customer left a paying plan) carries no such mark and stays reversed — a tag coming back is
+    // not a payment.
     let res = sqlx::query(
         "UPDATE affiliate_commissions
-            SET status = 'reversed', reversed_at = NOW()
+            SET status = 'reversed', reversed_at = NOW(),
+                metadata = coalesce(metadata, '{}'::jsonb)
+                           || jsonb_build_object('reversed_by', 'tag_removed')
           WHERE lead_id = $1 AND product_id = ANY($2) AND status = 'pending'",
     )
     .bind(lead_id)

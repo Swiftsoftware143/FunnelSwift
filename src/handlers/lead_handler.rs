@@ -780,9 +780,12 @@ async fn apply_lead_tags(
     // reversed_at=NOW()` — never delete it, and never touch a row that has already settled. It is
     // the app's own withdrawal mechanism for this money (`src/plan_movement.rs:189`), it keeps the
     // audit trail of an attribution that really was made, and it is undone the same way the app
-    // already undoes it: a real conversion sets `earned` and clears `reversed_at`
-    // (`plan_movement.rs:172`), and re-applying the tag re-opens the same row to pending
-    // (`tag_logic::attribute_affiliate_on_tags`). Still at most one row per (lead, product).
+    // already undoes it: re-applying the tag re-opens the same row to pending
+    // (`tag_logic::attribute_affiliate_on_tags`, which only un-does a row this arm reversed — it
+    // marks the row `reversed_by='tag_removed'`, so a row `plan_movement` reversed because the
+    // customer left a paying plan stays reversed), and a real conversion settles it the other way
+    // (`earned` + `reversed_at = NULL`, `plan_movement.rs:172`). Still at most one row per
+    // (lead, product).
     if !removed_tags.is_empty() {
         let removed_ids: Vec<Uuid> = sqlx::query_scalar(
             "SELECT id FROM tags WHERE name = ANY($1) AND (tenant_id = $2 OR is_system = true)",
