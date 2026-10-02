@@ -25,9 +25,14 @@ fn text_from_value(v: &Value) -> String {
 }
 
 pub async fn list_site_settings(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    // Admin surface (kanban t_9cf378bc): the extractor used to be discarded (`_auth`), so the
+    // route was authenticated but not authorised. Same test the router choke point uses.
+    if !crate::auth::global_auth::is_platform_admin(&auth.role) {
+        return Err(AppError::Forbidden("Platform admin role required".into()));
+    }
     let rows: Vec<(Uuid, String, String)> =
         // site_settings.key AND .value are both NULLABLE, and the list has no WHERE that
         // excludes a NULL — a single NULL in either column 500'd the whole endpoint (and
@@ -46,10 +51,13 @@ pub async fn list_site_settings(
 }
 
 pub async fn get_site_settings(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<Value>> {
+    if !crate::auth::global_auth::is_platform_admin(&auth.role) {
+        return Err(AppError::Forbidden("Platform admin role required".into()));
+    }
     let row: Option<(Uuid, String, String)> = sqlx::query_as(
         "SELECT id, COALESCE(key, '') AS key, COALESCE(value::text, '') FROM site_settings WHERE key = $1",
     )

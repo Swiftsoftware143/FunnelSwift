@@ -17,6 +17,21 @@ fn is_masked(v: &str) -> bool {
     v.is_empty() || v.chars().all(|c| c == '•' || c == '*')
 }
 
+/// Defence in depth for the platform-wide e-mail surface (kanban t_9cf378bc): every handler in
+/// this module is mounted only under `/api/v1/admin/*`, which the router choke point
+/// (`auth::global_auth::require_auth`) already refuses for a non-platform-admin token. The
+/// check is repeated here so a handler is not authorised merely by being mounted behind that
+/// middleware — the same shape ADASwift used in t_d2df1ae1.
+fn require_platform_admin(user: &crate::auth::middleware::AuthUser) -> Result<(), AppError> {
+    if crate::auth::global_auth::is_platform_admin(&user.role) {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "Platform admin role required".to_string(),
+        ))
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmailTemplate {
     pub id: Uuid,
@@ -77,8 +92,10 @@ async fn demote_default(
 
 /// GET /api/v1/admin/email-templates
 pub async fn list_templates(
+    user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<EmailTemplate>>, AppError> {
+    require_platform_admin(&user)?;
     let rows = sqlx::query(
         "SELECT id, template_type, name, subject, body, html_body, is_default, aid, created_at, updated_at FROM email_templates ORDER BY is_default DESC, template_type"
     )
@@ -107,9 +124,11 @@ pub async fn list_templates(
 
 /// POST /api/v1/admin/email-templates
 pub async fn create_template(
+    user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateTemplateRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    require_platform_admin(&user)?;
     let id = Uuid::new_v4();
     let is_default = req.is_default.unwrap_or(false);
 
@@ -149,10 +168,12 @@ pub async fn create_template(
 
 /// PUT /api/v1/admin/email-templates/:id
 pub async fn update_template(
+    user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
     Json(req): Json<UpdateTemplateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
     let existing = sqlx::query(
         "SELECT template_type, name, subject, body, html_body, is_default FROM email_templates WHERE id = $1",
     )
@@ -210,9 +231,11 @@ pub async fn update_template(
 
 /// DELETE /api/v1/admin/email-templates/:id
 pub async fn delete_template(
+    user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
     sqlx::query("DELETE FROM email_templates WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
@@ -224,9 +247,11 @@ pub async fn delete_template(
 
 /// GET /api/v1/admin/email-templates/:id
 pub async fn get_template(
+    user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> Result<Json<EmailTemplate>, AppError> {
+    require_platform_admin(&user)?;
     let r = sqlx::query(
         "SELECT id, template_type, name, subject, body, html_body, is_default, aid, created_at, updated_at FROM email_templates WHERE id = $1"
     )
@@ -251,17 +276,27 @@ pub async fn get_template(
 }
 
 /// GET /api/v1/admin/email-templates/types
-pub async fn list_template_types() -> Json<Vec<serde_json::Value>> {
-    Json(vec![
+pub async fn list_template_types(
+    user: crate::auth::middleware::AuthUser,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+    require_platform_admin(&user)?;
+    Ok(Json(vec![
         serde_json::json!({"type": "welcome", "description": "Sent after user registration", "merge_fields": ["name", "email", "login_url", "app_name"]}),
         serde_json::json!({"type": "password_reset", "description": "Sent when user requests password reset", "merge_fields": ["name", "token", "app_name"]}),
         serde_json::json!({"type": "purchase_confirmed", "description": "Sent after successful payment", "merge_fields": ["name", "plan_name", "login_url", "app_name"]}),
-    ])
+    ]))
 }
 
 /// GET /api/v1/admin/email-config — global (system mail) provider config, secrets masked.
 /// DB-backed: nothing here reads the process environment.
-pub async fn get_email_config(State(state): State<AppState>) -> Json<serde_json::Value> {
+///
+/// Admin-gated in-handler as well as at the router choke point (kanban t_9cf378bc): the
+/// handler must not be reachable merely because it is mounted behind the auth middleware.
+pub async fn get_email_config(
+    user: crate::auth::middleware::AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
     let value: Option<serde_json::Value> =
         sqlx::query_scalar("SELECT value FROM admin_settings WHERE key = 'email'")
             .fetch_optional(&state.pool)
@@ -295,20 +330,22 @@ pub async fn get_email_config(State(state): State<AppState>) -> Json<serde_json:
         }
     }
 
-    Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "config": out,
         "configured": cfg.as_ref().map(|c| c.is_configured()).unwrap_or(false),
         "provider": cfg.as_ref().map(|c| c.provider.clone()).unwrap_or_default(),
         "providers": crate::email_provider::available(),
-    }))
+    })))
 }
 
 /// POST /api/v1/admin/email-config — save the global system-mail provider.
 /// A masked secret coming back from the UI never overwrites the stored one.
 pub async fn update_email_config(
+    user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
     Json(mut body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
     let existing: Option<serde_json::Value> =
         sqlx::query_scalar("SELECT value FROM admin_settings WHERE key = 'email'")
             .fetch_optional(&state.pool)
@@ -371,12 +408,13 @@ pub async fn update_email_config(
 pub async fn test_email_config(
     State(state): State<AppState>,
     user: crate::auth::middleware::AuthUser,
-) -> Json<serde_json::Value> {
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
     let Some(cfg) = crate::email_provider::resolve(&state.pool, None).await else {
-        return Json(serde_json::json!({
+        return Ok(Json(serde_json::json!({
             "success": false,
             "detail": "Global email provider not configured — save provider + credentials first."
-        }));
+        })));
     };
 
     let to = if user.email.trim().is_empty() {
@@ -394,17 +432,17 @@ pub async fn test_email_config(
     )
     .await
     {
-        Ok(()) => Json(serde_json::json!({
+        Ok(()) => Ok(Json(serde_json::json!({
             "success": true,
             "provider": cfg.provider,
             "to": to,
             "detail": format!("{} accepted the message", cfg.provider)
-        })),
-        Err(e) => Json(serde_json::json!({
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
             "success": false,
             "provider": cfg.provider,
             "to": to,
             "detail": e
-        })),
+        }))),
     }
 }

@@ -8,9 +8,14 @@ use uuid::Uuid;
 
 /// GET /api/v1/admin/plans/:id/templates — get allowed template IDs for a plan
 pub async fn get_plan_templates(
+    auth: crate::auth::middleware::AuthUser,
     Path(id): Path<Uuid>,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    // Admin surface (kanban t_9cf378bc): the route carried no role check of its own.
+    if !crate::auth::global_auth::is_platform_admin(&auth.role) {
+        return Err(AppError::Forbidden("Platform admin role required".into()));
+    }
     let plan = sqlx::query("SELECT name, slug, allowed_template_ids FROM plans WHERE id = $1")
         .bind(id)
         .fetch_optional(&state.pool)
@@ -33,10 +38,14 @@ pub async fn get_plan_templates(
 /// { "allowed_template_ids": [] } → zero templates (locked down)
 /// { "allowed_template_ids": null } → all templates (unlocked)
 pub async fn update_plan_templates(
+    auth: crate::auth::middleware::AuthUser,
     Path(id): Path<Uuid>,
     State(state): State<AppState>,
     Json(req): Json<Value>,
 ) -> AppResult<Json<Value>> {
+    if !crate::auth::global_auth::is_platform_admin(&auth.role) {
+        return Err(AppError::Forbidden("Platform admin role required".into()));
+    }
     let template_ids: Option<Vec<String>> = match req.get("allowed_template_ids") {
         Some(v) if v.is_null() => None, // null = all
         Some(v) => v.as_array().map(|arr| {

@@ -66,6 +66,37 @@ fn is_internal(path: &str) -> bool {
     path.starts_with("/api/v1/internal/")
 }
 
+/// The platform-admin role — `users.role = 'admin'`, the role that owns the platform console.
+///
+/// A tenant-level admin (`company_admin`) is NOT a platform admin: the console at
+/// `admin.funnelswift.net` and the admin section of the tenant SPA are both gated on
+/// `is_admin` (`role == "admin"`, `auth/middleware.rs`), and every handler that already
+/// guarded itself does the same comparison.
+pub fn is_platform_admin(role: &str) -> bool {
+    role == crate::handlers::tenant_handler::PLATFORM_ADMIN_ROLE
+}
+
+const ADMIN_PREFIX: &str = "/api/v1/admin";
+const ADMIN_PREFIX_NESTED: &str = "/api/v1/admin/";
+
+/// True when `path` is inside the admin surface. Matches on the path SEGMENT, never on a bare
+/// string prefix, so a future `/api/v1/administrators` is not silently swept in.
+pub fn is_admin_surface(path: &str) -> bool {
+    path == ADMIN_PREFIX || path.starts_with(ADMIN_PREFIX_NESTED)
+}
+
+/// The authz decision for the admin surface: `true` means answer 403.
+///
+/// Before kanban t_9cf378bc the `/api/v1/admin/*` routes were authenticated but never
+/// authorised: a token naming a real ACTIVE tenant with `role=user|company_admin` got 200 from
+/// GET **and** the write verb of `/api/v1/admin/email-config` — the row that holds the
+/// fleet-wide Mailgun private key and the from-address of every platform transactional email.
+/// This predicate is applied at the one choke point every admin route passes through
+/// (`require_auth`), so the class stays closed for routes added later too.
+pub fn admin_surface_denied(path: &str, role: &str) -> bool {
+    is_admin_surface(path) && !is_platform_admin(role)
+}
+
 /// Global fail-closed auth: every `/api/v1/*` route not whitelisted requires a valid JWT.
 pub async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
@@ -81,6 +112,20 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
             return reject(StatusCode::UNAUTHORIZED, "Authentication required");
         }
     };
+
+    // ── The platform-admin surface (kanban t_9cf378bc) ───────────────────────────────────────
+    // Authenticated is not authorised. `/api/v1/admin/*` is PLATFORM-WIDE configuration — the
+    // global system-mail credential, the served site, plans, system tags — not tenant data, so a
+    // valid token belonging to a tenant must not reach it. Measured live before this check: a
+    // token naming a real ACTIVE tenant with `role=user` (and `company_admin`) got 200 from GET
+    // and the write verb's 400 (i.e. it reached the handler) on `/api/v1/admin/email-config`,
+    // whose row holds the fleet-wide Mailgun private key and the from-address of every platform
+    // transactional email — any customer could read or repoint it. Same class as kanban
+    // t_d2df1ae1 in ADASwift. Decided BEFORE the tenant-status lookup so a non-admin never pays a
+    // DB round trip to be told its role is wrong.
+    if admin_surface_denied(&path, &claims.role) {
+        return reject(StatusCode::FORBIDDEN, "Platform admin role required");
+    }
 
     // ── tenants.status enforcement (kanban t_af890bbf) ───────────────────────────────────────
     // This is the ONLY place every authenticated /api/v1 route passes through, so a workspace
@@ -154,4 +199,69 @@ fn validate_jwt(state: &AppState, req: &Request) -> Result<Claims, ()> {
     )
     .map(|data| data.claims)
     .map_err(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reported defect (kanban t_9cf378bc): a token naming a real ACTIVE tenant with a
+    /// non-admin role reached the platform-wide mail config, GET and the write verb.
+    #[test]
+    fn admin_surface_is_denied_to_tenants_and_allowed_to_the_platform_admin() {
+        for role in ["user", "business_user", "company_admin", "member"] {
+            assert!(
+                admin_surface_denied("/api/v1/admin/email-config", role),
+                "{role} must be refused the global mail config"
+            );
+            assert!(admin_surface_denied("/api/v1/admin/email-templates", role));
+            assert!(admin_surface_denied("/api/v1/admin/sites", role));
+            assert!(admin_surface_denied("/api/v1/admin/plans", role));
+            assert!(admin_surface_denied("/api/v1/admin/site", role));
+        }
+        // ...while the platform operator still gets through, on every one of those routes.
+        for path in [
+            "/api/v1/admin/email-config",
+            "/api/v1/admin/email-templates/types",
+            "/api/v1/admin/sites/funnelswift",
+            "/api/v1/admin/plans",
+            "/api/v1/admin/site",
+        ] {
+            assert!(is_admin_surface(path));
+            assert!(!admin_surface_denied(path, "admin"));
+        }
+        // The bare prefix is the surface; a longer word that merely starts the same is not.
+        assert!(admin_surface_denied("/api/v1/admin", "user"));
+        assert!(!is_admin_surface("/api/v1/administrators"));
+        assert!(!is_admin_surface("/api/v1/adminstration"));
+        // Tenant-facing routes are untouched by this guard — including the handler that is
+        // deliberately SHARED between a tenant route and an admin route
+        // (`plan_handler::get_plan`: /api/v1/plans/:id for tenants, /api/v1/admin/plans/:id for
+        // the console), and /api/v1/internal/*, which carries its own x-internal-key gate.
+        for path in [
+            "/api/v1/plans/capture-free",
+            "/api/v1/tenants",
+            "/api/v1/auth/me",
+            "/api/v1/internal/portfolio-sync",
+            "/api/health",
+        ] {
+            assert!(!is_admin_surface(path), "{path} is not the admin surface");
+            assert!(!admin_surface_denied(path, "user"));
+        }
+    }
+
+    #[test]
+    fn platform_admin_role_is_exactly_the_one_role_the_console_uses() {
+        assert!(is_platform_admin("admin"));
+        for role in [
+            "user",
+            "business_user",
+            "company_admin",
+            "member",
+            "owner",
+            "",
+        ] {
+            assert!(!is_platform_admin(role), "{role} is not a platform admin");
+        }
+    }
 }

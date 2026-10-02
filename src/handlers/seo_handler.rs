@@ -154,9 +154,18 @@ Sitemap: {}/api/v1/seo/sitemap.xml
 
 /// GET /api/v1/seo/settings — get all SEO-related settings
 pub async fn get_seo_settings(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
+    // Platform-wide surface, not tenant data: this reads the GLOBAL `site_settings` rows
+    // (`key LIKE 'seo_%'`) that the served marketing site's meta tags come from, and its only
+    // caller (`LSEO()` in www-app/index.html) sits behind `if(!U||!U.is_admin) return;`. The
+    // extractor here used to be discarded (`_auth`), so any tenant token could read the platform's
+    // SEO configuration — the same authenticated-but-not-authorised class as
+    // `/api/v1/admin/email-config` (kanban t_9cf378bc). The write arm already checked `is_admin`.
+    if !crate::auth::global_auth::is_platform_admin(&auth.role) {
+        return Err(AppError::Forbidden("Platform admin role required".into()));
+    }
     let rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
         "SELECT COALESCE(key, ''), COALESCE(value::text, '') FROM site_settings WHERE key LIKE 'seo_%' ORDER BY key",
     )
