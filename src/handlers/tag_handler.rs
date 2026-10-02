@@ -120,6 +120,14 @@ pub async fn update_tag(
         "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4 WHERE id=$5 AND tenant_id=$6"
     };
 
+    // kanban t_e6991a42. `leads.tags` stores tag NAMES and every resolution in the tag pipeline
+    // matches those names against `tags.name`, so a rename used to leave every lead carrying the OLD
+    // string: the tag came off the lead on remove but resolved to zero tag ids, so
+    // `tag_logic::reverse_affiliate_on_tags` retracted no money (measured live, see
+    // audits/fs-lead-tags-remove-t_769b93ba/60-renamed-tag-residual.md). ARM (a): the RENAME is the
+    // event that makes the stored name wrong, so the rename is what rewrites it — in the same
+    // transaction as the tag row, so a failure leaves neither half behind.
+    let old_name = tag.name.clone();
     let name = req.name.unwrap_or(tag.name);
     let color = req.color.or(tag.color);
     // kanban t_f94a8a00: `clear_group` is the ONLY way to ungroup a tag. Without it a group can be
@@ -135,6 +143,13 @@ pub async fn update_tag(
     };
     let metadata = req.metadata.or(tag.metadata);
 
+    let renamed = name != old_name;
+
+    // One transaction: the tag row and the stored names it invalidated are one change, so a failure
+    // in either half rolls both back — no lead is left pointing at a name the tags table no longer
+    // has, and no tag is renamed with the leads still carrying the old string.
+    let mut tx = state.pool.begin().await?;
+
     if tag.is_system && auth.is_admin {
         sqlx::query(update_query)
             .bind(&name)
@@ -142,7 +157,7 @@ pub async fn update_tag(
             .bind(group_id)
             .bind(&metadata)
             .bind(id)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
     } else {
         sqlx::query(update_query)
@@ -152,8 +167,76 @@ pub async fn update_tag(
             .bind(&metadata)
             .bind(id)
             .bind(tenant_id)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
+    }
+
+    // ── the rename rewrite ──────────────────────────────────────────────────────────────────────
+    // Every lead carrying the OLD name gets the NEW one, so the name-keyed resolutions above
+    // (`resolve_tag_ids`, the retraction block of `apply_lead_tags`, `evaluate_tag_rules`) keep
+    // resolving. Scope: a tenant tag is rewritten for its OWN tenant only; a SYSTEM tag is the
+    // shared vocabulary every tenant is offered (`GET /api/v1/tags` returns `tenant_id = $1 OR
+    // is_system = true`), so its rename is rewritten for every lead that carries the name — the
+    // same scope the resolution itself uses. Matched on the stored jsonb array, so a NULL/empty
+    // `leads.tags` can never be touched, and `updated_at` moves with the write.
+    let mut leads_migrated: i64 = 0;
+    if renamed {
+        let affected: Vec<(Uuid, Uuid)> = if tag.is_system && auth.is_admin {
+            sqlx::query_as(
+                "UPDATE leads
+                    SET tags = COALESCE((SELECT jsonb_agg(CASE WHEN e = $1 THEN $2 ELSE e END)
+                                           FROM jsonb_array_elements_text(tags) e), '[]'::jsonb),
+                        updated_at = NOW()
+                  WHERE tags @> to_jsonb($1::text)
+                  RETURNING id, tenant_id",
+            )
+            .bind(&old_name)
+            .bind(&name)
+            .fetch_all(&mut *tx)
+            .await?
+        } else {
+            sqlx::query_as(
+                "UPDATE leads
+                    SET tags = COALESCE((SELECT jsonb_agg(CASE WHEN e = $1 THEN $2 ELSE e END)
+                                           FROM jsonb_array_elements_text(tags) e), '[]'::jsonb),
+                        updated_at = NOW()
+                  WHERE tenant_id = $3 AND tags @> to_jsonb($1::text)
+                  RETURNING id, tenant_id",
+            )
+            .bind(&old_name)
+            .bind(&name)
+            .bind(tenant_id)
+            .fetch_all(&mut *tx)
+            .await?
+        };
+        leads_migrated = affected.len() as i64;
+
+        // `tag_change_log` honoured: the stored tag really did change on each lead, so each lead
+        // gets the audit row a tag change gets (added = the new name, removed = the old one). One
+        // set-based INSERT, and every row carries the lead's OWN tenant (a system-tag rewrite spans
+        // tenants while `tag_change_log.tenant_id` is scoped per lead).
+        if !affected.is_empty() {
+            let lead_ids: Vec<Uuid> = affected.iter().map(|(lead, _)| *lead).collect();
+            let tenant_ids: Vec<Uuid> = affected.iter().map(|(_, tenant)| *tenant).collect();
+            sqlx::query(
+                "INSERT INTO tag_change_log (tenant_id, lead_id, added_tags, removed_tags, triggered_by)
+                 SELECT tenant_id, lead_id, jsonb_build_array($1::text), jsonb_build_array($2::text), 'tag_rename'
+                   FROM unnest($3::uuid[], $4::uuid[]) AS x(lead_id, tenant_id)",
+            )
+            .bind(&name)
+            .bind(&old_name)
+            .bind(&lead_ids)
+            .bind(&tenant_ids)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    tx.commit().await?;
+
+    if renamed {
+        tracing::info!(%id, %old_name, new_name = %name, leads_migrated,
+            "tag renamed — stored lead tag names rewritten so the name-keyed tag pipeline still resolves");
     }
 
     // Outbound webhook delivery (kanban t_431faa99): `tag.updated` fires AFTER the row is written,
@@ -170,7 +253,12 @@ pub async fn update_tag(
         }),
     );
 
-    Ok(Json(json!({"message": "Tag updated"})))
+    // Additive on the response (kanban t_e6991a42): the count of leads whose stored tag name the
+    // rename rewrote. Every shipped caller reads `message` only; the number is what makes the
+    // backfill measurable from the API instead of only from the DB.
+    Ok(Json(
+        json!({ "message": "Tag updated", "leads_migrated": leads_migrated }),
+    ))
 }
 
 pub async fn delete_tag(
