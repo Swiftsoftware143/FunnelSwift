@@ -172,6 +172,7 @@
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
+      <a href="#webhooks" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔗</span> Webhooks</a>
       <a href="#plans" class="section-title" onclick="closeMobile()">Administration</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
       <a href="#settings" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⚙️</span> Settings</a>
@@ -256,6 +257,7 @@
 
       <h3>Creating Tags</h3>
       <p>From the Tags section, you can create new tags, assign colors, and organize them into groups. Tags applied to leads in FunnelSwift are automatically pushed to CoreSwift CRM as well.</p>
+      <p>The group drop-down in a tag's editor always offers <strong>— No group —</strong>. Choosing it and saving removes the tag from its group. A tag whose group is shared from the system taxonomy shows that group by name, or by its id when this workspace cannot name it.</p>
 
       <h2 id="affiliates">🤝 Affiliates</h2>
       <p>Manage affiliate partners. Each affiliate gets a unique auto-generated ID. Configure commission rates, track payouts, and route leads to their external systems via webhooks. Affiliate performance is visible on the dashboard.</p>
@@ -515,6 +517,73 @@ window.FunnelSwiftConfig = {
 
       <h3>Rate Limiting</h3>
       <p>Default 100 submissions per hour per workspace. Configure per config under Web-to-Lead settings.</p>
+
+      <h2 id="webhooks">🔗 Webhooks</h2>
+      <p>Webhooks let your own software hear from FunnelSwift. Each webhook is a named endpoint you
+      register for a list of events &mdash; for example <code>lead.created</code> &mdash; and the
+      <strong>Webhooks</strong> screen is where you create, edit, test and delete them.</p>
+
+      <h3>Integration Targets are gone &mdash; this is the only outbound surface</h3>
+      <div class="alert alert-info">
+        Until 2026-10-02 the console also offered <strong>Integrations &rarr; Integration Targets</strong>:
+        a second place to save a URL and a key. It never sent anything (no dispatcher, no delivery log, no
+        Test button) and it duplicated this screen, so it has been removed &mdash; every outbound
+        destination is a webhook on this page.
+      </div>
+      <p>A connection to <em>another product's API</em> is not a webhook: it is a <strong>provider
+      key</strong> in the <strong>Integrations</strong> screen's Integration Center, next to CoreSwift CRM.
+      That is where the <strong>IncentiveSwift</strong> connection lives now &mdash; store your
+      IncentiveSwift provider key there and the mobile app reads it, exactly as before.</p>
+
+      <h3>Creating a Webhook</h3>
+      <ol class="step-list">
+        <li>Go to <strong>Webhooks</strong> from the sidebar (workspace admins).</li>
+        <li>Click <strong>+ Add Webhook</strong> and give it a name (for example <em>Lead notifications</em>).</li>
+        <li>Enter the destination <strong>URL</strong>. It must be <code>http://</code> or
+        <code>https://</code>: private, loopback, link-local and unresolvable hosts are refused.</li>
+        <li>List the <strong>events</strong> as a comma-separated list.</li>
+        <li>Leave <strong>Active</strong> ticked and press <strong>Create</strong>.</li>
+      </ol>
+
+      <h3>Events</h3>
+      <p>A webhook fires for the events it lists. Two events exist today, and they are the two the
+      server publishes at <code>/api/v1/webhook-events</code> &mdash; anything else is accepted by
+      the form and never fires:</p>
+      <ul>
+        <li><code>lead.created</code> &mdash; a lead was captured, whichever way it arrived: a
+        web-to-lead form, a Kinetic card, <em>Create Lead</em> in the console, or an affiliate's
+        submission.</li>
+        <li><code>tag.updated</code> &mdash; a tag was renamed, recoloured or regrouped.</li>
+      </ul>
+
+      <h3>Testing, Editing and Deleting</h3>
+      <div class="alert alert-info">
+        <strong>Test</strong> posts a one-off <code>{"event":"test"}</code> payload to the endpoint and
+        reports the HTTP status the endpoint answered &mdash; the response body is never shown, by design.
+      </div>
+      <ul>
+        <li><strong>Edit</strong> reopens the same form filled with the values already on screen; saving
+        writes the name, URL, events and active flag for that webhook only.</li>
+        <li><strong>Log</strong> opens the delivery history for that webhook.</li>
+        <li><strong>Del</strong> removes the webhook. There is no undo.</li>
+      </ul>
+
+      <div class="alert alert-info">
+        <strong>What is delivered today:</strong> the two events above are sent automatically to every
+        webhook that is <strong>Active</strong> and registered for them. A webhook switched off is never
+        called. A delivery that fails is retried up to three times in total, roughly 60s then 120s
+        apart, and only the HTTP status is surfaced &mdash; never the endpoint's response body.
+      </div>
+
+      <h3>Deliveries</h3>
+      <p><strong>Log</strong> on a webhook's row shows its delivery history: when each attempt was
+      made, which event it carried, whether it succeeded, the HTTP status the endpoint answered, and
+      which attempt it was (of three). A webhook that never fires has an empty log.</p>
+      <p>When the webhook has a <strong>secret</strong>, every delivery is signed. The request carries
+      <code>X-FunnelSwift-Signature: sha256=&lt;hex HMAC-SHA256 of the exact body&gt;</code> together
+      with <code>X-FunnelSwift-Event</code> and <code>X-FunnelSwift-Delivery</code> (the delivery id
+      also in the body). Verify a delivery by recomputing the HMAC over the raw request body with
+      your secret and comparing the two.</p>
 
       <h2 id="plans">💳 Plans</h2>
       <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, Kinetic card limits, QR code limits, template access, etc.).</p>
