@@ -200,21 +200,26 @@ fn tag_already_routed(holder: Option<&str>) -> AppError {
 }
 
 /// ARM (b): refuse BEFORE the write, naming the conflict. Mirrors the trigger's fired-condition
-/// exactly — a retired row (`is_active` false), no tag, or an UPDATE that does not change the stored
-/// tag (the trigger's `NEW.system_tag_id IS NOT DISTINCT FROM OLD.system_tag_id` early return) is
-/// NOT a conflict — so this read can never refuse something the database would have accepted.
+/// exactly — a retired row (`is_active` false), no tag, or an UPDATE that was ALREADY active on the
+/// same stored tag (the trigger's `OLD.is_active IS TRUE AND tag unchanged` early return) is NOT a
+/// conflict — so this read can never refuse something the database would have accepted.
+///
+/// The `stored_active` argument is what makes this mirror WIDENED migration 087 rather than 075: an
+/// UPDATE that does not change the tag but DOES flip `is_active` false -> true is an ACTIVATION, not
+/// a no-op, so it is checked. `stored_active` is `false` on the create path (there is no stored row).
 async fn ensure_tag_route_free(
     state: &AppState,
     tag_id: Option<Uuid>,
     row_id: Uuid,
     stored_tag_id: Option<Uuid>,
+    stored_active: bool,
     is_active: bool,
 ) -> AppResult<()> {
     if !is_active {
         return Ok(());
     }
     let Some(tag_id) = tag_id else { return Ok(()) };
-    if stored_tag_id == Some(tag_id) {
+    if stored_active && stored_tag_id == Some(tag_id) {
         return Ok(());
     }
     if let Some(holder) = route_holder_name(state, tag_id, row_id).await? {
@@ -237,6 +242,21 @@ const TAG_RULE_MESSAGE: &str = "cannot be routed by that system tag";
 /// ONLY SQLSTATE P0001 (raise_exception) AND ONLY the 075 rule's own message.
 fn is_tag_rule_raise(code: Option<&str>, message: &str) -> bool {
     code == Some(RAISE_EXCEPTION_SQLSTATE) && message.contains(TAG_RULE_MESSAGE)
+}
+
+/// SQLSTATE of a unique-index violation.
+const UNIQUE_VIOLATION_SQLSTATE: &str = "23505";
+
+/// Migration 087's partial unique index — the arm with the database-level guarantee. It sits BEHIND
+/// the trigger (a BEFORE ROW trigger runs before the heap write and its index checks), so it is only
+/// reached when the trigger's own read saw no holder: two writers taking the same tag at the same
+/// instant, where the losing statement gets a `23505` here instead of the trigger's `P0001`.
+const TAG_ROUTE_UNIQUE_INDEX: &str = "uq_affiliate_products_active_tag";
+
+/// Recognised by SQLSTATE AND CONSTRAINT NAME, not by text: no other unique index in this database
+/// can be mistaken for 087's, and 087's index cannot be mistaken for anything else.
+fn is_tag_route_index_violation(code: Option<&str>, constraint: Option<&str>) -> bool {
+    code == Some(UNIQUE_VIOLATION_SQLSTATE) && constraint == Some(TAG_ROUTE_UNIQUE_INDEX)
 }
 
 // ── THE t_92bd5eb6 RULE AT THE WRITE PATH (kanban t_5c2a9bde) ────────────────────────────────────
@@ -353,6 +373,8 @@ fn is_plan_rate_raise(code: Option<&str>, message: &str) -> bool {
 
 /// ARM (a), the backstop `ensure_tag_route_free` cannot cover itself: another writer takes the tag
 /// between that read and this write, so the trigger fires. The admin must still get the SAME 409.
+/// Migration 087 adds a SECOND refusal behind the trigger — its partial unique index — so a race that
+/// slips past the trigger's own read is answered with the same 409 too.
 async fn map_product_write_error(
     state: &AppState,
     e: sqlx::Error,
@@ -360,7 +382,11 @@ async fn map_product_write_error(
     row_id: Uuid,
 ) -> AppError {
     if let sqlx::Error::Database(db) = &e {
-        if is_tag_rule_raise(db.code().as_deref(), db.message()) {
+        let code = db.code();
+        let code = code.as_deref();
+        if is_tag_rule_raise(code, db.message())
+            || is_tag_route_index_violation(code, db.constraint())
+        {
             let holder = match tag_id {
                 Some(tag_id) => route_holder_name(state, tag_id, row_id)
                     .await
@@ -374,7 +400,7 @@ async fn map_product_write_error(
         // that would leave this row out of step with its plan. The plan is re-resolved so the 409 names
         // it (the trigger's own text stays in the server log, exactly like 075's), and the answer is the
         // SAME 409 the pre-write read answers.
-        if is_plan_rate_raise(db.code().as_deref(), db.message()) {
+        if is_plan_rate_raise(code, db.message()) {
             let src = plan_rate_source(state, row_id).await.ok().flatten();
             return match src {
                 Some(src) => plan_derived_rate_conflict(
@@ -566,10 +592,11 @@ pub async fn create_affiliate_product(
     if let Some(category_id) = req.category_id {
         ensure_category_offered(&state, tenant_id, category_id).await?;
     }
-    // ARM (b) of the 075 tag rule (kanban t_c149b025): the form's tag choice is checked against the
-    // trigger's own predicate BEFORE the write, so an admin who picked a tag another active product
-    // already routes gets a 409 naming the holder instead of the trigger's unexplained 500.
-    ensure_tag_route_free(&state, req.system_tag_id, id, None, is_active).await?;
+    // ARM (b) of the 075/087 tag rule (kanban t_c149b025, t_5196edda): the form's tag choice is
+    // checked against the trigger's own predicate BEFORE the write, so an admin who picked a tag
+    // another active product already routes gets a 409 naming the holder instead of the trigger's
+    // unexplained 500. Create path: there is no stored row, so `stored_active` is false.
+    ensure_tag_route_free(&state, req.system_tag_id, id, None, false, is_active).await?;
 
     let written = sqlx::query(
         "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name, system_tag_id)
@@ -670,11 +697,21 @@ pub async fn update_affiliate_product(
     // Absent key / null = keep the stored flag (a no-touch save must not re-tick a retired product);
     // an explicit true/false persists; anything else is a 400 (see parse_is_active).
     let is_active = parse_is_active(req.is_active.as_ref(), existing.10)?;
-    // ARM (b) of the 075 tag rule (kanban t_c149b025), before the write and against the EFFECTIVE
-    // values: the check is skipped when the row is being retired, when no tag is set, and — exactly
-    // like the trigger's own `IS NOT DISTINCT FROM` early return — when the stored tag is unchanged
-    // (re-saving a product must not be refused for a tag the database would leave alone).
-    ensure_tag_route_free(&state, system_tag_id, id, existing.9, is_active).await?;
+    // ARM (b) of the 075/087 tag rule (kanban t_c149b025, t_5196edda), before the write and against
+    // the EFFECTIVE values: the check is skipped when the row is being retired, when no tag is set,
+    // and — exactly like the trigger's own WIDENED early return — only when the row was ALREADY
+    // active on the same stored tag. A re-activation (`is_active` false -> true with the tag kept) is
+    // therefore checked, which is the hole this card measured: it used to short-circuit here and in
+    // the trigger and leave the tag routing two active products.
+    ensure_tag_route_free(
+        &state,
+        system_tag_id,
+        id,
+        existing.9,
+        existing.10,
+        is_active,
+    )
+    .await?;
 
     let written = sqlx::query(
         "UPDATE affiliate_products SET name=$1, description=$2, price=$3, default_commission_rate=$4,
@@ -992,6 +1029,43 @@ mod tests {
             tag_already_routed(None),
             crate::error::AppError::Conflict(_)
         ));
+    }
+
+    // ── migration 087's index, the SECOND refusal behind the trigger (kanban t_5196edda) ─────────
+
+    use super::{is_tag_route_index_violation, TAG_ROUTE_UNIQUE_INDEX};
+
+    #[test]
+    fn the_087_index_violation_is_the_apps_own_409() {
+        // Exactly 23505 on exactly 087's index.
+        assert!(is_tag_route_index_violation(
+            Some("23505"),
+            Some(TAG_ROUTE_UNIQUE_INDEX)
+        ));
+        // The 075 index (source_app keys) is a DIFFERENT rule and must keep its own path.
+        assert!(!is_tag_route_index_violation(
+            Some("23505"),
+            Some("uq_affiliate_products_active_key")
+        ));
+        // Not a unique violation at all, or the constraint name is missing.
+        assert!(!is_tag_route_index_violation(
+            Some("P0001"),
+            Some(TAG_ROUTE_UNIQUE_INDEX)
+        ));
+        assert!(!is_tag_route_index_violation(Some("23505"), None));
+        assert!(!is_tag_route_index_violation(
+            None,
+            Some(TAG_ROUTE_UNIQUE_INDEX)
+        ));
+        // The name is the whole contract, so assert it against the REAL definition, not itself: if a
+        // migration renamed the index without moving this constant, this is the assertion that fails.
+        let migration = include_str!(
+            "../../migrations/087_one_active_product_per_system_tag_covers_reactivation.sql"
+        );
+        assert!(
+            migration.contains(TAG_ROUTE_UNIQUE_INDEX),
+            "migration 087 must define the index this mapping recognises"
+        );
     }
 
     // ── the t_92bd5eb6 rule's backstop (kanban t_5c2a9bde) ──────────────────────────────────────
