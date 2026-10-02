@@ -1402,7 +1402,7 @@ async function renderEmailTemplates() {
       <tbody>${items.map(t=>`<tr>
         <td><strong>${x(t.name||t.template_name)}</strong></td>
         <td>${x(t.subject||'-')}</td>
-        <td><span class="badge badge-blue">${x(t.type||'email')}</span></td>
+        <td><span class="badge badge-blue">${x(t.template_type||'-')}</span>${t.is_default?' <span class="badge badge-green">default</span>':''}</td>
         <td>${formatDate(t.updated_at)}</td>
         <td><button class="btn btn-secondary btn-xs" onclick="window._editEmailTemplate('${t.id}')">Edit</button></td>
       </tr>`).join('')}</tbody>
@@ -1483,22 +1483,71 @@ function openEmailTemplateModal(id) {
     let t = {};
     if (id) { try { t = await rowForEdit(id, null, (i) => api('/admin/email-templates/'+i)); }
               catch(e) { return failEdit(e, 'Could not load the email template'); } }
+    /* The API's row field is `template_type` — this table has no `type` column and the create route
+       REQUIRES `template_type` (kanban t_052b4c7a): the old form sent `type`, so every POST was a 422
+       ("missing field `template_type`", nothing written) and the Type select could never leave its
+       default. The type list is the one endpoint that advertises types AND their merge fields. */
+    let types = [{ type: 'welcome', merge_fields: ['name', 'email', 'login_url', 'app_name'] },
+                 { type: 'password_reset', merge_fields: ['name', 'token', 'app_name'] },
+                 { type: 'purchase_confirmed', merge_fields: ['name', 'plan_name', 'login_url', 'app_name'] }];
+    let rows = [];
+    try { const ty = await api('/admin/email-templates/types'); if (Array.isArray(ty) && ty.length) types = ty; } catch(e) {}
+    try { const rs = await api('/admin/email-templates'); rows = Array.isArray(rs) ? rs : ((rs && (rs.data || rs.templates)) || []); } catch(e) {}
+    const names = types.map(v => v.type).filter(Boolean);
+    const cur = t.template_type || names[0] || 'welcome';
+    if (names.indexOf(cur) === -1) names.unshift(cur);
+    /* The partial unique index allows ONE default per type and the sender only reads
+       `template_type = $1 AND (aid = $2 OR is_default = true)`, so a new NON-default row for a type
+       that has no default is a row nothing can ever send: a new template therefore starts as that
+       type's default, and when the type already has one the box starts unchecked (ticking it
+       replaces the incumbent — the API demotes it in the same transaction). */
+    const hasDefault = rows.some(r => r.template_type === cur && r.is_default);
+    const defOn = id ? !!t.is_default : !hasDefault;
     const body = document.getElementById('modal-body');
     if (!body) return;
+    window._etMergeHint = function() {
+      const sel = document.querySelector('#email-form [name=template_type]');
+      const hit = types.filter(v => v.type === (sel && sel.value))[0];
+      const el = document.getElementById('et-merge');
+      if (el) el.textContent = 'Merge fields for this type: ' + ((((hit || {}).merge_fields) || []).join(', ') ||
+        'none advertised — write placeholders as {{double_braces}}; a single brace is sent literally');
+      /* Keep the toggle in step with the CHOSEN type on a new template: ticked when that type has no
+         default yet, unticked when it has one (ticking it then replaces the incumbent). Without this
+         an admin who switched the type would create a row the sender never reads. An EDIT never moves
+         the admin's own choice. */
+      if (!id) {
+        const box = document.querySelector('#email-form [name=is_default]');
+        if (box) box.checked = !rows.some(r => r.template_type === (sel && sel.value) && r.is_default);
+      }
+    };
     body.innerHTML = `<form id="email-form">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
       <div class="form-group"><label class="form-label">Subject</label><input class="input" name="subject" value="${x(t.subject||'')}"></div>
-      <div class="form-group"><label class="form-label">Type</label><select class="input" name="type"><option value="email" ${(t.type||'email')==='email'?'selected':''}>Email</option><option value="sms" ${t.type==='sms'?'selected':''}>SMS</option></select></div>
-      <div class="form-group"><label class="form-label">Body (HTML)</label><textarea class="input" name="body" rows="8" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.body||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Type</label><select class="input" name="template_type" onchange="window._etMergeHint()">${names.map(n => `<option value="${x(n)}" ${n === cur ? 'selected' : ''}>${x(n)}</option>`).join('')}</select>
+        <div id="et-merge" style="font-size:12px;color:var(--muted);margin-top:6px"></div></div>
+      <div class="form-group"><label class="form-label">Body (plain text)</label><textarea class="input" name="body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.body||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">HTML body (optional — when non-empty this is what the recipient sees)</label><textarea class="input" name="html_body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.html_body||'')}</textarea></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="is_default" id="et-default" ${defOn ? 'checked' : ''}><label class="form-label" for="et-default" style="margin:0">Default for this type — one default per type, ticking it replaces the current one</label></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
       </div>
     </form>`;
+    window._etMergeHint();
     document.getElementById('email-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const data = Object.fromEntries(fd);
+      /* An explicit payload rather than serialising the whole form in one go: the API wants
+         `template_type`, the two bodies are separate columns, and an unchecked box must send `false`
+         instead of vanishing from the body (the route's `is_default` is Option<bool>). */
+      const data = {
+        template_type: fd.get('template_type'),
+        name: fd.get('name'),
+        subject: fd.get('subject'),
+        body: fd.get('body'),
+        html_body: fd.get('html_body'),
+        is_default: e.target.querySelector('[name=is_default]').checked
+      };
       try {
         if (id) await api('/admin/email-templates/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/admin/email-templates', { method: 'POST', body: JSON.stringify(data) });

@@ -43,11 +43,36 @@ pub struct CreateTemplateRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateTemplateRequest {
+    /// Editable since kanban t_052b4c7a: the panel's Type select now sends `template_type`, and an
+    /// update that silently ignored it would let an admin pick a type and see nothing change.
+    pub template_type: Option<String>,
     pub name: Option<String>,
     pub subject: Option<String>,
     pub body: Option<String>,
     pub html_body: Option<String>,
     pub is_default: Option<bool>,
+}
+
+/// `idx_email_templates_unique` is a PARTIAL unique index: one `is_default = true` row per
+/// `template_type` among the rows with `aid IS NULL`. So `is_default = true` while the type already
+/// has a default is a 23505 (500) unless the incumbent is demoted first — do it in the SAME
+/// transaction as the write, which is what "one default per type" means for the admin panel's
+/// toggle. `keep` excludes the row being updated from its own demotion.
+async fn demote_default(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    template_type: &str,
+    keep: Option<Uuid>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE email_templates SET is_default = false, updated_at = NOW() \
+         WHERE template_type = $1 AND aid IS NULL AND is_default = true AND ($2::uuid IS NULL OR id <> $2)",
+    )
+    .bind(template_type)
+    .bind(keep)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to re-point the default template: {e}")))?;
+    Ok(())
 }
 
 /// GET /api/v1/admin/email-templates
@@ -86,6 +111,17 @@ pub async fn create_template(
     Json(req): Json<CreateTemplateRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let id = Uuid::new_v4();
+    let is_default = req.is_default.unwrap_or(false);
+
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to create template: {e}")))?;
+
+    if is_default {
+        demote_default(&mut tx, &req.template_type, None).await?;
+    }
 
     sqlx::query(
         "INSERT INTO email_templates (id, template_type, name, subject, body, html_body, is_default) VALUES ($1, $2, $3, $4, $5, $6, $7)"
@@ -96,10 +132,14 @@ pub async fn create_template(
     .bind(&req.subject)
     .bind(&req.body)
     .bind(&req.html_body)
-    .bind(req.is_default.unwrap_or(false))
-    .execute(&state.pool)
+    .bind(is_default)
+    .execute(&mut *tx)
     .await
     .map_err(|e| AppError::Internal(format!("Failed to create template: {e}")))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to create template: {e}")))?;
 
     Ok((
         StatusCode::CREATED,
@@ -114,7 +154,7 @@ pub async fn update_template(
     Json(req): Json<UpdateTemplateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let existing = sqlx::query(
-        "SELECT name, subject, body, html_body, is_default FROM email_templates WHERE id = $1",
+        "SELECT template_type, name, subject, body, html_body, is_default FROM email_templates WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -122,6 +162,9 @@ pub async fn update_template(
     .map_err(|e| AppError::Internal(format!("DB error: {e}")))?
     .ok_or_else(|| AppError::NotFound("Template not found".into()))?;
 
+    let template_type: String = req
+        .template_type
+        .unwrap_or_else(|| existing.get("template_type"));
     let name = req.name.unwrap_or_else(|| existing.get("name"));
     let subject = req.subject.unwrap_or_else(|| existing.get("subject"));
     let body: Option<String> = if req.body.is_some() {
@@ -136,14 +179,29 @@ pub async fn update_template(
     };
     let is_default: bool = req.is_default.unwrap_or_else(|| existing.get("is_default"));
 
-    sqlx::query("UPDATE email_templates SET name=$1, subject=$2, body=$3, html_body=$4, is_default=$5, updated_at=NOW() WHERE id=$6")
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to update template: {e}")))?;
+
+    if is_default {
+        demote_default(&mut tx, &template_type, Some(id)).await?;
+    }
+
+    sqlx::query("UPDATE email_templates SET template_type=$1, name=$2, subject=$3, body=$4, html_body=$5, is_default=$6, updated_at=NOW() WHERE id=$7")
+        .bind(&template_type)
         .bind(&name)
         .bind(&subject)
         .bind(&body)
         .bind(&html_body)
         .bind(is_default)
         .bind(id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to update template: {e}")))?;
+
+    tx.commit()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to update template: {e}")))?;
 

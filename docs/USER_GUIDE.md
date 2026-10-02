@@ -83,7 +83,7 @@ Transactional emails are rendered from database-stored templates in `email_templ
 All types also bind `{{app_name}}`, `{{app_url}}` and `{{login_url}}`. Placeholders must be written with
 **double braces** — `{name}` is treated as literal text and is sent to the recipient as-is.
 
-Admins can edit these templates in the admin panel (`Email Templates`) — modify subject lines, HTML body, or plain text fallback. The panel lists the merge fields each type supports (read from `GET /api/v1/admin/email-templates/types`), but the editor is plain text: the placeholders are typed by hand.
+Admins can edit these templates in the admin panel (`Email Templates`) — modify subject lines, the plain-text body and the HTML body (two separate boxes, so neither overwrites the other), and tick *Default for this type* to make a template the one that type's emails are rendered from. The panel lists the merge fields each type supports (read from `GET /api/v1/admin/email-templates/types`), but the editor is plain text: the placeholders are typed by hand.
 
 ## Affiliate Program
 

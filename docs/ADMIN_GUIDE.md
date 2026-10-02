@@ -262,7 +262,7 @@ There is no `merge-fields` route: `/api/email-templates/merge-fields` answers 40
 - **subject** — subject line with `{{variable}}` insertion
 - **body** — plain-text body
 - **html_body** — HTML body; when it is non-empty the email is sent as HTML, otherwise the plain-text `body` is used (there is no `is_html` column)
-- **is_default** — serves as fallback for this type (an account-specific row wins over the default; lookup is `WHERE template_type = $1 AND (aid = $2 OR is_default = true)`)
+- **is_default** — serves as fallback for this type (an account-specific row wins over the default; lookup is `WHERE template_type = $1 AND (aid = $2 OR is_default = true)`). The panel's **Email Templates** editor writes it through a toggle, and the API keeps the type's one default invariant itself: setting `is_default = true` demotes the type's previous default in the same transaction (the partial unique index `idx_email_templates_unique` allows one), so ticking it on a type that already has a default *replaces* it instead of failing.
 - **aid** — account the template belongs to (nullable; a default row carries none)
 
 ### Merge Fields Available
