@@ -51,6 +51,15 @@ pub struct CreateLeadRequest {
     pub assigned_to: Option<Uuid>,
     pub score: Option<i32>,
     pub custom_fields: Option<serde_json::Value>,
+    /// kanban t_d4ce013c. The served lead form's tag picker collects the picked tags BY ID
+    /// (`www-app/index.html` `SL()`: `document.querySelectorAll(".ts[data-tid]")` -> `tag_ids`), so
+    /// that is the key the write path has to bind. It was accepted by NEITHER lead route and nothing
+    /// denies unknown fields, so serde dropped it silently: the picker offered the system tags (GET
+    /// /api/v1/tags), the save answered 201, and the tags were never stored. `create_lead` now
+    /// resolves these ids to names with the same predicate `POST /api/v1/leads/:id/tags` uses
+    /// (`tenant_id = $1 OR is_system = true`, the 669a2a7 fix) and runs them through the one
+    /// `apply_lead_tags`, inside the same request — no second round trip.
+    pub tag_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -70,6 +79,14 @@ pub struct UpdateLeadRequest {
     pub assigned_to: Option<Uuid>,
     pub score: Option<i32>,
     pub custom_fields: Option<serde_json::Value>,
+    /// kanban t_d4ce013c — the update half of the same defect on `CreateLeadRequest::tag_ids`: the
+    /// served Edit modal posts `tag_ids` (the ids the picker collected) on PUT /api/v1/leads/:id and
+    /// the key was silently dropped, so the save answered 200 with the tags unchanged. `update_lead`
+    /// resolves these ids to names and runs them through the ONE `apply_lead_tags` (the function
+    /// `POST /api/v1/leads/:id/tags` is made of), after its own UPDATE — which on this path rebinds
+    /// the STORED `tags` value (the modal sends no `tags`), so `apply_lead_tags` stays the single
+    /// semantic writer of a new tag list for this route.
+    pub tag_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Serialize)]

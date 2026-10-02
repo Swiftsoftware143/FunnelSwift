@@ -154,6 +154,27 @@ pub async fn create_lead(
     .execute(&state.pool)
     .await?;
 
+    // kanban t_d4ce013c: the served lead form's tag picker posts the picked tags BY ID (`tag_ids`),
+    // and this route bound no such field — nothing denies unknown fields, so serde dropped it and an
+    // operator could pick a system tag, watch the save answer 201, and store nothing. Resolve the ids
+    // with the SAME predicate `POST /api/v1/leads/:id/tags` uses (system tags are offered to every
+    // workspace by GET /api/v1/tags, so they must resolve here too — the 669a2a7 fix) and run them
+    // through `apply_lead_tags`, the ONE writer of `leads.tags`. ARM (a) of the card, chosen by
+    // measurement: arm (b) would need this create to return first and a second POST to
+    // /api/v1/leads/:id/tags afterwards, i.e. a second round trip AND a lead that is already saved
+    // with no tags if that call fails.
+    let created_tag_names = resolve_tag_ids(&state.pool, tenant_id, req.tag_ids.as_deref()).await?;
+    if !created_tag_names.is_empty() {
+        apply_lead_tags(
+            &state,
+            tenant_id,
+            lead_id,
+            &created_tag_names,
+            "lead_create",
+        )
+        .await?;
+    }
+
     // Best-effort push to WorkflowSwift — the REAL POST {WORKFLOWSWIFT_URL}/api/v1/incoming call,
     // the same `deliver_lead` the /api/v1/push/workflowswift leg uses. Until 2026-09-25 this spawn
     // was `push_to_workflowswift`, which only wrote a log line while the route beside it fabricated
@@ -326,6 +347,18 @@ pub async fn update_lead(
     .bind(tenant_id)
     .execute(&state.pool)
     .await?;
+
+    // kanban t_d4ce013c: the same `tag_ids` hole as `create_lead`, on the served modal's Save
+    // (PUT /api/v1/leads/:id). The UPDATE above rebinds the STORED `tags` value — the served modal
+    // sends no `tags` key, and the `.or(existing.tags)` guard from t_2f2c184b keeps a populated
+    // column intact for every caller that omits it — so `apply_lead_tags` below is the single
+    // semantic writer of a new tag list on this route, and it is the very function
+    // `POST /api/v1/leads/:id/tags` is made of (one implementation, one rule evaluation, one
+    // `attribute_affiliate_on_tags` call, one cross-app sync per request).
+    let updated_tag_names = resolve_tag_ids(&state.pool, tenant_id, req.tag_ids.as_deref()).await?;
+    if !updated_tag_names.is_empty() {
+        apply_lead_tags(&state, tenant_id, id, &updated_tag_names, "lead_update").await?;
+    }
 
     Ok(Json(json!({"message": "Lead updated"})))
 }
@@ -514,17 +547,49 @@ pub async fn update_lead_status(
     ))
 }
 
-pub async fn assign_lead_tags(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(req): Json<LeadTagsRequest>,
-) -> AppResult<Json<serde_json::Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+/// Resolve the tag IDs the served lead form's picker posts (`tag_ids`) to tag NAMES.
+///
+/// kanban t_d4ce013c. The predicate is the SAME one the name path below uses and the same one
+/// GET /api/v1/tags lists with (`tag_handler.rs:22`, `tenant_id = $1 OR is_system = true`): the
+/// picker offers the SYSTEM tag vocabulary (owned by the System tenant), so a tenant-only lookup
+/// would resolve every system tag in the picker to nothing — the exact hole 669a2a7 closed on the
+/// name path, and the reason a restored-and-linked system tag must resolve here too.
+async fn resolve_tag_ids(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    ids: Option<&[Uuid]>,
+) -> AppResult<Vec<String>> {
+    let Some(ids) = ids.filter(|v| !v.is_empty()) else {
+        return Ok(vec![]);
+    };
+    let names = sqlx::query_scalar::<_, String>(
+        "SELECT name FROM tags WHERE id = ANY($1) AND (tenant_id = $2 OR is_system = true)",
+    )
+    .bind(ids)
+    .bind(tenant_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(names)
+}
 
+/// THE one implementation of "assign this list of tag NAMES to this lead".
+///
+/// kanban t_d4ce013c. This body used to be `assign_lead_tags` whole; it is extracted so that the
+/// lead write path (POST /api/v1/leads, PUT /api/v1/leads/:id) can run the picker's `tag_ids`
+/// through the SAME code instead of a second implementation. One caller = one implementation of:
+/// merge the requested names into the stored list, evaluate the tag rules, write `leads.tags` ONCE,
+/// write one `tag_change_log` row, run `attribute_affiliate_on_tags` (the tag-based affiliate money
+/// path t_c06d643c proved) and fire the CoreSwift cross-app sync. `POST /api/v1/leads/:id/tags`
+/// (`assign_lead_tags` below) is now a thin wrapper over this, so its behaviour is unchanged.
+///
+/// Returns the lead's final tag list and how many rule actions fired.
+async fn apply_lead_tags(
+    state: &AppState,
+    tenant_id: Uuid,
+    id: Uuid,
+    req_tags: &[String],
+    triggered_by: &str,
+) -> AppResult<(Vec<String>, usize)> {
     // Get current lead tags.
     // `leads.tags` is NULLABLE and 42 of the 53 live rows carry NULL (measured 2026-09-25,
     // kanban t_ae84b186): decoding it straight into `serde_json::Value` makes sqlx answer
@@ -573,13 +638,13 @@ pub async fn assign_lead_tags(
         .await?;
         all_tags
             .into_iter()
-            .filter(|(_, name)| req.tags.contains(name) && !current_tags.contains(name))
+            .filter(|(_, name)| req_tags.contains(name) && !current_tags.contains(name))
             .map(|(id, _)| id)
             .collect()
     };
 
     // Merge new tags
-    for t in &req.tags {
+    for t in req_tags {
         if !current_tags.contains(t) {
             current_tags.push(t.clone());
         }
@@ -620,14 +685,13 @@ pub async fn assign_lead_tags(
         .await?;
 
     // Log change
-    let triggered_by = req.triggered_by.unwrap_or_else(|| "manual".to_string());
     crate::tag_logic::log_tag_change(
         &state.pool,
         tenant_id,
         id,
-        &req.tags,
+        req_tags,
         &to_remove,
-        &triggered_by,
+        triggered_by,
     )
     .await?;
 
@@ -673,7 +737,7 @@ pub async fn assign_lead_tags(
                     "company": lcompany
                 },
                 "tags": current_tags,
-                "added_tags": req.tags,
+                "added_tags": req_tags,
                 "removed_tags": to_remove,
                 "triggered_by": triggered_by
             });
@@ -694,10 +758,40 @@ pub async fn assign_lead_tags(
         }
     }
 
+    Ok((current_tags, to_remove.len() + to_add.len()))
+}
+
+/// POST /api/v1/leads/:id/tags — the API surface for assigning tags to a lead.
+///
+/// kanban t_d4ce013c: this route had NO caller in any served shell (the served lead form posted
+/// `tag_ids` on the lead write path instead, which dropped them), so the flow t_c06d643c fixed and
+/// proved was reachable only by an API client. The route is unchanged — a thin wrapper over
+/// `apply_lead_tags`, which the lead create/update path now shares. The served picker keeps using
+/// the lead write path (arm (a) of the card, chosen by measurement): the create half cannot call
+/// this route at all without a second round trip, because the lead id it needs only exists after
+/// the create returns.
+pub async fn assign_lead_tags(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LeadTagsRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let triggered_by = req
+        .triggered_by
+        .clone()
+        .unwrap_or_else(|| "manual".to_string());
+    let (current_tags, rules_applied) =
+        apply_lead_tags(&state, tenant_id, id, &req.tags, &triggered_by).await?;
+
     Ok(Json(json!({
         "message": "Tags updated",
         "tags": current_tags,
-        "rules_applied": to_remove.len() + to_add.len()
+        "rules_applied": rules_applied
     })))
 }
 
