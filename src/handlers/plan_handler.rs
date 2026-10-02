@@ -918,10 +918,20 @@ pub async fn admin_plan_registry(
         })
         .collect();
 
+    // The RETIRED vocabulary (kanban t_090f3e00, migration 086): keys that used to sit in
+    // `feature_limits` and were read by no gate. They are published so the console can say
+    // "retired — enforces nothing" rather than showing a blank where the operator once set a number.
+    let retired_json: Vec<serde_json::Value> = crate::feature_registry::RETIRED_KEYS
+        .iter()
+        .map(|(key, reason)| json!({ "key": key, "reason": reason }))
+        .collect();
+
     Ok(Json(json!({
         "top_plan": top_json,
         "top_rule": "`plans` has no sort_order / is_active column — the top tier is the highest price, then name",
         "features": features_json,
+        "retired_keys": retired_json,
+        "retired_keys_rule": "retired = the `feature_limits` rows are DELETED (migration 086): no gate ever read them. The authored numbers survive in migration 086's header and the admin guide.",
         "plans": plans_json,
         "superset_ok": violations.is_empty(),
         "superset_violations": violations,

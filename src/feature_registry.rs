@@ -324,8 +324,76 @@ pub const SPECS: &[Spec] = &[
     },
 ];
 
+/// Keys RETIRED by `migrations/086_retire_ungated_feature_limit_keys.sql` (kanban t_090f3e00) —
+/// live `feature_limits` rows that NO gate in this crate read. Each one was either a SECOND NAME
+/// for a capability a `SPECS` key already enforces, or named a quantity this app never measures
+/// (or measures but has no route that writes the counted row).
+///
+/// The rows are GONE, and this list is what keeps the retirement honest:
+///   * `GET /api/v1/admin/plans/registry` publishes it as `retired_keys`, so the operator's console
+///     can say "retired, enforces nothing" instead of leaving a blank where a number used to be;
+///   * the drift test below fails the build if one of them is ever re-registered as a gate key —
+///     two vocabularies for one entitlement is the defect this list exists to prevent.
+///
+/// The authored numbers live in the migration header, the admin guide's "Retired plan keys"
+/// section and /opt/swift/audits/t_090f3e00/ — deliberately not as live rows.
+pub const RETIRED_KEYS: &[(&str, &str)] = &[
+    (
+        "kinetic_themes",
+        "premium theme access is the `premium_themes` boolean (enforce_theme_access / \
+         enforce_template_access); a COUNT of premium themes is a second vocabulary nothing reads",
+    ),
+    (
+        "max_api_calls",
+        "no request meter exists in the crate — no call/usage table and no per-period accounting",
+    ),
+    (
+        "max_plans",
+        "no tenant-scoped quantity named plan: `plans` is the global price list (no tenant_id); \
+         both authored values were -1, so a wire would have been a no-op",
+    ),
+    (
+        "max_portfolio_companies",
+        "same COUNT(portfolio_companies) as `max_portfolios`, which is the key the gate is called \
+         with (both names were inserted in the same 2026-07-06 wave)",
+    ),
+    (
+        "max_routing_rules",
+        "no entity called a routing rule exists in this crate or the served consoles; \
+         target_software rows are already counted by `max_routing_targets` and `max_integrations`",
+    ),
+    (
+        "max_settings",
+        "COUNT(tenant_settings) is internal key/value storage, not a plan entitlement; both \
+         authored values were -1",
+    ),
+    (
+        "max_target_software",
+        "a THIRD name for COUNT(target_software) after `max_routing_targets` and `max_integrations`",
+    ),
+    (
+        "storage_mb",
+        "nothing in the crate measures bytes stored (no octet_length / pg_total_relation_size / \
+         SUM(size)), so there is no quantity to compare against",
+    ),
+    (
+        "team_members",
+        "the second spelling of `max_team_members`; and no route adds a second member to an \
+         EXISTING tenant, so the cap could not fire whichever name it used",
+    ),
+];
+
 pub fn spec(key: &str) -> Option<&'static Spec> {
     SPECS.iter().find(|s| s.key == key)
+}
+
+/// `(key, reason)` pairs for the admin console — the retired vocabulary, published as
+/// `retired_keys` by `GET /api/v1/admin/plans/registry`.
+pub fn retired_keys() -> Vec<(String, String)> {
+    RETIRED_KEYS
+        .iter()
+        .map(|(k, why)| ((*k).to_string(), (*why).to_string()))
+        .collect()
 }
 
 /// The plan that IS the top tier. FunnelSwift's `plans` table has no `sort_order` or `is_active`
@@ -580,6 +648,34 @@ mod tests {
                 "feature_registry says \"{}\" is read by a gate, but no enforce_* call site uses it",
                 s.key
             );
+        }
+    }
+
+    /// The 9 keys retired by migration 086 (kanban t_090f3e00) must never come back as gate keys:
+    /// re-registering one would re-create the two-vocabularies-for-one-entitlement defect, and the
+    /// first test would then happily accept a call site using it. Every entry also has to carry the
+    /// measured reason it was retired — a bare name is not a decision.
+    #[test]
+    fn retired_keys_are_never_registered_as_gate_keys() {
+        assert!(!RETIRED_KEYS.is_empty(), "the retirement list is empty");
+        let mut seen = std::collections::BTreeSet::new();
+        for &(k, reason) in RETIRED_KEYS {
+            assert!(
+                !reason.trim().is_empty(),
+                "retired key \"{k}\" carries no recorded reason"
+            );
+            assert!(
+                spec(k).is_none(),
+                "retired key \"{k}\" is back in feature_registry::SPECS — one vocabulary per capability"
+            );
+            assert!(seen.insert(k), "retired key \"{k}\" is listed twice");
+        }
+        // The published shape the admin endpoint hands the console must stay in step with the list.
+        let published = retired_keys();
+        assert_eq!(published.len(), RETIRED_KEYS.len());
+        for (i, (k, why)) in published.iter().enumerate() {
+            assert_eq!(k, RETIRED_KEYS[i].0);
+            assert_eq!(why, RETIRED_KEYS[i].1);
         }
     }
 }

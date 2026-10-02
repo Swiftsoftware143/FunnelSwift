@@ -2753,9 +2753,10 @@ async function renderPlanAdmin() {
       <div class="card-title">Tenant feature override</div>
       <div class="card-subtitle">GET/POST /api/v1/admin/tenants/:id/feature-override(s)</div>
       <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Override one feature limit for a single tenant. Use -1 for unlimited, 0 to fall back to the plan default.</p>
+      <p style="font-size:12px;color:#b45309;margin:6px 0 0">⚠ Stored but not yet enforced: this value is written to <code>tenant_settings.feature_override</code> and <strong>no gate reads that record</strong> today. The per-plan matrix above is the surface that moves enforcement. Use the registry key names shown there (e.g. <code>max_leads</code>), not retired ones.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <select id="planadmin-ov-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
-        <input id="planadmin-ov-key" class="input" placeholder="feature_key (e.g. kinetic_themes)" style="min-width:220px">
+        <input id="planadmin-ov-key" class="input" placeholder="feature_key (e.g. max_leads)" style="min-width:220px">
         <input id="planadmin-ov-val" class="input" type="number" placeholder="limit_value" value="0" style="width:130px">
         <button class="btn btn-primary btn-sm" id="planadmin-ov-save">Set Override</button>
         <button class="btn btn-secondary btn-sm" id="planadmin-ov-load">Load Existing</button>
@@ -2879,9 +2880,17 @@ function planRegistryHTML(d) {
       ? '<div style="color:#b45309;margin-top:4px">Inert on the top tier (no row, no column — the gate allows by ABSENCE, not by a grant): ' +
         inert.map(i => x(i.key)).join(', ') + '</div>'
       : '');
+  const retired = (d && d.retired_keys) || [];
+  const retiredLine = retired.length
+    ? '<div style="font-size:11px;color:#b45309;margin-top:6px">Retired keys — their ' +
+      '<code>feature_limits</code> rows were DELETED by migration 086 because no gate ever read them ' +
+      '(so they are not editable here, and they enforce nothing): ' +
+      retired.map(r => x(r.key)).join(', ') + '</div>'
+    : '';
   return '<div style="font-size:12px;margin-bottom:8px">' + status + '</div>' +
     '<div class="table-wrap"><table class="table"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
-    '<div style="font-size:11px;color:var(--muted);margin-top:6px">' + x((d && d.limit_semantics) || '') + '<br>' + x((d && d.boolean_semantics) || '') + '</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-top:6px">' + x((d && d.limit_semantics) || '') + '<br>' + x((d && d.boolean_semantics) || '') + '</div>' +
+    retiredLine;
 }
 
 window._fsEditEntitlement = async function (plan, feature, kind) {
