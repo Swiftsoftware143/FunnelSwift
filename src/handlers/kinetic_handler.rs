@@ -1,5 +1,6 @@
 use axum::extract::{OriginalUri, Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::Json;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -882,13 +883,41 @@ pub async fn set_site_meta(
     Ok(Json(json!({"message": "Saved"})))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// RECORDED DECISION (kanban t_80649ea9): the STATUS of this public page tracks whether the row
+// exists. Before this change every not-found arm answered HTTP 200 with the 353-byte
+// "Card not found" page, so an indexer read a dead public URL as a live page and a client could
+// not tell a served card from a missing one by the status alone. The arms are now
+//   200 — the card row exists (its password / consent / age gate pages included: the card IS
+//         there, the visitor just has to pass the gate),
+//   404 — the lookup ran and found no row. NOT 410: a slug is a live namespace (the same slug can
+//         be created again after a delete) and 410 tells a crawler to drop the URL for good,
+//         which would suppress a later card at that slug,
+//   500 — the lookup itself failed (DB unreachable / schema drift), deliberately separate from
+//         404: if a database blip answered 404 then every live card would look deleted to every
+//         crawler at once.
+// The not-found BODY is byte-identical to the pre-change one (only the status moves), so nothing
+// user-visible changes. Measured live on the container and both public hosts:
+// /opt/swift/audits/t_80649ea9/.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/// The public "card not found" page, served with the status the caller decides.
+/// The BODY is the pre-existing one, byte for byte — the plane change is the status alone — and
+/// keeping it in ONE place is what stops the 404 (no such card) and 500 (the lookup failed) arms
+/// from drifting apart (kanban t_80649ea9).
+const CARD_NOT_FOUND_HTML: &str = "<html><body style='background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif'><div style='text-align:center'><h1 style='font-size:48px;margin-bottom:8px'>404</h1><p>Card not found</p><a href='https://funnelswift.net/kinetic' style='color:#a855f7'>Create your own →</a></div></body></html>";
+
+fn card_not_found_page(status: StatusCode) -> axum::response::Response {
+    (status, axum::response::Html(CARD_NOT_FOUND_HTML)).into_response()
+}
+
 pub async fn render_card(
     axum::extract::Path(slug): axum::extract::Path<String>,
     axum::extract::Host(host): axum::extract::Host,
     OriginalUri(uri): OriginalUri,
     headers: axum::http::HeaderMap,
     State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
+) -> axum::response::Response {
     use sqlx::Row;
     // Extract URL prefix (k/b/c/m/f/h) from the request path
     let path = uri.path().to_string();
@@ -901,15 +930,24 @@ pub async fn render_card(
     let row = sqlx::query(
         // tenant_plan_subscriptions is the real table — this query used to join a
         // `tenant_plans` table that does not exist, and the error was swallowed by
-        // `.unwrap_or(None)` below, so EVERY card page rendered "Card not found"
+        // `.unwrap_or(None)` that used to sit below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
         "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.linkedin_url, k.twitter_url, k.instagram_url, k.tiktok_url, k.youtube_url, k.facebook_url, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
-    ).bind(&slug).fetch_optional(&state.pool).await.unwrap_or_else(|e| {
-        // Never swallow this again: a failed lookup is indistinguishable from a missing
-        // card on the public page, which is exactly how the phantom-table bug hid.
-        tracing::error!("render_card lookup failed for slug '{}': {}", slug, e);
-        None
-    });
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await;
+    let row = match row {
+        Ok(row) => row,
+        Err(e) => {
+            // Never swallow this again: a failed lookup used to render exactly like a missing
+            // card on the public page, which is how the phantom-table bug hid. It stays logged
+            // AND is answered 500 — see the decision block above the function: a database
+            // failure must not teach crawlers that live cards are gone.
+            tracing::error!("render_card lookup failed for slug '{}': {}", slug, e);
+            return card_not_found_page(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
 
     // ── Load global SEO settings for SSO injection ──
     // site_settings.value is NULLABLE with no DEFAULT and this tuple's element is a plain
@@ -1016,7 +1054,10 @@ pub async fn render_card(
     seo_meta.push_str("<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
 
     if row.is_none() {
-        return axum::response::Html("<html><body style='background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif'><div style='text-align:center'><h1 style='font-size:48px;margin-bottom:8px'>404</h1><p>Card not found</p><a href='https://funnelswift.net/kinetic' style='color:#a855f7'>Create your own →</a></div></body></html>".to_string());
+        // 404, not 200 (kanban t_80649ea9): the lookup ran and found no card, so this IS a
+        // missing resource. Same bytes as before — only the status moves, so nothing
+        // user-visible changes except that a crawler stops treating a dead URL as a live page.
+        return card_not_found_page(StatusCode::NOT_FOUND);
     }
 
     let r = row.unwrap();
@@ -1095,7 +1136,7 @@ pub async fn render_card(
                 .and_then(|v| v.to_str().ok())
                 .and_then(|raw| cookie_lookup(raw, &cookie_name));
             if presented.as_deref() != Some(expected.as_str()) {
-                return axum::response::Html(render_password_gate(&title));
+                return axum::response::Html(render_password_gate(&title)).into_response();
             }
         }
     }
@@ -1166,7 +1207,8 @@ pub async fn render_card(
                 &consent_msg,
                 &card_id,
                 decline_target,
-            ));
+            ))
+            .into_response();
         }
     }
 
@@ -1190,7 +1232,8 @@ pub async fn render_card(
                 &age_msg,
                 &card_id,
                 decline_target,
-            ));
+            ))
+            .into_response();
         }
     }
 
@@ -1489,6 +1532,7 @@ h1{{font-size:26px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
         blocks_script = blocks_script,
         branding_html = branding_html
     ))
+    .into_response()
 }
 /// The card `lead_form`'s field names this handler stores by hand. A form configures its own
 /// fields (`layout_blocks[].fields`), so every name NOT in here is kept in `custom_fields.extra`

@@ -5,6 +5,7 @@ use crate::templates::html_escape;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
+    response::IntoResponse,
     Json,
 };
 use serde_json::{json, Value};
@@ -96,7 +97,7 @@ pub async fn delete_funnel(
 pub async fn render_funnel(
     axum::extract::Path(slug): axum::extract::Path<String>,
     State(state): State<AppState>,
-) -> axum::response::Html<String> {
+) -> axum::response::Response {
     // Load SEO settings for injection
     let seo_rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
         // site_settings.value is NULLABLE with no DEFAULT and this tuple's element is a plain
@@ -140,16 +141,29 @@ pub async fn render_funnel(
     ));
     seo_meta.push_str("<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
 
-    // Try to get the funnel row
-    let funnel_name = sqlx::query_scalar::<_, String>("SELECT name FROM funnels WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&state.pool)
-        .await
-        .unwrap_or(None)
-        .unwrap_or_else(|| slug.clone());
+    // Try to get the funnel row. The row decides the STATUS (kanban t_80649ea9): no row at all
+    // is a missing resource -> 404, a failed lookup is a server error -> 500, a real row -> 200.
+    // 410 is deliberately not used: a funnel slug can be created again, so "gone for good" would
+    // be a lie. The BODY is unchanged either way — it fell back to the slug before this change
+    // and still does — so nothing user-visible moves except the status.
+    let (funnel_name, status) =
+        match sqlx::query_scalar::<_, String>("SELECT name FROM funnels WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&state.pool)
+            .await
+        {
+            Ok(Some(name)) => (name, StatusCode::OK),
+            Ok(None) => (slug.clone(), StatusCode::NOT_FOUND),
+            Err(e) => {
+                tracing::error!("render_funnel lookup failed for slug '{}': {:?}", slug, e);
+                (slug.clone(), StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        };
     let funnel_name = html_escape(&funnel_name);
 
-    axum::response::Html(format!(
+    (
+        status,
+        axum::response::Html(format!(
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -173,5 +187,7 @@ p{{color:#c7d2fe;font-size:16px}}
         funnel_name = funnel_name,
         seo_meta = seo_meta,
         seo_scripts = seo_scripts
-    ))
+        )),
+    )
+        .into_response()
 }
