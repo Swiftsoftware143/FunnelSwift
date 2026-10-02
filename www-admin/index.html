@@ -2778,9 +2778,10 @@ function planRegistryHTML(d) {
       : '');
   const retired = (d && d.retired_keys) || [];
   const retiredLine = retired.length
-    ? '<div style="font-size:11px;color:#b45309;margin-top:6px">Retired keys — their ' +
-      '<code>feature_limits</code> rows were DELETED by migration 086 because no gate ever read them ' +
-      '(so they are not editable here, and they enforce nothing): ' +
+    ? '<div style="font-size:11px;color:#b45309;margin-top:6px">Retired keys — no gate reads them, so ' +
+      'they are not editable here and they enforce nothing. The <code>feature_limits</code> rows were ' +
+      'DELETED by the migration that retired them (086 the ungated keys, 088 the retired routing ' +
+      'resource, 090 the api-key family): ' +
       retired.map(r => x(r.key)).join(', ') + '</div>'
     : '';
   return '<div style="font-size:12px;margin-bottom:8px">' + status + '</div>' +
