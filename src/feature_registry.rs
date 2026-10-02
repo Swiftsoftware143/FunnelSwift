@@ -198,7 +198,7 @@ pub const SPECS: &[Spec] = &[
         unit: "accounts",
         jsonb_key: None,
         column: None,
-        enforced_by: "POST /api/v1/affiliates",
+        enforced_by: "POST /api/v1/affiliates, POST /api/v1/affiliate/signup",
         read_by_gate: true,
     },
     Spec {

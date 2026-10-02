@@ -1,5 +1,6 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::features;
 use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, Json};
 use serde_json::{json, Value};
@@ -30,6 +31,13 @@ pub async fn affiliate_signup(
             Json(json!({"id": id, "message": "Affiliate account already exists"})),
         ));
     }
+
+    // One affiliate per tenant is the product rule, and migration 069 made it structural with the
+    // unique index `uniq_affiliates_tenant`. Enforce the plan limit BEFORE the INSERT so a DIFFERENT
+    // user of a tenant that already has its one affiliate gets the same clean 402 the admin path
+    // (`affiliate_handler::create_affiliate`) returns, instead of the raw sqlx unique violation
+    // being mapped to a 500 "Database error". The same-email 200 above stays first and untouched.
+    features::enforce_feature_limit(&state, tenant_id, "max_affiliates", "Affiliates").await?;
 
     // Effective payout = the user's active plan's commission_rate (admin-adjustable per plan).
     let plan_rate: Option<f64> = sqlx::query_scalar(
