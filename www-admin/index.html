@@ -626,7 +626,10 @@ async function renderMyAccount() {
         <div><div class="form-label">Cards Limit</div><div>${plan.max_cards||'Unlimited'}</div></div>
         <div><div class="form-label">Leads Limit</div><div>${plan.max_leads||'Unlimited'}</div></div>
         <div><div class="form-label">Webhooks</div><div>${plan.has_webhooks?'✅':'❌'}</div></div>
-        <div><div class="form-label">API Access</div><div>${plan.has_api?'✅':'❌'}</div></div>
+        <!-- (kanban t_726416be) "API Access" was RETIRED here with the api-key surface: POST
+             /api/v1/api-keys answers 404, and the key left the plan feature registry, so a plan
+             can no longer be shown as granting it. The plans.has_api COLUMN values on the three
+             paid plans are left untouched as plan/billing data (a pricing call). -->
       </div>
       <div style="margin-top:16px">
         <button class="btn btn-primary btn-sm" onclick="window._navTo('plans')">Upgrade Plan</button>
@@ -744,7 +747,6 @@ async function renderPlans() {
         <td>${p.max_leads||'∞'}</td>
         <td>
           ${p.has_webhooks?'<span class="badge badge-green">Webhooks</span> ':''}
-          ${p.has_api?'<span class="badge badge-purple">API</span> ':''}
           ${p.has_analytics?'<span class="badge badge-blue">Analytics</span> ':''}
           ${p.has_import_export?'<span class="badge badge-yellow">Import/Export</span>':''}
         </td>
@@ -784,7 +786,7 @@ function openPlanModal(id) {
       <div class="form-row"><div class="form-group"><label class="form-label">Max Tags</label><input class="input" name="max_tags" type="number" value="${f('max_tags','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Forms</label><input class="input" name="max_forms" type="number" value="${f('max_forms','')}" placeholder="Unlimited"></div></div>
       <div style="margin-top:12px"><div class="form-label" style="margin-bottom:8px">Feature Toggles</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${['has_webhooks','has_api','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
+          ${['has_webhooks','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
         </div>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">

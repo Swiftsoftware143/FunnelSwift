@@ -1,0 +1,63 @@
+-- t_726416be — retire the plan residue of the deleted api-key credential surface.
+--
+-- WHY (measured 2026-10-02, live funnelswift DB, before this migration):
+--   * decision t_538505de ARM (b) retired FunnelSwift's api-key credential surface; t_5a3c2d9c
+--     deleted the routes, the handler, the model, the signup mint and every console/guide caller.
+--     POST /api/v1/api-keys now answers 404.
+--   * `feature_limits` still carried 2 rows for the limit that gated nothing but that route:
+--         kinetic-pro | max_api_keys | -1
+--         agency      | max_api_keys | -1
+--     (the third api-family key, `max_api_calls`, was already retired by migration 086 — kanban
+--      t_090f3e00 — and has no live row)
+--   * `api_keys` still existed as a store: 9 rows, ALL named 'Auto-generated', ALL minted by the
+--     deleted signup path, ALL on test/seed tenants (users 1 each, leads 0, web_to_lead_configs 0),
+--     7 of 9 sharing one prefix `fs_gjEV_`; no writer since t_5a3c2d9c, no inbound FK, and its last
+--     reader was `GET /api/v1/auth/me` (removed in the same commit).
+--   * the flag half (`plans.has_api` = true on capture-starter $9 / suite $29 / agency $79, and the
+--     `features->>'api_access'` jsonb key on 2 of them) is NOT touched here — see SCOPE below.
+--
+-- DECISION, one per carded item, all by measurement:
+--   1. `feature_limits.max_api_keys` rows -> DELETE. The key left feature_registry::SPECS in the
+--      same commit (along with `has_api`) and joined feature_registry::RETIRED_KEYS, so
+--      GET /api/v1/admin/plans/registry publishes it under `retired_keys` and PUT
+--      /admin/plans/entitlement refuses it with 400 "unknown feature". Deactivating a row would not
+--      do: the resolver reads any row for a key the moment a gate is called with it. Same verdict
+--      migration 086 reached for max_routing_targets/kinetic_themes and t_ab963d11 for
+--      missedcallrespondr.
+--   2. `api_keys` table -> DROP. 0 live use: no writer, no reader, no inbound FK, and every row a
+--      test/seed artefact of a mint that produced a credential nothing could verify. "Keep it for
+--      history" preserves 9 rows whose only content is a hash of a value no caller ever received.
+--      This is the same call t_ab963d11 made for missedcallrespondr's api_keys.
+--      NOTE: migrations/000002_api_keys.sql is deliberately NOT deleted — this app boots through
+--      `sqlx::migrate!("./migrations")`, and removing an ALREADY-APPLIED file makes the next boot
+--      fail with "migration 2 was previously applied but is missing in the resolved migrations"
+--      (sqlx checksums). A fresh install therefore creates the table in 000002 and drops it here.
+--
+-- SCOPE — what this file deliberately does NOT do:
+--   * it does NOT drop the `plans.has_api` COLUMN and does NOT remove the `features->>'api_access'`
+--     jsonb keys. Those are plan/billing DATA: whether a paid plan still SELLS "API access" is a
+--     pricing decision (the same call t_0aaf0bc5 made for `has_dual_routing`), not a residue fix.
+--     What changed is that no surface can present it as a working capability any more: the key left
+--     the registry, the admin plan matrix no longer lists it, and the guides name it retired.
+--     The authored values are recorded here so the decision can be taken in one word:
+--         capture-starter  plans.has_api = true   features.api_access = true
+--         suite            plans.has_api = true   features.api_access = (absent)
+--         agency           plans.has_api = true   features.api_access = true
+--         kinetic-pro      plans.has_api = false  features.api_access = (absent)   (max_api_keys = -1)
+--     Reversal of the DATA, if the pricing call is ever "sell it and build a real surface":
+--         UPDATE plans SET has_api = true WHERE slug IN ('capture-starter','suite','agency');
+--     Reversal of THIS migration (rows and store, from the archive kept at
+--     /opt/swift/audits/t_726416be/04-api_keys-rows-archived.csv, 9 rows):
+--         INSERT INTO feature_limits (id, plan_id, feature_key, limit_value) VALUES
+--           (gen_random_uuid(),'f0000000-0000-0000-0000-000000000004','max_api_keys',-1),
+--           (gen_random_uuid(),'f0000000-0000-0000-0000-000000000006','max_api_keys',-1);
+--         -- and re-apply migrations/000002_api_keys.sql + the archived CSV.
+--
+-- Idempotent: a second boot deletes nothing and DROPs IF EXISTS.
+--
+-- DELETE first, then DROP: the resolver is federation-agnostic about a row whose table is gone only
+-- until the next call, so the row goes while the key is still guaranteed unreachable.
+
+DELETE FROM feature_limits WHERE feature_key IN ('max_api_keys', 'api_keys');
+
+DROP TABLE IF EXISTS api_keys;

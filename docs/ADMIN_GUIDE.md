@@ -21,7 +21,7 @@ Configs now support assigning **multiple tags** per widget. When a lead is captu
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/web-to-lead` | API key (public) | Receive lead from external form |
+| POST | `/web-to-lead` | Public form key (per-config `public_key`) | Receive lead from external form |
 | GET | `/web-to-lead/configs` | JWT | List tenant configs |
 | POST | `/web-to-lead/configs` | JWT | Create new config |
 | PUT | `/web-to-lead/configs/:id` | JWT | Update config |
@@ -40,10 +40,15 @@ The snippet:
 - Rate-limited by tenant (100/hr default)
 
 ### Security
-- API keys hashed with Argon2id (reuses existing `api_keys` table)
-- Web-to-lead permission check on API key (`permissions.web_to_lead`)
-- Rate limiting at tenant level
-- Duplicate email detection
+- The public credential is the per-config `public_key` on `web_to_lead_configs` — an identifier, not a
+  secret, resolved by `handle_web_to_lead`. Rate limiting is at tenant level and duplicate email
+  detection runs on the inserted lead.
+- The `api_keys` TABLE no longer exists (kanban t_726416be, `migrations/090_retire_api_key_plan_residue.sql`).
+  It was the store behind the retired api-key credential surface (decision t_538505de ARM b): keys were
+  minted but verified nowhere — `key_hash` was never SELECTed for comparison and no `X-API-Key`/bearer
+  path existed — so nothing used it. Do NOT document an api-key auth path: there is none, and
+  `POST /api/v1/api-keys` answers 404. A real API surface would be a fresh build (mint format with a
+  lookup selector + an auth middleware) before it can be sold as a plan feature.
 
 ### Admin UI
 Web-to-Lead section added to the main SPA at `/var/www/funnelswift/funnelswift.js`:

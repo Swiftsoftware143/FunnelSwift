@@ -142,21 +142,6 @@ pub const SPECS: &[Spec] = &[
         read_by_gate: true,
     },
     Spec {
-        key: "max_api_keys",
-        label: "API keys",
-        kind: Kind::Limit,
-        unit: "keys",
-        jsonb_key: None,
-        column: None,
-        // RETIRED gate (kanban t_5a3c2d9c, decision t_538505de ARM b): the only caller,
-        // api_key_handler::create_api_key, and its route are deleted, so NO gate reads this key.
-        // `read_by_gate` must say so or the drift test below fails. The Spec stays registered on
-        // purpose — the plan DATA (feature_limits rows, the panel readout) is the plan/billing
-        // card's call (t_726416be). Do not flip this back to true without a real call site.
-        enforced_by: "retired — POST /api/v1/api-keys deleted (kanban t_5a3c2d9c)",
-        read_by_gate: false,
-    },
-    Spec {
         key: "max_portfolios",
         label: "Portfolio companies",
         kind: Kind::Limit,
@@ -207,19 +192,6 @@ pub const SPECS: &[Spec] = &[
         read_by_gate: false,
     },
     // ── boolean flags ──────────────────────────────────────────────────────────────────────
-    Spec {
-        key: "has_api",
-        label: "API access",
-        kind: Kind::Boolean,
-        unit: "",
-        jsonb_key: Some("api_access"),
-        column: Some("has_api"),
-        // RETIRED gate (kanban t_5a3c2d9c) — same reason as `max_api_keys` above: the route the
-        // flag gated is deleted, so no gate reads it. The flag, the `plans.has_api` column, the
-        // panel readout and the pricing call remain the plan/billing card's (t_726416be).
-        enforced_by: "retired — POST /api/v1/api-keys deleted (kanban t_5a3c2d9c)",
-        read_by_gate: false,
-    },
     Spec {
         key: "has_webhooks",
         label: "Webhooks",
@@ -327,10 +299,25 @@ pub const SPECS: &[Spec] = &[
     },
 ];
 
-/// Keys RETIRED by `migrations/086_retire_ungated_feature_limit_keys.sql` (kanban t_090f3e00) —
-/// live `feature_limits` rows that NO gate in this crate read. Each one was either a SECOND NAME
-/// for a capability a `SPECS` key already enforces, or named a quantity this app never measures
-/// (or measures but has no route that writes the counted row).
+/// Keys RETIRED as plan residue — no gate in this crate reads them any more. Two waves so far:
+///
+/// * `migrations/086_retire_ungated_feature_limit_keys.sql` (kanban t_090f3e00) — live
+///   `feature_limits` rows that NO gate read. Each one was either a SECOND NAME for a capability a
+///   `SPECS` key already enforces, or named a quantity this app never measures (or measures but has
+///   no route that writes the counted row). A second one followed the same day when the resource it
+///   counted was retired (088, kanban t_0aaf0bc5).
+/// * `migrations/090_retire_api_key_plan_residue.sql` (kanban t_726416be) — the two remaining keys
+///   of the deleted api-key credential surface: the `max_api_keys` limit (rows deleted) and the
+///   `has_api` flag. Decision t_538505de ARM b retired the surface; t_5a3c2d9c deleted its routes,
+///   handler, model and signup mint, which left both keys pointing at `POST /api/v1/api-keys`
+///   (404). A key whose only route is gone is residue, so BOTH leave `SPECS` here and the console
+///   can no longer offer a control or a limit for a capability that does not exist.
+///
+/// Scope note (the difference between the two waves): the `feature_limits` ROWS and the registry
+/// entries are retired here; the `plans.has_api` COLUMN values and the `features->>'api_access'`
+/// jsonb keys on capture-starter / suite / agency are plan/billing DATA and are LEFT AS THEY ARE —
+/// removing what a plan sells is a pricing change (kanban t_0aaf0bc5 made the same call for
+/// `has_dual_routing`), not a residue fix. That open question is recorded on t_726416be.
 ///
 /// The rows are GONE, and this list is what keeps the retirement honest:
 ///   * `GET /api/v1/admin/plans/registry` publishes it as `retired_keys`, so the operator's console
@@ -338,9 +325,25 @@ pub const SPECS: &[Spec] = &[
 ///   * the drift test below fails the build if one of them is ever re-registered as a gate key —
 ///     two vocabularies for one entitlement is the defect this list exists to prevent.
 ///
-/// The authored numbers live in the migration header, the admin guide's "Retired plan keys"
-/// section and /opt/swift/audits/t_090f3e00/ — deliberately not as live rows.
+/// The authored numbers live in the migration headers, the admin guide's "Retired plan keys"
+/// section and /opt/swift/audits/t_09{{0f3e00,0aaf0bc5,726416be}}/ — deliberately not as live rows.
 pub const RETIRED_KEYS: &[(&str, &str)] = &[
+    (
+        "max_api_keys",
+        "the credential surface it capped was retired (decision t_538505de ARM b; routes, handler, \
+         model and signup mint deleted by t_5a3c2d9c), so its only gate, POST /api/v1/api-keys, \
+         answers 404. The two live rows (agency -1, kinetic-pro -1) were deleted by migration 090 — \
+         and the authored values are a plan-page number nothing could ever honour: no api key \
+         exists to count. Not to be re-registered without a real mint route and a key selector",
+    ),
+    (
+        "has_api",
+        "the boolean half of the same retirement: POST /api/v1/api-keys is deleted, so no gate reads \
+         the flag and the admin plan matrix can no longer advertise it as a capability. The \
+         `plans.has_api` column and the `features->>'api_access'` jsonb keys on the three paid plans \
+         are deliberately LEFT IN PLACE as plan/billing DATA — whether a paid plan still sells \
+         \"API access\" is a pricing call (kanban t_726416be), not this registry's",
+    ),
     (
         "kinetic_themes",
         "premium theme access is the `premium_themes` boolean (enforce_theme_access / \
@@ -509,7 +512,9 @@ pub async fn write_boolean(
     .await?;
 
     let q = match spec.column {
-        Some("has_api") => "UPDATE plans SET has_api = $2 WHERE id = $1",
+        // `has_api` was removed here with the key itself (kanban t_726416be): the flag is no longer
+        // in SPECS, so no `spec.column` can be `has_api`, and the registry's own entitlement route
+        // refuses the retired key before it reaches this function.
         Some("has_webhooks") => "UPDATE plans SET has_webhooks = $2 WHERE id = $1",
         Some("has_dual_routing") => "UPDATE plans SET has_dual_routing = $2 WHERE id = $1",
         Some("has_mini_funnels") => "UPDATE plans SET has_mini_funnels = $2 WHERE id = $1",

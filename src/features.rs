@@ -287,8 +287,11 @@ async fn get_usage_count(state: &AppState, tenant_id: Uuid, feature_key: &str) -
             .unwrap_or(0),
         // `max_api_keys` was RETIRED with the credential surface (kanban t_5a3c2d9c /
         // decision t_538505de ARM b): its only caller, api_key_handler::create_api_key, is
-        // deleted, so the key had zero callers. The `api_keys` TABLE stays for the
-        // plan/billing card (t_726416be), which owns `plans.has_api`.
+        // deleted, so the key had zero callers. t_726416be then removed the key from
+        // feature_registry::SPECS and deleted its two rows (migration 090), so this arm is gone
+        // rather than left as a literal naming a key nothing can call. The `api_keys` TABLE was
+        // dropped by the same migration, and `plans.has_api` is plan/billing DATA left in place
+        // (whether a paid plan still SELLS "API access" is a pricing call, not this crate's).
         "max_portfolios" => {
             sqlx::query_scalar("SELECT COUNT(*) FROM portfolio_companies WHERE tenant_id = $1")
                 .bind(tenant_id)

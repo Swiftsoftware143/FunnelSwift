@@ -2813,7 +2813,6 @@ function LPLL(){
         {k:"kinetic_analytics",l:"Analytics"},
         {k:"kinetic_theme_templates",l:"Theme Templates"},
         {k:"analytics",l:"Global Analytics"},
-        {k:"api_access",l:"API Access"},
         {k:"import_export",l:"Import/Export"},
         {k:"dedicated_support",l:"Dedicated Support"},
         {k:"white_label",l:"White Label"},
@@ -2884,7 +2883,7 @@ function SP(pid){
       else v=el.value;
     }
     // Map features.* fields
-    if(k.startsWith("kinetic_")||k==="max_kinetic_cards"||k==="max_users"||k==="analytics"||k==="api_access"||k==="import_export"||k==="dedicated_support"||k==="white_label"){
+    if(k.startsWith("kinetic_")||k==="max_kinetic_cards"||k==="max_users"||k==="analytics"||k==="import_export"||k==="dedicated_support"||k==="white_label"){
       if(!isCB&&k!=="kinetic_cta_text") feats[k]=v;
       else if(k==="kinetic_cta_text") feats[k]=v;
     }else{

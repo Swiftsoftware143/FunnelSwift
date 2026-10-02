@@ -113,9 +113,10 @@ pub async fn register(
     // API-key auto-mint was RETIRED here (kanban t_5a3c2d9c, decision t_538505de ARM b).
     // Signup used to hash a random `fs_…` value with Argon2id and INSERT it into `api_keys` as
     // 'Auto-generated'. That key authenticated nothing (key_hash was never SELECTed for comparison),
-    // the register response returns {token,user} only and /me returns the 8-char prefix only, so no
-    // caller ever received it. The credential surface (routes, handler, model, this mint) is gone;
-    // the `api_keys` TABLE is left in place for the plan/billing card (t_726416be).
+    // the register response returns {token,user} only and /me returned the 8-char prefix only, so no
+    // caller ever received it. The credential surface (routes, handler, model, this mint) is gone,
+    // and t_726416be dropped the `api_keys` TABLE itself (migration 090) together with the last
+    // reader — the prefix-only `api_key` field this handler used to add to the /me response.
 
     // Create default settings for tenant
     sqlx::query(
@@ -281,21 +282,13 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         .await
         .unwrap_or(None);
 
-    // Get user's API key. `full_key` is deliberately NOT read here (kanban t_c02f1dc5): it was the
-    // legacy column that held the RAW api key, this query selected it and threw the value away, and
-    // migration 077 drops the column so no raw key has a place to live. Only the prefix — the key's
-    // public identity — is returned, next to the plan.
-    let api_key_row: Option<(String, String)> =
-        match sqlx::query_as::<_, (String, String)>("SELECT prefix, name FROM api_keys WHERE user_id::text = $1 AND name = 'Auto-generated' LIMIT 1")
-            .bind(&auth.user_id)
-            .fetch_optional(&state.pool)
-            .await {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("API key query error: {:?}", e);
-                    None
-                }
-            };
+    // The `api_key` field of this response was REMOVED (kanban t_726416be). It used to carry the
+    // 8-char prefix of the caller's 'Auto-generated' `api_keys` row — the last reader of that table
+    // once the credential surface went (t_538505de ARM b / t_5a3c2d9c). Migration 090 drops the
+    // table, and no shipped surface ever read this field (box-wide grep: www-app, www-admin and
+    // FunnelSwift-Mobile have zero references to `/me`'s `api_key`; the mobile client's `api_key`
+    // comes from GET /incentiveswift/config, a different endpoint). Leaving the SELECT would have
+    // turned every GET /me into a logged 42P01 with a permanently null field.
 
     // `available_products` was REMOVED here (kanban t_e0f9b86b). It was built as
     //   SELECT (row_to_json(t.*)::jsonb - 'api_key') AS p FROM target_software t ORDER BY t.name
@@ -334,7 +327,6 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "role": auth.role,
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
-        "api_key": api_key_row.map(|(p, n)| json!({"prefix": p, "name": n})),
         "current_plan": current_plan
     }))
 }

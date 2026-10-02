@@ -156,13 +156,11 @@
           <tr><td><code>max_ocr_scans</code></td><td>Number (scans)</td><td>Card scans — POST /api/v1/ocr/parse-card</td></tr>
           <tr><td><code>max_action_buttons</code></td><td>Number (buttons)</td><td>Action buttons per card — POST /api/v1/kinetic/cards/:id/buttons</td></tr>
           <tr><td><code>max_webhooks</code></td><td>Number (webhooks)</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
-          <tr><td><code>max_api_keys</code></td><td>Number (keys)</td><td>API keys — POST /api/v1/api-keys</td></tr>
           <tr><td><code>max_portfolios</code></td><td>Number (companies)</td><td>Portfolio companies — POST /api/v1/portfolio-companies</td></tr>
           <tr><td><code>max_tag_groups</code></td><td>Number (groups)</td><td>Tag groups — POST /api/v1/tag-groups</td></tr>
           <tr><td><code>max_integrations</code></td><td>Number (connections)</td><td>Integration Center connections — POST /api/v1/provider-keys</td></tr>
           <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
           <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — (dashboard usage counter only — no gate calls it)</td></tr>
-          <tr><td><code>has_api</code></td><td>Toggle</td><td>API access — POST /api/v1/api-keys</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
           <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead export — GET /api/v1/leads/export</td></tr>
           <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — a plan-page marker only, with no gate of its own: multi-destination delivery is what the <strong>Webhooks</strong> engine does (POST /api/v1/webhooks, gated by <code>has_webhooks</code>). The resource this key used to switch on was retired on 2026-10-02 (kanban t_0aaf0bc5).</td></tr>
@@ -206,18 +204,23 @@
       <div class="card">
         <h3>Retired plan keys — rows deleted, nothing enforces them</h3>
         <p>A key can sit in <code>feature_limits</code> for months without a single gate reading it: the
-        number looks like an entitlement, you set it, and no request ever consults it. Ten such keys have
-        been measured and <strong>retired</strong> — nine on 2026-10-02 (kanban t_090f3e00,
-        <code>migrations/086_retire_ungated_feature_limit_keys.sql</code>), and one more the same day when
+        number looks like an entitlement, you set it, and no request ever consults it. Eleven plan keys
+        have been measured and <strong>retired</strong>: nine on 2026-10-02 (kanban t_090f3e00,
+        <code>migrations/086_retire_ungated_feature_limit_keys.sql</code>), one more the same day when
         the resource it counted was itself retired (kanban t_0aaf0bc5,
-        <code>migrations/088_retire_target_software_and_routing_log.sql</code>). Both files
-        <strong>delete</strong> the rows.
+        <code>migrations/088_retire_target_software_and_routing_log.sql</code>), and the api-key family
+        when its credential surface was retired (kanban t_726416be,
+        <code>migrations/090_retire_api_key_plan_residue.sql</code>) — <code>max_api_keys</code> and
+        the <code>has_api</code> flag, whose only gate, <code>POST /api/v1/api-keys</code>, now answers
+        404. Those three files <strong>delete</strong> the rows they retire.
         Deactivating a row would not have been enough: the resolver reads any <code>feature_limits</code> row
         for a key the moment a gate is called with it, so a leftover row is a loaded gun. One vocabulary per
         capability. <code>GET /api/v1/admin/plans/registry</code> publishes the retired list under
         <code>retired_keys</code>, and the panel names them under the matrix.</p>
         <table>
           <tr><th>Retired key</th><th>Numbers that were authored (before the migration)</th><th>What actually enforces this capability</th></tr>
+          <tr><td><code>max_api_keys</code></td><td>kinetic-pro −1 · agency −1</td><td>nothing — the api-key credential surface was retired by measurement (kanban t_538505de, ARM b) and its routes, handler, model and signup mint were deleted (t_5a3c2d9c), so <code>POST /api/v1/api-keys</code> answers 404 and no api key exists anywhere to count. The two rows were deleted by migration 090.</td></tr>
+          <tr><td><code>has_api</code> (boolean)</td><td>not a <code>feature_limits</code> row — the <code>plans.has_api</code> COLUMN is <code>true</code> on capture-starter, suite and agency, and <code>features.api_access</code> is <code>true</code> on two of them</td><td>nothing — same retirement; the key left the feature registry so the matrix can no longer offer it. The plan <strong>values</strong> are deliberately left in place: whether a paid plan still sells “API access” is a pricing decision (the same call t_0aaf0bc5 made for <code>has_dual_routing</code>), not a residue fix. Re-adding the key requires a real mint route plus a key selector first.</td></tr>
           <tr><td><code>kinetic_themes</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 6 · capture-free 3</td><td>the <code>premium_themes</code> toggle: a plan with no <code>premium_themes</code> key refuses every premium theme, whatever a count says — which is why capture-starter's “6” could never have meant anything</td></tr>
           <tr><td><code>max_api_calls</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1000 · capture-free 1000 · kinetic-free 10000</td><td>nothing — the app has no request meter. Carded separately: a counter has to exist before a cap can.</td></tr>
           <tr><td><code>max_plans</code></td><td>agency −1 · kinetic-pro −1</td><td>nothing — “plans” is the global price list you manage on this page, not a per-workspace quantity.</td></tr>
@@ -229,7 +232,7 @@
           <tr><td><code>storage_mb</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 50 · capture-free 50 · kinetic-free 500</td><td>nothing — nothing in the app measures bytes stored. Carded separately.</td></tr>
           <tr><td><code>team_members</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1 · capture-free 1 · kinetic-free 3</td><td><code>max_team_members</code> (the same count of active users). No screen adds a second member to an existing workspace, so the cap cannot fire yet — carded separately.</td></tr>
         </table>
-        <p>The authored numbers survive in the migration header and in this table — deliberately not as live
+        <p>The authored numbers survive in the migration headers and in this table — deliberately not as live
         rows, so nothing downstream can mistake them for an enforced cap. If a capability above is built
         later, the number is a starting point, not a promise made here.</p>
         <p><strong>Tenant feature override (the last card in the panel):</strong>
