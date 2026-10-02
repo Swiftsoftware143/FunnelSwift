@@ -72,7 +72,7 @@ FunnelSwift is the affiliate hub. Affiliate products represent the SwiftSoftware
 ### The Model
 
 1. **Affiliate products are the SwiftSoftware products** — they sync in from each app's plan sync (below), and a product may carry a `system_tag_id` link to a System Tag.
-2. When a lead is tagged with that System Tag, `tag_logic::attribute_affiliate_on_tags` (`src/tag_logic.rs:319`, fired from `src/handlers/lead_handler.rs:633`) matches it against `affiliate_products.system_tag_id WHERE is_active = true` and records the pending $0 commission. **Assigning a System Tag does not create an account, contact or client in the other app** — see [System Tags](#system-tags). The link is API-only today: the product form has no picker and 0 of 11 products carry one (measured 2026-09-26).
+2. When a lead is tagged with that System Tag, `tag_logic::attribute_affiliate_on_tags` (`src/tag_logic.rs:336`, fired from `src/handlers/lead_handler.rs:647`) matches it against `affiliate_products.system_tag_id WHERE is_active = true` and records the pending $0 commission. **Assigning a System Tag does not create an account, contact or client in the other app** — see [System Tags](#system-tags). The link is set from the product form's **System Tag** picker (`www-app/index.html` `LPAFS`, fed by `GET /api/v1/admin/system-tags`; un-set with `clear_system_tag: true`), every live product carries one (7 of 7, measured 2026-10-01), and the anchor fires from **any** workspace the tagged lead belongs to — `src/handlers/lead_handler.rs:569` resolves tag ids as `WHERE tenant_id = $1 OR is_system = true`, so a shared System Tag is not the tag creator's private privilege.
 3. When a lead — created under a user account — is tagged, a pending $0 commission is recorded (the free-plan attribution anchor).
 4. When that lead later **upgrades to a paid plan** in the product, the other app fires an upgrade event back to FunnelSwift, and the referring affiliate is credited. **No expiry — every upgrade, forever.**
 
@@ -80,7 +80,7 @@ FunnelSwift is the affiliate hub. Affiliate products represent the SwiftSoftware
 
 | Table / Column | Purpose |
 |---|---|
-| `affiliate_products.system_tag_id` | Optional link to the System Tag whose assignment attributes this product (`src/tag_logic.rs:319`) — set from the product form's System Tag picker (`www-app/index.html` `LPAFS`), which is fed by `GET /api/v1/admin/system-tags`; un-set with `clear_system_tag: true` (a bare `null` keeps the stored tag) |
+| `affiliate_products.system_tag_id` | Optional link to the System Tag whose assignment attributes this product (`src/tag_logic.rs:336`) — set from the product form's System Tag picker (`www-app/index.html` `LPAFS`), which is fed by `GET /api/v1/admin/system-tags`; un-set with `clear_system_tag: true` (a bare `null` keeps the stored tag) |
 | `leads.created_by` | The user account a lead flowed through (the affiliate anchor) |
 | `affiliates.user_id` | First-class link: which user account an affiliate is |
 | `affiliate_commissions.product_id` | Which product a commission is for |
@@ -554,13 +554,13 @@ The form itself has three fields — **Name**, **Tag Group**, **Color** (`RFT`, 
 
 - They do **not** create a free account, contact or client in another Swift app. There is no per-tag target, no provisioning webhook and no cross-app caller: the `tags` table carries no target/webhook/payload column (its nine columns are `id`, `tenant_id`, `name`, `color`, `group_id`, `is_system`, `metadata`, `created_at`, `updated_at`), and `to_regclass('public.system_tags')` is NULL (measured 2026-09-26).
 - They do **not** hand a lead a free tier of anything. The free/starter/pro/enterprise tiers of ADASwift, CoreSwift, WorkflowSwift, IncentiveSwift and MissedCallRespondr live in those apps' own plans, which each workspace buys separately.
-- They are **not** a separate object type: the System Tags screen is the same `tags` table filtered on `is_system = true` (0 of 5 rows today).
+- They are **not** a separate object type: the System Tags screen is the same `tags` table filtered on `is_system = true` — that is all 31 live tags today (the 22 shared tags, the 7 per-app Free tags and `Sold`/`Qualified`, restored by migration 060 after the System tenant they were seeded under was deleted; measured 2026-10-01).
 
 ### Assigning a System Tag
 
-Applying one to a lead writes the tag name into `leads.tags` like any other tag, and visibility is already covered by `GET /api/v1/tags`. Its one extra effect is **affiliate attribution**: FunnelSwift matches the freshly-applied tag ids against `affiliate_products.system_tag_id WHERE is_active = true` (`tag_logic::attribute_affiliate_on_tags`, `src/tag_logic.rs:319`, fired from `src/handlers/lead_handler.rs:633`) and records a **pending $0 commission** for the affiliate the lead flowed through (`leads.created_by` → `affiliates.user_id`). Nothing is written to another app.
+Applying one to a lead writes the tag name into `leads.tags` like any other tag, and visibility is already covered by `GET /api/v1/tags`. Its one extra effect is **affiliate attribution**: FunnelSwift matches the freshly-applied tag ids against `affiliate_products.system_tag_id WHERE is_active = true` (`tag_logic::attribute_affiliate_on_tags`, `src/tag_logic.rs:336`, fired from `src/handlers/lead_handler.rs:647`) and records a **pending $0 commission** for the affiliate the lead flowed through (`leads.created_by` → `affiliates.user_id`). Nothing is written to another app.
 
-Two conditions have to hold on the tagging path: the tag id must resolve for the workspace doing the tagging (`src/handlers/lead_handler.rs:556` resolves that workspace's own tags; rule-driven adds at `:625` also resolve shared system tags), and the product must still be active. No product carries a `system_tag_id` live today (0 of 11, measured 2026-09-26), so no tag assignment attributes anything yet.
+Two conditions have to hold on the tagging path: the tag id must resolve for the workspace doing the tagging, and the product must still be active. The resolution is `WHERE tenant_id = $1 OR is_system = true` (`src/handlers/lead_handler.rs:569`) — the same predicate `GET /api/v1/tags` offers tags with (`src/handlers/tag_handler.rs:22`) and the same one the rule-driven arm uses (`src/handlers/lead_handler.rs:639`) — so a **shared** System Tag resolves for every workspace, not only the one that created it. Measured 2026-10-01 on the deployed binary (`1b227eb1`), one shared tag, two workspaces: the non-owner workspace's own lead recorded exactly the same single `pending:0.00` commission against the linked product that the tag owner's workspace recorded, and the three controls recorded none (a shared tag with no product link, a link to an inactive product, and the workspace's own non-system tag). All 7 live products carry a `system_tag_id` today (7 of 7, measured 2026-10-01), so a tag assignment now attributes.
 
 The pending commission is filled in later, when the product itself fires the upgrade event back (see [Cross-App Upgrade Event](#cross-app-upgrade-event)).
 
@@ -572,8 +572,8 @@ No. All three are refused with `403` for a non-admin (`src/handlers/tag_handler.
 **Q: Does assigning a System Tag create anything in another app?**
 No. Nothing is provisioned and no webhook fires — the only write is the tag name on the lead, plus the pending commission described above.
 
-**Q: Why is the System Tags list empty?**
-Nothing seeds System Tags; an admin creates the first one (0 rows live today).
+**Q: How many System Tags are there?**
+All 31 tags live today are System Tags (22 shared + 7 per-app Free + `Sold`/`Qualified`), restored by migration 060 after the System tenant they were seeded under was deleted (measured 2026-10-01). Nothing seeds new ones at runtime; an admin creates them.
 
 **Q: A product's tag link is stale — how do I stop it attributing?**
 Deactivate the product or clear its `system_tag_id`: both attribution readers resolve a product `WHERE is_active = true` only, so a retired product stops producing commissions.
