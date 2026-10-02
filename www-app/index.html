@@ -318,6 +318,8 @@ function LMA(){
       .then(function(r){
         function n(x){ if(!x) return 0; if(Array.isArray(x)) return x.length; if(Array.isArray(x.items)) return x.items.length; if(Array.isArray(x.data)) return x.data.length; return 0; }
         var box=$("aff-cc");
+        // kanban t_a493e3f2: Promise.all's callback must not paint a container a tab switch removed.
+        if(!box||!box.parentNode) return;
         box.className="";
         box.innerHTML='<div id="sr" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
           +'<div class="card" style="flex:1;min-width:130px"><h3>Affiliates</h3><div class="val">'+n(r[0])+'</div></div>'
@@ -430,13 +432,20 @@ if(T){
 /* === DASHBOARD === */
 function D(){
   $("ct").innerHTML='<div id="sr"></div><div id="da"></div>';
+  // kanban t_a493e3f2: this loader paints two of its OWN panels from async callbacks, and S(<tab>)
+  // replaces #ct wholesale — a tab switch between the request and its callback detaches #sr/#da, so a
+  // late response ran $("sr").innerHTML=h on null and threw an UNCAUGHT TypeError inside the page.
+  // Keep the nodes THIS load created and write to them only while they are still attached (the same
+  // `if(old&&old.parentNode)` shape this shell already uses for a removed node).
+  var sr=$("sr"), da=$("da");
   api("/api/v1/dashboard/stats").then(function(d){
     var h="";
     h+='<div class="card"><h3>Total Leads</h3><div class="val">'+(d&&d.leads_total?d.leads_total:0)+'</div></div>';
     h+='<div class="card"><h3>Conv. Rate</h3><div class="val">'+(d&&d.conversion_rate?(d.conversion_rate*100).toFixed(1)+"%":"0%")+'</div></div>';
     h+='<div class="card"><h3>Cards</h3><div class="val">'+(d&&d.cards_total?d.cards_total:0)+'</div></div>';
     h+='<div class="card"><h3>Plans</h3><div class="val">'+(d&&d.plans_total?d.plans_total:0)+'</div></div>';
-    $("sr").innerHTML=h;
+    if(!sr||!sr.parentNode) return;
+    sr.innerHTML=h;
   });
   api("/api/v1/dashboard/activity").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
@@ -447,7 +456,9 @@ function D(){
       a.slice(0,10).forEach(function(r){h+='<tr><td style="color:#6366f1;font-weight:600">'+X(r.action)+'</td><td>'+X(r.description)+'</td></tr>';});
       h+="</table>";
     }
-    h+="</div>"; $("da").innerHTML=h;
+    h+="</div>";
+    if(!da||!da.parentNode) return;
+    da.innerHTML=h;
   });
 }
 
