@@ -56,6 +56,17 @@ pub struct UpdateTagRequest {
     pub color: Option<String>,
     // pub description: Option<String>,
     pub group_id: Option<Uuid>,
+    /// kanban t_f94a8a00: an explicit "remove this tag from its group" request.
+    ///
+    /// `group_id` alone cannot express a clear: `update_tag()` binds `req.group_id.or(tag.group_id)`,
+    /// so an ABSENT key and an explicit `null` both mean "keep the stored group" (the shape every
+    /// shipped caller already sends), and a bare `""` is an axum 422 `UUID parsing failed`. Rather
+    /// than change what `null` means — which would silently wipe the group of any caller that sends
+    /// `group_id: null` on a plain rename — the clear is this ADDITIVE flag, so every existing body
+    /// shape keeps meaning exactly what it means today. `clear_group: true` ungroups the tag; when it
+    /// is true and `group_id` is also present, the clear wins.
+    #[serde(default)]
+    pub clear_group: Option<bool>,
     pub is_system: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }

@@ -2951,6 +2951,10 @@ function LSG(){
 }
 
 /* === Updated tag edit — handle system flag === */
+/* kanban t_f94a8a00: the group the tag being edited actually STORES. "" in the editor's select now
+   means "clear the group", so the save must know whether there was anything to clear (otherwise a
+   tag that is already ungrouped would start sending a clear it does not need). */
+var RFT_GROUP=null;
 function MFT(id,isSystem){
   api("/api/v1/tag-groups").then(function(gd){
     var groups=Array.isArray(gd)?gd:((gd&&gd.data)?gd.data:[]);
@@ -2959,14 +2963,23 @@ function MFT(id,isSystem){
   });
 }
 function RFT(id, t, groups, isSystem){
+  RFT_GROUP = t.group_id || null;   // kanban t_f94a8a00: what the row stores (see the var above)
   O(id?"Edit "+((t.is_system||isSystem)?"System Tag":"Tag"):"Create "+((t.is_system||isSystem)?"System Tag":"Tag"), function(){
     var mb=$("mb"); mb.innerHTML=""; $("mf").innerHTML="";
     mb.appendChild(ff("Name", El("input",{id:"fn",value:t.name||""})));
     var fg=El("select",{id:"fg"});
-    fg.appendChild(El("option",{value:""},"None"));
+    fg.appendChild(El("option",{value:""},"— No group —"));
+    var found=false;
     groups.forEach(function(g){
+      if(t.group_id===g.id) found=true;
       fg.appendChild(El("option",{value:g.id,selected:t.group_id===g.id?"selected":null},X(g.name)));
     });
+    /* kanban t_f94a8a00: a group this console cannot NAME (e.g. the shared taxonomy's, owned by the
+       System tenant) must still be SHOWN -- otherwise the select falls back to "— No group —" and
+       misreports what the row stores. Same id fallback the list cell already prints. */
+    if(t.group_id&&!found){
+      fg.appendChild(El("option",{value:t.group_id,selected:"selected"},String(t.group_id).slice(0,8)+"… - not in this console's group list"));
+    }
     mb.appendChild(ff("Tag Group", fg));
     mb.appendChild(ff("Color", El("input",{id:"fc",type:"color",value:t.color||"#6366f1"})));
     if(t.is_system||isSystem){
@@ -2979,7 +2992,13 @@ function RFT(id, t, groups, isSystem){
   });
 }
 function ST(id,returnTab,isSystem){
-  var d={name:$("fn").value, group_id:$("fg").value||null, color:$("fc").value};
+  /* kanban t_f94a8a00: "" = "— No group —" = an explicit CLEAR on an update -- a null group_id alone
+     means "keep the stored group" server-side, so the clear travels as clear_group:true. Both keys are
+     omitted when the row has nothing to clear, so a no-touch save stays exactly the body it was. */
+  var gv=$("fg").value;
+  var d={name:$("fn").value, color:$("fc").value};
+  if(gv) d.group_id=gv;
+  else if(id&&RFT_GROUP) d.clear_group=true;
   if(isSystem) d.is_system=true;
   if(!d.name||!d.name.trim()){showMsg("Name is required","me");return;}
   var mu=id?"PUT":"POST", u=id?"/api/v1/tags/"+id:"/api/v1/tags";

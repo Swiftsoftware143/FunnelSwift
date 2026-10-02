@@ -247,14 +247,16 @@ function tagGroupCell(t) {
   if (name) return `<span class="badge badge-blue">${x(name)}</span>`;
   return `<span class="badge badge-blue" title="group id ${x(id)} - not in this console's tag-groups list">${x(id.slice(0,8)+'…')}</span>`;
 }
-/* A tag's group can be SET and CHANGED but not CLEARED: update_tag() binds `req.group_id.or(
-   tag.group_id)`, so a null group_id means "keep the stored one". The control therefore offers
-   "-- No group --" only when there is none to clear (a create, or a tag already ungrouped) -- never
-   an option whose save would silently do nothing. */
+/* kanban t_f94a8a00: a tag's group can now be CLEARED. `update_tag()` binds `req.group_id.or(
+   tag.group_id)`, so an absent key AND an explicit null both mean "keep the stored one" -- null cannot
+   express a clear, and a bare "" is an axum 422. The clear is therefore an explicit ADDITIVE flag,
+   `clear_group: true` (UpdateTagRequest.clear_group): it ungroups the tag and leaves every body shape
+   a shipped caller already sends (null = keep) meaning exactly what it means today, so no surface can
+   silently wipe a tag's group. The select ALWAYS offers "— No group —"; choosing it sends
+   `clear_group` (not a group_id), while an untouched select still sends the stored group (a no-op). */
 function tagGroupOptions(current) {
   const cur = current ? String(current) : '';
-  const none = !cur;
-  let opts = none ? '<option value="" selected>— No group —</option>' : '';
+  let opts = `<option value=""${cur ? '' : ' selected'}>— No group —</option>`;
   let found = false;
   TAG_GROUPS.list.forEach(g => {
     const id = String(g.id);
@@ -915,6 +917,10 @@ function openTagModal(id) {
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
       data.group_id = data.group_id || null;   // kanban t_5289fd7b: "" from the select is not a uuid (axum 422); null = no group
+      // kanban t_f94a8a00: "" (the "— No group —" choice) on an UPDATE is an explicit CLEAR -- a null
+      // group_id alone means "keep the stored one" server-side. Only sent when the row HAS a group to
+      // clear, so an untouched tag that was already ungrouped still sends the old body (null = keep).
+      if (id && !data.group_id && tag.group_id) data.clear_group = true;
       try {
         if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/tags', { method: 'POST', body: JSON.stringify(data) });
@@ -2015,6 +2021,9 @@ function openSysTagModal(id) {
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
       data.group_id = data.group_id || null;   // kanban t_5289fd7b: "" from the select is not a uuid (axum 422); null = keep/no group
+      // kanban t_f94a8a00: see the Tags editor -- "" means CLEAR on an update; only sent when the row
+      // actually has a group, so a no-touch save of an ungrouped tag keeps the pre-existing body.
+      if (id && !data.group_id && t.group_id) data.clear_group = true;
       data.is_system = true;
       try {
         if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });

@@ -122,7 +122,17 @@ pub async fn update_tag(
 
     let name = req.name.unwrap_or(tag.name);
     let color = req.color.or(tag.color);
-    let group_id = req.group_id.or(tag.group_id);
+    // kanban t_f94a8a00: `clear_group` is the ONLY way to ungroup a tag. Without it a group can be
+    // SET and CHANGED but never CLEARED, because `req.group_id.or(tag.group_id)` reads both an absent
+    // key and an explicit null as "keep the stored group" (and a bare "" is an axum 422). The flag is
+    // additive on purpose: every body shape a shipped caller already sends (including
+    // `group_id: null` on a rename) keeps meaning exactly what it means today, so nothing can wipe a
+    // tag's group by accident. Explicit clear wins over a group_id sent in the same body.
+    let group_id = if req.clear_group.unwrap_or(false) {
+        None
+    } else {
+        req.group_id.or(tag.group_id)
+    };
     let metadata = req.metadata.or(tag.metadata);
 
     if tag.is_system && auth.is_admin {
