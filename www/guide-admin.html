@@ -161,7 +161,7 @@
           <tr><td><code>max_tag_groups</code></td><td>Number (groups)</td><td>Tag groups — POST /api/v1/tag-groups</td></tr>
           <tr><td><code>max_routing_targets</code></td><td>Number (targets)</td><td>Routing targets — POST /api/v1/integration-targets</td></tr>
           <tr><td><code>max_integrations</code></td><td>Number (targets)</td><td>Integration targets — POST /api/v1/integration-targets</td></tr>
-          <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates</td></tr>
+          <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
           <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — (dashboard usage counter only — no gate calls it)</td></tr>
           <tr><td><code>has_api</code></td><td>Toggle</td><td>API access — POST /api/v1/api-keys</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
@@ -202,6 +202,38 @@
         <p><strong>Affiliates:</strong> <code>max_affiliates</code> is <strong>1</strong> on every plan
         (one affiliate account per customer, enforced by a unique index) and is deliberately not part of the
         “unlimited” grant.</p>
+      </div>
+
+      <div class="card">
+        <h3>Retired plan keys — rows deleted, nothing enforces them</h3>
+        <p>A key can sit in <code>feature_limits</code> for months without a single gate reading it: the
+        number looks like an entitlement, you set it, and no request ever consults it. Nine such keys were
+        measured on 2026-10-02 (kanban t_090f3e00) and <strong>retired</strong> —
+        <code>migrations/086_retire_ungated_feature_limit_keys.sql</code> <strong>deletes</strong> their rows.
+        Deactivating a row would not have been enough: the resolver reads any <code>feature_limits</code> row
+        for a key the moment a gate is called with it, so a leftover row is a loaded gun. One vocabulary per
+        capability. <code>GET /api/v1/admin/plans/registry</code> publishes the retired list under
+        <code>retired_keys</code>, and the panel names them under the matrix.</p>
+        <table>
+          <tr><th>Retired key</th><th>Numbers that were authored (before the migration)</th><th>What actually enforces this capability</th></tr>
+          <tr><td><code>kinetic_themes</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 6 · capture-free 3</td><td>the <code>premium_themes</code> toggle: a plan with no <code>premium_themes</code> key refuses every premium theme, whatever a count says — which is why capture-starter's “6” could never have meant anything</td></tr>
+          <tr><td><code>max_api_calls</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1000 · capture-free 1000 · kinetic-free 10000</td><td>nothing — the app has no request meter. Carded separately: a counter has to exist before a cap can.</td></tr>
+          <tr><td><code>max_plans</code></td><td>agency −1 · kinetic-pro −1</td><td>nothing — “plans” is the global price list you manage on this page, not a per-workspace quantity.</td></tr>
+          <tr><td><code>max_portfolio_companies</code></td><td>agency −1 · kinetic-pro 100</td><td><code>max_portfolios</code> — the same portfolio-company count, and the key the create route is actually gated with.</td></tr>
+          <tr><td><code>max_routing_rules</code></td><td>agency −1 · kinetic-pro 100</td><td><code>max_routing_targets</code> / <code>max_integrations</code> — the routing entity in this app is a target-software row, and both keys already count it.</td></tr>
+          <tr><td><code>max_settings</code></td><td>agency −1 · kinetic-pro −1</td><td>nothing — settings are internal key/value storage, not a plan entitlement.</td></tr>
+          <tr><td><code>max_target_software</code></td><td>agency −1 · kinetic-pro 50</td><td>a third name for the same target-software count (see <code>max_routing_targets</code>).</td></tr>
+          <tr><td><code>storage_mb</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 50 · capture-free 50 · kinetic-free 500</td><td>nothing — nothing in the app measures bytes stored. Carded separately.</td></tr>
+          <tr><td><code>team_members</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1 · capture-free 1 · kinetic-free 3</td><td><code>max_team_members</code> (the same count of active users). No screen adds a second member to an existing workspace, so the cap cannot fire yet — carded separately.</td></tr>
+        </table>
+        <p>The authored numbers survive in the migration header and in this table — deliberately not as live
+        rows, so nothing downstream can mistake them for an enforced cap. If a capability above is built
+        later, the number is a starting point, not a promise made here.</p>
+        <p><strong>Tenant feature override (the last card in the panel):</strong>
+        <code>GET/POST /api/v1/admin/tenants/:id/feature-override(s)</code> stores its value in
+        <code>tenant_settings.feature_override</code>, and <em>no gate reads that record yet</em> — the
+        per-plan matrix above is the surface that actually moves enforcement. Setting an override today
+        changes no trade; that gap is carded separately rather than left looking live.</p>
       </div>
 
       <div class="card">
