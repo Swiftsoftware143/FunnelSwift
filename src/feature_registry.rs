@@ -414,6 +414,22 @@ pub fn spec(key: &str) -> Option<&'static Spec> {
     SPECS.iter().find(|s| s.key == key)
 }
 
+/// Is `value` a legal per-tenant override for a key of this kind? (kanban t_0a139e57)
+///
+/// The override (`tenant_settings.feature_override`) is the highest-precedence lever every gate
+/// reads — see `features::pick_limit` — so a value the resolver could not interpret is refused at
+/// the door instead of being stored as a knob that means nothing:
+///   * numeric key — any integer: `-1` unlimited, `0` disabled, `>0` capped, the same convention
+///     as a `feature_limits` row;
+///   * boolean key — only `1` (grant) or `0` (refuse). Clearing an override is `limit_value: null`,
+///     never a magic number, so `-1` is NOT a boolean "no override" and is refused here.
+pub fn override_value_ok(kind: Kind, value: i32) -> bool {
+    match kind {
+        Kind::Limit => true,
+        Kind::Boolean => value == 0 || value == 1,
+    }
+}
+
 /// `(key, reason)` pairs for the admin console — the retired vocabulary, published as
 /// `retired_keys` by `GET /api/v1/admin/plans/registry`.
 pub fn retired_keys() -> Vec<(String, String)> {
@@ -706,5 +722,26 @@ mod tests {
             assert_eq!(k, RETIRED_KEYS[i].0);
             assert_eq!(why, RETIRED_KEYS[i].1);
         }
+    }
+
+    /// The tenant-override writer (kanban t_0a139e57) validates the VALUE against the key's kind,
+    /// so a stored override is always something `features::pick_limit` / `override_flag` can read:
+    /// any integer for a limit, only 1/0 for a boolean, and `null` (not a number) clears.
+    #[test]
+    fn a_tenant_override_value_is_legal_for_its_kind() {
+        for v in [-1, 0, 1, 7, 10_000] {
+            assert!(
+                override_value_ok(Kind::Limit, v),
+                "limit key must accept {v}"
+            );
+        }
+        assert!(override_value_ok(Kind::Boolean, 1));
+        assert!(override_value_ok(Kind::Boolean, 0));
+        assert!(
+            !override_value_ok(Kind::Boolean, -1),
+            "a boolean override cannot be '-1': -1 means unlimited for a limit, and clearing a \
+             boolean override is `null`, never a magic number"
+        );
+        assert!(!override_value_ok(Kind::Boolean, 2));
     }
 }

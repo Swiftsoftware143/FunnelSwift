@@ -6,10 +6,76 @@
 //!   - `enforce_feature_limit`  — numeric limits (max_cards, max_leads, ...)
 //!   - `enforce_feature_flag`   — boolean flags (has_api, has_dual_routing, ...)
 //!   - `enforce_action_button_limit` — per-card `max_action_buttons` limit
+//!
+//! Precedence, for BOTH kinds (kanban t_0a139e57 — the tenant override used to be written by the
+//! admin panel and read by nothing):
+//!
+//!   tenant override (`tenant_settings.feature_override`)  >  plan `feature_limits` row  >  plan column
+//!
+//! A tenant override is the operator's one per-tenant lever (`POST
+//! /api/v1/admin/tenants/:id/feature-override`); it is a VALUE even when negative, so `-1`
+//! (unlimited) wins over a plan cap instead of falling through. See [`pick_limit`].
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+use serde_json::Value;
 use uuid::Uuid;
+
+/// The `tenant_settings` key holding a tenant's single override slot:
+/// `{"feature_key": <registry key>, "limit_value": <int>}`. Written by
+/// `POST /api/v1/admin/tenants/:id/feature-override` (validated against
+/// [`crate::feature_registry::spec`] at the door), read by every gate below.
+pub const TENANT_OVERRIDE_KEY: &str = "feature_override";
+
+/// The precedence rule every gate follows, as a pure function so it is UNIT-TESTED rather than
+/// only observed on live rows: **tenant override > the plan's `feature_limits` row > the plan's
+/// own column**. `None` at a level means "not configured there" and the next level decides;
+/// `None` from all three means the key is configured nowhere, which the house rule treats as
+/// allow. An override is a value even when negative — `-1` (unlimited) must beat a plan cap
+/// rather than fall through to it, which is why "absent" is `None` and never `0`.
+pub fn pick_limit(
+    tenant_override: Option<i32>,
+    plan_row: Option<i32>,
+    plan_column: Option<i32>,
+) -> Option<i32> {
+    tenant_override.or(plan_row).or(plan_column)
+}
+
+/// The tenant override resolved for a BOOLEAN registry key: `1` grants, `0` refuses. Any other
+/// stored value means "no boolean override" and falls back to the plan — the writer refuses
+/// out-of-range values (`feature_registry::override_value_ok`), so this arm only guards a row
+/// that was hand-written into the database.
+pub fn override_flag(value: i32) -> Option<bool> {
+    match value {
+        1 => Some(true),
+        0 => Some(false),
+        _ => None,
+    }
+}
+
+/// The tenant's own override value, when its stored `feature_key` is the one being resolved.
+/// ONE slot per tenant, so a key mismatch (the slot names `max_cards`, the gate asks about
+/// `max_leads`) is simply "no override" and the plan decides. A non-numeric stored value is
+/// likewise ignored rather than allowed to 500 a gate.
+async fn tenant_override_value(
+    state: &AppState,
+    tenant_id: Uuid,
+    feature_key: &str,
+) -> AppResult<Option<i32>> {
+    let raw: Option<Value> = sqlx::query_scalar(
+        "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = 'feature_override'",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    Ok(raw
+        .as_ref()
+        .filter(|v| v.get("feature_key").and_then(Value::as_str) == Some(feature_key))
+        .and_then(|v| v.get("limit_value"))
+        .and_then(Value::as_i64)
+        .and_then(|n| i32::try_from(n).ok()))
+}
 
 /// The `plans` column that backs a numeric limit key, when the key has one.
 /// `None` for feature_limits-only keys (max_webhooks / max_portfolios /
@@ -97,31 +163,44 @@ pub async fn enforce_feature_limit(
     }
 }
 
-/// The effective numeric limit for the tenant's active plan: a `feature_limits` row (the custom
-/// per-plan override the admin panel writes) FIRST, then the plan's own column through
-/// [`plan_limit`]. `None` = the key is not configured anywhere, which the house rule treats as
-/// allow. ONE resolver, so a number the owner sets on a plan is the number every limit gate reads
-/// — including `enforce_action_button_limit`, which used to read the column only and would have
-/// made the panel's number for that key inert.
+/// The effective numeric limit for the tenant, in precedence order (see [`pick_limit`]): the
+/// tenant's own override FIRST, then a `feature_limits` row (the custom per-plan number the admin
+/// panel writes), then the plan's own column through [`plan_limit`]. `None` = the key is
+/// configured nowhere, which the house rule treats as allow. ONE resolver, so a number the owner
+/// sets — for the tenant, for the plan's row, or on the plan's column — is the number every limit
+/// gate reads (including `enforce_action_button_limit`, which used to read the column only and
+/// would have made the panel's number for that key inert).
 async fn resolved_limit(
     state: &AppState,
     tenant_id: Uuid,
     feature_key: &str,
 ) -> AppResult<Option<i32>> {
-    let fl: Option<Option<i32>> = sqlx::query_scalar(
-        "SELECT fl.limit_value FROM feature_limits fl
-         JOIN tenant_plan_subscriptions tps ON tps.plan_id = fl.plan_id
-         WHERE tps.tenant_id = $1 AND tps.status = 'active' AND fl.feature_key = $2
-         ORDER BY tps.start_date DESC LIMIT 1",
-    )
-    .bind(tenant_id)
-    .bind(feature_key)
-    .fetch_optional(&state.pool)
-    .await?;
-    if let Some(val) = fl.flatten() {
-        return Ok(Some(val));
-    }
-    plan_limit(state, tenant_id, feature_key).await
+    // The tenant override is the highest-precedence lever and is honoured even when the tenant has
+    // no active plan — an explicit per-tenant decision is the operator's strongest statement about
+    // that tenant. When it decides, the plan reads are skipped: a tenant without an override pays
+    // exactly what it paid before the override existed.
+    let tenant = tenant_override_value(state, tenant_id, feature_key).await?;
+    let plan_row: Option<i32> = if tenant.is_some() {
+        None
+    } else {
+        sqlx::query_scalar(
+            "SELECT fl.limit_value FROM feature_limits fl
+             JOIN tenant_plan_subscriptions tps ON tps.plan_id = fl.plan_id
+             WHERE tps.tenant_id = $1 AND tps.status = 'active' AND fl.feature_key = $2
+             ORDER BY tps.start_date DESC LIMIT 1",
+        )
+        .bind(tenant_id)
+        .bind(feature_key)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten()
+    };
+    let plan_column = if tenant.is_none() && plan_row.is_none() {
+        plan_limit(state, tenant_id, feature_key).await?
+    } else {
+        None
+    };
+    Ok(pick_limit(tenant, plan_row, plan_column))
 }
 
 /// Map a `has_*` column name to the corresponding `features` jsonb key.
@@ -167,16 +246,32 @@ pub fn plan_row_flag(row: &serde_json::Value, feature_key: &str) -> Option<bool>
 
 /// Enforce a boolean plan flag (e.g. `has_dual_routing`).
 ///
-/// Single source of truth: prefer the `features` jsonb key when present, else the
-/// `has_*` column on the active plan. `true` -> Ok; `false` -> UpgradeRequired.
+/// Single source of truth, in precedence order: the tenant's own override FIRST (see [`pick_limit`]
+/// — `1` grants, `0` refuses), then the `features` jsonb key when present, else the `has_*` column
+/// on the active plan. `true` -> Ok; `false` -> UpgradeRequired.
 /// A tenant with no active plan is allowed (matching `enforce_feature_limit`'s
-/// "no plan -> allow" behaviour so tenants without a subscription are not locked out).
+/// "no plan -> allow" behaviour so tenants without a subscription are not locked out) — unless the
+/// operator stored an override for this tenant, which is honoured precisely because it is the only
+/// lever that speaks about this tenant alone.
 pub async fn enforce_feature_flag(
     state: &AppState,
     tenant_id: Uuid,
     feature_key: &str,
     label: &str,
 ) -> AppResult<()> {
+    if let Some(raw) = tenant_override_value(state, tenant_id, feature_key).await? {
+        if let Some(on) = override_flag(raw) {
+            return if on {
+                Ok(())
+            } else {
+                Err(AppError::UpgradeRequired(format!(
+                    "{} is not available on your current plan. Upgrade to access this feature.",
+                    label
+                )))
+            };
+        }
+    }
+
     let row: Option<serde_json::Value> = sqlx::query_scalar(
         "SELECT to_jsonb(p) FROM plans p
          JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
@@ -530,5 +625,39 @@ mod resolution_rules {
         // feature_limits-only keys have no column: absence must stay "not configured"
         assert_eq!(limit_column("max_webhooks"), None);
         assert_eq!(limit_column("max_affiliates"), None);
+    }
+
+    // ── the per-tenant override precedence (kanban t_0a139e57) ────────────────────────────────
+    // The rule is `tenant override > plan feature_limits row > plan column`, and it is locked HERE
+    // so a future edit to `resolved_limit` cannot quietly reorder it.
+
+    #[test]
+    fn a_tenant_override_beats_the_plan_row_and_the_plan_column() {
+        assert_eq!(pick_limit(Some(1), Some(500), Some(900)), Some(1));
+        assert_eq!(pick_limit(Some(1), None, Some(900)), Some(1));
+        assert_eq!(pick_limit(Some(1), Some(500), None), Some(1));
+        // the plan's row still beats its own column
+        assert_eq!(pick_limit(None, Some(500), Some(900)), Some(500));
+        assert_eq!(pick_limit(None, None, Some(900)), Some(900));
+        // configured nowhere -> not configured (the house rule treats that as allow)
+        assert_eq!(pick_limit(None, None, None), None);
+    }
+
+    #[test]
+    fn an_override_of_negative_one_is_a_value_not_an_absence() {
+        // -1 means unlimited and must WIN over a plan cap, never fall through to it
+        assert_eq!(pick_limit(Some(-1), Some(5), Some(5)), Some(-1));
+        // and 0 means "disabled for this tenant", not "no override"
+        assert_eq!(pick_limit(Some(0), Some(-1), Some(-1)), Some(0));
+    }
+
+    #[test]
+    fn a_boolean_override_maps_one_to_granted_and_zero_to_refused() {
+        assert_eq!(override_flag(1), Some(true));
+        assert_eq!(override_flag(0), Some(false));
+        // out of range = "no boolean override" so a hand-written row can never grant/refuse at
+        // random; the writer refuses these values outright (override_value_ok).
+        assert_eq!(override_flag(-1), None);
+        assert_eq!(override_flag(7), None);
     }
 }

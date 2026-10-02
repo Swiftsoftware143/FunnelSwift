@@ -2648,13 +2648,12 @@ async function renderPlanAdmin() {
     <div class="card">
       <div class="card-title">Tenant feature override</div>
       <div class="card-subtitle">GET/POST /api/v1/admin/tenants/:id/feature-override(s)</div>
-      <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Override one feature limit for a single tenant. Use -1 for unlimited, 0 to fall back to the plan default.</p>
-      <p style="font-size:12px;color:#b45309;margin:6px 0 0">⚠ Stored but not yet enforced: this value is written to <code>tenant_settings.feature_override</code> and <strong>no gate reads that record</strong> today. The per-plan matrix above is the surface that moves enforcement. Use the registry key names shown there (e.g. <code>max_leads</code>), not retired ones.</p>
+      <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Override <strong>one</strong> feature for a single tenant. This is the highest-precedence lever: it wins over the plan's own number for this tenant only (tenant override &gt; plan row &gt; plan column). For a limit key use <code>-1</code> unlimited, <code>0</code> disabled, <code>&gt;0</code> capped. For a boolean key use <code>1</code> on, <code>0</code> off. Leave the value blank to <strong>clear</strong> the override so the plan decides again. The key must be one the gates read — a retired or unknown name is refused (400), like the matrix above.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <select id="planadmin-ov-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
         <input id="planadmin-ov-key" class="input" placeholder="feature_key (e.g. max_leads)" style="min-width:220px">
-        <input id="planadmin-ov-val" class="input" type="number" placeholder="limit_value" value="0" style="width:130px">
-        <button class="btn btn-primary btn-sm" id="planadmin-ov-save">Set Override</button>
+        <input id="planadmin-ov-val" class="input" type="number" placeholder="limit_value (blank = clear)" style="width:220px">
+        <button class="btn btn-primary btn-sm" id="planadmin-ov-save">Set / Clear Override</button>
         <button class="btn btn-secondary btn-sm" id="planadmin-ov-load">Load Existing</button>
       </div>
       <div id="planadmin-ov-out" style="margin-top:12px;font-size:13px"></div>
@@ -2684,14 +2683,19 @@ function bindPlanAdmin() {
   if (os) os.onclick = async () => {
     const tid = ($('planadmin-ov-tenant') || {}).value;
     const key = (($('planadmin-ov-key') || {}).value || '').trim();
-    const val = parseInt((($('planadmin-ov-val') || {}).value || '0'), 10);
+    const raw = (($('planadmin-ov-val') || {}).value || '').trim();
+    // A blank value is an explicit CLEAR (null), not a zero — 0 means "disabled for this tenant"
+    // and must never be sent by accident. The input ships empty for the same reason.
+    const val = raw === '' ? null : parseInt(raw, 10);
     const msg = $('planadmin-ov-msg');
-    if (!tid || !key || isNaN(val)) { if (msg) msg.textContent = 'Tenant, feature_key and numeric limit_value are all required.'; return; }
+    if (!tid || !key || (val !== null && isNaN(val))) { if (msg) msg.textContent = 'Tenant and feature_key are required; limit_value must be a number (or blank to clear).'; return; }
     os.disabled = true;
     try {
       const r = await api('/admin/tenants/' + tid + '/feature-override', { method: 'POST', body: JSON.stringify({ feature_key: key, limit_value: val }) });
-      if (msg) msg.textContent = '✓ ' + (r.message || 'Override set');
-      showToast('Feature override set', 'success');
+      const done = (r && r.status) ? r.status : 'set';
+      if (msg) msg.textContent = '✓ ' + (done === 'cleared' ? 'Override cleared — the plan decides again.' : 'Override set: ' + key + ' = ' + val + ' for this tenant only.');
+      showToast(r.message || 'Override saved', 'success');
+      loadPlanRegistry();
     } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
     os.disabled = false;
   };

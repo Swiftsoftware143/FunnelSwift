@@ -237,9 +237,14 @@
         later, the number is a starting point, not a promise made here.</p>
         <p><strong>Tenant feature override (the last card in the panel):</strong>
         <code>GET/POST /api/v1/admin/tenants/:id/feature-override(s)</code> stores its value in
-        <code>tenant_settings.feature_override</code>, and <em>no gate reads that record yet</em> — the
-        per-plan matrix above is the surface that actually moves enforcement. Setting an override today
-        changes no trade; that gap is carded separately rather than left looking live.</p>
+        <code>tenant_settings.feature_override</code>, and <em>every gate reads that record first</em>:
+        the rule is <strong>tenant override &gt; plan <code>feature_limits</code> row &gt; plan
+        column</strong>, so a value set here moves the trade for that one workspace from the moment it
+        lands (kanban <code>t_0a139e57</code>). Use the registry key names shown in the matrix above —
+        a retired or unknown name is refused with 400. A limit key takes <code>-1</code> unlimited,
+        <code>0</code> disabled, <code>&gt;0</code> capped; a boolean key takes <code>1</code> on or
+        <code>0</code> off; leave the value blank to <strong>clear</strong> the override so the plan
+        decides again. One override per workspace.</p>
       </div>
 
       <div class="card">

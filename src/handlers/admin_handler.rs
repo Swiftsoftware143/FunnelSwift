@@ -410,10 +410,22 @@ pub async fn stop_impersonation(auth: AuthUser) -> AppResult<impl IntoResponse> 
     })))
 }
 
-/// Set a tenant-level feature override (admin only).
+/// Set, replace or clear a tenant's single feature override (admin only).
 /// POST /api/v1/admin/tenants/:id/feature-override
-/// Body: { "feature_key": "kinetic_themes", "limit_value": 10 }
-/// Set limit_value to -1 for unlimited, 0 to use plan default.
+/// Body: { "feature_key": "<registry key>", "limit_value": <int|null> }
+///
+///   * `limit_value: null` -> CLEAR the override; the tenant's plan decides again.
+///   * numeric key -> the effective cap: -1 unlimited, 0 disabled, >0 capped (same convention as a
+///     `feature_limits` row).
+///   * boolean key -> 1 grants, 0 refuses.
+///
+/// The key is validated against `feature_registry::spec`, so a retired or unknown name is refused
+/// with 400 exactly like `PUT /api/v1/admin/plans/entitlement` — a `feature_override` row that
+/// names a key no gate reads would be the very knob this endpoint used to be. The value is
+/// validated against the key's kind, so every stored row is something the resolvers can read.
+///
+/// The override is consulted by every gate BEFORE the plan's own row/column (kanban t_0a139e57,
+/// precedence in `features::pick_limit`), so this endpoint moves a trade from the moment it lands.
 pub async fn set_tenant_feature_override(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -429,29 +441,80 @@ pub async fn set_tenant_feature_override(
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::BadRequest("feature_key is required".into()))?;
 
-    let limit_value = req
-        .get("limit_value")
-        .and_then(|v| v.as_i64())
-        .ok_or_else(|| AppError::BadRequest("limit_value is required".into()))?;
+    let spec = crate::feature_registry::spec(feature_key).ok_or_else(|| {
+        AppError::BadRequest(format!(
+            "unknown feature '{feature_key}' — it is not in the plan feature registry"
+        ))
+    })?;
 
-    sqlx::query(
-        r#"INSERT INTO tenant_settings (tenant_id, key, value)
-           VALUES ($1, 'feature_override', $2::jsonb)
-           ON CONFLICT (tenant_id, key) DO UPDATE SET value = $2::jsonb, updated_at = NOW()"#,
-    )
-    .bind(tenant_id)
-    .bind(json!({
-        "feature_key": feature_key,
-        "limit_value": limit_value
-    }))
-    .execute(&state.pool)
-    .await?;
+    let limit_value = match req.get("limit_value") {
+        None => {
+            return Err(AppError::BadRequest(
+                "limit_value is required (an integer, or null to clear the override)".into(),
+            ))
+        }
+        Some(Value::Null) => None,
+        Some(v) => Some(
+            v.as_i64()
+                .and_then(|n| i32::try_from(n).ok())
+                .ok_or_else(|| {
+                    AppError::BadRequest(
+                        "limit_value must be an integer, or null to clear the override".into(),
+                    )
+                })?,
+        ),
+    };
+
+    if let Some(v) = limit_value {
+        if !crate::feature_registry::override_value_ok(spec.kind, v) {
+            return Err(AppError::BadRequest(format!(
+                "'{feature_key}' is a boolean feature — limit_value must be 1 (grant) or 0 \
+                 (refuse); send null to clear the override"
+            )));
+        }
+    }
+
+    let status = match limit_value {
+        // Clearing is a DELETE, so the slot never holds a number the resolver would have to guess
+        // at. `id` has no column default on tenant_settings, so it is generated here — omitting it
+        // is what made this endpoint answer 500 for every caller before kanban t_0a139e57.
+        None => {
+            sqlx::query(
+                "DELETE FROM tenant_settings WHERE tenant_id = $1 AND key = 'feature_override'",
+            )
+            .bind(tenant_id)
+            .execute(&state.pool)
+            .await?;
+            "cleared"
+        }
+        Some(v) => {
+            sqlx::query(
+                r#"INSERT INTO tenant_settings (id, tenant_id, key, value)
+                   VALUES (gen_random_uuid(), $1, 'feature_override', $2::jsonb)
+                   ON CONFLICT (tenant_id, key) DO UPDATE SET value = $2::jsonb, updated_at = NOW()"#,
+            )
+            .bind(tenant_id)
+            .bind(json!({
+                "feature_key": feature_key,
+                "limit_value": v
+            }))
+            .execute(&state.pool)
+            .await?;
+            "set"
+        }
+    };
 
     Ok(Json(json!({
-        "message": "Feature override set",
+        "message": if status == "set" { "Feature override set" } else { "Feature override cleared" },
+        "status": status,
         "tenant_id": tenant_id.to_string(),
         "feature_key": feature_key,
-        "limit_value": limit_value
+        "limit_value": limit_value,
+        "kind": match spec.kind {
+            crate::feature_registry::Kind::Boolean => "boolean",
+            crate::feature_registry::Kind::Limit => "limit",
+        },
+        "precedence": "tenant override > plan feature_limits row > plan column",
     })))
 }
 
