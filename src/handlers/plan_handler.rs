@@ -86,10 +86,29 @@ fn reject_retired_feature_keys(features: &serde_json::Value) -> AppResult<()> {
 ///
 /// Returns the id of the product this plan owns (inserted or refreshed), or `AppError::NotFound`
 /// when there is no such plan — a plan-derived product without its plan has no commission to carry.
+///
+/// **The OWNER is DECIDED here, not derived from a caller (kanban t_3152f9ba).** A plan is
+/// platform-level: `plans` has no `tenant_id` column at all (migration 000001), and the affiliate
+/// catalogue lives in the fleet's SYSTEM tenant — [`crate::system_tenant`] names "the plan-derived
+/// affiliate products" as exactly the rows that tenant owns. Measured live 2026-10-02: all 7
+/// `affiliate_products` rows, including both REAL plan-derived ones ("FunnelSwift Kinetic Free",
+/// "FunnelSwift Capture Free"), are system-tenant.
+///
+/// This function used to take an `Option<Uuid>` `tenant_id` and, on `None`, pick the owner with
+/// `SELECT id FROM tenants ORDER BY created_at LIMIT 1` — *whichever workspace is OLDEST*. All three
+/// `/api/v1/plans` call sites passed `None`, so a platform plan's product was stamped with a
+/// **workspace** id chosen by creation order: today the operator's own tenant `88a13d86…`, on a fresh
+/// install, a restored dump, or after the oldest tenant is retired → a CUSTOMER's workspace. That
+/// parameter is GONE and there is no fallback left to choose it: the only value written is the system
+/// tenant, from its ONE definition. The backfill route used to pass the *caller's* tenant
+/// (`AuthUser.tenant_id`) — the same defect with a different chooser — and now passes nothing.
+///
+/// The decided owner is asserted on BOTH arms: an insert stamps it, and an update REPAIRS a row whose
+/// workspace owner came from the old fallback. Nothing else writes `plan_id` (the console's
+/// create/update routes never set it), so no deliberate admin choice is overridden by the repair.
 pub async fn sync_plan_to_affiliate_product(
     pool: &sqlx::PgPool,
     plan_id: uuid::Uuid,
-    tenant_id: Option<uuid::Uuid>,
 ) -> Result<Option<uuid::Uuid>, crate::error::AppError> {
     // The values come from the PLAN, never from a caller (t_6d326447).
     let plan: Option<(String, f64, f64)> = sqlx::query_as(
@@ -123,13 +142,10 @@ pub async fn sync_plan_to_affiliate_product(
         }
     };
 
-    let effective_tenant_id: uuid::Uuid = match tenant_id {
-        Some(tid) => tid,
-        None => sqlx::query_scalar("SELECT id FROM tenants ORDER BY created_at LIMIT 1")
-            .fetch_optional(pool)
-            .await?
-            .unwrap_or_else(uuid::Uuid::nil),
-    };
+    // The plan-derived product's OWNER, DECIDED (kanban t_3152f9ba): the fleet's SYSTEM tenant — the
+    // same tenant that owns the other catalogue rows and the categories they point at. Bound from its
+    // ONE definition (`system_tenant.rs`), so this is not a UUID literal and not "the oldest tenant".
+    let effective_tenant_id: uuid::Uuid = crate::system_tenant::system_tenant_id();
 
     // Check if affiliate product already exists for this plan
     let existing: i64 =
@@ -143,16 +159,21 @@ pub async fn sync_plan_to_affiliate_product(
 
     if existing > 0 {
         // Update existing. `is_active` is deliberately absent from this SET list: a plan edit must
-        // not resurrect a product an admin retired (kanban t_9c30ce49).
+        // not resurrect a product an admin retired (kanban t_9c30ce49). `tenant_id` IS set: the
+        // owner is the decided system tenant (t_3152f9ba), so a row a caller-scoped or oldest-tenant
+        // fallback put in a workspace CONVERGES on the first plan edit instead of keeping a
+        // workspace owner forever. Nothing else writes `plan_id`, so no admin choice is overridden.
         sqlx::query(
             r#"UPDATE affiliate_products SET
-                name = $1,
-                description = $2,
-                price = $3,
-                default_commission_rate = $4,
+                tenant_id = $1,
+                name = $2,
+                description = $3,
+                price = $4,
+                default_commission_rate = $5,
                 updated_at = NOW()
-            WHERE plan_id = $5"#,
+            WHERE plan_id = $6"#,
         )
+        .bind(effective_tenant_id)
         .bind(name)
         .bind(&description)
         .bind(price)
@@ -307,8 +328,9 @@ pub async fn create_plan(
     // Auto-sync to affiliate products. Non-fatal, but never silent: this used to be `let _ =`,
     // which is how the sync's INSERT failure stayed invisible for every new plan (t_9c30ce49).
     // ONE WRITER (t_6d326447): no values are passed — the helper reads them off the plan row it
-    // just wrote, so this call site cannot invent a name, a price or a commission.
-    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, plan_id, None).await {
+    // just wrote, so this call site cannot invent a name, a price or a commission. The product's
+    // OWNER is the helper's decision too, not this route's (kanban t_3152f9ba).
+    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, plan_id).await {
         tracing::warn!(plan_id = %plan_id, error = %e, "affiliate product sync failed");
     }
 
@@ -386,8 +408,9 @@ pub async fn update_plan(
     // commission only — never `is_active`, so editing a plan cannot resurrect a product an admin
     // retired (kanban t_9c30ce49). Non-fatal, but logged: it used to be discarded silently.
     // ONE WRITER (t_6d326447): no values are passed — the helper reads the plan row this UPDATE
-    // just wrote, so the product can only ever follow the plan this route persisted.
-    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, id, None).await {
+    // just wrote, so the product can only ever follow the plan this route persisted. The product's
+    // OWNER is the helper's decision too, not this route's (kanban t_3152f9ba).
+    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, id).await {
         tracing::warn!(plan_id = %id, error = %e, "affiliate product sync failed");
     }
 
@@ -549,8 +572,9 @@ pub async fn admin_create_plan_json(
     }
 
     // Auto-sync to affiliate products (commercial fields only — never `is_active`, t_9c30ce49).
-    // ONE WRITER (t_6d326447): the values come from the plan row, never from this payload.
-    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, plan_id, None).await {
+    // ONE WRITER (t_6d326447): the values come from the plan row, never from this payload. Its
+    // OWNER is the helper's decision too, not this route's (kanban t_3152f9ba).
+    if let Err(e) = sync_plan_to_affiliate_product(&state.pool, plan_id).await {
         tracing::warn!(plan_id = %plan_id, error = %e, "affiliate product sync failed");
     }
 

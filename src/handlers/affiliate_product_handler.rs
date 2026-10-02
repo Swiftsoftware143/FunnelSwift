@@ -834,6 +834,13 @@ fn skipped_plan(id: Uuid, name: &str, price: Option<f64>) -> Value {
 /// The race between that read and the INSERT is the TOCTOU backstop: the trigger's raise is
 /// recognised by [`is_free_only_raise`] and counted as skipped too, so the trigger's text never
 /// reaches the caller as "Database error".
+///
+/// **The product's OWNER is not this route's decision (kanban t_3152f9ba).** This route used to pass
+/// `Some(auth.tenant_id)` — the *signed-in admin's* workspace — so the owner of a platform-level
+/// plan's product depended on which admin happened to press Backfill. Measured live: the catalogue
+/// is system-tenant while the admin sits in their own workspace, so a customer-workspace admin would
+/// have stamped the fleet's shared rows with THEIR tenant. That argument is gone; the helper owns
+/// the owner, and there is exactly one value it can write.
 pub async fn admin_sync_affiliate_products(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -849,8 +856,6 @@ pub async fn admin_sync_affiliate_products(
     .fetch_all(&state.pool)
     .await?;
 
-    let tenant_id = Uuid::parse_str(&auth.tenant_id)
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let mut synced: i64 = 0;
     let mut skipped: Vec<Value> = Vec::new();
 
@@ -871,16 +876,11 @@ pub async fn admin_sync_affiliate_products(
                 .await?;
 
         if exists == 0 {
-            // ONE WRITER: every column value comes from the plan row. Not `?` — a TOCTOU refusal
-            // must not answer 500, and a real failure must not answer 200 with a count that never
-            // happened.
-            match super::plan_handler::sync_plan_to_affiliate_product(
-                &state.pool,
-                plan_id,
-                Some(tenant_id),
-            )
-            .await
-            {
+            // ONE WRITER: every column value comes from the plan row — including the product's
+            // OWNER, which the helper decides (t_3152f9ba) and this route does not pass at all.
+            // Not `?` — a TOCTOU refusal must not answer 500, and a real failure must not answer 200
+            // with a count that never happened.
+            match super::plan_handler::sync_plan_to_affiliate_product(&state.pool, plan_id).await {
                 Ok(_) => synced += 1,
                 // The plan was priced up between the read above and the INSERT. The trigger is the
                 // authority; report it the same way as the pre-filter instead of raising.
