@@ -3,7 +3,6 @@ pub mod affiliate;
 pub mod affiliate_portal;
 pub mod affiliate_product;
 pub mod affiliate_tracking;
-pub mod api_key;
 pub mod dashboard;
 pub mod lead;
 pub mod plan;

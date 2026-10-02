@@ -15,14 +15,14 @@ use crate::handlers::{
     affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
     affiliate_onboarding_handler, affiliate_payout_handler, affiliate_portal_handler,
     affiliate_product_handler, affiliate_referral_handler, affiliate_tracking_handler,
-    api_key_handler, bulk_handler, campaigns_handler, checkout_handler,
-    coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
-    email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
-    kinetic_handler, lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler,
-    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    bulk_handler, campaigns_handler, checkout_handler, coreswift_integration_handler,
+    coreswift_push, cross_app_webhook_handler, dashboard_handler, email_template_handler,
+    funnel_handler, incentiveswift_handler, insight_handler, kinetic_handler, lead_handler,
+    linkedin, linkedin_auth_handler, ocr, plan_handler, portfolio_handler,
+    product_category_handler, provider_keys_handler, public_signup_handler, qr_handler,
+    seo_handler, settings_handler, site_handler, site_settings_handler, tag_group_handler,
+    tag_handler, tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint,
+    web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -523,15 +523,6 @@ pub fn create_router(
             get(portfolio_handler::get_portfolio_company)
                 .put(portfolio_handler::update_portfolio_company)
                 .delete(portfolio_handler::delete_portfolio_company),
-        )
-        // API Key management
-        .route(
-            "/api/v1/api-keys",
-            post(api_key_handler::create_api_key).get(api_key_handler::list_api_keys),
-        )
-        .route(
-            "/api/v1/api-keys/:id",
-            put(api_key_handler::update_api_key).delete(api_key_handler::delete_api_key),
         )
         // Admin endpoints (cross-app portfolio sync + impersonation)
         .route(

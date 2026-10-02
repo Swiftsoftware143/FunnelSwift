@@ -475,7 +475,6 @@ function buildNav() {
     sections.push(`<div class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='apiKeys'?'active':''}" data-view="apiKeys"><span class="icon">🔑</span><span class="nav-text">API Keys</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></div>`);
   }
@@ -511,7 +510,6 @@ const viewRenderers = {
   systemTags: renderSystemTags,
   tagGroups: renderTagGroups,
   tenants: renderTenants,
-  apiKeys: renderApiKeys,
   settings: renderSettings,
   siteSettings: renderSiteSettings,
   tagRules: renderTagRules,
@@ -565,7 +563,6 @@ function bindView(view) {
     case 'systemTags': bindSystemTags(); break;
     case 'tagGroups': bindTagGroups(); break;
     case 'tenants': bindTenants(); break;
-    case 'apiKeys': bindApiKeys(); break;
     case 'settings': bindSettings(); break;
     case 'siteSettings': bindSiteSettings(); break;
     case 'tagRules': bindTagRules(); break;
@@ -635,28 +632,13 @@ async function renderMyAccount() {
         <button class="btn btn-primary btn-sm" onclick="window._navTo('plans')">Upgrade Plan</button>
       </div>
     </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">🔑 API Key</span></div>
-      <div class="form-group">
-        <div style="display:flex;gap:8px">
-          <input class="input" id="api-key-display" value="${x(USER.api_key||'No API key generated')}" readonly style="font-family:monospace;font-size:12px">
-          ${USER.api_key?`<button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${x(USER.api_key)}');window._toast('Copied!','success')">📋</button>`:''}
-        </div>
-      </div>
-      <button class="btn btn-primary btn-sm" id="generate-api-key">Generate New API Key</button>
-    </div>
+    <!-- (kanban t_5a3c2d9c) The "API Key" card and its Generate button were RETIRED with the
+         credential surface: its routes now answer 404. -->
   </div>`;
 }
-function bindMyAccount() {
-  document.getElementById('generate-api-key')?.addEventListener('click', async function(){
-    try {
-      const res = await api('/api-keys', { method: 'POST', body: JSON.stringify({}) });
-      USER.api_key = res.key || res.api_key;
-      showToast('API key generated!', 'success');
-      renderApp();
-    } catch(e) { showToast(e.message, 'error'); }
-  });
-}
+// (kanban t_5a3c2d9c) bindMyAccount used to bind the "Generate New API Key" button; the card and
+// the mint route are gone, so this view has no controls of its own.
+function bindMyAccount() {}
 /* kanban t_9ef0b460: an inline on* attribute is compiled in GLOBAL scope and can never see this
    module's bindings. Eight of them named STATE/renderApp directly (census:
    /opt/swift/audits/t_9ef0b460/10-census-before.txt), so the Total Cards card that opens the
@@ -1977,7 +1959,6 @@ async function renderSuperAdmin() {
         <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('systemTags')"><div style="font-size:24px">🔖</div><div style="font-weight:600;margin-top:4px">System Tags</div><div style="font-size:12px;color:var(--muted)">Manage system-wide tags</div></div>
         <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tagGroups')"><div style="font-size:24px">📁</div><div style="font-weight:600;margin-top:4px">Tag Groups</div><div style="font-size:12px;color:var(--muted)">Configure tag groups</div></div>
         <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tenants')"><div style="font-size:24px">🏢</div><div style="font-weight:600;margin-top:4px">Tenants</div><div style="font-size:12px;color:var(--muted)">Manage tenants</div></div>
-        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('apiKeys')"><div style="font-size:24px">🔑</div><div style="font-weight:600;margin-top:4px">API Keys</div><div style="font-size:12px;color:var(--muted)">Manage API keys</div></div>
       </div>
     </div>
   </div>`;
@@ -2163,46 +2144,9 @@ async function renderTenants() {
 }
 function bindTenants() {}
 
-// ── API KEYS (Super Admin only) ──
-async function renderApiKeys() {
-  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
-
-  let items = [];
-  try { items = await api('/api-keys'); } catch(e) { items = []; }
-  if (!Array.isArray(items)) items = items.data || items.keys || [];
-
-  return `<div>
-    <div class="card-header" style="padding:0;margin-bottom:20px">
-      <h1 style="font-size:22px;font-weight:700">🔑 API Keys</h1>
-      <button class="btn btn-primary btn-sm" id="add-apikey-btn">+ Generate Key</button>
-    </div>
-    <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Key</th><th>Tenant</th><th>Created</th><th>Last Used</th><th>Actions</th></tr></thead>
-      <tbody>${items.map(k=>`<tr>
-        <td><code style="font-size:11px">${x((k.key||k.api_key||'').substring(0,16))}...</code></td>
-        <td>${x(k.tenant_name||k.tenant_id||'-')}</td>
-        <td>${formatDate(k.created_at)}</td>
-        <td>${formatDate(k.last_used_at)||'Never'}</td>
-        <td><button class="btn btn-danger btn-xs" onclick="window._revokeKey('${k.id}')">Revoke</button></td>
-      </tr>`).join('')}</tbody>
-    </table></div></div>
-  </div>`;
-}
-function bindApiKeys() {
-  document.getElementById('add-apikey-btn')?.addEventListener('click', async () => {
-    const tenantId = prompt('Tenant ID (leave blank for system):');
-    try {
-      await api('/api-keys', { method: 'POST', body: JSON.stringify({ tenant_id: tenantId || null }) });
-      showToast('API key generated!', 'success');
-      renderApp();
-    } catch(e) { showToast(e.message, 'error'); }
-  });
-}
-window._revokeKey = async function(id) {
-  if (!confirm('Revoke this API key? This cannot be undone.')) return;
-  try { await api('/api-keys/'+id, { method: 'DELETE' }); showToast('Key revoked', 'success'); renderApp(); }
-  catch(e) { showToast(e.message, 'error'); }
-};
+// (kanban t_5a3c2d9c) The Super Admin key-management screen (renderApiKeys + bindApiKeys +
+// window._revokeKey) was RETIRED with the credential surface: its list, mint and revoke routes
+// now answer 404. Removed with its nav item, its views entry and the bind dispatch case.
 
 // ── SYSTEM SETTINGS (Super Admin only) ──
 async function renderSettings() {

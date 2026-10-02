@@ -130,12 +130,12 @@ tr:hover{background:#f8fafc}
   <a data-tab="myaff" onclick="S('myaff')">My Affiliate</a>
   <a data-tab="apr" onclick="S('apr')">Affiliate Products</a>
   <a data-tab="integrations" onclick="S('integrations')">Integrations</a>
-  <!-- kanban t_619533e2: these four screens are the CALLER'S OWN tenant data — measured: the
-       handlers bind auth.tenant_id with no admin check (leads 43-60, settings, api_keys,
-       webhooks) — so they were moved OUT of #adm-links, which the auth callback hides for a
-       non-admin. The platform console (Tenants, All Cards, Plans, SEO, ...) stays there. -->
+  <!-- kanban t_619533e2: these screens are the CALLER'S OWN tenant data — measured: the
+       handlers bind auth.tenant_id with no admin check (leads 43-60, settings, webhooks) — so
+       they were moved OUT of #adm-links, which the auth callback hides for a non-admin. The
+       platform console (Tenants, All Cards, Plans, SEO, ...) stays there.
+       (kanban t_5a3c2d9c: the key-management screen was RETIRED, so it is no longer in this list.) -->
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
-  <a data-tab="keys" onclick="S('keys')">API Keys</a>
   <a data-tab="settings" onclick="S('settings')">Settings</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <div class="sec" id="adm-sec">Admin</div>
@@ -194,7 +194,7 @@ var helpContent={
   "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> created by an admin and shared with every account.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are admin-managed and shared across all tenants — they do not provision anything in other apps</li></ul>',
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
-  "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own API key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Email</strong> — SMTP / Mailgun / SendGrid / Sendiio sending</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
+  "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own provider key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Email</strong> — SMTP / Mailgun / SendGrid / Sendiio sending</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
   "webhooks":'<h4>Webhooks</h4><p>Your own endpoints, so other software can be told what happens here. Each webhook has a name, a URL and the list of events it is registered for.</p><ul><li><strong>+ Add Webhook</strong> &mdash; name it, paste an <code>https://</code> URL (private, loopback and unresolvable hosts are refused) and list the events</li><li><strong>Edit</strong> &mdash; rename it, retarget the URL, change its events or switch it off</li><li><strong>Test</strong> &mdash; posts a one-off test payload and reports the HTTP status your endpoint answered</li><li><strong>Log</strong> &mdash; the delivery history: when each attempt was made, the event, the status it got back and which attempt it was</li><li><strong>Del</strong> &mdash; removes the webhook</li></ul><p><strong>Deliveries:</strong> the events you register fire automatically &mdash; <code>lead.created</code> (any captured lead: web form, Kinetic card, console or affiliate) and <code>tag.updated</code>. Only <strong>Active</strong> webhooks are called. A failed delivery is retried three times before it is recorded as failed.</p>',
   "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
   "stags":'<h4>System Tags</h4><p>Tags an <strong>admin</strong> creates once — every tenant sees them in its Tags list.</p><ul><li><strong>Admin only</strong> — create, rename, recolor, delete</li><li><strong>No cross-app targets</strong> — a System Tag does not create accounts or contacts in other Swift apps</li></ul>',
@@ -252,7 +252,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -275,7 +275,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -1892,7 +1892,7 @@ function LG(){
    /api/v1/integrations/coreswift/status state (inbound: FunnelSwift opt-ins -> CoreSwift). */
 function ICC(p){ /* Connect = store the tenant BYOK key */
   var el=$("ick-"+p), k=el?(el.value||"").trim():"";
-  if(!k){KCUP("Enter an API key first");return;}
+  if(!k){KCUP("Enter a provider key first");return;}
   var body={provider:p,api_key:k};
   var u=$("icu-"+p); if(u&&u.value.trim()) body.base_url=u.value.trim();
   api("/api/v1/provider-keys",{method:"POST",body:JSON.stringify(body)}).then(function(){
@@ -1947,7 +1947,7 @@ function LIC(){
         +'<a href="https://coreswiftcrm.com/pricing" target="_blank" style="color:#4338ca;font-weight:700;text-decoration:underline">Upgrade to CoreSwift CRM →</a></p>';
     }
     var kw=El("div");
-    kw.innerHTML='<input id="ick-'+X(p.key)+'" type="password" autocomplete="new-password" placeholder="'+(connected?X(rec.api_key_masked||"key stored"):"API key")+'" style="width:100%;padding:8px;margin:4px 0;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">';
+    kw.innerHTML='<input id="ick-'+X(p.key)+'" type="password" autocomplete="new-password" placeholder="'+(connected?X(rec.api_key_masked||"key stored"):"Provider key")+'" style="width:100%;padding:8px;margin:4px 0;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">';
     it.appendChild(kw);
     if(p.requires_base_url){
       var uw=El("div");
@@ -1973,32 +1973,18 @@ function LIC(){
   });
 }
 function LI(){
-  Promise.all([api("/api/v1/affiliate-products"),api("/api/v1/api-keys"),api("/api/v1/available-providers"),api("/api/v1/provider-keys")]).then(function(r){
+  // (kanban t_5a3c2d9c) The RETIRED key-mint leg and the "Your API Key" box were REMOVED here
+  // with the retired credential surface. That leg was load-bearing: Promise.all REJECTS the whole
+  // screen if any leg 404s, so leaving it would have blanked the Integration Centre.
+  Promise.all([api("/api/v1/affiliate-products"),api("/api/v1/available-providers"),api("/api/v1/provider-keys")]).then(function(r){
     var pr=Array.isArray(r[0])?r[0]:(r[0]&&r[0].data?r[0].data:[]);
-    var ks=Array.isArray(r[1])?r[1]:(r[1]&&r[1].data?r[1].data:[]);
-    var prov=Array.isArray(r[2])?r[2]:[];
+    var prov=Array.isArray(r[1])?r[1]:[];
     var pkeys={};
-    (Array.isArray(r[3])?r[3]:[]).forEach(function(k){pkeys[k.provider]=k;});
+    (Array.isArray(r[2])?r[2]:[]).forEach(function(k){pkeys[k.provider]=k;});
     window._icProv=prov; window._icKeys=pkeys;
 
     $("ct").innerHTML='<div id="li-section"></div>';
     var root=$("li-section");
-
-    // API Key
-    var ak_div=El("div",{"class":"cc"},'<h3>Your API Key</h3><div id="li-apikey"></div>');
-    var ak_body=ak_div.querySelector("#li-apikey");
-    if(ks.length){
-      var k=ks[0];
-      ak_body.innerHTML='<p style="color:#64748b;font-size:13px;margin-bottom:8px">Use this to connect with other apps.</p><div style="background:#f8fafc;padding:12px;border-radius:6px;font-family:monospace;font-size:14px;display:flex;align-items:center;gap:8px"><code id="kd" style="flex:1">'+X(k.prefix||k.key||"")+'_'+Array(25).join("*")+'</code><span id="li-ak-btns"></span></div>';
-      var btns=ak_body.querySelector("#li-ak-btns");
-      btns.appendChild(El("button",{"class":"btn btn-sm",onclick:RK},"Show"));
-      btns.appendChild(El("button",{"class":"btn btn-sm",onclick:CK},"Copy"));
-      window._ak=k.key;
-    }else{
-      ak_body.innerHTML='<p style="color:#64748b;font-size:13px">No API key. </p>';
-      ak_body.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:GK},"Generate"));
-    }
-    root.appendChild(ak_div);
 
     // Integration Center — the LIVE available_providers catalogue (CoreSwift pinned first)
     var ic_div=El("div",{"class":"cc"},'<h3>Integration Center</h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Connect FunnelSwift to the tools you already use. When CoreSwift CRM is connected, every captured funnel opt-in lands there as a contact.</p><div class="grd" id="li-ic-grd"></div>');
@@ -2025,9 +2011,8 @@ function LI(){
     // Integration Center above, next to CoreSwift CRM.
   });
 }
-function RK(){if(window._ak) $("kd").textContent=window._ak;}
-function CK(){var e=$("kd");if(e) navigator.clipboard.writeText(e.textContent).then(function(){e.textContent="Copied!";setTimeout(RK,2000);});}
-function GK(){api("/api/v1/api-keys",{method:"POST",body:JSON.stringify({name:"Integration Key"})}).then(function(r){if(r&&r.key){window._ak=r.key;S("integrations");}});}
+// (kanban t_5a3c2d9c) RK()/CK()/GK() were the "Your API Key" Show / Copy / Generate controls.
+// They are deleted with the retired credential surface.
 function CA(id){navigator.clipboard.writeText(window.location.origin+"/ref/"+id).then(function(){alert("Link copied!");});}
 
 
@@ -3044,27 +3029,9 @@ function LWL(id){
   });
 }
 
-/* === API KEYS === */
-function LK(){
-  api("/api/v1/api-keys").then(function(d){
-    var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>API Keys ('+a.length+') <span id="lk-add-btn"></span></h3><div id="lk-list"></div></div>';
-    $("lk-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:GKA},"+ Generate"));
-    if(!a.length){$("lk-list").innerHTML='<p style="color:#64748b;padding:20px;text-align:center">None.</p>';return;}
-    var tbl=El("table");
-    tbl.innerHTML='<tr><th>Name</th><th>Prefix</th><th>Created</th><th></th></tr>';
-    a.forEach(function(k){
-      var tr=El("tr");
-      tr.innerHTML='<td>'+X(k.name||"-")+'</td><td><code>'+X(k.prefix||k.key||"-")+'</code></td><td>'+(k.created_at?String(k.created_at).slice(0,10):"-")+'</td><td></td>';
-      var td=tr.querySelectorAll("td")[3];
-      td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DK(k.id)}},"Revoke"));
-      tbl.appendChild(tr);
-    });
-    $("lk-list").appendChild(tbl);
-  });
-}
-function GKA(){api("/api/v1/api-keys",{method:"POST",body:JSON.stringify({name:"Admin Key"})}).then(function(r){if(r&&r.key) alert("Key: "+r.key); S("keys");});}
-function DK(id){if(confirm("Revoke?")) api("/api/v1/api-keys/"+id,{method:"DELETE"}).then(function(){S("keys")});}
+/* (kanban t_5a3c2d9c) The key-management view (LK + GKA + DK) was RETIRED with the credential
+   surface: its routes answer 404 now. Removed with the nav tab, the TI title, the loader
+   registry entry and the inline-guide page entry. */
 
 /* === SYSTEM TAGS (Admin) === */
 function LST(){
@@ -3421,7 +3388,6 @@ window.appGuidePages = {
   ap:          { title: "Affiliate Products", desc: "What affiliates can promote. Every product points at a FREE plan, because a referred customer arrives free and upgrades in app, paying for it themselves. Each product is tied to its tag, and the tag is what credits the affiliate.", actions: ["Add a product", "Set its commission rate", "Check it has a tag"] },
   integrations:{ title: "Integrations", desc: "Connect FunnelSwift to the other SwiftSoftware products and to your own tools.", actions: ["Connect CoreSwift", "Add a webhook"] },
   plans:       { title: "Plans", desc: "Your plan decides what is available to you. The top tier includes everything.", actions: ["Compare plans", "Upgrade"] },
-  keys:        { title: "API Keys", desc: "Keys for talking to FunnelSwift from your own software.", actions: ["Create a key", "Revoke a key"] },
   settings:    { title: "Settings", desc: "Your workspace, profile and email provider.", actions: ["Update your profile and password", "Set the email provider so the system can send credentials"] }
 };
 </script>

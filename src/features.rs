@@ -12,7 +12,7 @@ use crate::state::AppState;
 use uuid::Uuid;
 
 /// The `plans` column that backs a numeric limit key, when the key has one.
-/// `None` for feature_limits-only keys (max_webhooks / max_api_keys / max_portfolios /
+/// `None` for feature_limits-only keys (max_webhooks / max_portfolios /
 /// max_affiliates / max_tag_groups / max_integrations), which
 /// `enforce_feature_limit` resolves from the `feature_limits` table alone.
 ///
@@ -285,11 +285,10 @@ async fn get_usage_count(state: &AppState, tenant_id: Uuid, feature_key: &str) -
             .fetch_one(&state.pool)
             .await
             .unwrap_or(0),
-        "max_api_keys" => sqlx::query_scalar("SELECT COUNT(*) FROM api_keys WHERE tenant_id = $1")
-            .bind(tenant_id)
-            .fetch_one(&state.pool)
-            .await
-            .unwrap_or(0),
+        // `max_api_keys` was RETIRED with the credential surface (kanban t_5a3c2d9c /
+        // decision t_538505de ARM b): its only caller, api_key_handler::create_api_key, is
+        // deleted, so the key had zero callers. The `api_keys` TABLE stays for the
+        // plan/billing card (t_726416be), which owns `plans.has_api`.
         "max_portfolios" => {
             sqlx::query_scalar("SELECT COUNT(*) FROM portfolio_companies WHERE tenant_id = $1")
                 .bind(tenant_id)

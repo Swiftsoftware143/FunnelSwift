@@ -4,7 +4,7 @@
  *
  * Usage — OPTION A: Paste in <head> (with window config):
  *   <script>
- *     window.FunnelSwiftConfig = { configId: "YOUR_CONFIG_ID" };
+ *     window.FunnelSwiftConfig = { publicKey: "YOUR_FORM_PUBLIC_KEY", configId: "YOUR_CONFIG_ID" };
  *   </script>
  *   <script src="https://funnelswift.net/funnelswift-capture.js" defer></script>
  *
@@ -13,14 +13,14 @@
  *     data-config-id="YOUR_CONFIG_ID"
  *     data-public-key="YOUR_PUBLIC_KEY"></script>
  *
- * Both options auto-capture all forms on the page without manual API key handling.
+ * Both options auto-capture all forms on the page without manual key handling.
  */
 (function() {
   'use strict';
 
   // ── Read config from window var OR data attributes on this script tag ──
   var cfg = window.FunnelSwiftConfig || {};
-  var apiKey = cfg.apiKey || null;
+  var publicKey = cfg.publicKey || cfg.apiKey || null;   // cfg.apiKey kept as a legacy alias
   var configId = cfg.configId || null;
   var endpoint = cfg.endpoint || 'https://funnelswift.net/api/v1/web-to-lead';
 
@@ -31,7 +31,7 @@
       var s = scripts[i];
       if (s.src && s.src.indexOf('funnelswift-capture.js') !== -1) {
         if (s.getAttribute('data-config-id')) configId = s.getAttribute('data-config-id');
-        if (s.getAttribute('data-public-key')) apiKey = s.getAttribute('data-public-key');
+        if (s.getAttribute('data-public-key')) publicKey = s.getAttribute('data-public-key');
         if (s.getAttribute('data-endpoint')) endpoint = s.getAttribute('data-endpoint');
         break;
       }
@@ -69,8 +69,9 @@
   // ── Map common field names to FunnelSwift fields ──
   function mapFields(formData) {
     var params = { config_id: configId };
-    // Use public_key as api_key for auth, or fall through if apiKey was set explicitly
-    if (apiKey) params.api_key = apiKey;
+    // The public endpoint resolves the tenant from `public_key` (kanban t_5a3c2d9c) —
+    // sending it under `api_key` made every standalone capture answer 400 Invalid public_key.
+    if (publicKey) params.public_key = publicKey;
 
     var fieldMap = {
       'name': ['name', 'full_name', 'fullname'],
@@ -188,12 +189,12 @@
   // ── Expose public API for programmatic capture ──
   window.FunnelSwift = {
     capture: function(data) {
-      if (apiKey) data.api_key = apiKey;
+      if (publicKey) data.public_key = publicKey;
       if (configId && !data.config_id) data.config_id = configId;
       submitToFunnelSwift(data);
     },
     getConfig: function() {
-      return { apiKey: apiKey, configId: configId, endpoint: endpoint };
+      return { publicKey: publicKey, configId: configId, endpoint: endpoint };
     }
   };
 })();

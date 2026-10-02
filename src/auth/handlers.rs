@@ -110,33 +110,12 @@ pub async fn register(
     .execute(&state.pool)
     .await?;
 
-    // Auto-generate a secure, random API key (NOT derived from JWT_SECRET, never stored in cleartext).
-    let api_key_id = Uuid::new_v4();
-    let random_bytes: [u8; 24] = rand::random();
-    let api_key_raw = format!(
-        "fs_{}",
-        random_bytes
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>()
-    );
-    let api_key_salt = SaltString::generate(&mut OsRng);
-    let api_key_hash = Argon2::default()
-        .hash_password(api_key_raw.as_bytes(), &api_key_salt)
-        .map_err(|e| AppError::Internal(format!("API key hash error: {e}")))?
-        .to_string();
-    sqlx::query(
-        "INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash, prefix, permissions) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-    )
-    .bind(api_key_id)
-    .bind(tenant_id)
-    .bind(user_id)
-    .bind("Auto-generated")
-    .bind(&api_key_hash)
-    .bind(api_key_raw.chars().take(8).collect::<String>())
-    .bind(serde_json::json!(["read", "write"]))
-    .execute(&state.pool)
-    .await?;
+    // API-key auto-mint was RETIRED here (kanban t_5a3c2d9c, decision t_538505de ARM b).
+    // Signup used to hash a random `fs_…` value with Argon2id and INSERT it into `api_keys` as
+    // 'Auto-generated'. That key authenticated nothing (key_hash was never SELECTed for comparison),
+    // the register response returns {token,user} only and /me returns the 8-char prefix only, so no
+    // caller ever received it. The credential surface (routes, handler, model, this mint) is gone;
+    // the `api_keys` TABLE is left in place for the plan/billing card (t_726416be).
 
     // Create default settings for tenant
     sqlx::query(

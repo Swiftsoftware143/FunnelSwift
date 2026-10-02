@@ -172,7 +172,6 @@
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
-      <a href="#api-keys" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔑</span> API Keys</a>
       <a href="#webhooks" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔗</span> Webhooks</a>
       <a href="#plans" class="section-title" onclick="closeMobile()">Administration</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
@@ -247,7 +246,7 @@
         <li><strong>Bulk Import</strong><p>From the mobile app, import phone contacts in bulk. Search, select, and upload multiple contacts at once.</p></li>
         <li><strong>Web-to-Lead Forms</strong><p>Embed a JS snippet on your website. Any form submission auto-creates a lead in your workspace. (See Web-to-Lead section.)</p></li>
         <li><strong>Kinetic Card Forms</strong><p>Add a lead capture form block to any Kinetic landing card. Visitors submit their info directly through the card.</p></li>
-        <li><strong>API Ingestion</strong><p>Use the REST API to create leads programmatically. Requires an API key with appropriate permissions.</p></li>
+        <li><strong>API Ingestion</strong><p>Use the REST API to create leads programmatically. Requires a web-to-lead form's PUBLIC KEY &mdash; that key is what identifies your workspace on the public <code>/api/v1/web-to-lead</code> endpoint.</p></li>
       </ol>
 
       <h3>Editing Leads</h3>
@@ -497,16 +496,15 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
         <li><strong>Navigate to Web-to-Lead</strong><p>From the sidebar, click <strong>Web-to-Lead</strong>.</p></li>
         <li><strong>Create a Config</strong><p>Click "+ New Config". Give it a name (e.g. "Website Contact Form"), set a default source label, optionally assign one or more tags for auto-labeling, and set a rate limit (default 100/hr).</p></li>
         <li><strong>Get the Embed Code</strong><p>Click the link icon (🔗) on your config. A modal shows the embed code and instructions.</p></li>
-        <li><strong>Create an API Key</strong><p>Go to <strong>API Keys</strong> and create a new key. Copy the full key.</p></li>
-        <li><strong>Paste on Your Website</strong><p>Copy the embed code, replace <code>YOUR_FULL_API_KEY_HERE</code> with your actual key, and paste it just before <code>&lt;/body&gt;</code> on your website.</p></li>
+        <li><strong>Paste on Your Website</strong><p>Copy the embed code from the modal and paste it just before <code>&lt;/body&gt;</code> on your website. The snippet already carries that form's <strong>public key</strong> &mdash; there is no separate credential to create and nothing to substitute.</p></li>
       </ol>
 
       <h3>The Embed Snippet</h3>
       <pre><code>&lt;!-- FunnelSwift Web-to-Lead --&gt;
 &lt;script&gt;
 window.FunnelSwiftConfig = {
-  apiKey: "fs_live_xxxxxxxxxxxxxxxx",
-  configId: "00000000-0000-0000-0000-000000000000"
+  publicKey: "YOUR_FORM_PUBLIC_KEY",   // the config's public key (shown in the modal)
+  configId: "YOUR_CONFIG_ID"
 };
 &lt;/script&gt;
 &lt;script src="https://funnelswift.net/funnelswift-capture.js" async&gt;&lt;/script&gt;</code></pre>
@@ -519,30 +517,6 @@ window.FunnelSwiftConfig = {
 
       <h3>Rate Limiting</h3>
       <p>Default 100 submissions per hour per workspace. Configure per config under Web-to-Lead settings.</p>
-
-      <h3>Direct API Endpoint</h3>
-      <pre><code>POST https://funnelswift.net/api/v1/web-to-lead
-Content-Type: application/json
-
-{
-  "api_key": "fs_live_xxxxxxxxxxxxxxxx",
-  "config_id": "00000000-0000-0000-0000-000000000000",
-  "name": "John Smith",
-  "email": "john&#64;example.com",
-  "company": "Acme Inc",
-  "phone": "+1-555-0123"
-}</code></pre>
-
-      <h2 id="api-keys">🔑 API Keys</h2>
-      <p>Generate API keys for programmatic access to FunnelSwift. Keys are hashed with Argon2 for security. Permissions control what each key can do, including web-to-lead access.</p>
-
-      <h3>Creating an API Key</h3>
-      <ol class="step-list">
-        <li>Go to <strong>API Keys</strong> from the sidebar.</li>
-        <li>Click <strong>"+ New Key"</strong> and give it a descriptive name.</li>
-        <li>Copy the key immediately — it's shown once.</li>
-        <li>Use with Web-to-Lead by pasting it into your embed snippet's <code>apiKey</code> field.</li>
-      </ol>
 
       <h2 id="webhooks">🔗 Webhooks</h2>
       <p>Webhooks let your own software hear from FunnelSwift. Each webhook is a named endpoint you
@@ -559,7 +533,7 @@ Content-Type: application/json
       <p>A connection to <em>another product's API</em> is not a webhook: it is a <strong>provider
       key</strong> in the <strong>Integrations</strong> screen's Integration Center, next to CoreSwift CRM.
       That is where the <strong>IncentiveSwift</strong> connection lives now &mdash; store your
-      IncentiveSwift API key there and the mobile app reads it, exactly as before.</p>
+      IncentiveSwift provider key there and the mobile app reads it, exactly as before.</p>
 
       <h3>Creating a Webhook</h3>
       <ol class="step-list">
@@ -622,7 +596,6 @@ Content-Type: application/json
         <li><strong>Template Access</strong> — Number of templates available (Free: 8, Pro: 54, Enterprise: 54 + white label)</li>
         <li><strong>QR Generation</strong> — Monthly QR code generation limit</li>
         <li><strong>Web-to-Lead</strong> — Hourly submission rate limit</li>
-        <li><strong>API Access</strong> — API rate limits and endpoint access</li>
         <li><strong>Analytics</strong> — Data retention and export options</li>
         <li><strong>Branding Badge</strong> — Toggle FunnelSwift badge on/off (paid plans only)</li>
         <li><strong>White Label</strong> — Remove all FunnelSwift branding (Enterprise only)</li>
@@ -658,7 +631,7 @@ Content-Type: application/json
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How do I get the web-to-lead embed code for my website?</button>
-        <div class="faq-a">Go to Web-to-Lead in the sidebar, create a config, then click the link icon (🔗). The modal shows your embed HTML. You'll need an active API key.</div>
+        <div class="faq-a">Go to Web-to-Lead in the sidebar, create a config, then click the link icon (🔗). The modal shows your embed HTML. It carries that form's <strong>public key</strong>, which is what identifies your workspace &mdash; no separate credential is needed.</div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">What happens if someone submits a duplicate email?</button>
