@@ -21,6 +21,35 @@ fn is_masked(v: &str) -> bool {
     crate::email_provider::is_masked(v)
 }
 
+/// True when a body — AFTER the masked-secret restore and the `<field>_set` strip — names no key
+/// at all, i.e. there is nothing to write (kanban t_e14b4c36). Kept as a named predicate so the
+/// "empty document" arm is unit-tested without a database.
+fn email_config_body_is_empty(body: &serde_json::Value) -> bool {
+    body.as_object().map(|o| o.is_empty()).unwrap_or(true)
+}
+
+/// The write arm for the global email config (kanban t_e14b4c36).
+///
+/// The row is ONE jsonb document (`admin_settings.value`), but this admin surface has no contract
+/// that a caller sends every key: a POST of `{}` used to REPLACE the whole document and silently
+/// drop `api_url` / `provider` / `from_address` (measured live 2026-10-02, restored from the daily
+/// dump). MERGE instead of replace — `stored || incoming`, the jsonb shallow merge in which a key
+/// named by the caller wins — so a partial document touches only the keys it names.
+/// `jsonb_typeof` keeps a legacy non-object value from turning the merge into an array
+/// concatenation; the column is `NOT NULL DEFAULT '{}'` so the guard is belt-and-braces.
+///
+/// Compile-time literal (gate rule 5d refuses SQL built at run time) and pinned by the unit test
+/// below, so a silent revert to `value = $1::jsonb` cannot pass.
+const EMAIL_CONFIG_UPSERT_SQL: &str = "\
+INSERT INTO admin_settings (key, value, description, updated_at)
+VALUES ('email', $1::jsonb, 'Global system email provider (admin-editable)', NOW())
+ON CONFLICT (key) DO UPDATE SET
+  value = CASE WHEN jsonb_typeof(admin_settings.value) = 'object'
+               THEN admin_settings.value || EXCLUDED.value
+               ELSE EXCLUDED.value END,
+  updated_at = NOW()
+RETURNING value";
+
 /// Defence in depth for the platform-wide e-mail surface (kanban t_9cf378bc): every handler in
 /// this module is mounted only under `/api/v1/admin/*`, which the router choke point
 /// (`auth::global_auth::require_auth`) already refuses for a non-platform-admin token. The
@@ -372,7 +401,15 @@ pub async fn update_email_config(
     // coming back from the panel keeps the stored credential whatever it is named — including the
     // legacy `password` / `pass` aliases — and the `<field>_set` markers that `get_email_config`
     // answers with are UI scaffolding, not config, so they are stripped before the row is stored.
+    //
+    // Only a field the caller actually NAMED is restored (kanban t_e14b4c36). Now that the write is
+    // a merge, a field the caller did not name is preserved by the database anyway; restoring it
+    // into the body was what made a `{}` document look non-empty and slip past the "nothing to
+    // update" refusal below — the exact body that used to delete the sibling keys.
     for secret in crate::email_provider::CONFIG_SECRET_FIELDS {
+        if !obj.contains_key(secret) {
+            continue;
+        }
         let incoming = obj.get(secret).and_then(|v| v.as_str()).unwrap_or("");
         if is_masked(incoming) {
             let kept = existing
@@ -384,6 +421,15 @@ pub async fn update_email_config(
     }
     for field in crate::email_provider::CONFIG_SECRET_FIELDS {
         obj.remove(&format!("{}_set", field));
+    }
+
+    // An empty document is not a write. Before kanban t_e14b4c36 a `{}` body answered 200 and
+    // replaced the row (deleting every sibling key); now the merge would make it a no-op, so it is
+    // refused instead of reported as a successful save.
+    if email_config_body_is_empty(&body) {
+        return Err(AppError::BadRequest(
+            "Nothing to update: the request body carried no email-config keys.".to_string(),
+        ));
     }
 
     if let Some(p) = body.get("provider").and_then(|v| v.as_str()) {
@@ -404,19 +450,23 @@ pub async fn update_email_config(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to seal email credentials: {e}")))?;
 
-    sqlx::query(
-        "INSERT INTO admin_settings (key, value, description, updated_at)
-         VALUES ('email', $1::jsonb, 'Global system email provider (admin-editable)', NOW())
-         ON CONFLICT (key) DO UPDATE SET value = $1::jsonb, updated_at = NOW()",
-    )
-    .bind(&body)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| AppError::Internal(format!("Failed to save email config: {e}")))?;
+    // MERGE into the stored document, never replace it (kanban t_e14b4c36): the literal below is
+    // `stored || incoming`, so a partial body touches only the keys it names.
+    let stored: serde_json::Value = sqlx::query_scalar(EMAIL_CONFIG_UPSERT_SQL)
+        .bind(&body)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to save email config: {e}")))?;
 
-    Ok(Json(
-        serde_json::json!({ "success": true, "provider": body.get("provider") }),
-    ))
+    Ok(Json(serde_json::json!({
+        "success": true,
+        // The provider ACTUALLY stored, read back from the merged row: a partial body that names no
+        // provider must not answer `null` while the row still carries one.
+        "provider": stored
+            .get("provider")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    })))
 }
 
 /// POST /api/v1/admin/email-config/test — send a real message and return the
@@ -460,5 +510,49 @@ pub async fn test_email_config(
             "to": to,
             "detail": e
         }))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// kanban t_e14b4c36 — the write arm must MERGE into the stored document, never replace it.
+    ///
+    /// The live defect (a POST of `{}` deleting `api_url` / `provider` / `from_address` from the
+    /// platform's only mail config) came back because the literal was `value = $1::jsonb`: whatever
+    /// the caller sent BECAME the row. This pins the semantics so a silent revert cannot pass.
+    #[test]
+    fn email_config_upsert_merges_the_stored_document() {
+        let sql = EMAIL_CONFIG_UPSERT_SQL;
+        assert!(
+            sql.contains("admin_settings.value || EXCLUDED.value"),
+            "the UPSERT no longer merges the stored document — a partial body would DELETE every \
+             sibling key: {sql}"
+        );
+        assert!(
+            !sql.contains("value = $1::jsonb"),
+            "the UPSERT replaces the whole document again: {sql}"
+        );
+        assert!(
+            sql.contains("jsonb_typeof(admin_settings.value) = 'object'"),
+            "the merge lost its object guard — a non-object row would concatenate into an array: {sql}"
+        );
+        assert!(sql.contains("RETURNING value"));
+    }
+
+    /// The other half of the same defect: an empty document must not be reported as a successful
+    /// save. `{}` and a body carrying only the panel's `<field>_set` scaffolding (stripped before
+    /// this predicate sees it) both name nothing.
+    #[test]
+    fn empty_document_is_not_a_write() {
+        assert!(email_config_body_is_empty(&serde_json::json!({})));
+        assert!(email_config_body_is_empty(&serde_json::json!(null)));
+        assert!(!email_config_body_is_empty(
+            &serde_json::json!({ "from_name": "FunnelSwift" })
+        ));
+        assert!(!email_config_body_is_empty(
+            &serde_json::json!({ "provider": "mailgun" })
+        ));
     }
 }
