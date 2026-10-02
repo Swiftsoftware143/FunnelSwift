@@ -173,6 +173,7 @@
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
       <a href="#api-keys" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔑</span> API Keys</a>
+      <a href="#webhooks" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔗</span> Webhooks</a>
       <a href="#plans" class="section-title" onclick="closeMobile()">Administration</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
       <a href="#settings" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⚙️</span> Settings</a>
@@ -542,6 +543,39 @@ Content-Type: application/json
         <li>Copy the key immediately — it's shown once.</li>
         <li>Use with Web-to-Lead by pasting it into your embed snippet's <code>apiKey</code> field.</li>
       </ol>
+
+      <h2 id="webhooks">🔗 Webhooks</h2>
+      <p>Webhooks let your own software hear from FunnelSwift. Each webhook is a named endpoint you
+      register for a list of events &mdash; for example <code>lead.created</code> &mdash; and the
+      <strong>Webhooks</strong> screen is where you create, edit, test and delete them.</p>
+
+      <h3>Creating a Webhook</h3>
+      <ol class="step-list">
+        <li>Go to <strong>Webhooks</strong> from the sidebar (workspace admins).</li>
+        <li>Click <strong>+ Add Webhook</strong> and give it a name (for example <em>Lead notifications</em>).</li>
+        <li>Enter the destination <strong>URL</strong>. It must be <code>http://</code> or
+        <code>https://</code>: private, loopback, link-local and unresolvable hosts are refused.</li>
+        <li>List the <strong>events</strong> as a comma-separated list.</li>
+        <li>Leave <strong>Active</strong> ticked and press <strong>Create</strong>.</li>
+      </ol>
+
+      <h3>Testing, Editing and Deleting</h3>
+      <div class="alert alert-info">
+        <strong>Test</strong> posts a one-off <code>{"event":"test"}</code> payload to the endpoint and
+        reports the HTTP status the endpoint answered &mdash; the response body is never shown, by design.
+      </div>
+      <ul>
+        <li><strong>Edit</strong> reopens the same form filled with the values already on screen; saving
+        writes the name, URL, events and active flag for that webhook only.</li>
+        <li><strong>Del</strong> removes the webhook. There is no undo.</li>
+      </ul>
+
+      <div class="alert alert-info">
+        <strong>What is delivered today:</strong> webhooks are stored configuration. FunnelSwift sends a
+        request only when you press <strong>Test</strong> &mdash; automatic delivery of the events you
+        register is not enabled yet, and the delivery log stays empty. Registering a webhook is safe; it
+        just will not fire on its own until delivery is switched on.
+      </div>
 
       <h2 id="plans">💳 Plans</h2>
       <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, API access, Kinetic card limits, QR code limits, template access, etc.).</p>

@@ -183,6 +183,7 @@ var helpContent={
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
   "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own API key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Email</strong> — SMTP / Mailgun / SendGrid / Sendiio sending</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
+  "webhooks":'<h4>Webhooks</h4><p>Your own endpoints, so other software can be told what happens here. Each webhook has a name, a URL and the list of events it is registered for.</p><ul><li><strong>+ Add Webhook</strong> &mdash; name it, paste an <code>https://</code> URL (private, loopback and unresolvable hosts are refused) and list the events</li><li><strong>Edit</strong> &mdash; rename it, retarget the URL, change its events or switch it off</li><li><strong>Test</strong> &mdash; posts a one-off test payload and reports the HTTP status your endpoint answered</li><li><strong>Del</strong> &mdash; removes the webhook</li></ul><p><strong>Deliveries:</strong> FunnelSwift stores webhooks as configuration and sends only when you press <strong>Test</strong>; automatic event delivery is not enabled yet.</p>',
   "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
   "stags":'<h4>System Tags</h4><p>Tags an <strong>admin</strong> creates once — every tenant sees them in its Tags list.</p><ul><li><strong>Admin only</strong> — create, rename, recolor, delete</li><li><strong>No cross-app targets</strong> — a System Tag does not create accounts or contacts in other Swift apps</li></ul>',
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
@@ -2807,25 +2808,98 @@ function SP(pid){
 
 
 /* === WEBHOOKS === */
+/* Row cache for the editor (kanban t_9ae9e586). GET /api/v1/webhooks/:id is NOT a route (405, and
+   no surface calls it) and `list_webhooks` is SELECT *, so the row the list already holds carries
+   every field the form renders. Edit therefore costs no request of its own and cannot disagree with
+   the row the operator clicked. */
+var WHK=[];
+/* Plan gate, mirroring features::enforce_feature_flag exactly: the plan's `features` jsonb key wins
+   when it is present, else the has_webhooks column; a workspace with NO active plan is allowed.
+   The server is the real gate (POST answers 402) - this only keeps the button honest. */
+function LWGate(){
+  var p=U&&U.current_plan;
+  if(!p) return true;
+  var f=p.features,v=(f&&f.webhooks!==undefined&&f.webhooks!==null)?f.webhooks:p.has_webhooks;
+  return v===true||v==="true"||v===1||v==="1";
+}
 function LW(){
   if(!U||!U.is_admin) return;
   api("/api/v1/webhooks").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>Webhooks ('+a.length+')</h3><div id="lw-list"></div></div>';
-    if(!a.length){$("lw-list").innerHTML='<p style="color:#64748b;padding:20px;text-align:center">No webhooks.</p>';return;}
+    WHK=a;
+    var gated=!LWGate();
+    $("ct").innerHTML='<div class="cc"><h3>Webhooks ('+a.length+') <span id="lw-add"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Your own endpoints. Name each one, give it an <strong>https://</strong> URL and the <strong>events</strong> it is registered for, then press <strong>Test</strong> to check that the endpoint answers.</p><div id="lw-list"></div></div>';
+    // kanban t_9ae9e586: this screen used to be viewer + delete only, while POST /api/v1/webhooks
+    // (plan-gated) and PUT /api/v1/webhooks/:id were both live - a workspace that could only delete.
+    // Create, Edit and Test are wired here; the routes already exist and are tenant-scoped.
+    $("lw-add").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){
+      if(!LWGate()){KCUP("Webhooks are not included in your current plan. Upgrade to add one.");return;}
+      MFW(null);
+    }},(gated?"🔒 ":"")+"+ Add Webhook"));
+    var list=$("lw-list");
+    if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px;text-align:center">No webhooks yet.</p>';return;}
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Event</th><th>URL</th><th>Created</th><th></th></tr>';
+    tbl.innerHTML='<tr><th>Name</th><th>Events</th><th>URL</th><th>Status</th><th>Created</th><th></th></tr>';
     a.forEach(function(w){
       var tr=El("tr");
-      tr.innerHTML='<td>'+X(w.event||"-")+'</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(w.url||"-")+'</td><td>'+(w.created_at?String(w.created_at).slice(0,10):"-")+'</td><td></td>';
-      var td=tr.querySelectorAll("td")[3];
+      // kanban t_9ae9e586: the cell read w.event - a key the Webhook model never serializes - so every
+      // row printed "-" on a row that has events. `events` is a JSONB array; print its badges.
+      tr.innerHTML='<td><strong>'+X(w.name||"-")+'</strong></td><td>'+(Array.isArray(w.events)&&w.events.length?w.events.map(function(e){return '<span class="badge bb">'+X(e)+'</span>';}).join(" "):"-")+'</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(w.url||"-")+'</td><td><span class="badge '+(w.is_active===false?"br":"bg")+'">'+(w.is_active===false?"Inactive":"Active")+'</span></td><td>'+(w.created_at?String(w.created_at).slice(0,10):"-")+'</td><td></td>';
+      var td=tr.querySelectorAll("td")[5];
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFW(w.id)}},"Edit"));
+      td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){TW(w.id)}},"Test"));
+      td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DW(w.id)}},"Del"));
       tbl.appendChild(tr);
     });
-    $("lw-list").appendChild(tbl);
+    list.appendChild(tbl);
+  }).catch(function(e){if(e&&e.message==="upgrade_required")return;showMsg((e&&e.message)||"Failed to load webhooks","me");});
+}
+function MFW(id){
+  var w=null;
+  if(id){
+    w=(WHK||[]).filter(function(x){return String(x.id)===String(id);})[0]||null;
+    // A row that is not in the list opens NO form: a blank editor over a live PUT is how a no-touch
+    // Save silently blanks a row (the class t_ae907da8 fixed in the console).
+    if(!w){showMsg("That webhook is not in the list any more.","me");return;}
+  } else w={name:"",url:"",events:[],is_active:true};
+  O(id?"Edit Webhook":"Add Webhook",function(){
+    var mb=$("mb");
+    mb.appendChild(ff("Name", El("input",{id:"wn",value:w.name||"",placeholder:"Lead notifications"})));
+    mb.appendChild(ff("URL", El("input",{id:"wu",value:w.url||"",placeholder:"https://example.com/hooks/funnelswift"})));
+    mb.appendChild(ff("Events (comma-separated)", El("input",{id:"we",value:(w.events||[]).join(", "),placeholder:"lead.created, tag.updated"})));
+    mb.appendChild(ff("Active", El("input",{id:"wa",type:"checkbox",checked:w.is_active!==false?"checked":null})));
+    $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
+    $("mf").appendChild(El("button",{"class":"btn",onclick:function(){SW(id)}},(id?"Save":"Create")));
   });
 }
-function DW(id){if(confirm("Delete?")) api("/api/v1/webhooks/"+id,{method:"DELETE"}).then(function(){S("webhooks")});}
+/* Sends every field on every save. PUT /api/v1/webhooks/:id keeps the stored value for an ABSENT
+   key and re-validates the URL only when the request changes it (t_ae907da8), so an unchanged form
+   is a 200 no-op and a rename cannot be wedged by a hostname that stopped resolving. */
+function SW(id){
+  var ev=$("we").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+  var d={name:$("wn").value.trim(),url:$("wu").value.trim(),events:ev,is_active:$("wa").checked};
+  if(!d.name||!d.url){showMsg("Name and URL are required.","me");return;}
+  var m=id?"PUT":"POST", u=id?"/api/v1/webhooks/"+id:"/api/v1/webhooks";
+  showMsg("Saving...","mi");
+  api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("webhooks")})
+    .catch(function(e){if(e&&e.message==="upgrade_required")return;showMsg(e.message||"Save failed","me");});
+}
+/* POST /api/v1/webhooks/:id/test was live with no caller on ANY surface (kanban t_9ae9e586). Its
+   answer is rendered in a small modal: showMsg writes into the modal's own message slot, which is
+   invisible when the modal is closed. */
+function TW(id){
+  O("Webhook test",function(){
+    $("mb").innerHTML='<p style="color:#64748b;font-size:13px">Posting a test payload to the endpoint&hellip;</p>';
+    $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Close"));
+    api("/api/v1/webhooks/"+id+"/test",{method:"POST"}).then(function(r){
+      var ok=r&&r.status!=="error";
+      showMsg(ok?("Delivered \u2014 the endpoint answered HTTP "+(r&&r.status!=null?r.status:"?")):("Test failed: "+((r&&r.error)||"no response from the endpoint")),ok?"mi":"me");
+    }).catch(function(e){if(e&&e.message==="upgrade_required")return;showMsg(e.message||"Test failed","me");});
+  });
+}
+function DW(id){if(confirm("Delete this webhook?")) api("/api/v1/webhooks/"+id,{method:"DELETE"}).then(function(){S("webhooks")}).catch(function(e){showMsg(e.message||"Delete failed","me")});}
 
 /* === API KEYS === */
 function LK(){
