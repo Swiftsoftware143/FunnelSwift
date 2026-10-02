@@ -1065,7 +1065,7 @@ async function renderAffiliateProducts() {
       <tbody>${items.map(p=>`<tr>
         <td><strong>${x(p.name||p.product_name||'-')}</strong>${p.description?`<div style="font-size:11px;color:var(--muted)">${x(p.description)}</div>`:''}${p.system_tag_name?`<div style="font-size:11px;color:var(--primary)">Tag: ${x(p.system_tag_name)}</div>`:''}</td>
         <td>${p.plan_stated ? `<span class="badge badge-green">${x(p.plan_name||p.plan_slug||'')}</span>` : `<span style="color:var(--muted);font-size:12px">in that app</span>`}</td>
-        <td><strong>${p.default_commission_rate||p.commission_rate||0}%</strong></td>
+        <td><strong>${p.default_commission_rate||p.commission_rate||0}%</strong>${p.plan_stated?` <span style="font-size:11px;color:var(--muted)">from its plan</span>`:''}</td>
         <td>${p.system_tag_name ? `<span style="font-size:12px;color:var(--primary)">${x(p.system_tag_name)}</span>` : `<span style="color:var(--danger,#b91c1c);font-size:12px">no tag — cannot be credited</span>`}</td>
         <td>${p.is_third_party?`<span class="badge badge-yellow">3rd Party</span>`:`<span class="badge badge-blue">Internal</span>`}</td>
         ${isAdmin?`<td><span class="badge badge-green">${x(p.tenant_name||p.tenant_id||'-')}</span></td>`:''}
@@ -1089,9 +1089,14 @@ function openAffiliateProductModal(id) {
     const body = document.getElementById('modal-body');
     if (!body) return;
     const isAdmin = isSuperAdmin();
+    /* kanban t_5c2a9bde: a plan-derived product (`plan_stated`, i.e. plan_id IS NOT NULL) has no rate
+       of its own — its rate IS its plan's (kanban t_92bd5eb6, migration 076), and the API now refuses a
+       change with a 409 naming the plan. So the field is rendered read-only with the plan to edit, and
+       the form does not send the key at all: a save can then never race the plan's own rate. */
+    const rateLocked = !!p.plan_stated;
     body.innerHTML = `<form id="product-form">
       <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(p.name||p.product_name||'')}" ${isAdmin?'':'readonly'}></div><div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(p.url||'')}" ${isAdmin?'':'readonly'}></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="default_commission_rate" type="number" step="0.1" value="${p.default_commission_rate||p.commission_rate||''}" ${isAdmin?'':'readonly'}></div><div class="form-group"><label class="form-label">Third Party</label><select class="input" name="is_third_party" ${isAdmin?'':'disabled'}><option value="false" ${!p.is_third_party?'selected':''}>No</option><option value="true" ${p.is_third_party?'selected':''}>Yes</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="default_commission_rate" type="number" step="0.1" value="${p.default_commission_rate||p.commission_rate||''}" ${isAdmin && !rateLocked?'':'readonly'}>${rateLocked?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Comes from its plan ${x(p.plan_name||p.plan_slug||'')} — edit the plan to change it.</div>`:''}</div><div class="form-group"><label class="form-label">Third Party</label><select class="input" name="is_third_party" ${isAdmin?'':'disabled'}><option value="false" ${!p.is_third_party?'selected':''}>No</option><option value="true" ${p.is_third_party?'selected':''}>Yes</option></select></div></div>
       <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" rows="2" ${isAdmin?'':'readonly'}>${x(p.description||'')}</textarea></div>
       <!-- kanban t_2b82d8f0: the System Tag link (affiliate attribution). A product with no tag can be
            promoted but never attributed: tag_logic::attribute_affiliate_on_tags (src/tag_logic.rs:319)
@@ -1130,6 +1135,10 @@ function openAffiliateProductModal(id) {
            "keep" on PUT and 0.0 on POST (the handler's own unwrap_or). Measured on the deployed binary. */
         if (data.default_commission_rate === '') delete data.default_commission_rate;
         else data.default_commission_rate = parseFloat(data.default_commission_rate);
+        /* kanban t_5c2a9bde: a plan-derived product's rate comes from its plan, so the form never sends
+           the key at all — the API would refuse a different value with a 409 naming the plan, and the
+           handler writes the plan's own rate back for a product whose plan owns the column. */
+        if (rateLocked) delete data.default_commission_rate;
         data.is_third_party = data.is_third_party === 'true';
         /* `system_tag_id` goes out as JSON null, never "" (axum answers a bare 422 "UUID parsing failed");
            null alone KEEPS a stored tag (measured), so un-assigning one sends the additive
@@ -1292,6 +1301,14 @@ async function renderCommissionGroups() {
   try { products = await api('/affiliate-products'); } catch(e) { products = []; }
   if (!Array.isArray(groups)) groups = groups.data || groups.groups || [];
   if (!Array.isArray(products)) products = products.data || products.products || [];
+  /* kanban t_5c2a9bde: a plan-derived product (`plan_stated`) is NOT offered in the bulk rate form —
+     its rate IS its plan's rate (kanban t_92bd5eb6, migration 076), and
+     POST /api/v1/affiliate-product-rates/bulk now refuses the WHOLE request with a 409 naming the plan
+     to edit. The group form below still lists every product ON PURPOSE: a group rate is an operator
+     override that outranks a product's own rate by design (`src/commission.rs`, rule 2), which is a
+     different mechanism than the per-product rate this form writes. */
+  const ratable = products.filter(p => !p.plan_stated);
+  const planLocked = products.length - ratable.length;
   EDIT_ROWS.commissionGroups = {};
   groups.forEach(g => { EDIT_ROWS.commissionGroups[String(g.id)] = g; });
   return `<div>
@@ -1339,11 +1356,13 @@ async function renderCommissionGroups() {
       <h2 style="font-size:16px;font-weight:600;margin-bottom:10px">Set a rate for selected products</h2>
       <p style="color:var(--muted);font-size:12px;margin-bottom:10px">Use this to change one product's own rate
       without making a group, or to correct several at once.</p>
+      ${planLocked > 0 ? `<p style="color:var(--muted);font-size:12px;margin-bottom:10px">${planLocked} product(s)
+      are not listed here: a plan product's rate comes from its plan — open <strong>Plans</strong> to change it.</p>` : ''}
       <form id="bulk-rate-form">
         <div class="form-group">
-          ${products.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products yet.</p>' : `
+          ${ratable.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products with a rate of their own yet.</p>' : `
           <div style="max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
-            ${products.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
+            ${ratable.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
               <input type="checkbox" name="product_ids" value="${x(p.id)}"> ${x(p.name || p.product_name || '-')}
               <span style="color:var(--muted)">— now ${p.default_commission_rate != null ? p.default_commission_rate : (p.commission_rate != null ? p.commission_rate : 0)}%</span></label>`).join('')}
           </div>`}
@@ -1381,8 +1400,13 @@ function bindCommissionGroups() {
     if (!ids.length) { showToast('Tick at least one product', 'error'); return; }
     if (!Number.isFinite(rate)) { showToast('Enter a rate', 'error'); return; }
     try {
-      await api('/affiliate-product-rates/bulk', { method: 'POST', body: JSON.stringify({ product_ids: ids, commission_rate: rate }) });
-      showToast('Rate set on ' + ids.length + ' product(s)', 'success');
+      const r = await api('/affiliate-product-rates/bulk', { method: 'POST', body: JSON.stringify({ product_ids: ids, commission_rate: rate }) });
+      /* The server's own count, not the tick count: it reports what it actually wrote (`products_updated`)
+         and the ids it could not reach (`products_skipped`), so a toast can never claim more than landed
+         (kanban t_5c2a9bde). */
+      const done = (r && typeof r.products_updated === 'number') ? r.products_updated : ids.length;
+      const skipped = (r && r.products_skipped) || 0;
+      showToast('Rate set on ' + done + ' product(s)' + (skipped ? ' — ' + skipped + ' not reachable' : ''), (skipped && !done) ? 'error' : 'success');
       renderView();
     } catch(e) { showToast(e.message, 'error'); }
   });

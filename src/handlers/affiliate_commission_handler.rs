@@ -243,6 +243,20 @@ pub async fn assign_products(
 
 /// Give several products the same rate in one action. This is David's *"do an overall"* without
 /// forcing the products into a named group — useful for a one-off correction.
+///
+/// TWO DEFECTS WERE MEASURED HERE ON 2026-10-02 (kanban t_5c2a9bde) and are now fixed:
+///
+///   1. **No plan-derived guard.** `UPDATE ... WHERE id = ANY($1)` could re-rate a plan-derived
+///      product (`plan_id IS NOT NULL`), whose rate IS its plan's rate (t_92bd5eb6, migration 076). The
+///      resolver (`src/commission.rs`) ranks the product's own column ABOVE the plan's and the
+///      conversion receiver calls it, so one click here changed what a sale PAID — and the next plan
+///      save silently changed it back, leaving no record of which value was in force. The route now
+///      REFUSES the whole request with a 409 naming the plan to edit.
+///   2. **No tenant filter.** The predicate was `id = ANY($1)` alone, so an admin could re-rate any
+///      workspace's product by id. The scope is now the admin product list's own contract — the
+///      caller's products OR the fleet's SYSTEM tenant's (where the plan-derived rows and the sibling
+///      apps' free products live) — and the ids it could not reach are reported back as
+///      `products_skipped` instead of being silently dropped.
 pub async fn bulk_set_product_rate(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -259,18 +273,95 @@ pub async fn bulk_set_product_rate(
     if req.product_ids.is_empty() {
         return Err(AppError::BadRequest("product_ids must not be empty".into()));
     }
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    // One row per id, so `products_skipped` counts rows rather than repeat ticks.
+    let mut wanted: Vec<Uuid> = Vec::with_capacity(req.product_ids.len());
+    for id in &req.product_ids {
+        if !wanted.contains(id) {
+            wanted.push(*id);
+        }
+    }
+    // The rows this call may reach. No tenant predicate at all until now; this is the list's own scope.
+    let rows: Vec<(
+        Uuid,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<f64>,
+    )> = sqlx::query_as(
+        "SELECT ap.id, ap.plan_id, ap.name, p.name, p.commission_rate::float8 \
+               FROM affiliate_products ap LEFT JOIN plans p ON p.id = ap.plan_id \
+              WHERE ap.id = ANY($1) AND (ap.tenant_id = $2 OR ap.tenant_id = $3)",
+    )
+    .bind(&wanted)
+    .bind(tenant_id)
+    .bind(crate::system_tenant::system_tenant_id())
+    .fetch_all(&state.pool)
+    .await?;
+
+    // A plan-derived product's rate IS its plan's rate: refuse the WHOLE request rather than skipping
+    // the plan-derived ids. A partial write is exactly the invisible drift this card is about — the
+    // operator would read "Rate set on 3 products" while the money path paid a value nobody chose.
+    // The wording matches `affiliate_product_handler::plan_derived_rate_conflict`, which answers the
+    // single-row 409 the console's own form gets.
+    let derived: Vec<&(
+        Uuid,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<f64>,
+    )> = rows.iter().filter(|r| r.1.is_some()).collect();
+    if !derived.is_empty() {
+        let named: Vec<String> = derived
+            .iter()
+            .take(3)
+            .map(|r| {
+                let name = r.2.as_deref().unwrap_or("unnamed");
+                match (r.3.as_deref(), r.4) {
+                    (Some(plan), Some(plan_rate)) => {
+                        format!("\"{name}\" (from its plan \"{plan}\" at {plan_rate}%)")
+                    }
+                    (Some(plan), None) => format!("\"{name}\" (from its plan \"{plan}\")"),
+                    _ => format!("\"{name}\" (from its plan)"),
+                }
+            })
+            .collect();
+        let more = if derived.len() > 3 {
+            format!(" and {} more", derived.len() - 3)
+        } else {
+            String::new()
+        };
+        return Err(AppError::Conflict(format!(
+            "The commission rate for {}{more} comes from the plan it belongs to — a plan-derived \
+             product is a mirror of its plan and has no rate of its own, so edit the plan to change \
+             the rate (or untick the product).",
+            named.join(", ")
+        )));
+    }
+
+    // `plan_id IS NULL` is repeated in the UPDATE so the statement itself can never drift a
+    // plan-derived row, even if one became plan-derived between the read above and this write (that
+    // row then counts as skipped below).
     let res = sqlx::query(
         "UPDATE affiliate_products SET default_commission_rate = $2, updated_at = now() \
-         WHERE id = ANY($1)",
+          WHERE id = ANY($1) AND (tenant_id = $3 OR tenant_id = $4) AND plan_id IS NULL",
     )
-    .bind(&req.product_ids)
+    .bind(&wanted)
     .bind(req.commission_rate)
+    .bind(tenant_id)
+    .bind(crate::system_tenant::system_tenant_id())
     .execute(&state.pool)
     .await?;
 
+    let updated = res.rows_affected();
     Ok(Json(json!({
-        "products_updated": res.rows_affected(),
+        "products_updated": updated,
+        // Ticked ids this call could not reach: another workspace's product, an unknown id, or (in a
+        // race) a row that became plan-derived between the read and this UPDATE. Reported rather than
+        // silently dropped, because "Rate set on N products" has to BE N.
+        "products_skipped": (wanted.len() as u64).saturating_sub(updated),
         "commission_rate": req.commission_rate,
         "message": "Rate applied to the selected products"
     })))

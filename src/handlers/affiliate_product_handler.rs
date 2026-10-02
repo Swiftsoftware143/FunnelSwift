@@ -239,6 +239,118 @@ fn is_tag_rule_raise(code: Option<&str>, message: &str) -> bool {
     code == Some(RAISE_EXCEPTION_SQLSTATE) && message.contains(TAG_RULE_MESSAGE)
 }
 
+// ── THE t_92bd5eb6 RULE AT THE WRITE PATH (kanban t_5c2a9bde) ────────────────────────────────────
+//
+// t_92bd5eb6 decided, and migration 076 normalised, that a plan-derived affiliate product
+// (`plan_id IS NOT NULL`) carries no rate of its own: `plans.commission_rate` IS its
+// `default_commission_rate`. The decision was recorded but NOT enforced, and the value it protects is
+// money: `src/commission.rs` ranks the product's own column ABOVE the plan's and the authoritative
+// conversion receiver calls it, so whatever sits in `default_commission_rate` is what a sale PAYS.
+// Two writers could still move it (the bulk rate route, with no tenant filter and no plan-derived
+// guard, and `PUT /api/v1/affiliate-products/:id`), and the drift was invisible AND self-erasing — the
+// next plan save rewrote the value, so the paid rate changed and then silently changed back.
+//
+// ARM (b) — the rule as a READ, before the write: `resolve_plan_derived_rate` refuses a rate change on
+// a plan-derived row with a 409 that names the plan to edit, and for a caller that asks for nothing (a
+// rename, a tag change) it binds the plan's own rate, so a save can never leave the mirror out of step.
+//
+// ARM (a) — the TOCTOU backstop: migration 083's trigger refuses the same write in the DATABASE
+// (SQLSTATE `SW001`, message naming the product and the plan) and `map_product_write_error` recognises
+// that raise and answers the SAME 409 instead of `error.rs`'s anonymous `500 "Database error"` — the
+// class t_c149b025 fixed for the 075 tag rule. The backstop is reachable: a plan edited between the
+// read above and the write leaves the bound value stale.
+
+/// SQLSTATE migration 083's trigger raises with. Class `SW` is user-defined, so it cannot collide with
+/// a PostgreSQL or SQL-standard code — `P0001` (the unnamed plpgsql raise) is NOT usable here, because
+/// 070's paid-plan refusal and 075's tag rule both raise from it.
+const PLAN_RATE_SQLSTATE: &str = "SW001";
+
+/// A stable fragment of migration 083's raise. Matching on text is safe HERE for the same reason 075's
+/// is: sqlx records a checksum and refuses a changed migration file at boot, so these bytes cannot
+/// move without that refusal being visible.
+const PLAN_RATE_MESSAGE: &str = "commission rate on affiliate product";
+
+/// The plan a product derives its rate from. `None` from [`plan_rate_source`] means the product is not
+/// plan-derived (its `plan_id` is NULL), which is the only fact this rule needs.
+pub(crate) struct PlanRateSource {
+    pub product_name: Option<String>,
+    pub plan_name: Option<String>,
+    pub plan_rate: Option<f64>,
+}
+
+/// The plan behind `product_id`, or `None` when the product has no plan. A missing product also
+/// answers `None`: every caller has already resolved the row it is writing.
+pub(crate) async fn plan_rate_source(
+    state: &AppState,
+    product_id: Uuid,
+) -> AppResult<Option<PlanRateSource>> {
+    let row: Option<(Option<String>, Option<Uuid>, Option<String>, Option<f64>)> = sqlx::query_as(
+        "SELECT ap.name, ap.plan_id, p.name, p.commission_rate::float8 \
+           FROM affiliate_products ap LEFT JOIN plans p ON p.id = ap.plan_id \
+          WHERE ap.id = $1",
+    )
+    .bind(product_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(
+        row.and_then(|(product_name, plan_id, plan_name, plan_rate)| {
+            plan_id.map(|_| PlanRateSource {
+                product_name,
+                plan_name,
+                plan_rate,
+            })
+        }),
+    )
+}
+
+/// The 409 an operator sees when something tries to write a plan-derived product's rate. ONE message
+/// for arm (b) and arm (a), so the caller cannot tell which one refused it, and it names the plan to
+/// edit rather than the column that disagreed.
+pub(crate) fn plan_derived_rate_conflict(
+    product_name: &str,
+    plan_name: Option<&str>,
+    plan_rate: Option<f64>,
+) -> AppError {
+    let from = match (plan_name, plan_rate) {
+        (Some(plan), Some(rate)) => format!("its plan \"{plan}\" ({rate}%)"),
+        (Some(plan), None) => format!("its plan \"{plan}\""),
+        _ => "the plan it belongs to".to_string(),
+    };
+    AppError::Conflict(format!(
+        "The commission rate for \"{product_name}\" comes from {from} — this product is a mirror of \
+         its plan and has no rate of its own, so edit the plan to change the rate."
+    ))
+}
+
+/// ARM (b). `requested` is what the caller asked for, if anything: asking for the plan's own rate (or
+/// asking for nothing) writes the plan's rate back, while asking for any OTHER number is refused. The
+/// "asked for nothing" arm is what heals a legacy drifted row on an unrelated save instead of letting
+/// the trigger refuse a rename.
+fn resolve_plan_derived_rate(src: &PlanRateSource, requested: Option<f64>) -> AppResult<f64> {
+    let name = src.product_name.as_deref().unwrap_or("this product");
+    let Some(plan_rate) = src.plan_rate else {
+        return Err(plan_derived_rate_conflict(
+            name,
+            src.plan_name.as_deref(),
+            None,
+        ));
+    };
+    match requested {
+        Some(want) if want != plan_rate => Err(plan_derived_rate_conflict(
+            name,
+            src.plan_name.as_deref(),
+            src.plan_rate,
+        )),
+        _ => Ok(plan_rate),
+    }
+}
+
+/// The decision the backstop makes, split out so it can be asserted without faking a driver error:
+/// ONLY SQLSTATE `SW001` AND ONLY the 083 rule's own message.
+fn is_plan_rate_raise(code: Option<&str>, message: &str) -> bool {
+    code == Some(PLAN_RATE_SQLSTATE) && message.contains(PLAN_RATE_MESSAGE)
+}
+
 /// ARM (a), the backstop `ensure_tag_route_free` cannot cover itself: another writer takes the tag
 /// between that read and this write, so the trigger fires. The admin must still get the SAME 409.
 async fn map_product_write_error(
@@ -257,6 +369,26 @@ async fn map_product_write_error(
                 None => None,
             };
             return tag_already_routed(holder.as_deref());
+        }
+        // ARM (a) of the t_92bd5eb6 rule (kanban t_5c2a9bde): migration 083's trigger refused a rate
+        // that would leave this row out of step with its plan. The plan is re-resolved so the 409 names
+        // it (the trigger's own text stays in the server log, exactly like 075's), and the answer is the
+        // SAME 409 the pre-write read answers.
+        if is_plan_rate_raise(db.code().as_deref(), db.message()) {
+            let src = plan_rate_source(state, row_id).await.ok().flatten();
+            return match src {
+                Some(src) => plan_derived_rate_conflict(
+                    src.product_name.as_deref().unwrap_or("this product"),
+                    src.plan_name.as_deref(),
+                    src.plan_rate,
+                ),
+                None => AppError::Conflict(
+                    "That product's commission rate comes from the plan it belongs to — this product \
+                     is a mirror of its plan and has no rate of its own, so edit the plan to change \
+                     the rate."
+                        .into(),
+                ),
+            };
         }
     }
     category_fk_error(e)
@@ -501,7 +633,15 @@ pub async fn update_affiliate_product(
     let name = req.name.or(existing.0);
     let description = req.description.or(existing.1);
     let price = req.price.unwrap_or(existing.2);
-    let commission = req.default_commission_rate.unwrap_or(existing.3);
+    // The t_92bd5eb6 rule (kanban t_5c2a9bde). `plan_rate_source` answers `Some` only for a
+    // plan-derived row (`plan_id IS NOT NULL`), and for one the PLAN's rate is what gets written
+    // whatever the caller asked: a different number is refused with a 409 naming the plan, and no
+    // number at all is healed to it. A row with no plan keeps the caller's value, as before.
+    let plan_source = plan_rate_source(&state, id).await?;
+    let commission = match &plan_source {
+        Some(src) => resolve_plan_derived_rate(src, req.default_commission_rate)?,
+        None => req.default_commission_rate.unwrap_or(existing.3),
+    };
     let is_third_party = req.is_third_party.unwrap_or(existing.4);
     let url = req.url.or(existing.5);
     // Only a caller-SUPPLIED pointer is checked (an absent key or an explicit null keeps the stored
@@ -763,5 +903,94 @@ mod tests {
             tag_already_routed(None),
             crate::error::AppError::Conflict(_)
         ));
+    }
+
+    // ── the t_92bd5eb6 rule's backstop (kanban t_5c2a9bde) ──────────────────────────────────────
+    //
+    // The live probe exercises arm (b), the read before the write. This mapping is asserted here for
+    // the TOCTOU case no probe can time: the plan's rate moves between that read and the write, so
+    // migration 083's trigger fires and the admin must still get the SAME 409 instead of a bare 500.
+
+    use super::{
+        is_plan_rate_raise, plan_derived_rate_conflict, resolve_plan_derived_rate, PlanRateSource,
+        PLAN_RATE_MESSAGE, PLAN_RATE_SQLSTATE,
+    };
+
+    /// The raise migration 083's trigger produces for one real live row (`%` filled in).
+    const TRIGGER_RATE_MESSAGE: &str =
+        "the commission rate on affiliate product \"FunnelSwift Capture Free\" comes from its plan \
+         \"Capture Free\" (20.00%) - this product mirrors its plan and has no rate of its own, so \
+         edit the plan to change the rate";
+
+    fn plan_source(plan: Option<&str>, rate: Option<f64>) -> PlanRateSource {
+        PlanRateSource {
+            product_name: Some("Probe Product".to_string()),
+            plan_name: plan.map(str::to_string),
+            plan_rate: rate,
+        }
+    }
+
+    #[test]
+    fn the_plan_rate_raise_is_the_apps_own_409() {
+        // The trigger's SQLSTATE plus its own message is the rule...
+        assert!(is_plan_rate_raise(
+            Some(PLAN_RATE_SQLSTATE),
+            TRIGGER_RATE_MESSAGE
+        ));
+        // ...and the marker is asserted against the REAL trigger text rather than against itself: if a
+        // migration reworded the raise, this is the assertion that fails.
+        assert!(TRIGGER_RATE_MESSAGE.contains(PLAN_RATE_MESSAGE));
+        // 070 and 075 both raise from P0001, so the SQLSTATE alone is never enough, and this rule never
+        // swallows a neighbouring raise.
+        assert!(!is_plan_rate_raise(Some("P0001"), TRIGGER_RATE_MESSAGE));
+        assert!(!is_plan_rate_raise(
+            Some(PLAN_RATE_SQLSTATE),
+            FREE_ONLY_MESSAGE
+        ));
+        assert!(!is_plan_rate_raise(None, TRIGGER_RATE_MESSAGE));
+        assert!(!is_plan_rate_raise(
+            Some(PLAN_RATE_SQLSTATE),
+            "some other failure"
+        ));
+    }
+
+    #[test]
+    fn a_plan_derived_rate_is_only_ever_the_plans_own() {
+        let src = plan_source(Some("Capture Free"), Some(20.0));
+        // Asking for exactly the plan's rate, or not asking for one at all, writes the plan's rate.
+        assert_eq!(resolve_plan_derived_rate(&src, Some(20.0)).unwrap(), 20.0);
+        assert_eq!(resolve_plan_derived_rate(&src, None).unwrap(), 20.0);
+        // Any other number is precisely the drift this card is about: refused, naming the plan.
+        let refused = resolve_plan_derived_rate(&src, Some(10.0)).unwrap_err();
+        let text = refused.to_string();
+        assert!(
+            text.contains("Capture Free"),
+            "the plan must be named: {text}"
+        );
+        assert!(
+            text.contains("20"),
+            "the rate to keep must be named: {text}"
+        );
+        assert!(text.contains("edit the plan"));
+        assert!(matches!(refused, crate::error::AppError::Conflict(_)));
+        // A plan-derived row whose plan row is gone (unreachable behind the plan_id FK) is refused
+        // rather than inheriting whatever the column happens to hold.
+        assert!(matches!(
+            resolve_plan_derived_rate(&plan_source(None, None), None),
+            Err(crate::error::AppError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn the_rate_409_never_leaks_the_databases_own_text() {
+        let named = plan_derived_rate_conflict("Probe Product", Some("Capture Free"), Some(20.0));
+        assert!(matches!(named, crate::error::AppError::Conflict(_)));
+        let named_text = named.to_string();
+        assert!(named_text.contains("Probe Product") && named_text.contains("Capture Free"));
+        // The fallback (the plan vanished between the raise and the re-read) keeps the ADVICE and never
+        // leaks the database's own text into the panel.
+        let unnamed = plan_derived_rate_conflict("Probe Product", None, None).to_string();
+        assert!(unnamed.contains("edit the plan to change the rate"));
+        assert!(!unnamed.contains(TRIGGER_RATE_MESSAGE));
     }
 }

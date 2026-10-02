@@ -2111,7 +2111,15 @@ function LPAFS(p){
     }).catch(function(){});
     fas.value=p.system_tag_id||"";
     mb.appendChild(ff("Price ($)", El("input",{id:"fap",type:"number",value:p.price||""})));
-    mb.appendChild(ff("Commission %", El("input",{id:"far",type:"number",value:p.default_commission_rate||""})));
+    /* kanban t_5c2a9bde: a plan-derived product (`plan_stated` → plan_id IS NOT NULL) has no rate of its
+       own — the plan's commission_rate IS its rate (kanban t_92bd5eb6) and the API now refuses a change
+       with a 409 naming the plan. Lock the field and say where the number comes from. */
+    var cr=ff("Commission %", El("input",{id:"far",type:"number",value:p.default_commission_rate||""}));
+    if(p.plan_stated){
+      var cri=cr.querySelector("input"); if(cri) cri.readOnly=true;
+      cr.appendChild(El("div",{style:"font-size:11px;color:#64748b"},"Comes from its plan"+(p.plan_name?" "+p.plan_name:"")+" — edit the plan to change it."));
+    }
+    mb.appendChild(cr);
     mb.appendChild(ff("URL", El("input",{id:"fau",value:p.url||"",placeholder:"Product page URL"})));
     mb.appendChild(ff("Description", El("textarea",{id:"fad",value:p.description||"",style:"height:60px"})));
     var ac=ff("Active", El("input",{id:"faa",type:"checkbox",checked:p.is_active?"checked":null}));
@@ -2124,7 +2132,11 @@ function LPAFS(p){
          as JSON null, not as "" — axum answers `""` with a bare 422 ("UUID parsing failed") instead of
          the app's own error body. null = "keep whatever the row has" (see update_affiliate_product). */
       var stsp=$("fass").value||"";
-      var d={name:$("fan").value,category_id:($("fac").value||null),price:parseFloat($("fap").value)||0,default_commission_rate:parseFloat($("far").value)||0,url:$("fau").value,description:$("fad").value,is_active:$("faa").checked,system_tag_id:stsp||null};
+      var d={name:$("fan").value,category_id:($("fac").value||null),price:parseFloat($("fap").value)||0,url:$("fau").value,description:$("fad").value,is_active:$("faa").checked,system_tag_id:stsp||null};
+      d.default_commission_rate=parseFloat($("far").value)||0;
+      /* kanban t_5c2a9bde: a plan-derived product's rate is its plan's, so the payload never carries the
+         key for one — the route writes the plan's rate back and refuses anything else (409). */
+      if(p.plan_stated) delete d.default_commission_rate;
       /* `system_tag_id` (kanban t_2b82d8f0): the select's empty value goes out as JSON null and never as
          "" (axum answers a bare 422 "UUID parsing failed"), exactly like `category_id` above. null alone
          KEEPS a stored tag, so un-assigning one has to say so: `clear_system_tag` is the API's additive
