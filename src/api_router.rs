@@ -275,6 +275,10 @@ pub fn create_router(
             get(affiliate_product_handler::list_system_tags),
         )
         .route(
+            "/api/v1/admin/tag-groups",
+            get(tag_group_handler::list_tag_groups_admin),
+        )
+        .route(
             "/api/v1/admin/affiliate-leads",
             get(affiliate_lead_handler::list_programme_leads),
         )

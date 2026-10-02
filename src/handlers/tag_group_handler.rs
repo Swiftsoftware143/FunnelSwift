@@ -31,6 +31,53 @@ pub async fn list_tag_groups(
     Ok(Json(groups))
 }
 
+/// The admin console's tag-group VOCABULARY (kanban t_968c2b09).
+///
+/// The fleet's shared taxonomy lives on the system tenant (`src/system_tenant.rs`): its tags are
+/// `is_system = true` and their `tag_groups` rows belong to that tenant, so the tenant-scoped
+/// `list_tag_groups` answers `[]` for the operator's own tenant and the console could not name a
+/// single taxonomy group -- it could only print the raw `a0000000-...` id.
+///
+/// This is an admin-only READ of the vocabulary the console has to NAME: the caller's own groups,
+/// the system tenant's shared groups (`src/system_tenant.rs` — the same `tenant_id = $1 OR
+/// tenant_id = $n` predicate the other admin-facing listings use), and any group a visible tag
+/// actually points at — so a Group cell can always be resolved even when a tag references a group
+/// owned by some third tenant. It is a read: renaming and deleting stay on the tenant-scoped routes,
+/// and the console offers those controls only for its own rows.
+///
+/// Measured while choosing the predicate: the groups referenced by the visible tags alone are FIVE
+/// of the six (`Custom` has no tag pointing at it), so a referenced-only read would hide a real
+/// group of the shared vocabulary from the very screen that lists that vocabulary. The shared route
+/// is deliberately NOT widened: `update_tag_group`/`delete_tag_group` are `WHERE tenant_id = $1`, so
+/// every tenant shell would gain rows it can neither rename nor delete.
+pub async fn list_tag_groups_admin(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Vec<TagGroup>>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let groups = sqlx::query_as::<_, TagGroup>(
+        "SELECT * FROM tag_groups \
+         WHERE tenant_id = $1 \
+            OR tenant_id = $2 \
+            OR id IN (SELECT group_id FROM tags \
+                       WHERE (tenant_id = $1 OR is_system = true) AND group_id IS NOT NULL) \
+         ORDER BY sort_order, name",
+    )
+    .bind(tenant_id)
+    .bind(crate::system_tenant::system_tenant_id())
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(groups))
+}
+
 pub async fn create_tag_group(
     auth: AuthUser,
     State(state): State<AppState>,

@@ -219,18 +219,22 @@ async function loadTagGroupById(id) {
   return found;
 }
 
-/* -- kanban t_5289fd7b: the tags GROUP column and editor -------------------------------------
+/* -- kanban t_5289fd7b / t_968c2b09: the tags GROUP column and editor -------------------------
    `tags` stores `group_id` (Option<Uuid>, src/models/tag.rs) and has NO `group_name` column, and
    `UpdateTagRequest` accepts no such field -- so the old cell fell back to a hard-coded badge on
    every row (it read a key neither that table nor GET /api/v1/tags returns) and the old editor's
-   free-text group box wrote a key serde silently ignored. The vocabulary THIS console can read is
-   the tenant's own tag groups (GET /api/v1/tag-groups is tenant-scoped -- the same list the Tag
-   Groups screen beside it renders); a tag whose group id is not in that list (the shared taxonomy
-   tags belong to the System tenant's groups) prints its real id, never a fabricated name. */
+   free-text group box wrote a key serde silently ignored.
+   The VOCABULARY is now the admin read GET /api/v1/admin/tag-groups (kanban t_968c2b09): the
+   caller's own groups PLUS the groups its visible tags point at. The fleet's shared taxonomy is
+   owned by the SYSTEM tenant, so the tenant-scoped GET /api/v1/tag-groups answers [] here and this
+   console could not name a single taxonomy group -- the admin read is derived from `tags.group_id`,
+   the very column being rendered, so it can never disagree with the rows it names. It is a READ:
+   rename/delete stay tenant-scoped and the Tag Groups screen offers them only for its OWN rows. */
 const TAG_GROUPS = { list: [], names: {} };
 async function loadTagGroups() {
   let items = [];
-  try { items = await api('/tag-groups'); } catch(e) { items = []; }
+  try { items = await api('/admin/tag-groups'); }
+  catch(e) { try { items = await api('/tag-groups'); } catch(e2) { items = []; } }
   if (!Array.isArray(items)) items = items.data || items.groups || [];
   TAG_GROUPS.list = items;
   TAG_GROUPS.names = {};
@@ -2027,10 +2031,16 @@ async function renderTagGroups() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
 
   let items = [];
-  try { items = await api('/tag-groups'); } catch(e) { items = []; }
+  try { items = await api('/admin/tag-groups'); }
+  catch(e) { try { items = await api('/tag-groups'); } catch(e2) { items = []; } }
   if (!Array.isArray(items)) items = items.data || items.groups || [];
   EDIT_ROWS.groups = {};
   items.forEach(g => { EDIT_ROWS.groups[String(g.id)] = g; });
+  /* kanban t_968c2b09: the admin read is a superset -- it also carries the shared taxonomy's
+     groups, which belong to the SYSTEM tenant. PUT/DELETE /tag-groups/:id are `WHERE tenant_id =
+     $1`, so an Edit button on one of those rows could only ever 404. The row is real and is shown;
+     the control is offered only where it can save, and the Scope column says which is which. */
+  const MINE = String((USER && USER.tenant_id) || '');
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -2044,13 +2054,14 @@ async function renderTagGroups() {
            TagGroup rows — no tag_count/count — so the count could only ever print 0. The two
            cells below read columns the row really carries. (No backticks in here: this comment
            lives inside a JS template literal.) -->
-      <thead><tr><th>Name</th><th>Collapsible</th><th>Sort</th><th>Actions</th></tr></thead>
-      <tbody>${items.map(g=>`<tr>
+      <thead><tr><th>Name</th><th>Collapsible</th><th>Sort</th><th>Scope</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(g=>{ const own = String(g.tenant_id||'') === MINE; return `<tr>
         <td><strong>${x(g.name)}</strong></td>
         <td>${g.is_collapsible?'Yes':'No'}</td>
         <td>${g.sort_order||0}</td>
-        <td><button class="btn btn-secondary btn-xs" onclick="window._editTagGroup('${g.id}')">Edit</button></td>
-      </tr>`).join('')}</tbody>
+        <td>${own ? '<span class="badge badge-green">yours</span>' : `<span class="badge badge-blue" title="owned by tenant ${x(g.tenant_id||'')} - the shared taxonomy; rename/delete is tenant-scoped and this console does not own it">shared</span>`}</td>
+        <td>${own ? `<button class="btn btn-secondary btn-xs" onclick="window._editTagGroup('${g.id}')">Edit</button>` : '<span style="color:var(--muted)">—</span>'}</td>
+      </tr>`; }).join('')}</tbody>
     </table></div></div>`}
   </div>`;
 }
