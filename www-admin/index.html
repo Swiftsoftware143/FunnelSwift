@@ -1309,14 +1309,17 @@ async function renderCommissionGroups() {
   try { products = await api('/affiliate-products'); } catch(e) { products = []; }
   if (!Array.isArray(groups)) groups = groups.data || groups.groups || [];
   if (!Array.isArray(products)) products = products.data || products.products || [];
-  /* kanban t_5c2a9bde: a plan-derived product (`plan_stated`) is NOT offered in the bulk rate form —
-     its rate IS its plan's rate (kanban t_92bd5eb6, migration 076), and
-     POST /api/v1/affiliate-product-rates/bulk now refuses the WHOLE request with a 409 naming the plan
-     to edit. The group form below still lists every product ON PURPOSE: a group rate is an operator
-     override that outranks a product's own rate by design (`src/commission.rs`, rule 2), which is a
-     different mechanism than the per-product rate this form writes. */
+  /* kanban t_5c2a9bde + t_db5d07aa: a plan-derived product (`plan_stated`) is NOT offered in EITHER form.
+     Its rate IS its plan's rate (kanban t_92bd5eb6, migration 076): POST /api/v1/affiliate-product-rates/bulk
+     refuses the WHOLE request with a 409 naming the plan to edit, and — kanban t_db5d07aa — so do the group
+     routes, because a group rate OUTRANKS the product's own rate (`src/commission.rs`, rule 2) and would
+     therefore have spoken for the plan: POST /api/v1/affiliate-product-groups (and /:id/products) now answer
+     the same 409, and migration 089 refuses the write in the database. So the tick-box list below is the
+     same list the bulk form uses: every product whose rate is its OWN. */
   const ratable = products.filter(p => !p.plan_stated);
   const planLocked = products.length - ratable.length;
+  const planNote = `${planLocked} product(s) are not listed here: a plan product's rate comes from its plan —
+    open <strong>Plans</strong> to change it, and it cannot be put in a group (a group rate would outrank the plan).`;
   EDIT_ROWS.commissionGroups = {};
   groups.forEach(g => { EDIT_ROWS.commissionGroups[String(g.id)] = g; });
   return `<div>
@@ -1325,10 +1328,13 @@ async function renderCommissionGroups() {
     </div>
     <p style="color:var(--muted);font-size:13px;margin-bottom:14px">A group gives <strong>several products one
     rate</strong>. The order is fixed and shown on every commission: <strong>an affiliate's own override beats
-    a group rate, a group rate beats a product's own rate, and a product's rate beats the plan's.</strong></p>
+    a group rate, a group rate beats a product's own rate, and a product's rate beats the plan's.</strong>
+    A <strong>plan</strong> product is the exception: its rate comes from its plan, so it is not offered here —
+    a group rate would outrank the plan it mirrors.</p>
 
     <div class="card">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:10px">Create a group (one rate for several products)</h2>
+      ${planLocked > 0 ? `<p style="color:var(--muted);font-size:12px;margin-bottom:10px">${planNote}</p>` : ''}
       <form id="group-form">
         <div class="form-row">
           <div class="form-group"><label class="form-label">Group name</label>
@@ -1337,9 +1343,9 @@ async function renderCommissionGroups() {
             <input class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" placeholder="e.g. 35"></div>
         </div>
         <div class="form-group"><label class="form-label">Which products are the same?</label>
-          ${products.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products yet.</p>' : `
+          ${ratable.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products with a rate of their own yet.</p>' : `
           <div style="max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
-            ${products.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
+            ${ratable.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
               <input type="checkbox" name="product_ids" value="${x(p.id)}"> ${x(p.name || p.product_name || '-')}
               <span style="color:var(--muted)">— now ${p.default_commission_rate != null ? p.default_commission_rate : (p.commission_rate != null ? p.commission_rate : 0)}%</span></label>`).join('')}
           </div>`}
@@ -1364,8 +1370,7 @@ async function renderCommissionGroups() {
       <h2 style="font-size:16px;font-weight:600;margin-bottom:10px">Set a rate for selected products</h2>
       <p style="color:var(--muted);font-size:12px;margin-bottom:10px">Use this to change one product's own rate
       without making a group, or to correct several at once.</p>
-      ${planLocked > 0 ? `<p style="color:var(--muted);font-size:12px;margin-bottom:10px">${planLocked} product(s)
-      are not listed here: a plan product's rate comes from its plan — open <strong>Plans</strong> to change it.</p>` : ''}
+      ${planLocked > 0 ? `<p style="color:var(--muted);font-size:12px;margin-bottom:10px">${planNote}</p>` : ''}
       <form id="bulk-rate-form">
         <div class="form-group">
           ${ratable.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products with a rate of their own yet.</p>' : `

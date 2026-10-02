@@ -19,6 +19,101 @@ use uuid::Uuid;
 
 // ── product groups ───────────────────────────────────────────────────────────────────────────────
 
+/// SQLSTATE migration 089's trigger raises with, and a stable fragment of its message. Class `SW` is
+/// user-defined (the same class 083's `SW001` uses), so neither code can collide with a PostgreSQL or
+/// SQL-standard one; a separate code keeps the two rules tellable apart in a server log.
+const GROUP_PLAN_SQLSTATE: &str = "SW002";
+const GROUP_PLAN_MESSAGE: &str = "may not be placed in a commission group";
+
+/// The plan behind a product that has one. This is the whole fact the group rule needs: a product with
+/// a `plan_id` has no rate of its own, so a group rate must never be able to speak for it.
+struct PlanDerivedProduct {
+    pub product_name: Option<String>,
+    pub plan_name: Option<String>,
+    pub plan_rate: Option<f64>,
+}
+
+/// The members of `ids` that are PLAN-DERIVED (`plan_id IS NOT NULL`), ordered so the refusal message is
+/// stable. A caller passes the 089 trigger's input the same way `map_product_write_error` re-resolves
+/// the plan for 083, so a backstop raise is answered with the SAME readable 409 as the pre-write read.
+async fn plan_derived_among(state: &AppState, ids: &[Uuid]) -> AppResult<Vec<PlanDerivedProduct>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
+        "SELECT ap.name, p.name, p.commission_rate::float8 \
+           FROM affiliate_products ap LEFT JOIN plans p ON p.id = ap.plan_id \
+          WHERE ap.id = ANY($1) AND ap.plan_id IS NOT NULL \
+          ORDER BY ap.name ASC",
+    )
+    .bind(ids)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(product_name, plan_name, plan_rate)| PlanDerivedProduct {
+            product_name,
+            plan_name,
+            plan_rate,
+        })
+        .collect())
+}
+
+/// The 409 an operator sees when a group is asked to cover a plan-derived product. It names the PLAN to
+/// edit rather than the column that disagreed, and it is the same sentence the bulk rate route and the
+/// product PUT answer with (`affiliate_product_handler::plan_derived_rate_conflict`) — one wording for
+/// one rule, whichever door the operator came through.
+fn plan_derived_group_conflict(rows: &[PlanDerivedProduct]) -> AppError {
+    let named: Vec<String> = rows
+        .iter()
+        .take(3)
+        .map(|r| {
+            let name = r.product_name.as_deref().unwrap_or("unnamed");
+            match (r.plan_name.as_deref(), r.plan_rate) {
+                (Some(plan), Some(rate)) => {
+                    format!("\"{name}\" (from its plan \"{plan}\" at {rate}%)")
+                }
+                (Some(plan), None) => format!("\"{name}\" (from its plan \"{plan}\")"),
+                _ => format!("\"{name}\" (from its plan)"),
+            }
+        })
+        .collect();
+    let more = if rows.len() > 3 {
+        format!(" and {} more", rows.len() - 3)
+    } else {
+        String::new()
+    };
+    AppError::Conflict(format!(
+        "The commission rate for {}{more} comes from the plan it belongs to — a plan-derived product \
+         is a mirror of its plan and cannot be put in a commission group, because a group rate \
+         outranks the plan's. Edit the plan to change the rate, or untick the product.",
+        named.join(", ")
+    ))
+}
+
+/// The backstop for migration 089's trigger: another writer (or a psql session) tries to place a
+/// plan-derived product in a group between the read above and the write, and the DATABASE refuses it.
+/// The admin must still get the readable 409 and not `error.rs`'s anonymous `500 "Database error"`.
+async fn map_group_write_error(state: &AppState, e: sqlx::Error, ids: &[Uuid]) -> AppError {
+    if let sqlx::Error::Database(db) = &e {
+        let code = db.code();
+        if code.as_deref() == Some(GROUP_PLAN_SQLSTATE) && db.message().contains(GROUP_PLAN_MESSAGE)
+        {
+            if let Ok(rows) = plan_derived_among(state, ids).await {
+                if !rows.is_empty() {
+                    return plan_derived_group_conflict(&rows);
+                }
+            }
+            return AppError::Conflict(
+                "A plan-derived affiliate product cannot be put in a commission group — its rate \
+                 comes from the plan it belongs to, so edit the plan to change the rate."
+                    .into(),
+            );
+        }
+    }
+    AppError::Database(e)
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateGroupRequest {
     pub name: String,
@@ -84,6 +179,16 @@ pub async fn list_groups(
     Ok(Json(json!(out)))
 }
 
+/// Create a group, optionally putting products in it at the same time.
+///
+/// ARM (a) OF KANBAN t_db5d07aa, decided here: a PLAN-DERIVED product (`plan_id IS NOT NULL`) may not
+/// be a member of a commission group. Such a product has no rate of its own — `plans.commission_rate`
+/// IS its rate (the t_92bd5eb6 decision, normalised by migration 076 and enforced by 083's trigger on
+/// the column). A group rate OUTRANKS the product's own rate (`src/commission.rs`, rule 2), so putting
+/// one in a group moved what a sale PAYS through a column 083 does not cover, and the override won
+/// until someone edited the plan and silently took it back — the same money risk as t_5c2a9bde, by a
+/// different door. The whole request is refused (no group row, no membership) and the 409 names the
+/// plan to edit. A group of ordinary products is unaffected.
 pub async fn create_group(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -103,8 +208,17 @@ pub async fn create_group(
         }
     }
 
+    let ids: Vec<Uuid> = req.product_ids.clone().unwrap_or_default();
+    let derived = plan_derived_among(&state, &ids).await?;
+    if !derived.is_empty() {
+        return Err(plan_derived_group_conflict(&derived));
+    }
+
     let id = Uuid::new_v4();
-    sqlx::query(
+    // ONE transaction, so the group row and its membership land together: migration 089's trigger is a
+    // backstop behind the read above, and a refusal from it must not leave an empty group behind.
+    let mut tx = state.pool.begin().await?;
+    if let Err(e) = sqlx::query(
         "INSERT INTO affiliate_product_groups (id, name, commission_rate, description) \
          VALUES ($1, $2, $3, $4)",
     )
@@ -112,20 +226,25 @@ pub async fn create_group(
     .bind(req.name.trim())
     .bind(req.commission_rate)
     .bind(&req.description)
-    .execute(&state.pool)
-    .await?;
+    .execute(&mut *tx)
+    .await
+    {
+        return Err(map_group_write_error(&state, e, &ids).await);
+    }
 
     let mut assigned = 0usize;
-    if let Some(ids) = &req.product_ids {
-        if !ids.is_empty() {
-            assigned = sqlx::query("UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2)")
-                .bind(id)
-                .bind(ids)
-                .execute(&state.pool)
-                .await?
-                .rows_affected() as usize;
+    if !ids.is_empty() {
+        match sqlx::query("UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2)")
+            .bind(id)
+            .bind(&ids)
+            .execute(&mut *tx)
+            .await
+        {
+            Ok(r) => assigned = r.rows_affected() as usize,
+            Err(e) => return Err(map_group_write_error(&state, e, &ids).await),
         }
     }
+    tx.commit().await?;
 
     Ok((
         StatusCode::CREATED,
@@ -197,6 +316,11 @@ pub async fn delete_group(
 
 /// Set the membership of a group. **Replaces** the membership, it does not append — so the UI can
 /// drive it from a checkbox list where unticking means "remove".
+///
+/// The OTHER writer of `affiliate_products.group_id`, and it answers the same refusal as `create_group`
+/// (kanban t_db5d07aa): a plan-derived product may not be put in a group, because a group rate outranks
+/// the plan's rate the product is supposed to mirror. The check runs BEFORE the transaction, so a
+/// request that is going to be rejected never empties the membership that is already stored.
 pub async fn assign_products(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -205,6 +329,10 @@ pub async fn assign_products(
 ) -> AppResult<Json<serde_json::Value>> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let derived = plan_derived_among(&state, &req.product_ids).await?;
+    if !derived.is_empty() {
+        return Err(plan_derived_group_conflict(&derived));
     }
     let exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM affiliate_product_groups WHERE id = $1)")
@@ -216,20 +344,29 @@ pub async fn assign_products(
     }
 
     let mut tx = state.pool.begin().await?;
-    let removed = sqlx::query("UPDATE affiliate_products SET group_id = NULL WHERE group_id = $1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+    // Clearing membership (`group_id = NULL`) can never violate the rule, so only the ADD arm needs the
+    // backstop mapping; both arms go through it so neither can answer an anonymous 500.
+    let removed =
+        match sqlx::query("UPDATE affiliate_products SET group_id = NULL WHERE group_id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            Ok(r) => r.rows_affected(),
+            Err(e) => return Err(map_group_write_error(&state, e, &req.product_ids).await),
+        };
     let added = if req.product_ids.is_empty() {
         0
     } else {
-        sqlx::query("UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2)")
+        match sqlx::query("UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2)")
             .bind(id)
             .bind(&req.product_ids)
             .execute(&mut *tx)
-            .await?
-            .rows_affected()
+            .await
+        {
+            Ok(r) => r.rows_affected(),
+            Err(e) => return Err(map_group_write_error(&state, e, &req.product_ids).await),
+        }
     };
     tx.commit().await?;
 

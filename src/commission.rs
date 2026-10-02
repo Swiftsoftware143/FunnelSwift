@@ -15,7 +15,11 @@
 //!    *"override a particular affiliate a higher commission on top of whatever they're getting."*
 //!    This is why it sits above everything: it is the one rate a human set on purpose for this person.
 //! 2. `affiliate_product_groups.commission_rate` — one rate covering the products that were grouped as
-//!    "the same" (*"do an overall by selecting which products are the same"*).
+//!    "the same" (*"do an overall by selecting which products are the same"*). It can never speak for a
+//!    PLAN-DERIVED product: such a product has no rate of its own — the plan's is its rate (rule 6, read
+//!    through the mirror column in rule 3) — so no group may contain one, enforced by migration 089 and
+//!    by both writers of `affiliate_products.group_id` (kanban t_db5d07aa). This is why rule 2 can never
+//!    win for a row whose `plan_id` is set, and it is what keeps 083's rule from being routed around.
 //! 3. `affiliate_products.default_commission_rate` — the product's own rate, the field both admin
 //!    consoles edit.
 //! 4. `affiliate_products.commission_rate` — the product's legacy rate column. Only reached when the
@@ -123,6 +127,9 @@ pub async fn resolve(
     }
 
     // ── 2–4. the product's own rate, and the group that may override it ──────────────────────────
+    // The group arm below can only ever fire for a product whose `plan_id` is NULL: a plan-derived
+    // product may not be a member of a group at all (kanban t_db5d07aa, migration 089), so for one of
+    // those the group is None and the plan's rate — mirrored into rule 3's column — is what pays.
     let mut product_default: Option<f64> = None;
     let mut product_legacy: Option<f64> = None;
     let mut plan_id: Option<Uuid> = None;
