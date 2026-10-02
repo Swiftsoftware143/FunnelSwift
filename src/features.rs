@@ -477,3 +477,55 @@ pub async fn enforce_template_access(
         template
     )))
 }
+
+// The two resolution rules every gate and the admin registry SHARE. They are pure functions, so
+// the precedence they encode is locked here rather than only observed on live data (kanban
+// t_35acff73: `enforce_feature_flag` and the registry both call `plan_row_flag`, and
+// `enforce_feature_limit` / `enforce_action_button_limit` both call `resolved_limit`).
+#[cfg(test)]
+mod resolution_rules {
+    use super::*;
+
+    #[test]
+    fn a_present_jsonb_key_beats_the_column_both_ways() {
+        // jsonb false wins over column true (this is the "panel says no" arm)
+        let row = serde_json::json!({"features": {"webhooks": false}, "has_webhooks": true});
+        assert_eq!(plan_row_flag(&row, "has_webhooks"), Some(false));
+        // jsonb true wins over column false
+        let row = serde_json::json!({"features": {"webhooks": true}, "has_webhooks": false});
+        assert_eq!(plan_row_flag(&row, "has_webhooks"), Some(true));
+        // absent jsonb key falls back to the column
+        let row = serde_json::json!({"has_webhooks": true});
+        assert_eq!(plan_row_flag(&row, "has_webhooks"), Some(true));
+        // neither: the plan configures nothing (the gate refuses)
+        assert_eq!(plan_row_flag(&serde_json::json!({}), "has_webhooks"), None);
+        // a non-bool jsonb value is not a grant either — the column still decides
+        let row = serde_json::json!({"features": {"webhooks": "true"}, "has_webhooks": false});
+        assert_eq!(plan_row_flag(&row, "has_webhooks"), Some(false));
+    }
+
+    #[test]
+    fn premium_themes_is_resolved_through_the_same_rule() {
+        assert_eq!(
+            plan_row_flag(
+                &serde_json::json!({"features": {"premium_themes": true}}),
+                "premium_themes"
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            plan_row_flag(&serde_json::json!({"features": {}}), "premium_themes"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_limit_column_allowlist_is_the_gates_own() {
+        assert_eq!(limit_column("max_kinetic_cards"), Some("max_cards"));
+        assert_eq!(limit_column("team_members"), Some("max_team_members"));
+        assert_eq!(limit_column("max_ocr_scans"), Some("max_ocr_scans"));
+        // feature_limits-only keys have no column: absence must stay "not configured"
+        assert_eq!(limit_column("max_webhooks"), None);
+        assert_eq!(limit_column("max_affiliates"), None);
+    }
+}
