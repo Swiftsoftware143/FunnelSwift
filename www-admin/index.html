@@ -1362,7 +1362,11 @@ async function renderCommissionGroups() {
           <td><strong>${x(g.name || '-')}</strong>${g.description ? `<div style="font-size:11px;color:var(--muted)">${x(g.description)}</div>` : ''}</td>
           <td><strong>${g.commission_rate != null ? g.commission_rate : '-'}%</strong></td>
           <td>${g.product_count != null ? g.product_count : (Array.isArray(g.product_ids) ? g.product_ids.length : '—')}</td>
-          <td><button class="btn btn-danger btn-xs" onclick="window._deleteCommissionGroup('${g.id}')">Delete</button></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-secondary btn-xs" onclick="window._membersCommissionGroup('${g.id}')">Members</button>
+            <button class="btn btn-secondary btn-xs" onclick="window._editCommissionGroup('${g.id}')">Edit rate</button>
+            <button class="btn btn-danger btn-xs" onclick="window._deleteCommissionGroup('${g.id}')">Delete</button>
+          </td>
         </tr>`).join('')}</tbody>
       </table></div></div>`}
 
@@ -1436,6 +1440,120 @@ window._deleteCommissionGroup = async function(id) {
   if (!confirm('Delete this group? Products in it keep their own rates — deleting a group never deletes products.')) return;
   try { await api('/affiliate-product-groups/' + encodeURIComponent(id), { method: 'DELETE' }); showToast('Group deleted', 'success'); renderView(); }
   catch(e) { showToast(e.message, 'error'); }
+};
+
+/* kanban t_4b7991fd: `PUT /:id` (re-rate/rename) and `POST /:id/products` (replace membership) were
+   API-only — the module doc claimed every route here had a control, and these two did not. Both are
+   wired below in the shape t_619533e2/t_dc79fb2a used for tab audience: a control on the view that
+   calls the route, and a toast driven by the SERVER's own numbers, never the tick count (t_e8a297fb).
+   WIRED, not retired, because delete+recreate is not an equivalent operator path: a group DELETE nulls
+   every member's `group_id` (products fall back to their own rate until re-ticked) and re-creating a
+   group owned by the shared SYSTEM catalogue would re-own it to this workspace. "Edit rate" changes
+   the rate in place; "Members" replaces the membership and reports what really landed. */
+window._editCommissionGroup = function(id) {
+  const g = EDIT_ROWS.commissionGroups[String(id)] || {};
+  STATE.modal = { title: 'Edit Commission Group' };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(() => {
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="group-edit-form">
+      <div class="form-group"><label class="form-label">Group name</label>
+        <input class="input" name="name" value="${x(g.name || '')}" required></div>
+      <div class="form-group"><label class="form-label">Rate for the whole group (%)</label>
+        <input class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" value="${g.commission_rate != null ? g.commission_rate : ''}" placeholder="e.g. 35"></div>
+      <div class="form-group"><label class="form-label">Description</label>
+        <textarea class="input" name="description" rows="2">${x(g.description || '')}</textarea></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px">
+        <input type="checkbox" name="clear_rate"> Remove the group rate — every member falls back to its own rate</label>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">Changing the rate here re-rates the
+      group <strong>in place</strong>: its membership does not move (use <strong>Members</strong> for that).</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Update Group</button>
+      </div>
+    </form>`;
+    document.getElementById('group-edit-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(ev.target);
+      const name = (fd.get('name') || '').toString().trim();
+      if (!name) { showToast('A group needs a name', 'error'); return; }
+      /* The PUT COALESCEs per field: an omitted field keeps its stored value, and the description is
+         sent as typed so emptying the box is the one way to clear it. */
+      const payload = { name, description: (fd.get('description') || '').toString() };
+      const rateRaw = fd.get('commission_rate');
+      if (fd.get('clear_rate')) payload.clear_commission_rate = true;
+      else if (rateRaw !== null && rateRaw !== '') payload.commission_rate = Number(rateRaw);
+      try {
+        const r = await api('/affiliate-product-groups/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(payload) });
+        showToast((r && r.message) ? r.message : 'Group updated', 'success');
+        window._closeModal(); renderView();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 0);
+};
+
+window._membersCommissionGroup = function(id) {
+  const g = EDIT_ROWS.commissionGroups[String(id)] || {};
+  STATE.modal = { title: 'Members of ' + (g.name || 'this group') };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(async () => {
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    /* Fresh reads, not the last table render: membership is pre-ticked from `product_ids` the SERVER
+       reports for this group, so the editor can never show a tick state the database does not have. */
+    let products = [], groups = [];
+    try { products = await api('/affiliate-products'); } catch(e) { products = []; }
+    try { groups = await api('/affiliate-product-groups'); } catch(e) { groups = []; }
+    if (!Array.isArray(products)) products = products.data || products.products || [];
+    if (!Array.isArray(groups)) groups = groups.data || groups.groups || [];
+    const fresh = groups.find(gg => String(gg.id) === String(id));
+    const current = new Set(((fresh && fresh.product_ids) || g.product_ids || []).map(String));
+    /* The same list the create form offers: a plan product has no rate of its own, so a group rate
+       would outrank its plan — both group routes answer that 409. */
+    const ratable = products.filter(p => !p.plan_stated);
+    body.innerHTML = `<form id="group-members-form">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tick every product this group should
+      cover. Saving <strong>replaces</strong> the membership: an unticked product leaves the group and
+      falls back to its own rate; tick nothing to empty the group. A product not listed here (a plan
+      product, or another workspace's) is never reachable from this workspace and is left exactly as it is.</p>
+      ${ratable.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products with a rate of their own yet.</p>' : `
+      <div style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
+        ${ratable.map(p => `<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
+          <input type="checkbox" name="product_ids" value="${x(p.id)}" ${current.has(String(p.id)) ? 'checked' : ''}> ${x(p.name || p.product_name || '-')}
+          <span style="color:var(--muted)">— now ${p.default_commission_rate != null ? p.default_commission_rate : (p.commission_rate != null ? p.commission_rate : 0)}%</span></label>`).join('')}
+      </div>`}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Membership</button>
+      </div>
+    </form>`;
+    document.getElementById('group-members-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const ids = new FormData(ev.target).getAll('product_ids').map(String).filter(Boolean);
+      const ticked = new Set(ids);
+      try {
+        const r = await api('/affiliate-product-groups/' + encodeURIComponent(id) + '/products', { method: 'POST', body: JSON.stringify({ product_ids: ids }) });
+        /* The SERVER's own counts, never the tick count (kanban t_e8a297fb): `products_in_group` is what
+           really landed and `products_skipped` is a ticked id this workspace cannot reach, so the toast
+           never claims more than the database holds. "N left" is the members the SERVER itself showed
+           (`current`, from this group's `product_ids`) that the operator did not tick — deliberately NOT
+           `previously_removed`: the replace CLEARS every link and then re-sets the ticked ones, so that
+           number counts a re-ticked member as removed and would report more leaving than really did
+           (measured: 1 product unticked reported "2 removed" — kanban t_4b7991fd). */
+        const landed = (r && typeof r.products_in_group === 'number') ? r.products_in_group : 0;
+        const left = Array.from(current).filter((cid) => !ticked.has(String(cid))).length;
+        const skipped = (r && r.products_skipped) || 0;
+        showToast('Membership replaced — ' + landed + ' product(s) in the group'
+          + (left ? ', ' + left + ' left' : '')
+          + (skipped ? ' — ' + skipped + ' not reachable from this workspace' : ''),
+          (skipped && !landed) ? 'error' : 'success');
+        window._closeModal(); renderView();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 0);
 };
 
 async function renderEmailTemplates() {

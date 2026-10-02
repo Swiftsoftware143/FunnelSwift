@@ -1,9 +1,13 @@
 //! Commission model endpoints: product groups (one rate for several products), a bulk rate setter,
 //! and the resolver that explains which rule produced a rate.
 //!
-//! Every one of these is reachable from the admin panels — a backend capability with no UI is a
-//! defect in this fleet, so each handler here has a matching control (see
-//! `www-admin/index.html` and `www-app/index.html`, "Commission groups").
+//! Every one of these is reachable from the admin console — a backend capability with no UI is a
+//! defect in this fleet, so each handler here has a matching control in `www-admin/index.html`
+//! ("Commission groups"): the list, create, re-rate/rename (`PUT /:id`), replace-membership
+//! (`POST /:id/products`), delete and the bulk rate setter. The last two group routes were API-only
+//! when this module was written and were wired into that console in kanban t_4b7991fd; the
+//! tenant-facing `www-app/index.html` deliberately carries no commission-group screen (the fleet
+//! points operators at the admin console, which is the only UI for this feature — t_e8a297fb's census).
 
 use crate::auth::middleware::AuthUser;
 use crate::commission;
@@ -15,6 +19,7 @@ use axum::{
     Json,
 };
 use serde_json::json;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // ── product groups ───────────────────────────────────────────────────────────────────────────────
@@ -188,9 +193,8 @@ pub async fn list_groups(
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
     let (tenant_id, system_id) = group_scope(&auth)?;
-    let rows: Vec<(Uuid, Option<Uuid>, String, Option<f64>, Option<String>, i64)> = sqlx::query_as(
-        "SELECT g.id, g.tenant_id, g.name, g.commission_rate::float8, g.description, \
-                (SELECT count(*) FROM affiliate_products p WHERE p.group_id = g.id) \
+    let rows: Vec<(Uuid, Option<Uuid>, String, Option<f64>, Option<String>)> = sqlx::query_as(
+        "SELECT g.id, g.tenant_id, g.name, g.commission_rate::float8, g.description \
          FROM affiliate_product_groups g \
          WHERE g.tenant_id = $1 OR g.tenant_id = $2 \
          ORDER BY g.name ASC",
@@ -201,12 +205,39 @@ pub async fn list_groups(
     .await
     .map_err(|e| AppError::Internal(format!("list groups failed: {e}")))?;
 
+    // The membership, in ONE read, under the WRITERS' own predicate (kanban t_4b7991fd). The console's
+    // "Members" editor pre-ticks from `product_ids` and `assign_products` REPLACES the membership from
+    // that tick list, so the ids a group reports must be exactly the ones the caller can replace — the
+    // same `tenant = caller OR SYSTEM` scope both membership arms write with (t_e8a297fb). A member row
+    // outside that scope is left untouched by the editor (the clear arm cannot reach it either) and is
+    // deliberately not listed or counted here: a count the caller cannot act on is the silent
+    // cross-tenant claim this feature's writers no longer make. Ordered so the tick list is stable.
+    let member_rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT p.group_id, p.id \
+           FROM affiliate_products p \
+           JOIN affiliate_product_groups g ON g.id = p.group_id \
+          WHERE (g.tenant_id = $1 OR g.tenant_id = $2) \
+            AND (p.tenant_id = $1 OR p.tenant_id = $2) \
+          ORDER BY g.name ASC, p.name ASC",
+    )
+    .bind(tenant_id)
+    .bind(system_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("list group members failed: {e}")))?;
+    let mut members: HashMap<Uuid, Vec<String>> = HashMap::new();
+    for (gid, pid) in member_rows {
+        members.entry(gid).or_default().push(pid.to_string());
+    }
+
     let out: Vec<serde_json::Value> = rows
         .iter()
         .map(|r| {
+            let ids = members.get(&r.0).cloned().unwrap_or_default();
             json!({
                 "id": r.0, "tenant_id": r.1, "name": r.2,
-                "commission_rate": r.3, "description": r.4, "product_count": r.5
+                "commission_rate": r.3, "description": r.4,
+                "product_count": ids.len(), "product_ids": ids
             })
         })
         .collect();
