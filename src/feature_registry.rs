@@ -588,6 +588,14 @@ pub async fn write_boolean(
 
 /// Write a numeric grant: `Some(v)` upserts the plan's `feature_limits` row for the key (the
 /// store the limit gate reads first), `None` deletes it so the key falls back to the plan column.
+///
+/// The write is ONE statement with an explicit conflict target, not an UPDATE-then-INSERT: the
+/// pair was not atomic, so two concurrent panel writes for the same `(plan, key)` could both miss
+/// the UPDATE and both INSERT, seating a duplicate row that `resolved_limit` then had to pick
+/// between by `tps.start_date`. The target is backed by the real constraint
+/// `feature_limits_plan_id_feature_key_key UNIQUE (plan_id, feature_key)`, added by
+/// migrations/091_feature_limits_plan_fk_and_unique.sql (kanban t_850781e2) — without that
+/// constraint this statement would fail with Postgres 42P10.
 pub async fn write_limit(
     state: &AppState,
     plan_id: Uuid,
@@ -603,25 +611,16 @@ pub async fn write_limit(
                 .await?;
         }
         Some(v) => {
-            let updated = sqlx::query(
-                "UPDATE feature_limits SET limit_value = $3 WHERE plan_id = $1 AND feature_key = $2",
+            sqlx::query(
+                "INSERT INTO feature_limits (id, plan_id, feature_key, limit_value) \
+                 VALUES (gen_random_uuid(), $1, $2, $3) \
+                 ON CONFLICT (plan_id, feature_key) DO UPDATE SET limit_value = EXCLUDED.limit_value",
             )
             .bind(plan_id)
             .bind(key)
             .bind(v)
             .execute(&state.pool)
-            .await?
-            .rows_affected();
-            if updated == 0 {
-                sqlx::query(
-                    "INSERT INTO feature_limits (id, plan_id, feature_key, limit_value) VALUES (gen_random_uuid(), $1, $2, $3)",
-                )
-                .bind(plan_id)
-                .bind(key)
-                .bind(v)
-                .execute(&state.pool)
-                .await?;
-            }
+            .await?;
         }
     }
     Ok(())
