@@ -3,7 +3,6 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
 use askama::Template;
@@ -937,12 +936,14 @@ pub fn create_router(
         //     (t_65084d8b / t_8803c75e / t_ae84b186 / t_5a9e4eb7 are the same class and treatment.)
         //   * GET  /api/v1/push/adaswift/health    — same constant, and ADASwift gates every /api/*
         //     path (401), so nothing truthful to report.
+        //   * GET  /affiliate-admin.html    — `.nest_service("/affiliate-admin.html",
+        //     ServeDir::new("/var/www/funnelswift/affiliate-admin.html"))`: that host path exists nowhere in
+        //     the container and is not one of its mounts, so the mount answered 404 for EVERY caller, with
+        //     and without a valid admin token, exactly like a bogus path (t_4e2d6270 measured both). The
+        //     file it pointed at was itself retired by t_24843ee0 (0 inbound refs; its getToken() read a
+        //     session key nothing in the fleet writes) and its product CRUD is the SPA's Affiliates tab.
+        //     Removed by t_4e2d6270: static files in this app are served by nginx, never by the router.
         // Do not re-add one of these without a real caller AND a target route that accepts the body.
-        // Serve static files (SPA admin pages)
-        .nest_service(
-            "/affiliate-admin.html",
-            ServeDir::new("/var/www/funnelswift/affiliate-admin.html"),
-        )
         // Request-body read deadline (kanban t_488a19d4) — mounted INNERMOST, i.e. added BEFORE
         // `require_auth` below, because in axum the first `.layer()` is the one closest to the
         // handler. Order for a request is therefore Trace -> require_auth -> body deadline ->
