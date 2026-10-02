@@ -137,27 +137,22 @@ pub async fn register(
     .execute(&state.pool)
     .await?;
 
-    // Auto-assign plan to new tenant (respects plan from signup request, defaults to 'free')
-    {
-        // Always start on the free tier — never honour a caller-supplied plan slug.
-        let plan_slug = "capture-free";
-        let plan_id: Option<Uuid> =
-            sqlx::query_scalar("SELECT id FROM plans WHERE slug = $1 LIMIT 1")
-                .bind(plan_slug)
-                .fetch_optional(&state.pool)
-                .await?;
-        if let Some(pid) = plan_id {
-            let _ = sqlx::query(
-                r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
-                   VALUES ($1, $2, $3, 'active', NOW())"#
-            )
-            .bind(Uuid::new_v4())
-            .bind(tenant_id)
-            .bind(pid)
-            .execute(&state.pool)
-            .await;
-        }
-    }
+    // Auto-assign the free tier of THIS product (kanban t_3641f326).
+    //
+    // This used to be `let plan_slug = "capture-free"` + `SELECT id FROM plans WHERE slug = $1`
+    // and `if let Some(pid) { … }` with no else arm — so on a from-zero install, whose plans are
+    // 000001's generic free/starter/pro/enterprise, the lookup returned None and the signup
+    // completed with NO `tenant_plan_subscriptions` row at all, silently. The resolver now binds
+    // the free tier through `plans.price = 0` + `plans.side` (both NOT NULL) and reports what it
+    // did: a warning in the log when this install has no free plan for this side, an ERROR and a
+    // `plan_assignment.warning` in the response when it has no free plan at all.
+    let plan = crate::plan_resolver::assign_free_plan(
+        &state.pool,
+        tenant_id,
+        crate::plan_resolver::ProductSide::Capture,
+        "POST /api/v1/auth/register",
+    )
+    .await?;
 
     // Generate JWT
     let now = Utc::now().timestamp() as usize;
@@ -184,6 +179,11 @@ pub async fn register(
         StatusCode::CREATED,
         Json(json!({
             "token": token,
+            // Which plan the new account landed on (kanban t_3641f326): `plan` stays the flat slug
+            // this response's shape always carried (null only if the install has NO free plan at
+            // all), `plan_assignment` is the structured form that can never be silent.
+            "plan": plan.slug(),
+            "plan_assignment": plan.to_json(),
             "user": {
                 "id": user_id,
                 "email": req.email,

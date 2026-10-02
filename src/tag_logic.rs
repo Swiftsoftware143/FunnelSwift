@@ -88,18 +88,47 @@ pub const QUALIFIED_TAG_ID: &str = "15698a9a-67fe-5bf1-9aac-1dcd7a1ccd9e";
 pub const SOLD_TAG_NAME: &str = "Sold";
 pub const QUALIFIED_TAG_NAME: &str = "Qualified";
 
-/// Auto-apply "Sold" tag to all leads in a tenant when the plan is upgraded
-/// from free/kinetic_free to pro/enterprise (paid plans).
-/// This also triggers the "Sold removes Qualified" tag rule via assign_lead_tags.
+/// Auto-apply the "Sold" tag to all leads in a tenant when the plan the tenant was just put on is
+/// a PAID one, which in turn triggers the "Sold removes Qualified" tag rule via assign_lead_tags.
+///
+/// The paid test is `plans.price > 0` — the PLAN ROW, not a slug literal (kanban t_3641f326).
+/// It used to be `matches!(new_plan_slug, "pro" | "enterprise")`, a vocabulary that exists only on
+/// a from-zero install: live's slugs are capture-free / kinetic-free / capture-starter /
+/// kinetic-pro / suite / agency, so on live the test could never be true and no upgrade ever
+/// reached this branch. `plans.price` is `double precision NOT NULL DEFAULT 0` and is what the
+/// operator actually prices the tier at (measured 2026-10-02: live 9/9/29/79, from-zero 29/79/199
+/// for the paid tiers), so it is true on BOTH databases.
 pub async fn apply_sold_to_tenant_leads(
     pool: &PgPool,
     tenant_id: Uuid,
-    new_plan_slug: &str,
+    new_plan_id: Uuid,
 ) -> std::result::Result<u64, AppError> {
-    // Only apply Sold for paid plans
-    let is_paid = matches!(new_plan_slug, "pro" | "enterprise");
+    // The caller (`set_active_plan`) has already proven this plan exists, so a miss here is a
+    // real anomaly: treat it as unpaid and say so rather than assuming a paid tier.
+    let plan: Option<(String, f64)> =
+        sqlx::query_as("SELECT slug, COALESCE(price, 0)::float8 FROM plans WHERE id = $1")
+            .bind(new_plan_id)
+            .fetch_optional(pool)
+            .await?;
+    let (new_plan_slug, new_plan_price) = match plan {
+        Some(row) => row,
+        None => {
+            tracing::warn!(
+                plan = %new_plan_id,
+                tenant = %tenant_id,
+                "apply_sold: plan row not found — treating the upgrade as unpaid and applying no Sold tag"
+            );
+            return Ok(0);
+        }
+    };
+
+    let is_paid = new_plan_price > 0.0;
     if !is_paid {
-        tracing::info!("apply_sold: plan {} is not paid, skipping", new_plan_slug);
+        tracing::info!(
+            "apply_sold: plan {} (price {}) is not paid, skipping",
+            new_plan_slug,
+            new_plan_price
+        );
         return Ok(0);
     }
 

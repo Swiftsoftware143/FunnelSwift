@@ -33,6 +33,7 @@ mod features;
 mod handlers;
 mod models;
 mod plan_movement;
+mod plan_resolver;
 mod probe_harness;
 mod security;
 mod smtp;

@@ -611,8 +611,9 @@ pub async fn admin_update_plan_features(
 /// This is the **only** writer of a tenant's plan. `tenants.plan_id` has never existed in this
 /// database (`ERROR 42703`), and the plan really is the active `tenant_plan_subscriptions` row:
 /// that is what `list_tenants` reads (LATERAL … WHERE status = 'active') and what this module's
-/// own `admin_assign_plan` writes. Returns the slug so callers can run slug-dependent side
-/// effects (sold-tag routing).
+/// own `admin_assign_plan` writes. Returns the slug so callers can log/report which plan was
+/// activated (the paid-plan side effects key on the plan ID and its `price`, not on the slug —
+/// kanban t_3641f326).
 pub(crate) async fn set_active_plan(
     pool: &sqlx::PgPool,
     tenant_id: Uuid,
@@ -707,11 +708,14 @@ pub async fn admin_assign_plan(
         .ok_or_else(|| AppError::BadRequest("Valid plan_id is required".into()))?;
 
     // Get the new plan slug before activating
-    let (subscription_id, new_plan_slug) = set_active_plan(&state.pool, tenant_id, plan_id).await?;
+    let (subscription_id, _new_plan_slug) =
+        set_active_plan(&state.pool, tenant_id, plan_id).await?;
 
-    // Auto-apply Sold tag to all leads in this tenant
-    // This only applies when upgrading to paid plans (pro/enterprise)
-    tag_logic::apply_sold_to_tenant_leads(&state.pool, tenant_id, &new_plan_slug).await?;
+    // Auto-apply the Sold tag to all leads in this tenant when the plan just activated is a PAID
+    // one. The paid test is `plans.price > 0` inside the callee (kanban t_3641f326): the old
+    // `matches!(slug, "pro" | "enterprise")` was a vocabulary only a from-zero install has, so on
+    // live every upgrade skipped it.
+    tag_logic::apply_sold_to_tenant_leads(&state.pool, tenant_id, plan_id).await?;
 
     Ok(Json(
         json!({"message": "Plan assigned to tenant", "subscription_id": subscription_id}),

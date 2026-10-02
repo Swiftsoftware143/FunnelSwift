@@ -278,7 +278,7 @@ nothing in this app is triggered by a payment. What actually happens:
 
 1. An account is created by signing up (`POST /api/v1/auth/signup`, or `POST /api/v1/auth/register`) or by an admin creating the tenant
 2. The system creates the tenant and seeds `tenant_settings` (e.g. the default lead stages)
-3. The plan is a **hardcoded free slug** — `kinetic-free` on the public signup path (`src/handlers/public_signup_handler.rs:112`), `capture-free` on the register path (`src/auth/handlers.rs:141`) — a plan slug sent in the request is ignored either way
+3. The plan assigned is the **free tier of the product being signed up**, resolved from the `plans` table itself — `price = 0` plus the row's `side` (`main` for `/api/v1/auth/register`, `kinetic` for `/api/v1/auth/signup`, `both` accepted by either; `src/plan_resolver.rs`). No plan **slug** is hardcoded: a slug the install does not carry can no longer silently leave the new tenant with no subscription. A plan slug sent in the request is ignored either way, and each signup response reports what it assigned under `plan_assignment` (with `assigned: false` if this install has no free plan at all)
 4. Only an admin can change it: `POST /api/v1/admin/plans/assign` writes the active `tenant_plan_subscriptions` row (`set_active_plan`, `src/handlers/plan_handler.rs`), cancelling the previous one with `status = 'cancelled'` first
 5. **No email is sent at any of these steps.** `send_welcome_email()` and `send_purchase_confirmed_email()` have no callers; the only email this app sends on its own is `password_reset`
 

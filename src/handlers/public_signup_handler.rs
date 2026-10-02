@@ -54,8 +54,9 @@ pub async fn public_signup(
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
     let password = payload["password"].as_str().unwrap_or("").to_string();
     let name = payload["name"].as_str().unwrap_or("").trim().to_string();
-    // Always start on the free tier — never honour a caller-supplied plan slug.
-    let plan_slug = "kinetic-free".to_string();
+    // A `plan` in the body is IGNORED — a public signup only ever starts on the free tier, and
+    // WHICH free tier is resolved from `plans.price`/`plans.side` at the assignment site below,
+    // never from a slug literal (kanban t_3641f326).
     let source = payload["source"].as_str().unwrap_or("").to_string();
     // (b) VALIDATE THE WRITE — decided arm: STILL-RECORD-AND-FLAG (kanban t_8101edb5).
     //
@@ -161,22 +162,21 @@ pub async fn public_signup(
     .execute(&state.pool)
     .await?;
 
-    // Assign plan (respects plan from signup request, defaults to 'free')
-    let plan_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM plans WHERE slug = $1 LIMIT 1")
-        .bind(&plan_slug)
-        .fetch_optional(&state.pool)
-        .await?;
-    if let Some(pid) = plan_id {
-        let _ = sqlx::query(
-            r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
-               VALUES ($1, $2, $3, 'active', NOW())"#,
-        )
-        .bind(Uuid::new_v4())
-        .bind(tenant_id)
-        .bind(pid)
-        .execute(&state.pool)
-        .await;
-    }
+    // Assign the free tier of THIS product (kanban t_3641f326).
+    //
+    // This used to be `let plan_slug = "kinetic-free"` + `SELECT id FROM plans WHERE slug = $1`
+    // and `if let Some(pid) { … }` with no else arm, so a from-zero install (generic plans:
+    // free/starter/pro/enterprise) completed the signup with NO `tenant_plan_subscriptions` row,
+    // silently. `plans.price` and `plans.side` are both NOT NULL, so the resolver always finds
+    // the install's free tier, and it reports which one: a WARN when this install has no free plan
+    // for the kinetic side, an ERROR plus `plan_assignment.warning` when it has none at all.
+    let plan = crate::plan_resolver::assign_free_plan(
+        &state.pool,
+        tenant_id,
+        crate::plan_resolver::ProductSide::Kinetic,
+        "POST /api/v1/auth/signup",
+    )
+    .await?;
 
     // ── THE CREDENTIAL EMAIL ────────────────────────────────────────────────────────────────────
     // Sent after the user row and the plan subscription exist, so the login details are true by the
@@ -201,7 +201,7 @@ pub async fn public_signup(
         tracing::info!(
             source = %source,
             email = %email,
-            plan = %plan_slug,
+            plan = ?plan.slug(),
             "Public signup completed"
         );
     }
@@ -280,7 +280,10 @@ pub async fn public_signup(
         Json(json!({
             "message": "Account created successfully",
             "token": token,
-            "plan": plan_slug,
+            // The flat slug this response always carried (null only when the install has no free
+            // plan at all) plus the structured assignment that can never be silent.
+            "plan": plan.slug(),
+            "plan_assignment": plan.to_json(),
             "referral": referral,
             "user": {
                 "id": user_id,
