@@ -130,18 +130,22 @@ tr:hover{background:#f8fafc}
   <a data-tab="myaff" onclick="S('myaff')">My Affiliate</a>
   <a data-tab="apr" onclick="S('apr')">Affiliate Products</a>
   <a data-tab="integrations" onclick="S('integrations')">Integrations</a>
+  <!-- kanban t_619533e2: these four screens are the CALLER'S OWN tenant data — measured: the
+       handlers bind auth.tenant_id with no admin check (leads 43-60, settings, api_keys,
+       webhooks) — so they were moved OUT of #adm-links, which the auth callback hides for a
+       non-admin. The platform console (Tenants, All Cards, Plans, SEO, ...) stays there. -->
+  <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
+  <a data-tab="keys" onclick="S('keys')">API Keys</a>
+  <a data-tab="settings" onclick="S('settings')">Settings</a>
+  <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <div class="sec" id="adm-sec">Admin</div>
   <div id="adm-links">
-  <a data-tab="settings" onclick="S('settings')">Settings</a>
   <a data-tab="allcards" onclick="S('allcards')">All Cards</a>
-  <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
   <a data-tab="tenants" onclick="S('tenants')">Tenants</a>
   <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="affiliates" onclick="S('affiliates')">Affiliates</a><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a><!-- My Affiliate is a TENANT screen, not an admin one: it now lives in the User nav above, which every role sees (kanban t_8a4e4f04) --><a data-tab="afleads" onclick="S('afleads')">Affiliate Leads</a></div></div>
   <a data-tab="plans" onclick="S('plans')">Plans</a>
-  <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
-  <a data-tab="keys" onclick="S('keys')">API Keys</a>
   <a data-tab="domains" onclick="S('domains')">Domain Settings</a>
   <a data-tab="seo" onclick="S('seo')">SEO</a>
   </div>
@@ -246,11 +250,29 @@ function X(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").re
 
 function $(id){return document.getElementById(id);}
 
+/* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
+   refusal still names the screen it refuses. */
+var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+/* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
+   was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
+   /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
+   book and programme CRUD whose every write is admin-gated), so a workspace account must not be
+   offered them. The sidebar already hides them (#adm-links); the boot hash reaches S() directly,
+   so the refusal is here too — a refused tab answers a message, never a permanent "Loading".
+   NOTE: is_admin is deliberately NOT widened to company_admin. company_admin is this fleet's
+   TENANT-admin role, not the platform operator: widening it would show a tenant the four 403s
+   above. The split is by data ownership. */
+var ADMIN_ONLY={allcards:1,stags:1,sgroups:1,ap:1,tenants:1,tiers:1,payouts:1,plans:1,seo:1};
 function S(t){
+  if(ADMIN_ONLY[t]&&!(U&&U.is_admin)){
+    $("pt").textContent=(TI[t]||t);
+    $("ct").innerHTML='<div class="cc"><h3>Admins only</h3><p style="color:#64748b;font-size:13px;padding:4px 0">The <strong>'+X(TI[t]||t)+'</strong> screen is part of the platform operator console, so it is not available to a workspace account. Your screens are on the left.</p></div>';
+    return;
+  }
   document.querySelectorAll(".sidebar a").forEach(function(a){a.classList.remove("active");});
   var l=document.querySelector('[data-tab="'+t+'"]');
   if(l) l.classList.add("active");
-  var ti={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",keys:"API Keys",domains:"Domain Settings",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+  var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
   var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,keys:LK,domains:LDM,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
@@ -541,7 +563,6 @@ function D(){
 }
 
 /* === LEADS (DOM-based) === */function LD(){
-  if(!U||!U.is_admin) return;
   api("/api/v1/leads").then(function(d){
     var a=(d&&d.data)?d.data:(Array.isArray(d)?d:[]);
     var total=d&&d.total?d.total:a.length;
@@ -2010,8 +2031,8 @@ function GK(){api("/api/v1/api-keys",{method:"POST",body:JSON.stringify({name:"I
 function CA(id){navigator.clipboard.writeText(window.location.origin+"/ref/"+id).then(function(){alert("Link copied!");});}
 
 
-/* === AFFILIATE PRODUCTS (User) === */function LP(){
-  if(!U||!U.is_admin) return;
+/* === AFFILIATE PRODUCTS (platform CRUD — the tenant catalogue is LPR below) === */function LP(){
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/affiliate-products").then(function(d){
     var all=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Affiliate Products ('+all.length+') <span id="lap-add-btn"></span></h3><p style="color:#64748b;font-size:12px;margin-bottom:8px">Products affiliates can promote and earn commission on.</p><div id="lap-search-wrap" style="margin-bottom:12px"></div><div id="lap-list"></div></div>';
@@ -2227,7 +2248,7 @@ function SD(){
 
 /* === TENANTS (Full CRUD, DOM-based) === */
 function LN(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/tenants").then(function(d){
     var all=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Tenants ('+all.length+') <span id="ln-add-btn"></span></h3><div id="ln-search-wrap" style="margin-bottom:12px"></div><div id="ln-list"></div></div>';
@@ -2584,7 +2605,7 @@ function LREF(){
 
 /* === AFFILIATE TIERS (DOM-based) === */
 function LTR(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/affiliate-tiers").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Affiliate Tiers <span id="ltr-add-btn"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Set commission tiers based on sales count or revenue thresholds. A tier&#39;s commission rate is the percentage the affiliate earns once the tier is reached.</p><div id="ltr-list"></div></div>';
@@ -2630,7 +2651,7 @@ function DTR(id){if(confirm("Delete tier?")) api("/api/v1/affiliate-tiers/"+id,{
 
 /* === AFFILIATE PAYOUTS (DOM-based) === */
 function LPA(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/affiliate-payouts").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Affiliate Payouts</h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Review and process affiliate commission payouts.</p><div id="lpa-list"></div></div>';
@@ -2651,7 +2672,7 @@ function MPP(id){if(confirm("Mark payout as paid?")) api("/api/v1/affiliate-payo
 
 /* === ALL CARDS (admin view across all tenants) === */
 function LAC(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/admin/kinetic-cards").then(function(d){
     var cards=(d&&d.cards)?d.cards:[];
     var h='<h4>All Kinetic Cards ('+cards.length+')</h4>';
@@ -2679,7 +2700,7 @@ function LAC(){
    own help text for this tab promises exactly these fields, so the panel was lost in a copy rather
    than dropped on purpose. kanban t_bf60a84c. */
 function LSEO(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/seo/settings").then(function(d){
     var seo=(d&&typeof d==="object")?d:{};
     var fields=[
@@ -2750,7 +2771,7 @@ function SEOSave(){
 
 /* === PLANS === */
 function LPLL(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   api("/api/v1/plans").then(function(d){
     var plans=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>Plans ('+plans.length+')</h3><div id="lpll-list"></div></div>';
@@ -2911,7 +2932,6 @@ function LWGate(){
   return v===true||v==="true"||v===1||v==="1";
 }
 function LW(){
-  if(!U||!U.is_admin) return;
   api("/api/v1/webhooks").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     WHK=a;
@@ -3026,7 +3046,6 @@ function LWL(id){
 
 /* === API KEYS === */
 function LK(){
-  if(!U||!U.is_admin) return;
   api("/api/v1/api-keys").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     $("ct").innerHTML='<div class="cc"><h3>API Keys ('+a.length+') <span id="lk-add-btn"></span></h3><div id="lk-list"></div></div>';
@@ -3049,7 +3068,7 @@ function DK(id){if(confirm("Revoke?")) api("/api/v1/api-keys/"+id,{method:"DELET
 
 /* === SYSTEM TAGS (Admin) === */
 function LST(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   Promise.all([api("/api/v1/tags"),api("/api/v1/tag-groups")]).then(function(r){
     var tags=Array.isArray(r[0])?r[0]:((r[0]&&r[0].data)?r[0].data:[]);
     var groups=Array.isArray(r[1])?r[1]:((r[1]&&r[1].data)?r[1].data:[]);
@@ -3095,7 +3114,7 @@ function LST(){
 
 /* === SYSTEM TAG GROUPS (Admin) === */
 function LSG(){
-  if(!U||!U.is_admin) return;
+  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
   Promise.all([api("/api/v1/tag-groups"),api("/api/v1/tags")]).then(function(r){
     var groups=Array.isArray(r[0])?r[0]:(r[0]&&r[0].data?r[0].data:[]);
     var tags=Array.isArray(r[1])?r[1]:(r[1]&&r[1].data?r[1].data:[]);
@@ -3223,7 +3242,6 @@ function LSTBD(){
 
 
 function LLS(){
-  if(!U||!U.is_admin) return;
   api("/api/v1/settings").then(function(d){
     var stages=["New","Contacted","Qualified","Proposal","Negotiation","Closed Won","Closed Lost"];
     d.forEach(function(s){if(s.key==="lead_stages"&&Array.isArray(s.value)) stages=s.value;});
@@ -3274,11 +3292,14 @@ function LLSR(stages){
   return stages.slice();
 }
 
-/* === SETTINGS (Admin) === */
+/* === SETTINGS (tenant: the caller's own tenant_settings) === */
 function LM(){
-  if(!U||!U.is_admin) return;
   api("/api/v1/settings").then(function(d){
-    $("ct").innerHTML='<div class="cc"><h3>Global Settings</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">System-wide configuration.</p><div id="lm-list"></div></div>';
+    /* kanban t_619533e2: this screen reads and writes the CALLER'S OWN tenant_settings row, so it
+       is a tenant screen and its heading has to say so. The old copy ("Global Settings" /
+       "System-wide configuration") described the platform console, which is GET/PUT
+       /api/v1/admin/site in www-admin — not this. */
+    $("ct").innerHTML='<div class="cc"><h3>Settings</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">Your card subdomain, your custom domain and your lead pipeline.</p><div id="lm-list"></div></div>';
     
     var list=$("lm-list");
     var sd=d.find(function(s){return s.key==="subdomain"})||{value:"ss"};
