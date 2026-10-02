@@ -133,7 +133,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 // ── FunnelSwift Admin SPA ──
 const API_BASE = '/api/v1';
 let TOKEN = localStorage.getItem('ws_fs_token') || '';
-let USER = null; // { id, email, role, tenant_id, plan_id, plan_slug, plan: {...} }
+let USER = null; // { user_id, tenant_id, email, name, role, is_admin, api_key, current_plan, planObj }
 let STATE = { view: 'dashboard', modal: null, data: {}, toast: null, subView: null };
 
 // ── API ──
@@ -330,10 +330,10 @@ async function doLogin(email, password) {
 async function loadUser() {
   try {
     const me = await api('/auth/me');
-    // Also try to get plan details
-    let plan = null;
-    try { if (me.plan_id) { const planRes = await api('/plans/' + me.plan_id); plan = planRes; } } catch(e){}
-    USER = { ...me, planObj: plan };
+    // `/me` serves the tenant's active plan row as `current_plan` (every column, including `price`);
+    // it carries no plan id and no slug, so bind the plan from the field the endpoint really returns
+    // instead of re-fetching a row that cannot be addressed (kanban t_c284c098).
+    USER = { ...me, planObj: me.current_plan || null };
   } catch(e) { USER = null; TOKEN = ''; localStorage.removeItem('ws_fs_token'); }
 }
 
@@ -627,7 +627,7 @@ async function renderMyAccount() {
         <span class="badge badge-green">Active</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div class="form-label">Plan Name</div><div style="font-size:15px;font-weight:600">${x(plan.name||USER.plan_slug||'Free')}</div></div>
+        <div><div class="form-label">Plan Name</div><div style="font-size:15px;font-weight:600">${x(plan.name||'Free')}</div></div>
         <div><div class="form-label">Price</div><div style="font-size:15px;font-weight:600">${plan.price?formatCurrency(plan.price)+'/'+(plan.billing_cycle||'month'):'Free'}</div></div>
         <div><div class="form-label">Cards Limit</div><div>${plan.max_cards||'Unlimited'}</div></div>
         <div><div class="form-label">Leads Limit</div><div>${plan.max_leads||'Unlimited'}</div></div>
@@ -772,7 +772,7 @@ async function renderPlans() {
         ${isSuperAdmin()?`<td><button class="btn btn-secondary btn-xs" onclick="window._editPlan('${p.id}')">Edit</button></td>`:''}
       </tr>`).join('')}</tbody>
     </table></div></div>
-    ${!isSuperAdmin() && USER.plan_slug === 'capture-free' ? `
+    ${!isSuperAdmin() && (!USER.current_plan || Number(USER.current_plan.price) === 0) ? `
     <div class="card" style="text-align:center;padding:30px;background:#eef2ff;border:2px solid var(--primary);margin-top:16px">
       <div style="font-size:32px;margin-bottom:8px">🚀</div>
       <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">Ready to unlock more features?</h2>
@@ -2106,7 +2106,7 @@ function openSysTagModal(id) {
       <input type="hidden" name="is_system" value="true">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
       <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select class="input" name="group_id">${tagGroupOptions(t.group_id)}</select></div></div>
-      <div class="form-group"><label class="form-label">Plan Slug (optional — maps this tag to a specific plan)</label><input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="e.g., capture-free, kinetic-pro"></div>
+      <div class="form-group"><label class="form-label">Plan Slug (optional — maps this tag to a specific plan)</label><input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="slug of one of this install's plans"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} System Tag</button>
@@ -2283,12 +2283,23 @@ window._revokeKey = async function(id) {
 async function renderSettings() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
 
+  // The Default-Plan picker used to hard-code two plan slugs that exist on ONE install only
+  // (kanban t_c284c098): on any other install its value could not resolve. Offer the free tier of
+  // THIS install — the same source the Plans view already reads — so no slug literal is bound.
+  let freePlans = [];
+  try { freePlans = await api('/plans'); } catch(e) { freePlans = []; }
+  if (!Array.isArray(freePlans)) freePlans = freePlans.data || freePlans.plans || [];
+  freePlans = freePlans.filter(p => Number(p.price) === 0);
+  const defaultPlanOptions = freePlans.length
+    ? freePlans.map(p => `<option value="${x(p.slug)}">${x(p.name)}</option>`).join('')
+    : '<option value="">no free plan on this install</option>';
+
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚡ System Settings</h1>
     <div class="card">
       <div class="card-header"><span class="card-title">General Settings</span></div>
       <div class="form-group"><label class="form-label">Default Plan</label>
-        <select class="input" id="default-plan"><option value="capture-free">Free (Capture)</option><option value="kinetic-free">Free (Kinetic)</option></select>
+        <select class="input" id="default-plan">${defaultPlanOptions}</select>
       </div>
       <div class="form-group"><label class="form-label">Max Tenants Per User</label><input class="input" id="max-tenants" type="number" value="5"></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle on" id="reg-open-toggle"></span> Registration Open</label>
