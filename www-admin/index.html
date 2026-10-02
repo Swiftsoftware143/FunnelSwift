@@ -660,6 +660,20 @@ function bindMyAccount() {
     } catch(e) { showToast(e.message, 'error'); }
   });
 }
+/* kanban t_9ef0b460: an inline on* attribute is compiled in GLOBAL scope and can never see this
+   module's bindings. Eight of them named STATE/renderApp directly (census:
+   /opt/swift/audits/t_9ef0b460/10-census-before.txt), so the Total Cards card that opens the
+   All Cards list -- and that list's own Stats / UTM / Close controls -- threw
+   "ReferenceError: STATE is not defined" and fired no request. This is the console's existing
+   window._* entry-point pattern (see window._navTo right above) applied to the one panel that
+   skipped it. It sets ONLY the keys the old expressions set: no behaviour change beyond the fix. */
+window._setState = function (patch) {
+  for (const k of Object.keys(patch || {})) {
+    if (k === 'data') Object.assign(STATE.data, patch.data);
+    else STATE[k] = patch[k];
+  }
+  renderApp();
+};
 window._navTo = function(view) { STATE.view = view; renderApp(); };
 window._toast = showToast;
 
@@ -2306,7 +2320,7 @@ async function renderCardAnalytics() {
 
     <!-- Overview Cards -->
     <div class="stats-grid">
-      <div class="stat-card" style="cursor:pointer" onclick="STATE.subView='cardList';renderApp()">
+      <div class="stat-card" style="cursor:pointer" onclick="window._setState({subView:'cardList'})">
         <div class="stat-value">${overview?.total_cards||0}</div>
         <div class="stat-label">Total Cards</div>
       </div>
@@ -2349,7 +2363,7 @@ async function renderCardAnalytics() {
         ${overview?.top_cards&&overview.top_cards.length>0 ? `<div style="max-height:250px;overflow-y:auto">
           <table class="table" style="font-size:12px">
             <thead><tr><th>Card</th><th>Type</th><th>Views</th><th>Clicks</th></tr></thead>
-            <tbody>${overview.top_cards.map((c,i)=>`<tr style="cursor:pointer" onclick="STATE.subView='cardDetail';STATE.data.cardId='${c.card_id||c.id}';renderApp()">
+            <tbody>${overview.top_cards.map((c,i)=>`<tr style="cursor:pointer" onclick="window._setState({subView:'cardDetail',data:{cardId:'${c.card_id||c.id}'}})">
               <td><strong>${x(c.card_title||c.title||'Untitled')}</strong></td>
               <td><span class="badge badge-blue">${x(c.card_type||c.template_type||'card')}</span></td>
               <td>${(c.views||0).toLocaleString()}</td>
@@ -2413,7 +2427,7 @@ async function renderCardList() {
   return `<div class="card" style="padding:20px;margin-top:20px">
     <div class="card-header" style="padding:0;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
       <span class="card-title">📋 All Cards</span>
-      <button class="btn btn-sm" onclick="STATE.subView=null;renderApp()" style="background:var(--border)">✕ Close</button>
+      <button class="btn btn-sm" onclick="window._setState({subView:null})" style="background:var(--border)">✕ Close</button>
     </div>
     ${cards.length===0?'<div class="empty"><div class="desc">No cards found</div></div>':`<div class="table-wrap"><table class="table" style="font-size:12px">
       <thead><tr><th>Card</th><th>Type</th><th>Slug</th><th>Views</th><th>UTM</th><th>Actions</th></tr></thead>
@@ -2424,8 +2438,8 @@ async function renderCardList() {
         <td>${(c.view_count||c.views||0).toLocaleString()}</td>
         <td>${c.utm_source?`<span class="badge badge-green">UTM Set</span>`:`<span class="badge" style="background:#e2e8f0">None</span>`}</td>
         <td>
-          <button class="btn btn-primary btn-xs" onclick="STATE.subView='cardDetail';STATE.data.cardId='${c.id}';renderApp()">📊 Stats</button>
-          <button class="btn btn-xs" onclick="STATE.view='cardUtmBuilder';STATE.data.cardId='${c.id}';renderApp()" style="background:var(--warning);color:#fff;margin-left:4px">🔗 UTM</button>
+          <button class="btn btn-primary btn-xs" onclick="window._setState({subView:'cardDetail',data:{cardId:'${c.id}'}})">📊 Stats</button>
+          <button class="btn btn-xs" onclick="window._setState({view:'cardUtmBuilder',data:{cardId:'${c.id}'}})" style="background:var(--warning);color:#fff;margin-left:4px">🔗 UTM</button>
         </td>
       </tr>`).join('')}</tbody>
     </table></div>`}
@@ -2446,8 +2460,8 @@ async function renderCardDetail() {
     <div class="card-header" style="padding:0;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
       <span class="card-title">📋 ${x(data.card_title||'Card')} — Detail</span>
       <div>
-        <button class="btn btn-primary btn-sm" onclick="STATE.view='cardUtmBuilder';STATE.data.cardId='${cardId}';renderApp()">🔗 UTM Builder</button>
-        <button class="btn btn-sm" onclick="STATE.subView=null;renderApp()" style="background:var(--border);margin-left:8px">✕ Close</button>
+        <button class="btn btn-primary btn-sm" onclick="window._setState({view:'cardUtmBuilder',data:{cardId:'${cardId}'}})">🔗 UTM Builder</button>
+        <button class="btn btn-sm" onclick="window._setState({subView:null})" style="background:var(--border);margin-left:8px">✕ Close</button>
       </div>
     </div>
 
@@ -2558,7 +2572,7 @@ async function renderCardUtmBuilder() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
         ${cards.map(c=>`<div style="padding:10px 14px;background:#f8fafc;border-radius:8px;cursor:pointer;border:2px solid transparent" 
           onmouseenter="this.style.borderColor='var(--primary)'" onmouseleave="this.style.borderColor='transparent'"
-          onclick="STATE.data.cardId='${c.id}';renderApp()">
+          onclick="window._setState({data:{cardId:'${c.id}'}})">
           <strong>${x(c.title||'Untitled')}</strong>
           <div style="font-size:11px;color:var(--muted)">${x(c.slug)}</div>
           ${c.utm_source?`<span class="badge badge-green" style="margin-top:4px">UTM Set</span>`:''}
