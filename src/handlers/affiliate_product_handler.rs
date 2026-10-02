@@ -88,6 +88,57 @@ fn parse_is_active(raw: Option<&Value>, fallback: bool) -> AppResult<bool> {
     }
 }
 
+/// The Affiliate Product screen's Category select is built from
+/// `product_category_handler::list_categories`, whose predicate is "this tenant's categories OR the
+/// fleet's system-tenant taxonomy" (the system rows are what `plan_handler` links the plan-derived
+/// products to). A `category_id` a caller supplies must come from that same row set, so resolve it
+/// with the same predicate BEFORE the writer runs.
+///
+/// Why the app has to check at all (measured live, kanban t_45d9684d): the FK added by migration 064
+/// (`affiliate_products_category_id_fkey`) is a plain reference to `product_categories(id)`, and that
+/// id is a global PK — so the edge refuses an id that references NOTHING (a 500 before this change)
+/// but happily accepts another REAL workspace's category, which the select never offers. Both are the
+/// same caller mistake and both answer the same field-level 400, deliberately with ONE message so the
+/// response cannot be used to probe which category ids exist in other workspaces.
+async fn ensure_category_offered(
+    state: &AppState,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> AppResult<()> {
+    let offered: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM product_categories WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3)",
+    )
+    .bind(category_id)
+    .bind(tenant_id)
+    .bind(crate::system_tenant::system_tenant_id())
+    .fetch_optional(&state.pool)
+    .await?;
+    if offered.is_none() {
+        return Err(AppError::BadRequest("Unknown category".into()));
+    }
+    Ok(())
+}
+
+/// A category can still disappear between the check above and the write (another admin deleting it —
+/// exactly the stale-tab case this card is about). `23503` on
+/// `affiliate_products_category_id_fkey` is that race arriving at the database; it gets the SAME
+/// field-level 400 instead of the generic "Database error" 500. `constraint()` is exact, so the
+/// table's other FKs (plan_id, system_tag_id, tenant_id) keep their generic handling.
+fn category_fk_error(e: sqlx::Error) -> AppError {
+    if let sqlx::Error::Database(db) = &e {
+        if is_category_fk(db.code().as_deref(), db.constraint()) {
+            return AppError::BadRequest("Unknown category".into());
+        }
+    }
+    AppError::Database(e)
+}
+
+/// The decision `category_fk_error` makes, split out so it can be asserted without faking a driver
+/// error: ONLY SQLSTATE 23503 (foreign_key_violation) on ONLY this constraint name.
+fn is_category_fk(code: Option<&str>, constraint: Option<&str>) -> bool {
+    code == Some("23503") && constraint == Some("affiliate_products_category_id_fkey")
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct AffiliateProductRow {
     pub id: Uuid,
@@ -256,6 +307,10 @@ pub async fn create_affiliate_product(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     // Absent / null keeps the column default (true) exactly as before this change.
     let is_active = parse_is_active(req.is_active.as_ref(), true)?;
+    // Only a caller-SUPPLIED pointer is checked, and against the select's own row set.
+    if let Some(category_id) = req.category_id {
+        ensure_category_offered(&state, tenant_id, category_id).await?;
+    }
 
     sqlx::query(
         "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name, system_tag_id)
@@ -275,7 +330,8 @@ pub async fn create_affiliate_product(
     .bind(req.owner_name.unwrap_or_else(|| "SwiftSoftware".to_string()))
     .bind(req.system_tag_id)
     .execute(&state.pool)
-    .await?;
+    .await
+    .map_err(category_fk_error)?;
 
     Ok((
         StatusCode::CREATED,
@@ -317,6 +373,12 @@ pub async fn update_affiliate_product(
     let commission = req.default_commission_rate.unwrap_or(existing.3);
     let is_third_party = req.is_third_party.unwrap_or(existing.4);
     let url = req.url.or(existing.5);
+    // Only a caller-SUPPLIED pointer is checked (an absent key or an explicit null keeps the stored
+    // value, which migration 064 already detaches when its category is deleted), and it is checked
+    // against the same row set the screen's select is built from.
+    if let Some(category_id) = req.category_id {
+        ensure_category_offered(&state, tenant_id, category_id).await?;
+    }
     let category_id = req.category_id.or(existing.6);
     let product_type = req
         .product_type
@@ -358,7 +420,8 @@ pub async fn update_affiliate_product(
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
-    .await?;
+    .await
+    .map_err(category_fk_error)?;
 
     Ok(Json(json!({"message": "Product updated"})))
 }
@@ -474,3 +537,39 @@ pub async fn admin_update_affiliate_product(
 //
 // The catalogue stays FunnelSwift-owned (admin console: POST/PUT/DELETE /api/v1/affiliate-products).
 // The three senders (ADASwift, IncentiveSwift, WorkflowSwift) were deleted in the same change.
+
+#[cfg(test)]
+mod tests {
+    //! Pins the decision `is_category_fk` makes for the TOCTOU backstop (kanban t_45d9684d). The
+    //! pre-check inside both writers is what the live probe exercises; the backstop only fires when a
+    //! category is deleted BETWEEN the check and the write, which no probe can time, so the mapping
+    //! is asserted directly here: the category FK's own SQLSTATE/constraint pair is the field-level
+    //! 400, and every neighbouring shape (the table's other FKs, another SQLSTATE, a violation with
+    //! no constraint name reported) stays on the generic 500 path.
+    use super::is_category_fk;
+
+    const CATEGORY_FK: Option<&str> = Some("affiliate_products_category_id_fkey");
+
+    #[test]
+    fn the_category_fk_violation_is_the_apps_own_400() {
+        assert!(is_category_fk(Some("23503"), CATEGORY_FK));
+    }
+
+    #[test]
+    fn every_neighbouring_database_error_keeps_the_generic_500() {
+        for (code, constraint) in [
+            (Some("23503"), Some("affiliate_products_tenant_id_fkey")),
+            (Some("23503"), Some("affiliate_products_plan_id_fkey")),
+            (Some("23503"), Some("affiliate_products_system_tag_id_fkey")),
+            (Some("23502"), CATEGORY_FK),
+            (Some("23505"), CATEGORY_FK),
+            (Some("23503"), None),
+            (None, CATEGORY_FK),
+        ] {
+            assert!(
+                !is_category_fk(code, constraint),
+                "only 23503 on that constraint is a field-level 400: {code:?} {constraint:?}"
+            );
+        }
+    }
+}
