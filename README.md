@@ -198,17 +198,54 @@ written by the same two routes and rendered into the page's own social row.
 
 ## Deployment
 
-```bash
-# Build
-CARGO_BUILD_JOBS=1 cargo build --release
+FunnelSwift runs in the Docker container `funnelswift`, created from
+`/opt/swift/docker/funnelswift/docker-compose.yml` (container user `funnelswift`, uid 999).
+The release binary is **bind-mounted**, so there is no systemd unit and no copy step.
 
-# Deploy
-cp target/release/funnelswift /opt/swift/funnelswift/funnelswift
-systemctl restart funnelswift.service
+```bash
+# Build (release) — one build at a time, through the lock
+/opt/swift/build-lock.sh FunnelSwift cargo build --release
+
+# Deploy the freshly built binary (bind mount -> restart picks it up)
+docker restart funnelswift
+
+# ...or the full gated path: pre-build gate, parity, boundary check, health
+/opt/swift/deploy.sh FunnelSwift
 
 # Verify
 curl -s localhost:8080/api/health
+# -> {"schema":{"expected_version":76,"ledger_version":"76","status":"applied"},"status":"ok",...}
 ```
+
+### Migrations
+
+**Migrations are EMBEDDED into the binary at build time.** `src/db.rs` calls
+`sqlx::migrate!("./migrations")`; the sqlx proc macro reads the directory at compile time and
+`include_str!`s every `migrations/*.sql` into the executable. The runtime never opens the
+`./migrations` path. Therefore:
+
+- **A migration change is a RELEASE BUILD, not a restart.** Adding or editing
+  `migrations/NNN_*.sql` and running `docker restart funnelswift` changes nothing about what the
+  app applies — the restart re-applies only what the binary already carries.
+- Adding a *file* does not reliably invalidate the crate for cargo: `touch src/db.rs` (the file
+  holding the macro) before `cargo build --release`, then prove the embed by grepping a literal
+  from the new SQL: `grep -ac '<literal from the migration>' target/release/funnelswift` → 1.
+- The container also bind-mounts `/opt/swift/apps/FunnelSwift/migrations -> /app/migrations`.
+  This is **diagnostic-only** and is documented as such in the compose file: it lets an operator
+  `docker exec funnelswift ls /app/migrations` (or `md5sum`) and see the exact set the *next*
+  build will embed, from the same tree the bind-mounted binary was built from. A green
+  `docker restart` after editing a file there is NOT a deploy.
+- Do not read the image's own `/app/migrations`: `funnelswift:latest` bakes an older
+  `COPY migrations` (23 files as of 2026-10-02) and it is shadowed by the bind mount anyway.
+- Which versions a running binary actually ships is queryable, not guessable: `/api/health`
+  answers `schema.expected_version` (the compiled-in set) + `schema.ledger_version` +
+  `schema.status`; a ledger short of the shipped set answers **HTTP 503 `status=degraded`**, and
+  the boot log prints `Database migrations applied successfully (ledger version N)` or a
+  greppable `SCHEMA-GATE FAILED` line.
+- The mount is readable by the container user (`migrations/` is mode `0755` as of 2026-10-02,
+  previously `0750 root:swift` → `ls: Permission denied` inside the container). The host parent
+  `/opt/swift/apps/FunnelSwift` stays `0750 root:swift`, so the world bits are inert on the host
+  and only serve the container's read through the mount.
 
 ## Documentation
 
