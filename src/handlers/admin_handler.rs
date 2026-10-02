@@ -45,18 +45,20 @@ pub async fn portfolio_sync(
         .unwrap_or("")
         .to_string();
 
-    if email.is_empty() {
-        return Err(AppError::BadRequest(
-            "email is required for portfolio sync".into(),
-        ));
-    }
+    // Normalise + validate BEFORE the first SELECT (kanban t_38017305). This is a writer of
+    // `users.email` (admin / cross-app create), so it must refuse a non-address exactly like the
+    // public signup paths do — and it must check for a duplicate on the same normalised value it
+    // stores. The old `email.is_empty()` guard let `bad` through.
+    let email =
+        crate::security::email_addr::normalize(&email).map_err(AppError::UnprocessableEntity)?;
 
     // Check email uniqueness
-    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = $1")
-        .bind(&email)
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0_i64);
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+            .bind(&email)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0_i64);
 
     if existing > 0 {
         return Err(AppError::Conflict(format!(

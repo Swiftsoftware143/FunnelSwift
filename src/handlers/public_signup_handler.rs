@@ -90,15 +90,23 @@ pub async fn public_signup(
         }
         password
     };
-    if !email.contains('@') {
-        return Err(AppError::BadRequest("Invalid email format".into()));
-    }
+    // ── VALIDATE THE WRITE (kanban t_38017305) ─────────────────────────────────────────────────
+    // The address is trim+lowercased and required to be syntactically an address BEFORE the
+    // duplicate SELECT below and before anything is stored or emailed. This used to be
+    // `!email.contains('@')`, so `bad@`, `@` or `a b@x` became a real login whose credentials mail
+    // could never be delivered. `email` is rebound here, so every later use — the dup check, the
+    // INSERT, `referral_tracking`, the JWT claims, the credentials mail and the response — carries
+    // the normalised value. A non-address is a 422 `{"error":"email: …"}` and nothing is written.
+    let email =
+        crate::security::email_addr::normalize(&email).map_err(AppError::UnprocessableEntity)?;
 
     // Check for duplicate email
-    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = $1")
-        .bind(&email)
-        .fetch_one(&state.pool)
-        .await?;
+    // `lower(email)` so a row stored before normalisation existed still counts as the same address.
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+            .bind(&email)
+            .fetch_one(&state.pool)
+            .await?;
 
     if existing > 0 {
         return Err(AppError::Conflict(

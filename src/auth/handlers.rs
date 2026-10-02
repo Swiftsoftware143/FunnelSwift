@@ -39,10 +39,21 @@ pub async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     // Check if email already exists
-    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE email = $1")
-        .bind(&req.email)
-        .fetch_one(&state.pool)
-        .await?;
+    // Normalise and validate the address BEFORE the first SELECT (kanban t_38017305): the value
+    // that is checked for a duplicate is the exact value that gets stored, put into the JWT claims
+    // and returned. This writer had NO guard at all, so `{"email":"bad"}` minted a real account
+    // whose login was not an address — unreachable by any credentials mail. A non-address is a 422
+    // `{"error":"email: …"}` and nothing is written.
+    let email = crate::security::email_addr::normalize(&req.email)
+        .map_err(AppError::UnprocessableEntity)?;
+
+    // Check if email already exists. `lower(email)` so a row stored before normalisation existed
+    // (mixed case) still counts as the same address.
+    let existing =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+            .bind(&email)
+            .fetch_one(&state.pool)
+            .await?;
 
     if existing > 0 {
         return Err(AppError::Conflict(
@@ -92,7 +103,7 @@ pub async fn register(
     )
     .bind(user_id)
     .bind(tenant_id)
-    .bind(&req.email)
+    .bind(&email)
     .bind(&password_hash)
     .bind(&req.name)
     .bind("user")
@@ -159,7 +170,7 @@ pub async fn register(
     let claims = Claims {
         sub: user_id.to_string(),
         tenant_id: tenant_id.to_string(),
-        email: req.email.clone(),
+        email: email.clone(),
         role: "user".into(),
         exp: now + 86400 * 30,
         iat: now,
@@ -186,7 +197,7 @@ pub async fn register(
             "plan_assignment": plan.to_json(),
             "user": {
                 "id": user_id,
-                "email": req.email,
+                "email": email,
                 "name": req.name,
                 "role": "user",
                 "tenant_id": tenant_id
@@ -199,11 +210,12 @@ pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let user =
-        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND is_active = true")
-            .bind(&req.email)
-            .fetch_optional(&state.pool)
-            .await?;
+    let user = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE lower(email) = $1 AND is_active = true",
+    )
+    .bind(crate::security::email_addr::lookup_key(&req.email))
+    .fetch_optional(&state.pool)
+    .await?;
 
     // Always run an Argon2 verification (even for unknown emails) so response timing
     // does not reveal whether an account exists.
@@ -420,11 +432,12 @@ pub async fn forgot_password(
     State(state): State<AppState>,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    if let Some(user) =
-        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1 AND is_active = true")
-            .bind(&req.email)
-            .fetch_optional(&state.pool)
-            .await?
+    if let Some(user) = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE lower(email) = $1 AND is_active = true",
+    )
+    .bind(crate::security::email_addr::lookup_key(&req.email))
+    .fetch_optional(&state.pool)
+    .await?
     {
         // tenants.status enforcement, part 2 of 4 (kanban t_af890bbf): a retired workspace cannot
         // obtain NEW credentials either. The response body below is byte-identical to the one at
