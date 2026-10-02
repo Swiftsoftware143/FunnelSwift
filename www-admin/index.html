@@ -151,7 +151,32 @@ async function api(path, opts={}) {
 // ── Toast ──
 function showToast(msg, type='info') {
   STATE.toast = { msg, type };
-  renderApp();
+  /* kanban t_d10ac776/[post]: a modal's body is NOT part of this shell's markup -- renderApp()
+     paints `<div class="modal-body" id="modal-body">${m.content||''}</div>` from the PLACEHOLDER
+     the opener stored, while every opener fills that node itself afterwards, in its own
+     setTimeout, from its own fetch. So the immediate renderApp() here repainted the shell over an
+     open modal and destroyed the injected form: the overlay stayed up and the admin had nothing to
+     submit (measured on the failed-create path, admin.funnelswift.net). While a modal is open the
+     toast is therefore painted into the node it owns, `#toast`, and the shell is left alone --
+     exactly what this slot's own 3500 ms clear timer already does in reverse.
+     Outside a modal the repaint is KEPT on purpose: it is the refresh mechanism for 52 of
+     showToast's 93 call sites (classify-renders.py: those sites call no renderView themselves), so
+     dropping it everywhere would stop those panels reloading. This is arm (a) narrowed to the one
+     situation where the repaint is destructive. */
+  if (!STATE.modal) {
+    renderApp();
+  } else {
+    const prev = document.getElementById('toast');
+    if (prev) prev.remove();
+    const app = document.getElementById('app');
+    if (app) {
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + type;
+      el.id = 'toast';
+      el.textContent = msg;
+      app.appendChild(el);
+    }
+  }
   /* kanban t_20c72970: clear the slot WITHOUT rebuilding the shell. A modal is not part of the
      shell's markup: every modal fills #modal-body itself, after its own fetch, in its own
      setTimeout (openAffiliateProductModal, openTagModal, openWebhookModal, ...), so the full
