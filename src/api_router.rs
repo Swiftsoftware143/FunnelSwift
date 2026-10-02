@@ -302,7 +302,8 @@ pub fn create_router(
         // `Query(_params)` discarded, `State(_state)` unused, answered a constant
         // `{"tracked":true}` and wrote nothing — with zero callers fleet-wide (every app's src/,
         // every served www*/ root, nginx, n8n) and no consumer of the table it would have written:
-        // `affiliate_clicks` has no reader and no writer anywhere in src/ (0 rows ever). The
+        // `affiliate_clicks` had no reader and no writer anywhere in src/ (0 rows ever) and the
+        // table itself was DROPPED by migration 073 (kanban t_6a7e77e1). The
         // affiliate attribution chain is resolved at SIGNUP (`?ref=<code>` ->
         // affiliate_links.tracking_code in public_signup_handler / affiliate_referral_handler),
         // never at click time, and the affiliate portal sums `affiliate_commissions` only. Real

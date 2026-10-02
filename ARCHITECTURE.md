@@ -71,7 +71,7 @@ All apps share one Postgres instance (Docker: swift-postgres-1).
 
 ### 1. FunnelSwift — The Affiliate Hub
 - **AFFILIATE SYSTEM**: Codes, links, tracking, conversions, commissions, payouts
-- **Owns**: `affiliate_products`, `affiliate_users`, `affiliate_clicks`, `affiliate_conversions`, `affiliate_links`
+- **Owns**: `affiliate_products`, `affiliate_users`, `affiliate_conversions`, `affiliate_links` (`affiliate_clicks` was DROPPED by migration 073, kanban t_6a7e77e1 — it had 0 rows, no reader and no writer; the portal's metrics come from `affiliate_commissions` and the Kinetic card tracker)
 - **Two free entry points**: Kinetic modal + standard signup page
 - **Cross-app call**: `POST /api/v1/internal/affiliate/upgrade-event` (`x-internal-key` header) — a sibling's paid upgrade credits the referring affiliate. The plan→product sync route was RETIRED (kanban t_141162e7).
 
