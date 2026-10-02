@@ -711,7 +711,7 @@
  </div>
  <div style="margin-bottom:14px">
  <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Password</label>
- <input type="password" id="signupPassword" placeholder="At least 6 characters" minlength="6" required>
+ <input type="password" id="signupPassword" placeholder="At least 8 characters" minlength="8" required>
  </div>
  <div class="error-msg" id="signupError">Error message</div>
  <button type="submit" id="signupBtn" style="width:100%;padding:12px;background:#2563EB;color:white;border:none;border-radius:8px;font-weight:600;font-size:13px;margin-top:8px;cursor:pointer" class="hover:bg-blue-700">
@@ -778,7 +778,7 @@
  const password = document.getElementById('signupPassword').value;
 
  if(!name || !email || !password) return showError('All fields are required.');
- if(password.length < 6) return showError('Password must be at least 6 characters.');
+ if(password.length < 8) return showError('Password must be at least 8 characters.');
 
  document.getElementById('signupBtnText').style.display = 'none';
  document.getElementById('signupBtnSpinner').style.display = 'inline-block';
