@@ -325,26 +325,36 @@ pub fn create_router(
             "/api/v1/affiliate/dashboard",
             post(affiliate_portal_handler::affiliate_portal_dashboard),
         )
-        .route(
-            "/api/v1/affiliate/guide",
-            get(affiliate_portal_handler::affiliate_guide),
-        )
-        .route(
-            "/api/v1/affiliate/submit-lead",
-            post(affiliate_lead_handler::submit_affiliate_lead),
-        )
-        .route(
-            "/api/v1/affiliate/leads",
-            post(affiliate_lead_handler::list_affiliate_prospects),
-        )
-        .route(
-            "/api/v1/check-affiliate-email",
-            post(affiliate_lead_handler::check_affiliate_for_email),
-        )
-        .route(
-            "/api/v1/log-lead-movement",
-            post(affiliate_lead_handler::log_lead_movement),
-        )
+        // NOTE: five routes of the retired standalone affiliate portal (`www-app/funnelswift/
+        // affiliate.html`, retired by kanban t_4e2d6270) were removed here (kanban t_6b43b759).
+        // Census first: each had ZERO callers in any served root (www, www-app, www-admin), zero in
+        // the app repo outside its own router/handler line, zero in /opt/swift/{docs,fleet}, zero in
+        // the frontends record, zero in the sibling apps and zero hits in every nginx access log
+        // rotation (audits/t_6b43b759/census.txt), i.e. the retired portal's own fetch() calls were
+        // their only caller and it never even reached the edge.
+        //   /api/v1/affiliate/guide        -> the SERVED guide `guide-affiliate.html` (both roots,
+        //                                     7693 B) carries the same guide; an API route returning
+        //                                     an HTML fragment existed only for the portal's panel.
+        //   /api/v1/affiliate/submit-lead  -> duplicate of the shipped lead-create path
+        //                                     `POST /api/v1/leads` (the SPA lead modal), which already
+        //                                     stamps `created_by = auth.user_id` — the affiliate
+        //                                     attribution anchor `leads.created_by -> affiliates.user_id`
+        //                                     (lead_handler.rs:133) — and is strictly stronger (tags,
+        //                                     company, stage, notes, assigned_to).
+        //   /api/v1/affiliate/leads        -> superseded by the programme-wide admin route
+        //                                     `GET /api/v1/admin/affiliate-leads` (the shipped
+        //                                     `afleads` tab); the handler's own doc comment recorded
+        //                                     that this tenant-scoped list is empty for the admin's
+        //                                     purpose. An affiliate reads their own leads on the
+        //                                     shipped Leads tab.
+        //   /api/v1/check-affiliate-email  -> superseded by `GET /api/v1/affiliate/me`, the SPA's
+        //                                     single source of truth for "am I an affiliate".
+        //   /api/v1/log-lead-movement      -> superseded by `PUT /api/v1/leads/:id/stage`, the
+        //                                     shipped stage control.
+        // `POST /api/v1/affiliate/dashboard` is KEPT and WIRED: it is the affiliate's own earnings /
+        // referred-lead view, which no shipped screen had (the SPA's My Affiliate tab rendered only
+        // the product picker until t_6b43b759 wired it) and which the served affiliate guide
+        // documents verbatim.
         .route(
             "/api/v1/webhooks/conversion",
             post(cross_app_webhook_handler::handle_conversion_webhook),

@@ -86,12 +86,20 @@ All routes are under `/api/v1/`. 161 endpoints total.
 | GET | `/api/v1/affiliates/:id/commissions` | Affiliate commissions |
 | GET/POST | `/api/v1/affiliate-products` | Affiliate products |
 | POST | `/api/v1/affiliate/signup` | Affiliate portal signup |
-| POST | `/api/v1/affiliate/login` | Affiliate portal login |
-| POST | `/api/v1/affiliate/dashboard` | Affiliate dashboard |
-| GET/POST | `/api/v1/affiliate-stats` | Affiliate statistics |
+| POST | `/api/v1/affiliate/dashboard` | Affiliate earnings / referred leads — wired into the SPA's **My Affiliate** tab (kanban t_6b43b759) |
 | POST | `/api/v1/affiliate-conversions` | Record a commission for a conversion (writes `affiliate_commissions`; the GET reader was retired with migration 080, kanban t_4c634069) |
-| POST | `/api/v1/check-affiliate-email` | Check affiliate by email |
-| POST | `/api/v1/log-lead-movement` | Lead movement logging |
+
+Retired with kanban t_6b43b759 — all five are routes of the retired standalone affiliate portal
+(`www-app/funnelswift/affiliate.html`, t_4e2d6270) and had **zero callers fleet-wide** (no served
+root, no sibling app, no docs, no nginx access-log hit ever; census in
+`audits/t_6b43b759/census.txt`): `/api/v1/affiliate/guide` (the SERVED `guide-affiliate.html`
+carries the same guide), `/api/v1/affiliate/submit-lead` (the shipped `POST /api/v1/leads` already
+stamps the attribution anchor `created_by`), `/api/v1/affiliate/leads` (superseded by the
+programme-wide `GET /api/v1/admin/affiliate-leads`), `/api/v1/check-affiliate-email` (superseded by
+`GET /api/v1/affiliate/me`), `/api/v1/log-lead-movement` (superseded by
+`PUT /api/v1/leads/:id/stage`). `/api/v1/affiliate/login` and `/api/v1/affiliate-stats` were listed
+here but have **no route in `src/api_router.rs`** (404) — their rows are removed rather than kept
+as a promise the app does not honour.
 
 ### Checkout & Payments
 

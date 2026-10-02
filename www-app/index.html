@@ -364,8 +364,62 @@ function LMA(){
       });
       h+='</tbody></table><div style="margin-top:12px"><button class="btn btn-p" onclick="affSave()">Save</button> <span id="aff-saved" style="opacity:.8"></span></div></div>';
       h+='<div class="card" style="margin-top:14px"><h3>Your rate</h3><p>You earn '+(d.effective_rate!=null?X(d.effective_rate)+"%":"your plan's rate")+' on a referred sale unless a product or group rate says otherwise, and a personal override always wins.</p></div>';
+      h+='<div class="card" style="margin-top:14px"><h3>Earnings</h3><div id="aff-earn" class="loading">Loading...</div></div>';
       c.innerHTML=h;
+      affEarn();
     }).catch(function(e){ c.innerHTML='<div class="card"><p>Could not load products: '+X((e&&e.message)||"unknown")+'</p></div>'; });
+  });
+}
+
+/* === AFFILIATE EARNINGS (kanban t_6b43b759) ===
+   THE reader for POST /api/v1/affiliate/dashboard. It was the retired standalone portal's private
+   endpoint (www-app/funnelswift/affiliate.html, retired by t_4e2d6270) and no shipped screen ever
+   called it: this tab rendered only the product picker, so an affiliate could pick what to promote
+   and could not see a single referred person or a dollar they had earned. The SERVED affiliate
+   guide (www/guide-affiliate.html, "Seeing Who You Referred, and When They Moved") documents this
+   exact surface - the plan each referral is on now, the date of their last movement, and what they
+   have earned you - so this is the screen that makes that promise true. Everything is read from
+   the affiliate's own account on the server (never a body-supplied id). */
+function affEarn(){
+  var box=$("aff-earn"); if(!box) return;
+  api("/api/v1/affiliate/dashboard",{method:"POST",body:"{}"}).then(function(d){
+    d=d||{};
+    // kanban t_a493e3f2: an async callback must not paint a container a tab switch removed.
+    box=$("aff-earn"); if(!box||!box.parentNode) return;
+    var h='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
+      +'<div style="flex:1;min-width:110px"><div style="font-size:12px;opacity:.7">Earned</div><div style="font-size:20px;font-weight:700">$'+X(d.earned||"0.00")+'</div></div>'
+      +'<div style="flex:1;min-width:110px"><div style="font-size:12px;opacity:.7">Pending</div><div style="font-size:20px;font-weight:700">$'+X(d.pending||"0.00")+'</div></div>'
+      +'<div style="flex:1;min-width:110px"><div style="font-size:12px;opacity:.7">Reversed</div><div style="font-size:20px;font-weight:700">$'+X(d.reversed||"0.00")+'</div></div>'
+      +'<div style="flex:1;min-width:110px"><div style="font-size:12px;opacity:.7">Referred leads</div><div style="font-size:20px;font-weight:700">'+X(String(d.total_leads||0))+'</div></div>'
+      +'</div>'
+      +'<p style="font-size:12px;opacity:.7;margin-bottom:8px">Earned = customers paying now. Pending = referred, still on a free plan. Reversed = left a paying plan.</p>';
+    var refs=(d.referrals)||[];
+    if(!refs.length){
+      h+='<p id="aff-earn-empty" style="opacity:.75">No referred leads yet. Every lead that comes through your account appears here, with the plan they are on and what they have earned you.</p>';
+    } else {
+      h+='<table class="tbl"><thead><tr><th>Referred lead</th><th>Plan now</th><th>Last movement</th><th>Earned you</th><th>Commission</th></tr></thead><tbody>';
+      refs.forEach(function(r){
+        var mv=r.last_movement?(X(r.last_movement)+(r.last_movement_date?' '+X(r.last_movement_date):"")):'<span style="opacity:.6">no movement yet</span>';
+        h+='<tr><td>'+X(r.name||"Unnamed")+'<br><span style="font-size:11px;opacity:.7">'+X(r.email||"-")+'</span></td>'
+          +'<td>'+(r.plan?X(r.plan)+(r.pays?' <span class="badge bb">paid</span>':' <span class="badge">free</span>'):'<span style="opacity:.6">-</span>')+'</td>'
+          +'<td>'+mv+'</td><td>$'+X(r.earned||"0.00")+'</td>'
+          +'<td>'+(r.commission_status?X(r.commission_status):"-")+'</td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    var mvs=(d.movements)||[];
+    if(mvs.length){
+      h+='<h3 style="margin-top:14px">Plan movements</h3>'
+        +'<table class="tbl"><thead><tr><th>Date</th><th>Movement</th><th>From</th><th>To</th></tr></thead><tbody>';
+      mvs.forEach(function(m){
+        h+='<tr><td>'+X(m.date||"-")+'</td><td>'+X(m.movement||"-")+'</td><td>'+X(m.from_plan||"-")+'</td><td>'+X(m.to_plan||"-")+'</td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    box.className=""; box.innerHTML=h;
+  }).catch(function(e){
+    box=$("aff-earn"); if(!box||!box.parentNode) return;
+    box.className=""; box.innerHTML='<p id="aff-earn-err" style="color:#b45309">Could not load your earnings: '+X((e&&e.message)||"unknown")+'</p>';
   });
 }
 

@@ -240,7 +240,7 @@ pub async fn timeline_for_affiliate(
 ) -> Result<Vec<serde_json::Value>, String> {
     let rows: Vec<(Uuid, Option<Uuid>, String, Option<String>, String, Option<f64>, f64, chrono::DateTime<chrono::Utc>)> =
         sqlx::query_as(
-            "SELECT m.id, m.lead_id, m.movement, m.from_plan, m.to_plan, m.from_price, m.to_price, m.occurred_at
+            "SELECT m.id, m.lead_id, m.movement, m.from_plan, m.to_plan, m.from_price::float8, m.to_price::float8, m.occurred_at
                FROM affiliate_plan_movements m
               WHERE m.affiliate_id = $1
               ORDER BY m.occurred_at DESC LIMIT $2",
