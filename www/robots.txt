@@ -4,6 +4,7 @@ Allow: /funnel/
 Allow: /kinetic
 Allow: /download-app
 Allow: /guide
+Allow: /guide-affiliate.html
 Disallow: /api/
 Disallow: /admin
 Disallow: /app
