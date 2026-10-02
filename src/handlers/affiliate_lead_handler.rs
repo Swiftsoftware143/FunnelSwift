@@ -44,6 +44,24 @@ pub async fn submit_affiliate_lead(
     .bind(created_by)
     .execute(&state.pool)
     .await?;
+
+    // Outbound webhook delivery (kanban t_431faa99) — see web_to_lead_handler: every writer of a
+    // `leads` row emits `lead.created`, so no capture path is silently outside the subscription.
+    crate::webhooks::spawn(
+        state.pool.clone(),
+        tenant_id,
+        crate::webhooks::LEAD_CREATED,
+        crate::webhooks::lead_created(
+            id,
+            payload["name"].as_str(),
+            payload["email"].as_str(),
+            payload["phone"].as_str(),
+            None,
+            Some("affiliate"),
+            &[],
+        ),
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(json!({"id": id.to_string(), "message": "Lead submitted"})),

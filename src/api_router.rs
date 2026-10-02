@@ -471,6 +471,15 @@ pub fn create_router(
             "/api/v1/webhooks/:id/test",
             post(webhook_handler::test_webhook),
         )
+        // The published event vocabulary (kanban t_431faa99). Deliberately NOT
+        // `/api/v1/webhooks/events`: this crate is on axum 0.7 / matchit 0.7, where a static
+        // segment beside the `/api/v1/webhooks/:id` route above is a route conflict at boot.
+        .route("/api/v1/webhook-events", get(webhook_handler::list_events))
+        // The delivery log of ONE webhook. Under the dynamic segment, so no conflict.
+        .route(
+            "/api/v1/webhooks/:id/deliveries",
+            get(webhook_handler::list_deliveries),
+        )
         .route(
             "/api/v1/settings",
             get(settings_handler::get_settings).put(settings_handler::update_settings),

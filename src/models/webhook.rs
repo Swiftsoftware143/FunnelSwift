@@ -41,13 +41,22 @@ pub struct UpdateWebhookRequest {
     pub is_active: Option<bool>,
 }
 
+/// One row of `webhook_delivery_log`. `attempt` is the attempt this row is recording and
+/// `delivered_at` is the time of that attempt, so the pair is what a delivery-log view prints
+/// ("attempt 2 of 3, failed 12s ago"). kanban t_431faa99: the table was created by
+/// `migrations/0016_webhook_delivery_log.sql` with a retry index and a writer never existed.
 #[derive(Debug, Serialize, Deserialize, FromRow)]
-pub struct WebhookDeliveryLog {
+pub struct WebhookDelivery {
     pub id: Uuid,
     pub webhook_id: Uuid,
+    pub tenant_id: Option<Uuid>,
     pub event: String,
     pub status: String,
+    pub status_code: Option<i32>,
+    pub attempt: i32,
+    pub max_attempts: i32,
     pub request_body: Option<String>,
     pub response_body: Option<String>,
     pub delivered_at: NaiveDateTime,
+    pub next_retry_at: Option<chrono::DateTime<chrono::Utc>>,
 }

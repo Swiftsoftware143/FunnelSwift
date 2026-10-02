@@ -183,7 +183,7 @@ var helpContent={
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
   "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own API key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Email</strong> — SMTP / Mailgun / SendGrid / Sendiio sending</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
-  "webhooks":'<h4>Webhooks</h4><p>Your own endpoints, so other software can be told what happens here. Each webhook has a name, a URL and the list of events it is registered for.</p><ul><li><strong>+ Add Webhook</strong> &mdash; name it, paste an <code>https://</code> URL (private, loopback and unresolvable hosts are refused) and list the events</li><li><strong>Edit</strong> &mdash; rename it, retarget the URL, change its events or switch it off</li><li><strong>Test</strong> &mdash; posts a one-off test payload and reports the HTTP status your endpoint answered</li><li><strong>Del</strong> &mdash; removes the webhook</li></ul><p><strong>Deliveries:</strong> FunnelSwift stores webhooks as configuration and sends only when you press <strong>Test</strong>; automatic event delivery is not enabled yet.</p>',
+  "webhooks":'<h4>Webhooks</h4><p>Your own endpoints, so other software can be told what happens here. Each webhook has a name, a URL and the list of events it is registered for.</p><ul><li><strong>+ Add Webhook</strong> &mdash; name it, paste an <code>https://</code> URL (private, loopback and unresolvable hosts are refused) and list the events</li><li><strong>Edit</strong> &mdash; rename it, retarget the URL, change its events or switch it off</li><li><strong>Test</strong> &mdash; posts a one-off test payload and reports the HTTP status your endpoint answered</li><li><strong>Log</strong> &mdash; the delivery history: when each attempt was made, the event, the status it got back and which attempt it was</li><li><strong>Del</strong> &mdash; removes the webhook</li></ul><p><strong>Deliveries:</strong> the events you register fire automatically &mdash; <code>lead.created</code> (any captured lead: web form, Kinetic card, console or affiliate) and <code>tag.updated</code>. Only <strong>Active</strong> webhooks are called. A failed delivery is retried three times before it is recorded as failed.</p>',
   "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
   "stags":'<h4>System Tags</h4><p>Tags an <strong>admin</strong> creates once — every tenant sees them in its Tags list.</p><ul><li><strong>Admin only</strong> — create, rename, recolor, delete</li><li><strong>No cross-app targets</strong> — a System Tag does not create accounts or contacts in other Swift apps</li></ul>',
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
@@ -2869,7 +2869,7 @@ function LW(){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     WHK=a;
     var gated=!LWGate();
-    $("ct").innerHTML='<div class="cc"><h3>Webhooks ('+a.length+') <span id="lw-add"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Your own endpoints. Name each one, give it an <strong>https://</strong> URL and the <strong>events</strong> it is registered for, then press <strong>Test</strong> to check that the endpoint answers.</p><div id="lw-list"></div></div>';
+    $("ct").innerHTML='<div class="cc"><h3>Webhooks ('+a.length+') <span id="lw-add"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Your own endpoints. Name each one, give it an <strong>https://</strong> URL and the <strong>events</strong> it is registered for &mdash; <strong id="lw-ev">lead.created, tag.updated</strong>. An <strong>Active</strong> webhook is called automatically when one of those events happens; press <strong>Test</strong> to check the endpoint now, or <strong>Log</strong> to see its delivery history.</p><div id="lw-list"></div></div>';
     // kanban t_9ae9e586: this screen used to be viewer + delete only, while POST /api/v1/webhooks
     // (plan-gated) and PUT /api/v1/webhooks/:id were both live - a workspace that could only delete.
     // Create, Edit and Test are wired here; the routes already exist and are tenant-scoped.
@@ -2877,6 +2877,13 @@ function LW(){
       if(!LWGate()){KCUP("Webhooks are not included in your current plan. Upgrade to add one.");return;}
       MFW(null);
     }},(gated?"🔒 ":"")+"+ Add Webhook"));
+    // kanban t_431faa99: the events this build can actually emit, published by the API, so this
+    // screen names the same list the dispatcher matches on instead of a placeholder that drifts.
+    api("/api/v1/webhook-events").then(function(d){
+      LWEV=(d&&d.events)||null;
+      var s=$("lw-ev");
+      if(s&&LWEV&&LWEV.length)s.textContent=LWEV.join(", ");
+    }).catch(function(){});
     var list=$("lw-list");
     if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px;text-align:center">No webhooks yet.</p>';return;}
     var tbl=El("table");
@@ -2890,6 +2897,8 @@ function LW(){
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFW(w.id)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){TW(w.id)}},"Test"));
+      td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){LWL(w.id)}},"Log"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DW(w.id)}},"Del"));
       tbl.appendChild(tr);
@@ -2909,7 +2918,7 @@ function MFW(id){
     var mb=$("mb");
     mb.appendChild(ff("Name", El("input",{id:"wn",value:w.name||"",placeholder:"Lead notifications"})));
     mb.appendChild(ff("URL", El("input",{id:"wu",value:w.url||"",placeholder:"https://example.com/hooks/funnelswift"})));
-    mb.appendChild(ff("Events (comma-separated)", El("input",{id:"we",value:(w.events||[]).join(", "),placeholder:"lead.created, tag.updated"})));
+    mb.appendChild(ff("Events (comma-separated)", El("input",{id:"we",value:(w.events||[]).join(", "),placeholder:(LWEV||["lead.created","tag.updated"]).join(", ")})));
     mb.appendChild(ff("Active", El("input",{id:"wa",type:"checkbox",checked:w.is_active!==false?"checked":null})));
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){SW(id)}},(id?"Save":"Create")));
@@ -2941,6 +2950,32 @@ function TW(id){
   });
 }
 function DW(id){if(confirm("Delete this webhook?")) api("/api/v1/webhooks/"+id,{method:"DELETE"}).then(function(){S("webhooks")}).catch(function(e){showMsg(e.message||"Delete failed","me")});}
+
+/* The delivery log of one webhook (kanban t_431faa99). Until delivery existed there was nothing to
+   show, so this view did not exist either; the API route is GET /api/v1/webhooks/:id/deliveries and
+   the rows are the attempts themselves — status, HTTP code, and which attempt (n of 3). LWEV is the
+   vocabulary the API publishes, cached by LW(). */
+var LWEV=null;
+function LWL(id){
+  O("Webhook deliveries",function(){
+    $("mb").innerHTML='<p style="color:#64748b;font-size:13px">Loading&hellip;</p>';
+    $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Close"));
+    api("/api/v1/webhooks/"+id+"/deliveries").then(function(d){
+      var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
+      var box=$("mb");
+      if(!a.length){box.innerHTML='<p style="color:#64748b;font-size:13px">No deliveries recorded yet. This log fills the first time an event fires the webhook.</p>';return;}
+      var h='<table><tr><th>When</th><th>Event</th><th>Status</th><th>Code</th><th>Attempt</th></tr>';
+      a.forEach(function(r){
+        var st=r.status||"-";
+        var cls=(st==="success")?"bg":((st==="failed")?"br":"bb");
+        var when=String(r.delivered_at||"").replace("T"," ").slice(0,19);
+        h+='<tr><td>'+X(when||"-")+'</td><td><span class="badge bb">'+X(r.event||"-")+'</span></td><td><span class="badge '+cls+'">'+X(st)+'</span></td><td>'+(r.status_code==null?"-":X(String(r.status_code)))+'</td><td>'+X(String(r.attempt||1))+' / '+X(String(r.max_attempts||3))+'</td></tr>';
+      });
+      h+='</table>';
+      box.innerHTML=h;
+    }).catch(function(e){showMsg((e&&e.message)||"Could not load deliveries","me");});
+  });
+}
 
 /* === API KEYS === */
 function LK(){

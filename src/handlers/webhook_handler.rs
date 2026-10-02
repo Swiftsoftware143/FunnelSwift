@@ -14,7 +14,11 @@ use crate::state::AppState;
 
 /// SSRF guard: webhook URLs must be http(s), must not target loopback/private/link-local
 /// addresses, the cloud metadata endpoint, or internal hostnames, and must be resolvable.
-fn validate_webhook_url(url: &str) -> AppResult<()> {
+///
+/// `pub(crate)` since kanban t_431faa99: the delivery engine re-runs this on EVERY attempt, not
+/// only when the webhook is saved, because a hostname that resolved publicly at create time can be
+/// re-pointed at a private address before the first event fires.
+pub(crate) fn validate_webhook_url(url: &str) -> AppResult<()> {
     use std::net::ToSocketAddrs;
 
     let parsed =
@@ -255,4 +259,54 @@ pub async fn test_webhook(
             "message": "Webhook test failed"
         }))),
     }
+}
+
+/// `GET /api/v1/webhooks/:id/deliveries` — the delivery log of ONE webhook (kanban t_431faa99).
+///
+/// Authorisation is the scoping read: a webhook id belonging to another workspace answers 404
+/// rather than an empty list, so this route cannot be walked to probe for ids.
+///
+/// Deliberately NOT plan-gated, unlike `create_webhook`: a log row can only be created through the
+/// gated writer, so gating the read itself would add nothing except an unexplained 402 for a
+/// workspace that was downgraded AFTER its deliveries were made — the "read path wedged by a write
+/// guard" shape this file has already been burned by (max_cards, t_8ccc8e6a).
+pub async fn list_deliveries(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Vec<WebhookDelivery>>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let owned: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM webhooks WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    if owned.is_none() {
+        return Err(AppError::NotFound("Webhook not found".into()));
+    }
+
+    let rows = sqlx::query_as::<_, WebhookDelivery>(
+        "SELECT id, webhook_id, tenant_id, event, status, status_code, attempt, max_attempts, \
+         request_body, response_body, delivered_at, next_retry_at \
+         FROM webhook_delivery_log WHERE webhook_id = $1 \
+         ORDER BY delivered_at DESC LIMIT 50",
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(rows))
+}
+
+/// `GET /api/v1/webhook-events` — the event names this build can actually emit (kanban
+/// t_431faa99). Served so the console's Events field and the served guide name the same list the
+/// dispatcher matches against, instead of a free-text placeholder that could drift back into
+/// advertising an event nothing sends.
+pub async fn list_events() -> Json<serde_json::Value> {
+    Json(json!({ "events": crate::webhooks::EVENTS }))
 }

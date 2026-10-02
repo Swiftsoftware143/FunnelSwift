@@ -1695,6 +1695,23 @@ pub async fn submit_lead(
     .execute(&state.pool)
     .await?;
 
+    // Outbound webhook delivery (kanban t_431faa99): a Kinetic card submission is a captured lead,
+    // so it emits the same `lead.created` as every other writer of a `leads` row.
+    crate::webhooks::spawn(
+        state.pool.clone(),
+        tenant_id,
+        crate::webhooks::LEAD_CREATED,
+        crate::webhooks::lead_created(
+            lead_id,
+            Some(name.as_str()),
+            email.as_deref(),
+            phone.as_deref(),
+            company.as_deref(),
+            Some("kinetic_card"),
+            &[],
+        ),
+    );
+
     // The raw card event (migration 0017's `lead_events`) — this is what ties the lead to the
     // card it was submitted from. `source_param` carries the traffic source, as in the table's
     // own historical rows ('ig'/'fb'); `ip_hash` stays NULL exactly like those rows. `user_id` is

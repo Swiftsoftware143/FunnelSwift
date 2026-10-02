@@ -176,6 +176,24 @@ pub async fn create_lead(
         .await?;
     }
 
+    // Outbound webhook delivery (kanban t_431faa99): the console's own Create Lead is a writer of a
+    // `leads` row like any capture path, so it emits the same `lead.created`. Emitted AFTER the tag
+    // block so the payload carries the tags that were actually stored.
+    crate::webhooks::spawn(
+        state.pool.clone(),
+        tenant_id,
+        crate::webhooks::LEAD_CREATED,
+        crate::webhooks::lead_created(
+            lead_id,
+            Some(display_name.as_str()),
+            req.email.as_deref(),
+            req.phone.as_deref(),
+            req.company.as_deref(),
+            req.source.as_deref(),
+            &created_tag_names,
+        ),
+    );
+
     // Best-effort push to WorkflowSwift — the REAL POST {WORKFLOWSWIFT_URL}/api/v1/incoming call,
     // the same `deliver_lead` the /api/v1/push/workflowswift leg uses. Until 2026-09-25 this spawn
     // was `push_to_workflowswift`, which only wrote a log line while the route beside it fabricated

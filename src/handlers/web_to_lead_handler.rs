@@ -318,6 +318,25 @@ pub async fn handle_web_to_lead(
         }
     }
 
+    // Outbound webhook delivery (kanban t_431faa99): `lead.created` fires the moment the lead row
+    // exists, for every ACTIVE webhook in this workspace registered for `lead.created`.
+    // Fire-and-forget on purpose — the visitor's submission is already stored and must not wait on
+    // a third party that may be slow or gone.
+    crate::webhooks::spawn(
+        state.pool.clone(),
+        tenant_id,
+        crate::webhooks::LEAD_CREATED,
+        crate::webhooks::lead_created(
+            id,
+            payload["name"].as_str(),
+            payload["email"].as_str(),
+            payload["phone"].as_str(),
+            payload["company"].as_str(),
+            Some(&source),
+            &tag_names,
+        ),
+    );
+
     // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be
     // able to land in CoreSwift as a contact. Fire-and-forget: the visitor's submission above
     // already succeeded, and this is a no-op when the tenant has no `coreswift` BYOK key.

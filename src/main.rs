@@ -41,6 +41,7 @@ mod state;
 mod system_tenant;
 mod tag_logic;
 mod templates;
+mod webhooks;
 
 use crate::db::Database;
 use crate::error::Result;
@@ -114,6 +115,12 @@ async fn main() -> Result<()> {
         workflowswift_url,
         coreswift_url,
     );
+
+    // Outbound webhook delivery worker (kanban t_431faa99). The delivery row is the queue: this
+    // sweeper makes attempt 2 and attempt 3 for rows the request path left `failed`, and recovers a
+    // row left `pending`/`sending` by a crash. Without it `max_attempts` and `next_retry_at` — both
+    // columns of migrations/0016 — would stay unread configuration, the same defect one level down.
+    webhooks::spawn_retry_worker(app_state.pool.clone());
 
     // Request-body read deadline (kanban t_488a19d4). Printed here so an operator can see the
     // bound that is actually in force: every request that DECLARES a body on a body-carrying

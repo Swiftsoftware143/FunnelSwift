@@ -156,6 +156,20 @@ pub async fn update_tag(
             .await?;
     }
 
+    // Outbound webhook delivery (kanban t_431faa99): `tag.updated` fires AFTER the row is written,
+    // so a subscriber never sees a change the console could still refuse.
+    crate::webhooks::spawn(
+        state.pool.clone(),
+        tenant_id,
+        crate::webhooks::TAG_UPDATED,
+        json!({
+            "tag_id": id.to_string(),
+            "name": name,
+            "color": color,
+            "group_id": group_id,
+        }),
+    );
+
     Ok(Json(json!({"message": "Tag updated"})))
 }
 

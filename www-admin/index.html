@@ -1676,7 +1676,7 @@ async function renderWebhooks() {
         <td>${(w.events||[]).map(e=>`<span class="badge badge-blue">${x(e)}</span>`).join(' ')}</td>
         <td><span class="badge ${w.is_active===false?'badge-red':'badge-green'}">${w.is_active===false?'Inactive':'Active'}</span></td>
         <td>${formatDate(w.created_at)}</td>
-        <td><button class="btn btn-secondary btn-xs" onclick="window._editWebhook('${w.id}')">Edit</button></td>
+        <td><button class="btn btn-secondary btn-xs" onclick="window._editWebhook('${w.id}')">Edit</button> <button class="btn btn-secondary btn-xs" onclick="window._webhookLog('${w.id}')">Log</button></td>
       </tr>`).join('')}</tbody>
     </table></div></div>`}
   </div>`;
@@ -1685,6 +1685,38 @@ function bindWebhooks() {
   document.getElementById('add-webhook-btn')?.addEventListener('click', () => openWebhookModal());
 }
 window._editWebhook = function(id) { openWebhookModal(id); };
+/* kanban t_431faa99: the delivery log of one webhook (GET /api/v1/webhooks/:id/deliveries). The
+   editor above could create, edit and switch a webhook off while nothing consumed it; this is the
+   read side that makes the row's own history visible in the console that owns the editor. */
+window._webhookLog = function(id) {
+  STATE.modal = { title: 'Webhook deliveries', content: '<div class="empty"><div class="icon">⏳</div></div>' };
+  renderApp();
+  setTimeout(async () => {
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    let rows = [];
+    try {
+      const d = await api('/webhooks/' + id + '/deliveries');
+      rows = Array.isArray(d) ? d : ((d && (d.data || d.deliveries)) || []);
+    } catch(e) {
+      body.innerHTML = '<div class="empty"><div class="icon">⚠️</div><div class="title">Could not load the delivery log</div><div class="sub">' + x(e.message || '') + '</div></div>';
+      return;
+    }
+    if (!rows.length) {
+      body.innerHTML = '<div class="empty"><div class="icon">📭</div><div class="title">No deliveries yet</div><div class="sub">This log fills the first time an event fires the webhook.</div></div>';
+      return;
+    }
+    body.innerHTML = `<div class="table-wrap"><table class="table">
+      <thead><tr><th>When</th><th>Event</th><th>Status</th><th>Code</th><th>Attempt</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${formatDate(r.delivered_at)}</td>
+        <td><span class="badge badge-blue">${x(r.event||'-')}</span></td>
+        <td><span class="badge ${r.status==='success'?'badge-green':'badge-red'}">${x(r.status||'-')}</span></td>
+        <td>${r.status_code==null?'-':r.status_code}</td>
+        <td>${r.attempt||1} / ${r.max_attempts||3}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }, 0);
+};
 function openWebhookModal(id) {
   STATE.modal = { title: id ? 'Edit Webhook' : 'Add Webhook', content: `<div class="empty"><div class="icon">⏳</div></div>` };
   renderApp();
@@ -1702,7 +1734,7 @@ function openWebhookModal(id) {
     body.innerHTML = `<form id="webhook-form">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(w.name||'')}" placeholder="Lead notifications" required></div>
       <div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(w.url||'')}" placeholder="https://..." required></div>
-      <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((w.events||[]).join(', '))}" placeholder="lead.created, tag.updated"></div>
+      <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((w.events||[]).join(', '))}" placeholder="lead.created, tag.updated"><div style="font-size:12px;color:#64748b;margin-top:4px">Delivered automatically while the webhook is Active. The server publishes the events it can emit at <code>/api/v1/webhook-events</code>; a name it does not list never fires.</div></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${w.is_active!==false?'on':''}" id="webhook-active-toggle"></span> Active</label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
