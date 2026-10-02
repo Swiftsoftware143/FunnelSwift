@@ -3044,7 +3044,7 @@ async function wiredInsights() {
 async function wiredAffiliateProductSync() {
   const body = wiredPanel('affiliateProducts', '📦 Sync affiliate products', 'POST /api/v1/admin/affiliate-products/sync');
   if (!body) return;
-  body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates one affiliate product row per plan that does not have one yet.</div>' +
+  body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates one affiliate product row per plan that does not have one yet. Paid plans are left alone — an affiliate may only hand out a FREE plan (migration 070).</div>' +
     '<button class="btn btn-primary" id="wired-ap-sync">Sync from plans</button><span id="wired-ap-msg" style="font-size:12px;margin-left:10px"></span>';
   /* kanban t_b2a9059b: same one-shape bind as the panels below. This panel injects its markup and
      binds in one synchronous block, so a re-render cannot catch it detached today — guarded anyway
@@ -3056,7 +3056,12 @@ async function wiredAffiliateProductSync() {
     b.disabled = true; m.textContent = 'Syncing…';
     try {
       const r = await api('/admin/affiliate-products/sync', { method: 'POST' });
-      m.textContent = '✓ ' + (r.message || 'Synced') + (r.created !== undefined ? ' (' + r.created + ' created)' : '');
+      /* kanban t_a88f6d66: the route now SKIPS the plans it may not materialise (migration 070's
+         free-plan rule) and reports them, instead of answering 500 "Database error". Name them, so
+         the panel can explain why a paid plan has no product. */
+      const skipped = (r.skipped_plans || []).map(p => p.name + (p.price != null ? ' ($' + p.price + ')' : '')).join(', ');
+      m.textContent = '✓ ' + (r.message || 'Synced') + (r.created !== undefined ? ' (' + r.created + ' created)' : '') +
+        (skipped ? ' — left alone (paid): ' + skipped : '');
       showToast('Affiliate products synced', 'success');
       renderView();
     } catch (e) { m.textContent = '✗ ' + e.message; b.disabled = false; }

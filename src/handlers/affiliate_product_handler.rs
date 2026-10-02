@@ -728,6 +728,38 @@ pub async fn delete_affiliate_product(
     Ok(Json(json!({"message": "Product deleted"})))
 }
 
+/// A stable fragment of migration 070's paid-plan refusal (`trg_affiliate_products_free_only`).
+/// Matching on text is safe for the same reason 075's and 083's markers are: sqlx records a checksum
+/// and refuses a changed migration file at boot, so these bytes cannot move without that refusal
+/// being visible.
+const FREE_ONLY_RAISE_MESSAGE: &str = "may not be linked to a PAID plan";
+
+/// The decision the backfill's TOCTOU backstop makes, split out so it can be asserted without faking
+/// a driver error: ONLY SQLSTATE P0001 (an unnamed plpgsql `RAISE EXCEPTION`) AND ONLY migration
+/// 070's own message. 075's tag rule raises from the same class and is deliberately left alone.
+fn is_free_only_raise_parts(code: Option<&str>, message: &str) -> bool {
+    code == Some(RAISE_EXCEPTION_SQLSTATE) && message.contains(FREE_ONLY_RAISE_MESSAGE)
+}
+
+/// The same decision applied to the error a materialisation actually returned — the helper answers
+/// `AppError`, so the driver error is unwrapped through the arm `error.rs` would have mapped to its
+/// anonymous 500.
+fn is_free_only_raise(e: &AppError) -> bool {
+    match e {
+        AppError::Database(sqlx::Error::Database(db)) => {
+            is_free_only_raise_parts(db.code().as_deref(), db.message())
+        }
+        _ => false,
+    }
+}
+
+/// ONE shape for a plan the backfill left alone, so both arms report it identically. `price` is
+/// `None` on the TOCTOU arm, where the plan was priced up between the read and the INSERT and
+/// re-reading it would only race again.
+fn skipped_plan(id: Uuid, name: &str, price: Option<f64>) -> Value {
+    json!({"id": id, "name": name, "price": price})
+}
+
 /// BACKFILL the plan-derived affiliate products that are MISSING (kanban t_6d326447).
 ///
 /// **The decision: ONE WRITER.** This route used to be a second, lossy writer of the plan -> product
@@ -743,6 +775,28 @@ pub async fn delete_affiliate_product(
 /// It deliberately does NOT re-rate the products that already exist: rewriting live commission data
 /// for every plan in one click is a separate decision (the 6 real plan-derived rows are the evidence
 /// that needs it), and a plan edit is what refreshes a product's commercial fields.
+///
+/// **AFFILIATES HAND OUT FREE PLANS ONLY (migration 070, David 2026-09-29) — kanban t_a88f6d66.**
+/// `trg_affiliate_products_free_only` REFUSES an affiliate product linked to a plan whose
+/// `price <> 0`, and migration 074 removed the paid-plan catalogue rows, so a walk that materialises
+/// a product for EVERY productless plan raised on the first paid one. That raise is
+/// `sqlx::Error::Database` and `error.rs` maps it to `500 {"error":"Database error"}`, so on a
+/// catalogue with 4 paid plans and 2 free ones this route answered a bare 500 and could never
+/// backfill anything — while the trigger's own text stayed in the log.
+///
+/// **ARM (a) — skip and REPORT, decided over arm (b) (refuse the request).** The trigger's own
+/// fired-condition (`price IS NOT NULL AND price <> 0`) is mirrored here as a READ: a plan the
+/// database may not link to a product is skipped, and the answer names every one of them
+/// (`skipped` + `skipped_plans` with id, name and price). The route's own contract — "materialise
+/// the MISSING ones" — stays true for the only plans an affiliate may hand out, and the panel can
+/// explain what it left alone. Arm (b) is not available here: unlike the bulk rate route
+/// (t_5c2a9bde), this route names NO plan, so a 4xx would make the backfill permanently unusable for
+/// as long as any paid plan exists — it would refuse the FREE plan it can still materialise. A
+/// fleet-wide backfill reports what it left alone; it does not fail.
+///
+/// The race between that read and the INSERT is the TOCTOU backstop: the trigger's raise is
+/// recognised by [`is_free_only_raise`] and counted as skipped too, so the trigger's text never
+/// reaches the caller as "Database error".
 pub async fn admin_sync_affiliate_products(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -750,15 +804,29 @@ pub async fn admin_sync_affiliate_products(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plan_ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM plans LIMIT 50")
-        .fetch_all(&state.pool)
-        .await?;
+    // `name` and `price` ride along so the answer can name what it left alone. `plans.price` is
+    // `double precision`, cast for symmetry with the other plan reads in this service.
+    let plans: Vec<(Uuid, String, f64)> = sqlx::query_as(
+        "SELECT id, name, price::float8 FROM plans ORDER BY created_at, id LIMIT 50",
+    )
+    .fetch_all(&state.pool)
+    .await?;
 
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    let mut count: i64 = 0;
+    let mut synced: i64 = 0;
+    let mut skipped: Vec<Value> = Vec::new();
 
-    for plan_id in plan_ids {
+    for (plan_id, plan_name, price) in plans {
+        // The free-plan rule (migration 070) as a READ. A paid plan can never own an affiliate
+        // product, so it is REPORTED rather than left to raise: the trigger is the authority, and
+        // this mirrors its fired-condition exactly, so this can never skip something the database
+        // would have accepted. `=` on the exact literal the trigger compares.
+        if price != 0.0 {
+            skipped.push(skipped_plan(plan_id, &plan_name, Some(price)));
+            continue;
+        }
+
         let exists: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1")
                 .bind(plan_id)
@@ -766,21 +834,42 @@ pub async fn admin_sync_affiliate_products(
                 .await?;
 
         if exists == 0 {
-            // ONE WRITER: every column value comes from the plan row. `?` on purpose — a
-            // materialisation that failed must not answer 200 with a count that never happened.
-            super::plan_handler::sync_plan_to_affiliate_product(
+            // ONE WRITER: every column value comes from the plan row. Not `?` — a TOCTOU refusal
+            // must not answer 500, and a real failure must not answer 200 with a count that never
+            // happened.
+            match super::plan_handler::sync_plan_to_affiliate_product(
                 &state.pool,
                 plan_id,
                 Some(tenant_id),
             )
-            .await?;
-            count += 1;
+            .await
+            {
+                Ok(_) => synced += 1,
+                // The plan was priced up between the read above and the INSERT. The trigger is the
+                // authority; report it the same way as the pre-filter instead of raising.
+                Err(e) if is_free_only_raise(&e) => {
+                    skipped.push(skipped_plan(plan_id, &plan_name, None));
+                }
+                Err(e) => return Err(e),
+            }
         }
     }
 
-    Ok(Json(
-        json!({"synced": count, "message": format!("{} products synced", count)}),
-    ))
+    let message = if skipped.is_empty() {
+        format!("{} products synced", synced)
+    } else {
+        format!(
+            "{} products synced; {} paid plan(s) skipped (affiliates only hand out free plans)",
+            synced,
+            skipped.len()
+        )
+    };
+    Ok(Json(json!({
+        "synced": synced,
+        "skipped": skipped.len(),
+        "skipped_plans": skipped,
+        "message": message,
+    })))
 }
 
 pub async fn admin_update_affiliate_product(
@@ -978,6 +1067,37 @@ mod tests {
         assert!(matches!(
             resolve_plan_derived_rate(&plan_source(None, None), None),
             Err(crate::error::AppError::Conflict(_))
+        ));
+    }
+
+    // ── the 070 free-plan rule's backstop (kanban t_a88f6d66) ───────────────────────────────────
+    //
+    // The live probe exercises arm (a), the read before the write. This mapping is asserted here for
+    // the TOCTOU case no probe can time: the plan's price moves between that read and the INSERT, so
+    // migration 070's trigger fires and the route must still REPORT the plan instead of answering
+    // `500 "Database error"`.
+
+    use super::{is_free_only_raise_parts, FREE_ONLY_RAISE_MESSAGE};
+
+    #[test]
+    fn the_paid_plan_raise_is_recognised_and_never_becomes_a_500() {
+        assert!(is_free_only_raise_parts(Some("P0001"), FREE_ONLY_MESSAGE));
+        // The marker is asserted against the REAL trigger text rather than against itself: if a
+        // migration reworded the raise, this is the assertion that fails.
+        assert!(FREE_ONLY_MESSAGE.contains(FREE_ONLY_RAISE_MESSAGE));
+        // 075's tag rule raises from the same class, so the marker is what separates them, and this
+        // mapping never swallows a neighbouring raise.
+        assert!(!is_free_only_raise_parts(Some("P0001"), TRIGGER_MESSAGE));
+        assert!(!is_free_only_raise_parts(
+            Some("P0001"),
+            TRIGGER_RATE_MESSAGE
+        ));
+        assert!(!is_free_only_raise_parts(Some("SW001"), FREE_ONLY_MESSAGE));
+        assert!(!is_free_only_raise_parts(Some("23505"), FREE_ONLY_MESSAGE));
+        assert!(!is_free_only_raise_parts(None, FREE_ONLY_MESSAGE));
+        assert!(!is_free_only_raise_parts(
+            Some("P0001"),
+            "some other failure"
         ));
     }
 
