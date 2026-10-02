@@ -154,15 +154,49 @@ pub struct ResolveQuery {
     pub affiliate_id: Option<String>,
 }
 
+/// The two tenants a commission-group call may reach: the CALLER's own, and the fleet's SYSTEM tenant.
+///
+/// ARM (a) OF KANBAN t_e8a297fb, decided here: the whole commission-groups feature is TENANT-SCOPED.
+/// Before this change `affiliate_product_groups.tenant_id` was never written (065 created it and
+/// `create_group` ignored it) and no route carried a predicate, so an `is_admin` caller of one
+/// workspace could list, re-rate, delete and re-member ANOTHER workspace's groups and products
+/// fleet-wide — and a group rate decides what a product pays (`src/commission.rs`, rule 2). The scope
+/// is deliberately the SAME contract `bulk_set_product_rate` got in t_5c2a9bde, because the admin
+/// product list this console renders is exactly those two tenants' rows: an id the caller cannot
+/// reach is REPORTED (`products_skipped`), never silently dropped. Migration 092 makes it structural
+/// (`tenant_id NOT NULL`, no default, so a writer that forgets the owner fails loudly).
+fn group_scope(auth: &AuthUser) -> AppResult<(Uuid, Uuid)> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    Ok((tenant_id, crate::system_tenant::system_tenant_id()))
+}
+
+/// The DISTINCT ids a request named, in first-seen order, so a skipped/assigned count counts ids
+/// rather than repeat ticks (the shape `bulk_set_product_rate` uses).
+fn distinct_ids(ids: &[Uuid]) -> Vec<Uuid> {
+    let mut out: Vec<Uuid> = Vec::with_capacity(ids.len());
+    for id in ids {
+        if !out.contains(id) {
+            out.push(*id);
+        }
+    }
+    out
+}
+
 pub async fn list_groups(
-    _auth: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let (tenant_id, system_id) = group_scope(&auth)?;
     let rows: Vec<(Uuid, Option<Uuid>, String, Option<f64>, Option<String>, i64)> = sqlx::query_as(
         "SELECT g.id, g.tenant_id, g.name, g.commission_rate::float8, g.description, \
                 (SELECT count(*) FROM affiliate_products p WHERE p.group_id = g.id) \
-         FROM affiliate_product_groups g ORDER BY g.name ASC",
+         FROM affiliate_product_groups g \
+         WHERE g.tenant_id = $1 OR g.tenant_id = $2 \
+         ORDER BY g.name ASC",
     )
+    .bind(tenant_id)
+    .bind(system_id)
     .fetch_all(&state.pool)
     .await
     .map_err(|e| AppError::Internal(format!("list groups failed: {e}")))?;
@@ -189,6 +223,12 @@ pub async fn list_groups(
 /// until someone edited the plan and silently took it back — the same money risk as t_5c2a9bde, by a
 /// different door. The whole request is refused (no group row, no membership) and the 409 names the
 /// plan to edit. A group of ordinary products is unaffected.
+///
+/// ARM (a) OF KANBAN t_e8a297fb, also decided here: the group is OWNED by the caller's tenant
+/// (`affiliate_product_groups.tenant_id`, never written before this change), and the membership UPDATE
+/// can only reach the caller's products or the fleet SYSTEM tenant's — the same scope
+/// `bulk_set_product_rate` got in t_5c2a9bde. Ids outside that scope are counted in
+/// `products_skipped` in the 201, never silently dropped.
 pub async fn create_group(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -208,7 +248,8 @@ pub async fn create_group(
         }
     }
 
-    let ids: Vec<Uuid> = req.product_ids.clone().unwrap_or_default();
+    let (tenant_id, system_id) = group_scope(&auth)?;
+    let ids = distinct_ids(&req.product_ids.clone().unwrap_or_default());
     let derived = plan_derived_among(&state, &ids).await?;
     if !derived.is_empty() {
         return Err(plan_derived_group_conflict(&derived));
@@ -219,10 +260,13 @@ pub async fn create_group(
     // backstop behind the read above, and a refusal from it must not leave an empty group behind.
     let mut tx = state.pool.begin().await?;
     if let Err(e) = sqlx::query(
-        "INSERT INTO affiliate_product_groups (id, name, commission_rate, description) \
-         VALUES ($1, $2, $3, $4)",
+        "INSERT INTO affiliate_product_groups (id, tenant_id, name, commission_rate, description) \
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(id)
+    // The OWNER. Migration 092 makes this column NOT NULL with no default, so a writer that forgets it
+    // fails loudly (23502, named in the log) instead of silently creating a fleet-shared group.
+    .bind(tenant_id)
     .bind(req.name.trim())
     .bind(req.commission_rate)
     .bind(&req.description)
@@ -234,11 +278,16 @@ pub async fn create_group(
 
     let mut assigned = 0usize;
     if !ids.is_empty() {
-        match sqlx::query("UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2)")
-            .bind(id)
-            .bind(&ids)
-            .execute(&mut *tx)
-            .await
+        match sqlx::query(
+            "UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2) \
+              AND (tenant_id = $3 OR tenant_id = $4)",
+        )
+        .bind(id)
+        .bind(&ids)
+        .bind(tenant_id)
+        .bind(system_id)
+        .execute(&mut *tx)
+        .await
         {
             Ok(r) => assigned = r.rows_affected() as usize,
             Err(e) => return Err(map_group_write_error(&state, e, &ids).await),
@@ -248,10 +297,24 @@ pub async fn create_group(
 
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id": id, "message": "Group created", "products_assigned": assigned})),
+        Json(json!({
+            "id": id,
+            "message": "Group created",
+            "products_assigned": assigned,
+            // Ticked ids this call could not reach — another workspace's product, or an unknown id.
+            // Reported rather than silently dropped, because the console says "with N product(s)" and
+            // that N has to BE N (kanban t_e8a297fb).
+            "products_skipped": (ids.len() as u64).saturating_sub(assigned as u64),
+        })),
     ))
 }
 
+/// Re-rate / rename a group.
+///
+/// TENANT-SCOPED (kanban t_e8a297fb): the row is addressed by id AND by the caller's scope
+/// (`tenant_id = caller OR SYSTEM`), so another workspace's group id answers the same 404 an unknown id
+/// does — existence is not leaked, and its rate cannot be changed from here. Before this change the
+/// predicate was `id = $1` alone, so any admin could re-rate any workspace's group fleet-wide.
 pub async fn update_group(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -268,6 +331,7 @@ pub async fn update_group(
             ));
         }
     }
+    let (tenant_id, system_id) = group_scope(&auth)?;
 
     // COALESCE-per-field: an omitted field keeps its stored value. `clear_commission_rate` is the
     // explicit way to null the rate, because "send null" and "don't touch it" are the same JSON.
@@ -277,13 +341,15 @@ pub async fn update_group(
             commission_rate = CASE WHEN $5 THEN NULL ELSE COALESCE($3, commission_rate) END, \
             description = COALESCE($4, description), \
             updated_at = now() \
-         WHERE id = $1",
+         WHERE id = $1 AND (tenant_id = $6 OR tenant_id = $7)",
     )
     .bind(id)
     .bind(&req.name)
     .bind(req.commission_rate)
     .bind(&req.description)
     .bind(req.clear_commission_rate.unwrap_or(false))
+    .bind(tenant_id)
+    .bind(system_id)
     .execute(&state.pool)
     .await?;
 
@@ -293,6 +359,9 @@ pub async fn update_group(
     Ok(Json(json!({"id": id, "message": "Group updated"})))
 }
 
+/// Delete a group. TENANT-SCOPED (kanban t_e8a297fb): `id = $1 AND (tenant_id = caller OR SYSTEM)`, so
+/// another workspace's group is not deletable from here and its id answers the same 404 an unknown id
+/// does. Before this change any admin could delete any workspace's group fleet-wide.
 pub async fn delete_group(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -301,11 +370,16 @@ pub async fn delete_group(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
+    let (tenant_id, system_id) = group_scope(&auth)?;
     // The FK is ON DELETE SET NULL, so member products survive and fall back to their own rates.
-    let res = sqlx::query("DELETE FROM affiliate_product_groups WHERE id = $1")
-        .bind(id)
-        .execute(&state.pool)
-        .await?;
+    let res = sqlx::query(
+        "DELETE FROM affiliate_product_groups WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3)",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(system_id)
+    .execute(&state.pool)
+    .await?;
     if res.rows_affected() == 0 {
         return Err(AppError::NotFound("group not found".into()));
     }
@@ -321,6 +395,12 @@ pub async fn delete_group(
 /// (kanban t_db5d07aa): a plan-derived product may not be put in a group, because a group rate outranks
 /// the plan's rate the product is supposed to mirror. The check runs BEFORE the transaction, so a
 /// request that is going to be rejected never empties the membership that is already stored.
+///
+/// TENANT-SCOPED (kanban t_e8a297fb): the group must be in the caller's scope, and BOTH arms of the
+/// membership write carry `tenant_id = caller OR SYSTEM` — the same scope `bulk_set_product_rate` got in
+/// t_5c2a9bde. Ids outside that scope are counted in `products_skipped` in the 200, never silently
+/// dropped. Before this change `WHERE id = ANY($2)` reached any workspace's product, so an admin could
+/// put ANOTHER workspace's product in a group and the group's rate then decided what it paid.
 pub async fn assign_products(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -330,42 +410,60 @@ pub async fn assign_products(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let derived = plan_derived_among(&state, &req.product_ids).await?;
+    let (tenant_id, system_id) = group_scope(&auth)?;
+    let wanted = distinct_ids(&req.product_ids);
+    let derived = plan_derived_among(&state, &wanted).await?;
     if !derived.is_empty() {
         return Err(plan_derived_group_conflict(&derived));
     }
-    let exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM affiliate_product_groups WHERE id = $1)")
-            .bind(id)
-            .fetch_one(&state.pool)
-            .await?;
+    // The group is addressed by id AND by the caller's scope, so another workspace's group id answers
+    // the same 404 an unknown id does (existence is not leaked and its membership is not touchable).
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM affiliate_product_groups \
+                        WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3))",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(system_id)
+    .fetch_one(&state.pool)
+    .await?;
     if !exists {
         return Err(AppError::NotFound("group not found".into()));
     }
 
     let mut tx = state.pool.begin().await?;
     // Clearing membership (`group_id = NULL`) can never violate the rule, so only the ADD arm needs the
-    // backstop mapping; both arms go through it so neither can answer an anonymous 500.
-    let removed =
-        match sqlx::query("UPDATE affiliate_products SET group_id = NULL WHERE group_id = $1")
-            .bind(id)
-            .execute(&mut *tx)
-            .await
-        {
-            Ok(r) => r.rows_affected(),
-            Err(e) => return Err(map_group_write_error(&state, e, &req.product_ids).await),
-        };
-    let added = if req.product_ids.is_empty() {
+    // backstop mapping; both arms go through it so neither can answer an anonymous 500. Both arms are
+    // scoped, so a membership row outside the caller's reach survives untouched.
+    let removed = match sqlx::query(
+        "UPDATE affiliate_products SET group_id = NULL WHERE group_id = $1 \
+          AND (tenant_id = $2 OR tenant_id = $3)",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(system_id)
+    .execute(&mut *tx)
+    .await
+    {
+        Ok(r) => r.rows_affected(),
+        Err(e) => return Err(map_group_write_error(&state, e, &wanted).await),
+    };
+    let added = if wanted.is_empty() {
         0
     } else {
-        match sqlx::query("UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2)")
-            .bind(id)
-            .bind(&req.product_ids)
-            .execute(&mut *tx)
-            .await
+        match sqlx::query(
+            "UPDATE affiliate_products SET group_id = $1 WHERE id = ANY($2) \
+              AND (tenant_id = $3 OR tenant_id = $4)",
+        )
+        .bind(id)
+        .bind(&wanted)
+        .bind(tenant_id)
+        .bind(system_id)
+        .execute(&mut *tx)
+        .await
         {
             Ok(r) => r.rows_affected(),
-            Err(e) => return Err(map_group_write_error(&state, e, &req.product_ids).await),
+            Err(e) => return Err(map_group_write_error(&state, e, &wanted).await),
         }
     };
     tx.commit().await?;
@@ -374,6 +472,9 @@ pub async fn assign_products(
         "group_id": id,
         "products_in_group": added,
         "previously_removed": removed,
+        // Ticked ids this call could not reach (another workspace's product, an unknown id): reported
+        // rather than silently dropped.
+        "products_skipped": (wanted.len() as u64).saturating_sub(added),
         "message": "Group membership replaced"
     })))
 }

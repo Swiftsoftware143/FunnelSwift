@@ -1328,7 +1328,9 @@ async function renderCommissionGroups() {
     rate</strong>. The order is fixed and shown on every commission: <strong>an affiliate's own override beats
     a group rate, a group rate beats a product's own rate, and a product's rate beats the plan's.</strong>
     A <strong>plan</strong> product is the exception: its rate comes from its plan, so it is not offered here —
-    a group rate would outrank the plan it mirrors.</p>
+    a group rate would outrank the plan it mirrors. Groups belong to <strong>this workspace</strong>: an admin
+    here sees, re-rates and deletes its own groups (and the shared catalogue's) and can never reach another
+    workspace's group or product (kanban t_e8a297fb).</p>
 
     <div class="card">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:10px">Create a group (one rate for several products)</h2>
@@ -1398,8 +1400,16 @@ function bindCommissionGroups() {
     if (ids.length) payload.product_ids = ids;
     if (!payload.name) { showToast('A group needs a name', 'error'); return; }
     try {
-      await api('/affiliate-product-groups', { method: 'POST', body: JSON.stringify(payload) });
-      showToast('Group created' + (ids.length ? ' with ' + ids.length + ' product(s)' : ''), 'success');
+      const r = await api('/affiliate-product-groups', { method: 'POST', body: JSON.stringify(payload) });
+      /* The SERVER's own counts, not the tick count (kanban t_e8a297fb). A group is scoped to this
+         workspace plus the shared catalogue, so an id the call could not reach comes back as
+         `products_skipped` — the toast must never claim more landed than actually did, the same rule
+         the bulk rate toast below follows (kanban t_5c2a9bde). */
+      const done = (r && typeof r.products_assigned === 'number') ? r.products_assigned : 0;
+      const skipped = (r && r.products_skipped) || 0;
+      showToast('Group created' + (done ? ' with ' + done + ' product(s)' : '')
+        + (skipped ? ' — ' + skipped + ' product(s) not reachable from this workspace' : ''),
+        (skipped && !done) ? 'error' : 'success');
       renderView();
     } catch(e) { showToast(e.message, 'error'); }
   });
