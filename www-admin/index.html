@@ -1101,7 +1101,8 @@ function openAffiliateProductModal(id) {
            clear_system_tag flag for that, because a bare null KEEPS the stored tag (a backtick in
            this comment would terminate the template literal that builds this form). -->
       <div class="form-group"><label class="form-label">System Tag</label><select class="input" name="system_tag_id" id="product-system-tag" ${isAdmin?'':'disabled'}><option value="">(No system tag)</option>${p.system_tag_id?`<option value="${x(p.system_tag_id)}" selected>${x(p.system_tag_name||'Current system tag')}</option>`:''}</select><div style="font-size:11px;color:var(--muted);margin-top:4px">Attributes this product to the affiliate who brought a lead carrying the tag.</div></div>
-      ${isAdmin?`<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      ${isAdmin?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0 0"><span class="toggle ${p.is_active!==false?'on':''}" id="product-active-toggle"></span> Active<div style="font-size:11px;color:var(--muted)">A retired product is not promoted and attributes no commission. One system tag routes one active product, so activating this one may be refused while another holds its tag.</div></label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Product</button>
       </div>`:''}
@@ -1121,6 +1122,8 @@ function openAffiliateProductModal(id) {
       }).catch(() => {});
       const tagSel = document.getElementById('product-system-tag');
       if (tagSel) tagSel.value = p.system_tag_id || '';
+      /* kanban t_24941022: the lifecycle toggle, in the same shape as #webhook-active-toggle. */
+      document.getElementById('product-active-toggle')?.addEventListener('click', function(){this.classList.toggle('on');});
       document.getElementById('product-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
@@ -1141,6 +1144,14 @@ function openAffiliateProductModal(id) {
         const tagVal = data.system_tag_id || '';
         data.system_tag_id = tagVal || null;
         if (id && !tagVal && p.system_tag_id) data.clear_system_tag = true;
+        /* kanban t_24941022: the product's lifecycle flag. THE PAYLOAD HALF -- the control alone
+           would save a body with no `is_active` key, and `update_affiliate_product` keeps the
+           stored value when the key is absent, so the switch would look wired and move nothing.
+           Sent as a real boolean, so a no-touch save re-sends the value the toggle was prefilled
+           with (the stored flag) and cannot re-tick a retired product. Activating one whose tag is
+           already routed answers the API's named 409; `api()` throws `e.error` and the catch below
+           shows it as a toast. */
+        data.is_active = document.getElementById('product-active-toggle').classList.contains('on');
         try {
           if (id) await api('/affiliate-products/'+id, { method: 'PUT', body: JSON.stringify(data) });
           else await api('/affiliate-products', { method: 'POST', body: JSON.stringify(data) });
