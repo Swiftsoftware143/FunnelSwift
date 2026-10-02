@@ -19,11 +19,11 @@ use crate::handlers::{
     coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
     email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
     integration_target_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
-    ocr, plan_handler, plan_tag_handler, portfolio_handler, product_category_handler,
-    provider_keys_handler, public_signup_handler, qr_handler, routing_handler, seo_handler,
-    settings_handler, site_handler, site_settings_handler, tag_group_handler, tag_handler,
-    tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler,
-    webhook_handler, workflowswift_push,
+    ocr, plan_handler, portfolio_handler, product_category_handler, provider_keys_handler,
+    public_signup_handler, qr_handler, routing_handler, seo_handler, settings_handler,
+    site_handler, site_settings_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -218,14 +218,17 @@ pub fn create_router(
             "/api/v1/tag-groups/:id",
             put(tag_group_handler::update_tag_group).delete(tag_group_handler::delete_tag_group),
         )
-        .route(
-            "/api/v1/plan-tag-mappings",
-            get(plan_tag_handler::list_plan_tag_mappings),
-        )
-        .route(
-            "/api/v1/plan-tag-mappings/sync",
-            post(plan_tag_handler::sync_plan_tag_mappings),
-        )
+        // (kanban t_dc418458) — the orphaned `plan_tag_mappings` CRUD used to be registered here:
+        //     GET  /api/v1/plan-tag-mappings      (plan_tag_handler::list_plan_tag_mappings)
+        //     POST /api/v1/plan-tag-mappings/sync (plan_tag_handler::sync_plan_tag_mappings)
+        // and the served admin console carried a "🏷️ Plan → tag mappings" section (plan + tag
+        // dropdowns + a "Sync mapping" button) that called them. Census (2026-10-02): the table held
+        // 0 rows and was read by NO code path — its only readers were those two handlers, so the
+        // panel presented a routing feature whose rows nothing consumed. The relation it duplicated
+        // is live and working: `tags.plan_id` + `tags.source_app` (`idx_tags_plan`,
+        // `idx_tags_source_app`), consumed through `affiliate_products.system_tag_id` and resolved at
+        // credit time by `affiliate_tracking_handler::handle_affiliate_upgrade_event`. Handler,
+        // model, both routes, the console section and the table itself (migration 085) are retired.
         .route(
             "/api/v1/affiliates",
             get(affiliate_handler::list_affiliates).post(affiliate_handler::create_affiliate),
@@ -722,7 +725,8 @@ pub fn create_router(
         // (`sync_plan_tag_handler::sync_plan_tag`). The card's open question — which FunnelSwift plan
         // + tag a sibling's plan should map to — was settled by measurement: there is nothing to map
         // TO. `plan_tag_mappings` is read by NO code path (its only readers are its own list/sync CRUD
-        // handlers, `GET|POST /api/v1/plan-tag-mappings*`, which stay), and the sibling→affiliate link
+        // handlers — `GET|POST /api/v1/plan-tag-mappings*`, since retired together with the table in
+        // kanban t_dc418458), and the sibling→affiliate link
         // the hook was meant to feed already exists as the per-app system tag
         // (`tags.source_app` + `tags.plan_id`, e.g. "ADASwift — Free"), consumed through
         // `affiliate_products.system_tag_id` and resolved at credit time by

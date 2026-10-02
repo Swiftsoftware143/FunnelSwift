@@ -31,7 +31,9 @@ pub mod linkedin;
 pub mod linkedin_auth_handler;
 pub mod ocr;
 pub mod plan_handler;
-pub mod plan_tag_handler;
+// RETIRED (kanban t_dc418458): `pub mod plan_tag_handler;` — the only reader of
+// `plan_tag_mappings` (0 rows, no consumer) was its own list/sync CRUD. Both routes, the handler
+// and the table were retired together; see the RETIRED note in `src/api_router.rs`.
 pub mod portfolio_handler;
 pub mod portfolio_sync_handler;
 pub mod product_category_handler;

@@ -7,7 +7,8 @@ pub mod api_key;
 pub mod dashboard;
 pub mod lead;
 pub mod plan;
-pub mod plan_tag_mapping;
+// RETIRED (kanban t_dc418458): `pub mod plan_tag_mapping;` — the struct only served the CRUD
+// handlers of the write-only, zero-reader `plan_tag_mappings` table (migration 085 drops it).
 pub mod routing;
 pub mod setting;
 pub mod settings;

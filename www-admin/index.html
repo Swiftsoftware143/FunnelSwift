@@ -3022,7 +3022,6 @@ function mountWiredPanels(view) {
       case 'affiliateProducts': wiredAffiliateProductSync(); break;
       case 'portfolio': wiredPortfolioSync(); break;
       case 'emailTemplates': wiredTemplateTypes(); break;
-      case 'planAdmin': wiredPlanTagMappings(); break;
       case 'settings': wiredSettingDelete(); break;
       case 'affiliates': wiredAffiliateDetail(); break;
     }
@@ -3108,48 +3107,6 @@ async function wiredTemplateTypes() {
       types.map(t => '<tr><td><code>' + x(t.type) + '</code></td><td>' + x(t.description || '') + '</td><td style="font-size:12px;color:var(--muted)">' +
         x((t.merge_fields || []).join(', ')) + '</td></tr>'), 'No template types');
   } catch (e) { wiredErr(body, e); }
-}
-
-// ── GET /api/v1/plan-tag-mappings + POST /api/v1/plan-tag-mappings/sync ──────
-async function wiredPlanTagMappings() {
-  const body = wiredPanel('planAdmin', '🏷️ Plan → tag mappings', 'GET /api/v1/plan-tag-mappings · POST /api/v1/plan-tag-mappings/sync');
-  if (!body) return;
-  let plans = [], tags = [], mappings = [];
-  try { mappings = await api('/plan-tag-mappings') || []; } catch (e) { }
-  try { plans = await api('/plans') || []; } catch (e) { }
-  try { tags = await api('/tags') || []; } catch (e) { }
-  if (!Array.isArray(plans)) plans = plans.data || [];
-  if (!Array.isArray(tags)) tags = tags.data || [];
-  body.innerHTML = wiredTable(['Plan', 'Tag', 'Target software', 'Dual routing', 'Created'],
-    (Array.isArray(mappings) ? mappings : []).map(m => '<tr><td style="font-size:12px">' + x(m.plan_id) + '</td><td style="font-size:12px">' + x(m.tag_id) +
-      '</td><td>' + x(m.target_software || '-') + '</td><td>' + (m.allow_dual_routing ? 'yes' : 'no') + '</td><td>' + formatDate(m.created_at) + '</td></tr>'),
-    'No mappings') +
-    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-    '<select class="input" id="wired-ptm-plan" style="max-width:260px"><option value="">Choose a plan…</option>' +
-    plans.map(p => '<option value="' + x(p.id) + '">' + x(p.name || p.slug || p.id) + '</option>').join('') + '</select>' +
-    '<select class="input" id="wired-ptm-tag" style="max-width:260px"><option value="">Choose a tag…</option>' +
-    tags.map(t => '<option value="' + x(t.id) + '">' + x(t.name || t.id) + '</option>').join('') + '</select>' +
-    '<button class="btn btn-primary" id="wired-ptm-sync">Sync mapping</button><span id="wired-ptm-msg" style="font-size:12px"></span></div>';
-  /* kanban t_b2a9059b: this binder resumes after three awaits. `body` is a reference captured
-     BEFORE them; a re-render landing in that window (nav switch, another panel's showToast, the
-     view's own reload) leaves `body` DETACHED — the markup above went into a subtree nobody can
-     see and this document-wide lookup returns null, so the unguarded property write threw an
-     uncaught TypeError ("Cannot set properties of null (setting 'onclick')") and the control
-     stayed dead. Guarded: a lost panel now costs nothing instead of an uncaught error. */
-  const ptmSync = document.getElementById('wired-ptm-sync');
-  if (ptmSync) ptmSync.onclick = async () => {
-    const m = document.getElementById('wired-ptm-msg'), b = document.getElementById('wired-ptm-sync');
-    const plan_id = document.getElementById('wired-ptm-plan').value;
-    const tag_id = document.getElementById('wired-ptm-tag').value;
-    if (!plan_id || !tag_id) { m.textContent = '✗ pick a plan and a tag'; return; }
-    b.disabled = true; m.textContent = 'Syncing…';
-    try {
-      const r = await api('/plan-tag-mappings/sync', { method: 'POST', body: JSON.stringify({ plan_id: plan_id, tag_ids: [tag_id] }) });
-      m.textContent = '✓ ' + (r.message || 'Synced') + ' (' + (r.tag_count === undefined ? '?' : r.tag_count) + ' tag(s))';
-      showToast('Plan-tag mappings synced', 'success');
-      renderView();
-    } catch (e) { m.textContent = '✗ ' + e.message; b.disabled = false; }
-  };
 }
 
 // ── DELETE /api/v1/settings/:key ─────────────────────────────────────────────

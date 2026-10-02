@@ -1,0 +1,13 @@
+-- 085: retire the write-only `plan_tag_mappings` table (kanban t_dc418458).
+--
+-- CENSUS AT RETIREMENT (2026-10-02, FunnelSwift): the table held 0 rows and was read by NO code
+-- path. Its only readers were its own CRUD handlers (`GET /api/v1/plan-tag-mappings`,
+-- `POST /api/v1/plan-tag-mappings/sync`), deleted in the same change; `src/commission.rs` named it
+-- once, in a doc comment about where rates USED to live. The relation it duplicated is live and
+-- working: `tags.plan_id` + `tags.source_app` (idx_tags_plan, idx_tags_source_app), consumed through
+-- `affiliate_products.system_tag_id` and resolved at credit time by
+-- `affiliate_tracking_handler::handle_affiliate_upgrade_event`. `\d plan_tag_mappings` showed FKs
+-- OUT to plans/tags and NO FK IN from anywhere, and no view or rule referenced it, so the DROP is
+-- safe. A fresh install replays 000001_initial.sql (which creates the table) and then this file, so
+-- the object never survives a from-zero run either.
+DROP TABLE IF EXISTS plan_tag_mappings;
