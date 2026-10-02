@@ -151,7 +151,24 @@ async function api(path, opts={}) {
 function showToast(msg, type='info') {
   STATE.toast = { msg, type };
   renderApp();
-  setTimeout(() => { STATE.toast = null; renderApp(); }, 3500);
+  /* kanban t_20c72970: clear the slot WITHOUT rebuilding the shell. A modal is not part of the
+     shell's markup: every modal fills #modal-body itself, after its own fetch, in its own
+     setTimeout (openAffiliateProductModal, openTagModal, openWebhookModal, ...), so the full
+     renderApp() that used to run here repainted the shell 3500 ms later and wiped a body a modal
+     had already painted -- an operator who opened any modal within 3.5 s of a toast saw an empty
+     form with no way to save (measured, admin.funnelswift.net). Candidate (b) -- have renderApp()
+     preserve the painted #modal-body -- was rejected by measurement: re-injecting the saved
+     innerHTML re-creates the nodes, so every handler a modal bound as a property (the product
+     form's submit listener) is gone and the form renders but cannot be submitted. STATE.toast is
+     the only state this timer changes, so removing the painted node leaves the DOM exactly as a
+     re-render would produce, minus the modal body. Doing no renderApp() here at all also means a
+     STALE timer (two toasts in flight, single toast slot) can no longer repaint the shell over an
+     open modal. */
+  setTimeout(() => {
+    STATE.toast = null;
+    const t = document.getElementById('toast');
+    if (t) t.remove();
+  }, 3500);
 }
 
 // ── Helpers ──
@@ -366,7 +383,7 @@ function renderShell() {
     <div class="main">
       <div id="view-container"></div>
     </div>
-    ${STATE.toast ? `<div class="toast toast-${STATE.toast.type}">${x(STATE.toast.msg)}</div>` : ''}
+    ${STATE.toast ? `<div class="toast toast-${STATE.toast.type}" id="toast">${x(STATE.toast.msg)}</div>` : ''}
     ${STATE.modal ? renderModal(STATE.modal) : ''}
   </div>`;
 }
