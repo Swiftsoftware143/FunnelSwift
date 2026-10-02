@@ -96,6 +96,30 @@ async fn main() -> Result<()> {
             e
         ),
     }
+
+    // Seal any credential still in the CLEAR in a TENANT's own mail-config rows
+    // (`tenant_settings` keys `email_config` / `mailgun_config` / `smtp_config`, kanban t_b040a78e).
+    // The tenant settings route seals before it stores; this makes a row that arrives plaintext —
+    // from a dump taken before the change, or from a writer added later that forgets — converge at
+    // every boot instead of staying readable in a backup. Never fatal.
+    match email_provider::seal_legacy_tenant_config_secrets(&pool).await {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(
+            rows = n,
+            "tenant_settings email config: sealed legacy plaintext credential(s) at rest"
+        ),
+        Err(e) => tracing::error!(
+            "tenant_settings email config credential backfill failed (plaintext may remain at \
+             rest): {}",
+            e
+        ),
+    }
+
+    // Database-level backstop for the same rows (kanban t_b040a78e item 2): `migrations/084_…`
+    // installs the CHECK that refuses a plaintext tenant mail credential, and this re-arms it when
+    // it is absent (hand-dropped, or lost in a partial restore) and VALIDATEs it once no unsealed
+    // row remains. Runs AFTER the seal above on purpose: the seal is what makes the census zero.
+    email_provider::ensure_tenant_config_seal_guard(&pool).await;
     // Boot-time migration verdict (kanban t_c3823fd1): carried into AppState so `GET /api/health`
     // can report (and 503 on) a schema this binary never managed to apply.
     let schema = database.schema().clone();

@@ -10,11 +10,15 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// The one string a masked secret is replaced with in responses.
-const MASK: &str = "••••••••";
+/// The one string a masked secret is replaced with in responses — the SAME marker the tenant
+/// settings view answers with (`email_provider::SECRET_MASK`), so the two credential surfaces
+/// cannot drift apart.
+const MASK: &str = crate::email_provider::SECRET_MASK;
 
+/// True when an incoming value is really the mask, or blank ("leave the stored credential alone").
+/// Shared with the tenant settings write path so both surfaces agree what "masked" means.
 fn is_masked(v: &str) -> bool {
-    v.is_empty() || v.chars().all(|c| c == '•' || c == '*')
+    crate::email_provider::is_masked(v)
 }
 
 /// Defence in depth for the platform-wide e-mail surface (kanban t_9cf378bc): every handler in
@@ -309,24 +313,31 @@ pub async fn get_email_config(
 
     let mut out = value.unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = out.as_object_mut() {
-        if obj.contains_key("api_key") {
-            let set = cfg.as_ref().map(|c| !c.api_key.is_empty()).unwrap_or(false);
-            obj.insert(
-                "api_key".into(),
-                serde_json::json!(if set { MASK } else { "" }),
-            );
-            obj.insert("api_key_set".into(), serde_json::json!(set));
-        }
-        if obj.contains_key("smtp_password") {
-            let set = cfg
-                .as_ref()
-                .map(|c| !c.smtp_password.is_empty())
+        // Mask EVERY credential field the crypto vocabulary seals (kanban t_b040a78e item 1). The
+        // list used to be two hardcoded names, so a row carrying the legacy SMTP-password aliases
+        // (`password` / `pass`, which `EmailConfig::from_json` reads) shipped its CIPHERTEXT to the
+        // panel — the seal vocabulary and the reader/masker vocabulary have to be the same one.
+        // A field the row does not carry is left alone rather than answered with a marker for a
+        // field that is not there, so this surface stays the shape the stored config has.
+        //
+        // `set` is read from the STORED field, not from an opened value: this route deliberately
+        // does not decrypt (the mask is a fixed string, so nothing leaks either way) and reporting
+        // a row this deployment cannot open as "not set" would let a subsequent save overwrite the
+        // credential with an empty string. The tenant surface, which does open, reports it unset.
+        for field in crate::email_provider::CONFIG_SECRET_FIELDS {
+            if !obj.contains_key(field) {
+                continue;
+            }
+            let set = obj
+                .get(field)
+                .and_then(|v| v.as_str())
+                .map(|s| !s.is_empty())
                 .unwrap_or(false);
             obj.insert(
-                "smtp_password".into(),
+                field.to_string(),
                 serde_json::json!(if set { MASK } else { "" }),
             );
-            obj.insert("smtp_password_set".into(), serde_json::json!(set));
+            obj.insert(format!("{}_set", field), serde_json::json!(set));
         }
     }
 
@@ -357,7 +368,11 @@ pub async fn update_email_config(
         .as_object_mut()
         .ok_or_else(|| AppError::BadRequest("Expected a JSON object".to_string()))?;
 
-    for secret in ["api_key", "smtp_password"] {
+    // The SAME vocabulary seals, masks and restores (kanban t_b040a78e item 1): a masked field
+    // coming back from the panel keeps the stored credential whatever it is named — including the
+    // legacy `password` / `pass` aliases — and the `<field>_set` markers that `get_email_config`
+    // answers with are UI scaffolding, not config, so they are stripped before the row is stored.
+    for secret in crate::email_provider::CONFIG_SECRET_FIELDS {
         let incoming = obj.get(secret).and_then(|v| v.as_str()).unwrap_or("");
         if is_masked(incoming) {
             let kept = existing
@@ -367,8 +382,9 @@ pub async fn update_email_config(
             obj.insert(secret.to_string(), kept);
         }
     }
-    obj.remove("api_key_set");
-    obj.remove("smtp_password_set");
+    for field in crate::email_provider::CONFIG_SECRET_FIELDS {
+        obj.remove(&format!("{}_set", field));
+    }
 
     if let Some(p) = body.get("provider").and_then(|v| v.as_str()) {
         let valid = crate::email_provider::available()

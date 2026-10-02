@@ -114,7 +114,17 @@ impl EmailConfig {
 /// `provider_keys`/`payment_providers` — this config was the one credential path that stored
 /// its value in the clear (kanban t_a794cb09), so a database dump or a backup yielded a
 /// usable Mailgun private key for the whole fleet.
-pub const CONFIG_SECRET_FIELDS: [&str; 2] = ["api_key", "smtp_password"];
+///
+/// THE LIST MUST MATCH WHAT [`EmailConfig::from_json`] READS, not just what the panel writes.
+/// `from_json` resolves the SMTP password from `smtp_password` OR the legacy aliases `password` /
+/// `pass`, and both settings routes accept an ARBITRARY JSON object, so a two-name vocabulary
+/// sealed only the first: a tenant posting `{"email_config":{"password":"…"}}` through
+/// `PUT /api/v1/settings` stored a PLAINTEXT credential that `resolve` → `send_via_smtp` then
+/// used — leaked AND live (kanban t_b040a78e, the same hole ADASwift closed in t_a8ee62bd).
+/// Every seal/open/mask/restore/remover path iterates THIS array, so adding a name here moves all
+/// of them in one commit; `migrations/084_tenant_settings_config_secrets_sealed.sql` enforces the
+/// same vocabulary in the database and `ensure_tenant_config_seal_guard` re-arms it at boot.
+pub const CONFIG_SECRET_FIELDS: [&str; 4] = ["api_key", "smtp_password", "password", "pass"];
 
 /// Seal the credential fields of an email-config object IN PLACE, before it is stored.
 ///
@@ -199,6 +209,264 @@ pub async fn seal_legacy_config_secrets(
     .execute(pool)
     .await?;
     Ok(1)
+}
+
+/// The one string a credential is replaced with in a response, on EVERY surface that renders one
+/// (the tenant settings view and the admin email-config panel). It is also the marker that means
+/// "keep the stored credential" when it comes back on a save.
+pub const SECRET_MASK: &str = "••••••••";
+
+/// True when an incoming credential value is really the MASK (or blank, which the panels use for
+/// "leave the stored one alone") rather than a new credential. One predicate for every surface.
+pub fn is_masked(v: &str) -> bool {
+    v.is_empty() || v.chars().all(|c| c == '•' || c == '*')
+}
+
+/// The three TENANT-side mail-config keys `resolve` reads (resolution order 1-3) — the only keys
+/// whose `value` may carry a provider credential. A tenant's own settings route
+/// (`PUT /api/v1/settings`) takes an ARBITRARY `{key, value}` pair, so these are exactly the keys
+/// that must be sealed on write and masked on read (kanban t_b040a78e).
+pub const TENANT_CONFIG_KEYS: [&str; 3] = ["email_config", "mailgun_config", "smtp_config"];
+
+/// Seal every credential still sitting in the clear in a TENANT's own mail-config rows
+/// (`tenant_settings` keys [`TENANT_CONFIG_KEYS`]).
+///
+/// The tenant writer seals before it stores, exactly as the admin writer does, but these rows can
+/// also arrive plaintext from a database restored out of an older dump — or from a writer added
+/// later that forgets. This is the boot half that converges them. Idempotent; returns the number
+/// of rows it had to rewrite.
+pub async fn seal_legacy_tenant_config_secrets(
+    pool: &PgPool,
+) -> Result<u64, provider_key_crypto::CryptoError> {
+    let mut sealed = 0u64;
+    for key in TENANT_CONFIG_KEYS {
+        let rows: Vec<(Uuid, Value)> =
+            sqlx::query_as("SELECT tenant_id, value FROM tenant_settings WHERE key = $1")
+                .bind(key)
+                .fetch_all(pool)
+                .await?;
+        for (tenant_id, mut value) in rows {
+            if !value.is_object() {
+                continue;
+            }
+            let before = value.clone();
+            seal_config_secrets(pool, &mut value).await?;
+            if value == before {
+                continue;
+            }
+            sqlx::query(
+                "UPDATE tenant_settings SET value = $1::jsonb, updated_at = NOW()
+                  WHERE tenant_id = $2 AND key = $3",
+            )
+            .bind(&value)
+            .bind(tenant_id)
+            .bind(key)
+            .execute(pool)
+            .await?;
+            sealed += 1;
+        }
+    }
+    Ok(sealed)
+}
+
+/// Open + MASK the credential fields of ONE tenant mail-config object for the tenant's own view.
+///
+/// The mask is computed from the OPENED value, never from the stored bytes: a mask derived from
+/// the ciphertext (`enc...XYZ`) is itself the defect, and a row this deployment cannot open must
+/// be reported as NOT SET rather than shipping the envelope to the client. `open_config_secrets`
+/// is what makes that distinction — a read path that merely always masks reports every row as set.
+///
+/// Fields the row does not carry are left alone, and non-secret fields (`provider`, `from_address`,
+/// …) pass through untouched so the panel round-trips.
+pub async fn open_and_mask_config_secrets(pool: &PgPool, value: &Value) -> Value {
+    if !value.is_object() {
+        return value.clone();
+    }
+    let mut opened = value.clone();
+    let openable = open_config_secrets(pool, &mut opened).await.is_ok();
+    let mut out = value.clone();
+    let Some(obj) = out.as_object_mut() else {
+        return out;
+    };
+    for field in CONFIG_SECRET_FIELDS {
+        if !obj.contains_key(field) {
+            continue;
+        }
+        let plain = if openable {
+            opened.get(field).and_then(|v| v.as_str()).unwrap_or("")
+        } else {
+            ""
+        };
+        let set = !plain.is_empty();
+        obj.insert(
+            field.to_string(),
+            Value::String(if set {
+                SECRET_MASK.to_string()
+            } else {
+                String::new()
+            }),
+        );
+        obj.insert(format!("{}_set", field), Value::Bool(set));
+    }
+    out
+}
+
+/// Restore the STORED credential for every field the caller sent back MASKED, and strip the
+/// `<field>_set` markers the view answers with (they are UI scaffolding, not config).
+///
+/// This is what makes the masked round-trip safe: without it the literal mask is stored as the
+/// provider credential. The stored value is the sealed ciphertext, so it is copied verbatim —
+/// `seal_config_secrets` skips an already-sealed value rather than re-encrypting it.
+pub fn restore_masked_config_secrets(incoming: &mut Value, stored: Option<&Value>) {
+    let Some(obj) = incoming.as_object_mut() else {
+        return;
+    };
+    for field in CONFIG_SECRET_FIELDS {
+        let sent = obj
+            .get(field)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if is_masked(&sent) {
+            let kept = stored
+                .and_then(|s| s.get(field))
+                .cloned()
+                .unwrap_or_else(|| Value::String(String::new()));
+            obj.insert(field.to_string(), kept);
+        }
+        obj.remove(&format!("{}_set", field));
+    }
+}
+
+/// The database-level regression guard on the tenant mail-config rows (kanban t_b040a78e item 2):
+/// a plaintext credential in any of [`CONFIG_SECRET_FIELDS`] under one of [`TENANT_CONFIG_KEYS`]
+/// is refused by the store, whatever writer forgot to seal it.
+pub const TENANT_CONFIG_SEAL_CONSTRAINT: &str = "tenant_settings_config_secrets_sealed";
+
+/// The guard's predicate, in ONE place: `migrations/084_…` installs exactly this expression and the
+/// boot half below re-arms it with the same text, so the two can never disagree.
+///
+/// NOTE: these are COMPILE-TIME LITERALS on purpose — the fleet gate refuses a statement built at
+/// run time (gate rule 5d, class 14), so this is one literal per statement rather than a `format!`.
+/// The constraint NAME is therefore repeated across the literals; the unit tests at the bottom of
+/// this file assert that every one of them names the same constraint and covers every one of
+/// `CONFIG_SECRET_FIELDS` and `TENANT_CONFIG_KEYS`, so the repetition cannot drift silently.
+const TENANT_CONFIG_SEAL_EXISTS_SQL: &str = "\
+SELECT EXISTS (SELECT 1 FROM pg_constraint \
+ WHERE conname = 'tenant_settings_config_secrets_sealed' \
+   AND conrelid = 'public.tenant_settings'::regclass)";
+
+const TENANT_CONFIG_SEAL_ADD_SQL: &str = "\
+ALTER TABLE public.tenant_settings ADD CONSTRAINT tenant_settings_config_secrets_sealed \
+CHECK (key NOT IN ('email_config','mailgun_config','smtp_config') \
+OR ( \
+(coalesce(value->>'api_key','') = '' OR value->>'api_key' LIKE 'enc:v1:%') \
+AND (coalesce(value->>'smtp_password','') = '' OR value->>'smtp_password' LIKE 'enc:v1:%') \
+AND (coalesce(value->>'password','') = '' OR value->>'password' LIKE 'enc:v1:%') \
+AND (coalesce(value->>'pass','') = '' OR value->>'pass' LIKE 'enc:v1:%'))) NOT VALID";
+
+const TENANT_CONFIG_SEAL_VALIDATED_SQL: &str = "\
+SELECT convalidated FROM pg_constraint \
+ WHERE conname = 'tenant_settings_config_secrets_sealed' \
+   AND conrelid = 'public.tenant_settings'::regclass";
+
+const TENANT_CONFIG_SEAL_VALIDATE_SQL: &str = "\
+ALTER TABLE public.tenant_settings VALIDATE CONSTRAINT tenant_settings_config_secrets_sealed";
+
+/// How many covered rows still hold an unsealed credential — the count that decides whether the
+/// guard can be validated, and the one the boot log prints.
+const TENANT_CONFIG_UNSEALED_SQL: &str = "\
+SELECT count(*) FROM tenant_settings \
+ WHERE key IN ('email_config','mailgun_config','smtp_config') \
+   AND jsonb_typeof(value) = 'object' \
+   AND ((coalesce(value->>'api_key','') <> '' AND value->>'api_key' NOT LIKE 'enc:v1:%') \
+     OR (coalesce(value->>'smtp_password','') <> '' AND value->>'smtp_password' NOT LIKE 'enc:v1:%') \
+     OR (coalesce(value->>'password','') <> '' AND value->>'password' NOT LIKE 'enc:v1:%') \
+     OR (coalesce(value->>'pass','') <> '' AND value->>'pass' NOT LIKE 'enc:v1:%'))";
+
+/// Boot half of the DB guard: **add-if-missing, then validate-or-warn**.
+///
+/// `migrations/084_…` installs the constraint once (the ledger records the file and never re-runs
+/// it), so a constraint dropped by hand, lost in a partial restore or missing because the table
+/// pre-existed would otherwise stay absent forever. This is the repair path: every boot re-adds it
+/// when it is gone, and VALIDATEs it as soon as no unsealed row remains (which is also what
+/// re-claims `t` after the boot seal has converged a restored dump). A boot that changes nothing
+/// logs nothing.
+///
+/// Never fatal: a broken credential row must not stop the app booting. Call it AFTER
+/// [`seal_legacy_tenant_config_secrets`], so the seal has already converged the rows this counts.
+pub async fn ensure_tenant_config_seal_guard(pool: &PgPool) {
+    let present: Result<bool, sqlx::Error> = sqlx::query_scalar(TENANT_CONFIG_SEAL_EXISTS_SQL)
+        .fetch_one(pool)
+        .await;
+
+    match present {
+        Ok(true) => {}
+        Ok(false) => match sqlx::query(TENANT_CONFIG_SEAL_ADD_SQL).execute(pool).await {
+            Ok(_) => tracing::warn!(
+                "tenant_settings config-seal guard: ADDED (was absent — a hand-dropped or \
+                 restored-away constraint has no repair path in the migration ledger)"
+            ),
+            Err(e) => {
+                tracing::error!(
+                    "tenant_settings config-seal guard could not be added: {}",
+                    e
+                );
+                return;
+            }
+        },
+        Err(e) => {
+            tracing::error!("tenant_settings config-seal guard could not be read: {}", e);
+            return;
+        }
+    }
+
+    let unsealed: Result<i64, sqlx::Error> = sqlx::query_scalar(TENANT_CONFIG_UNSEALED_SQL)
+        .fetch_one(pool)
+        .await;
+    match unsealed {
+        Ok(0) => {
+            let validated: Result<bool, sqlx::Error> =
+                sqlx::query_scalar(TENANT_CONFIG_SEAL_VALIDATED_SQL)
+                    .fetch_one(pool)
+                    .await;
+            match validated {
+                // Already fully enforced: nothing to say. The boot log reports changes and
+                // posture, not an unchanged state repeated on every start.
+                Ok(true) => {}
+                Ok(false) => {
+                    match sqlx::query(TENANT_CONFIG_SEAL_VALIDATE_SQL)
+                        .execute(pool)
+                        .await
+                    {
+                        Ok(_) => tracing::info!(
+                            "tenant_settings config-seal guard: VALIDATED (every stored tenant mail \
+                             credential is enc:v1: at rest)"
+                        ),
+                        Err(e) => tracing::warn!(
+                            "tenant_settings config-seal guard not validated: {} (new writes are \
+                             still checked)",
+                            e
+                        ),
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "tenant_settings config-seal guard validity read failed: {}",
+                        e
+                    )
+                }
+            }
+        }
+        Ok(n) => tracing::warn!(
+            rows = n,
+            "tenant_settings config-seal guard: STILL NOT VALID — {} covered row(s) hold an \
+             unsealed credential (new writes are rejected, the existing rows are converged by the \
+             boot seal)",
+            n
+        ),
+        Err(e) => tracing::error!("tenant_settings config-seal guard census failed: {}", e),
+    }
 }
 
 async fn row(pool: &PgPool, sql: &str, binds: &[&str]) -> Option<Value> {
@@ -433,4 +701,107 @@ pub fn available() -> Vec<Value> {
         json!({"value":"sendgrid","label":"SendGrid"}),
         json!({"value":"sendiio","label":"Sendiio"}),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg_with(key: &str, value: &str) -> Value {
+        let mut m = serde_json::Map::new();
+        m.insert("provider".to_string(), json!("smtp"));
+        m.insert("from_address".to_string(), json!("a@b.c"));
+        m.insert("smtp_host".to_string(), json!("smtp.probe.invalid"));
+        m.insert(key.to_string(), json!(value));
+        Value::Object(m)
+    }
+
+    /// kanban t_b040a78e item 1 — the SEAL vocabulary has to be the vocabulary `from_json` READS.
+    ///
+    /// `from_json` resolves the SMTP password from `smtp_password` OR the legacy aliases
+    /// `password` / `pass`, so a credential posted under an alias reaches `send_via_smtp`; before
+    /// this fix the seal list named only `smtp_password`, so that same alias was stored PLAINTEXT
+    /// and then used. Both halves are asserted here, per alias, against the real reader:
+    /// `from_json` (this crate's only reader of a stored mail config) and `CONFIG_SECRET_FIELDS`
+    /// (the list the seal/open/mask/restore paths iterate).
+    #[test]
+    fn every_smtp_password_alias_is_read_and_sealed() {
+        for alias in ["smtp_password", "password", "pass"] {
+            let parsed = EmailConfig::from_json(&cfg_with(alias, "SECRET"), "smtp");
+            assert_eq!(
+                parsed.smtp_password, "SECRET",
+                "from_json did not read the `{}` alias — the credential would be ignored at send \
+                 time while the seal path treats it as a credential",
+                alias
+            );
+            assert!(
+                CONFIG_SECRET_FIELDS.contains(&alias),
+                "`{}` is read as the SMTP password but is NOT in CONFIG_SECRET_FIELDS — a config \
+                 posted under it would be stored PLAINTEXT (kanban t_b040a78e)",
+                alias
+            );
+        }
+        let parsed = EmailConfig::from_json(&cfg_with("api_key", "SECRET"), "smtp");
+        assert_eq!(parsed.api_key, "SECRET");
+        assert!(CONFIG_SECRET_FIELDS.contains(&"api_key"));
+    }
+
+    /// The other direction of the same invariant: the seal list is exactly the reader's vocabulary
+    /// (a name sealed but never read would still be a credential in the clear at some future call
+    /// site, and a name read but not sealed is the alias defect above).
+    #[test]
+    fn secret_field_vocabulary_is_exactly_the_alias_set() {
+        let mut expected = vec!["api_key", "smtp_password", "password", "pass"];
+        expected.sort_unstable();
+        let mut got: Vec<&str> = CONFIG_SECRET_FIELDS.to_vec();
+        got.sort_unstable();
+        assert_eq!(got, expected);
+    }
+
+    /// The guard's SQL is four COMPILE-TIME literals (gate rule 5d refuses a statement built at run
+    /// time), so the constraint name and the field/key vocabularies repeat inside them. These
+    /// assertions are what keep the copies honest: every DDL literal must name the same constraint,
+    /// and the statement that defines the guard plus the census that decides whether it can be
+    /// validated must cover every reader name and every key `resolve` reads.
+    #[test]
+    fn guard_sql_literals_agree_with_the_vocabularies() {
+        for sql in [
+            TENANT_CONFIG_SEAL_EXISTS_SQL,
+            TENANT_CONFIG_SEAL_ADD_SQL,
+            TENANT_CONFIG_SEAL_VALIDATED_SQL,
+            TENANT_CONFIG_SEAL_VALIDATE_SQL,
+        ] {
+            assert!(
+                sql.contains(TENANT_CONFIG_SEAL_CONSTRAINT),
+                "DDL literal does not name {}: {}",
+                TENANT_CONFIG_SEAL_CONSTRAINT,
+                sql
+            );
+        }
+        assert!(TENANT_CONFIG_SEAL_ADD_SQL.contains("NOT VALID"));
+        for field in CONFIG_SECRET_FIELDS {
+            assert!(
+                TENANT_CONFIG_SEAL_ADD_SQL.contains(field),
+                "the DB guard does not cover the `{}` field name",
+                field
+            );
+            assert!(
+                TENANT_CONFIG_UNSEALED_SQL.contains(field),
+                "the unsealed census does not cover the `{}` field name",
+                field
+            );
+        }
+        for key in TENANT_CONFIG_KEYS {
+            assert!(
+                TENANT_CONFIG_SEAL_ADD_SQL.contains(key),
+                "the DB guard does not cover the `{}` key",
+                key
+            );
+            assert!(
+                TENANT_CONFIG_UNSEALED_SQL.contains(key),
+                "the unsealed census does not cover the `{}` key",
+                key
+            );
+        }
+    }
 }
