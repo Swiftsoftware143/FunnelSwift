@@ -188,7 +188,28 @@ pub const SPECS: &[Spec] = &[
         unit: "members",
         jsonb_key: None,
         column: Some("max_team_members"),
-        enforced_by: "(dashboard usage counter only — no gate calls it)",
+        // INERT BY DECISION (kanban t_49e4cef9, decided 2026-10-02) — the record lives on the Spec
+        // because that is what the console and this file's drift test read.
+        //
+        // The meter exists: `features::get_usage_count` answers
+        // `COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true`, and `limit_column` maps
+        // both spellings (`team_members` / `max_team_members`) to the plan column. What does not
+        // exist is anything that RAISES the count: a workspace holds exactly one user, its owner.
+        // Writer census (three, all of which create their OWN tenant first):
+        //   auth::register, public_signup_handler::signup, admin_handler::portfolio_sync.
+        // Tenant-scoped user routes: `POST /api/v1/admin/tenants/:id/users` is a READ
+        // (list_tenant_users) and `POST /api/v1/bulk/users` is a DELETE; no route ADDS a member to
+        // an existing workspace, so no gate could ever refuse and a cap here is unreachable.
+        // Live 2026-10-02: 15 workspaces x exactly 1 active user (the System tenant holds 0); all
+        // six plans' column = 1 (Agency / Scale carries a `feature_limits` row of -1 = unlimited).
+        //
+        // WIRING it is a product build, not a gate fix — an invite/seat route, its credential
+        // email and a members screen — and five of six plans sell 1 seat, so the built surface
+        // would 402 its only caller. Same reasoning as t_1d600303 (`max_api_calls`) and t_5ce5b5a3
+        // (`storage_mb`): retire the key whose quantity has no write path, and say so where an
+        // operator looks. The test below fails `cargo test` if a gate ever calls this key without
+        // the surface (or the record) changing with it.
+        enforced_by: "(dashboard usage counter only — no gate calls it, and no route can: a workspace holds exactly one user, its owner. No route adds a member to an existing workspace, so this cap is inert on every plan — decided permanently 2026-10-02, kanban t_49e4cef9)",
         read_by_gate: false,
     },
     // ── boolean flags ──────────────────────────────────────────────────────────────────────
@@ -743,5 +764,33 @@ mod tests {
              boolean override is `null`, never a magic number"
         );
         assert!(!override_value_ok(Kind::Boolean, 2));
+    }
+
+    /// `max_team_members` is INERT PERMANENTLY (kanban t_49e4cef9, decided 2026-10-02). The meter
+    /// counts active users, every workspace holds exactly one (its owner), and no route can add a
+    /// second — so there is nothing a gate could refuse. Both halves of that record are asserted
+    /// here: the Spec must still SAY there is no gate, and no `enforce_*` call site may name the
+    /// key. Wiring it later therefore takes a deliberate edit — build the add-a-member surface,
+    /// flip `read_by_gate`, update this test — which is exactly the decision this card recorded.
+    #[test]
+    fn max_team_members_stays_inert_until_a_workspace_can_gain_a_member() {
+        let s = spec("max_team_members")
+            .expect("the key is a live plan column and the dashboard team counter");
+        assert_eq!(s.column, Some("max_team_members"));
+        assert!(
+            !s.read_by_gate,
+            "max_team_members claims to be read by a gate — build the add-a-member route first"
+        );
+        assert!(
+            s.enforced_by.contains("no gate calls it"),
+            "the Spec must keep saying that no gate calls this key: {}",
+            s.enforced_by
+        );
+        assert!(
+            !called_keys().contains(&"max_team_members".to_string()),
+            "an enforce_* call site names max_team_members, but no route can add a member to an \
+             existing workspace, so the gate would be unreachable dead code: build the add-a-member \
+             route and flip read_by_gate (kanban t_49e4cef9) before wiring this key"
+        );
     }
 }
