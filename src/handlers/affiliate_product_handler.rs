@@ -139,6 +139,129 @@ fn is_category_fk(code: Option<&str>, constraint: Option<&str>) -> bool {
     code == Some("23503") && constraint == Some("affiliate_products_category_id_fkey")
 }
 
+// ── THE 075 TAG RULE, made explainable (kanban t_c149b025) ────────────────────────────────────────
+//
+// `trg_one_active_product_per_tag` (migration 075, t_68e92c8e) already REFUSES a second ACTIVE
+// product on an already-routed system tag and NAMES the conflict in its message — but that message
+// never reached the operator. The trigger is a plpgsql `RAISE EXCEPTION`, so it arrives as
+// `sqlx::Error::Database`, and `AppError::Database` maps that (src/error.rs) to
+// `500 {"error":"Database error"}` while the real text only went to `tracing::error!`. Both writers
+// below bound the form's `system_tag_id` straight into the INSERT/UPDATE, so an admin who picked a
+// tag another product already owned got an unexplained 500 — the fleet's "a control the panel
+// cannot explain" class.
+//
+// ARM (b) — the trigger's OWN predicate as a READ, before the write: `ensure_tag_route_free` mirrors
+// the trigger's fired-condition and its row selection, so the panel gets a `409` naming the holder
+// (the admin console's `api()` throws `e.error` and `openAffiliateProductModal`'s catch renders it
+// as a toast). ARM (a) is kept as the TOCTOU BACKSTOP, exactly as this file already does for
+// `category_id` (`category_fk_error`): the trigger's own raise is recognised and answers the SAME
+// 409 instead of the generic 500, so a tag taken between the read and the write is still explained.
+
+/// The name of the ACTIVE product that already routes `tag_id`, if any — literally the trigger's own
+/// row selection (`WHERE p.system_tag_id = NEW.system_tag_id AND p.is_active AND p.id <> NEW.id`),
+/// with a deterministic `ORDER BY` added because the trigger's own `LIMIT 1` has none.
+///
+/// DELIBERATELY NOT tenant-scoped: system tags are fleet-wide rows (`tags.is_system`, owned by the
+/// system tenant) and the trigger is global, so a tenant-scoped read would answer "free" for a tag
+/// another workspace already routes and hand the admin the same unexplained 500 from the write.
+async fn route_holder_name(
+    state: &AppState,
+    tag_id: Uuid,
+    row_id: Uuid,
+) -> AppResult<Option<String>> {
+    let holder: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM affiliate_products
+          WHERE system_tag_id = $1 AND is_active AND id <> $2
+          ORDER BY created_at, id
+          LIMIT 1",
+    )
+    .bind(tag_id)
+    .bind(row_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(holder)
+}
+
+/// The 409 body for the tag rule. ONE message for both arms, so the panel cannot tell which one
+/// refused it — and the named holder is always a row that really holds the tag (the backstop
+/// re-resolves it with the same read rather than parsing the trigger's text).
+fn tag_already_routed(holder: Option<&str>) -> AppError {
+    match holder {
+        Some(holder) => AppError::Conflict(format!(
+            "That system tag is already routing \"{holder}\" — one tag routes one product. \
+             Retire that product first, or pick another tag."
+        )),
+        None => AppError::Conflict(
+            "That system tag already routes another active product — one tag routes one product. \
+             Retire that product first, or pick another tag."
+                .into(),
+        ),
+    }
+}
+
+/// ARM (b): refuse BEFORE the write, naming the conflict. Mirrors the trigger's fired-condition
+/// exactly — a retired row (`is_active` false), no tag, or an UPDATE that does not change the stored
+/// tag (the trigger's `NEW.system_tag_id IS NOT DISTINCT FROM OLD.system_tag_id` early return) is
+/// NOT a conflict — so this read can never refuse something the database would have accepted.
+async fn ensure_tag_route_free(
+    state: &AppState,
+    tag_id: Option<Uuid>,
+    row_id: Uuid,
+    stored_tag_id: Option<Uuid>,
+    is_active: bool,
+) -> AppResult<()> {
+    if !is_active {
+        return Ok(());
+    }
+    let Some(tag_id) = tag_id else { return Ok(()) };
+    if stored_tag_id == Some(tag_id) {
+        return Ok(());
+    }
+    if let Some(holder) = route_holder_name(state, tag_id, row_id).await? {
+        return Err(tag_already_routed(Some(&holder)));
+    }
+    Ok(())
+}
+
+/// SQLSTATE of every plpgsql `RAISE EXCEPTION` that does not set an explicit `ERRCODE`.
+const RAISE_EXCEPTION_SQLSTATE: &str = "P0001";
+
+/// A stable fragment of the 075 trigger's message. Matching on text is safe HERE because migration
+/// 075 is APPLIED: sqlx records a checksum and refuses a changed migration file at boot (fleet doc
+/// §8.3), so these bytes cannot move without that refusal being visible. Every OTHER raise in this
+/// database — including migration 070's paid-plan refusal
+/// (`trg_affiliate_products_free_only`) — keeps the generic 500 path.
+const TAG_RULE_MESSAGE: &str = "cannot be routed by that system tag";
+
+/// The decision the backstop makes, split out so it can be asserted without faking a driver error:
+/// ONLY SQLSTATE P0001 (raise_exception) AND ONLY the 075 rule's own message.
+fn is_tag_rule_raise(code: Option<&str>, message: &str) -> bool {
+    code == Some(RAISE_EXCEPTION_SQLSTATE) && message.contains(TAG_RULE_MESSAGE)
+}
+
+/// ARM (a), the backstop `ensure_tag_route_free` cannot cover itself: another writer takes the tag
+/// between that read and this write, so the trigger fires. The admin must still get the SAME 409.
+async fn map_product_write_error(
+    state: &AppState,
+    e: sqlx::Error,
+    tag_id: Option<Uuid>,
+    row_id: Uuid,
+) -> AppError {
+    if let sqlx::Error::Database(db) = &e {
+        if is_tag_rule_raise(db.code().as_deref(), db.message()) {
+            let holder = match tag_id {
+                Some(tag_id) => route_holder_name(state, tag_id, row_id)
+                    .await
+                    .ok()
+                    .flatten(),
+                None => None,
+            };
+            return tag_already_routed(holder.as_deref());
+        }
+    }
+    category_fk_error(e)
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct AffiliateProductRow {
     pub id: Uuid,
@@ -311,8 +434,12 @@ pub async fn create_affiliate_product(
     if let Some(category_id) = req.category_id {
         ensure_category_offered(&state, tenant_id, category_id).await?;
     }
+    // ARM (b) of the 075 tag rule (kanban t_c149b025): the form's tag choice is checked against the
+    // trigger's own predicate BEFORE the write, so an admin who picked a tag another active product
+    // already routes gets a 409 naming the holder instead of the trigger's unexplained 500.
+    ensure_tag_route_free(&state, req.system_tag_id, id, None, is_active).await?;
 
-    sqlx::query(
+    let written = sqlx::query(
         "INSERT INTO affiliate_products (id, tenant_id, name, description, price, default_commission_rate, is_active, is_third_party, url, category_id, product_type, owner_name, system_tag_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
     )
@@ -330,8 +457,12 @@ pub async fn create_affiliate_product(
     .bind(req.owner_name.unwrap_or_else(|| "SwiftSoftware".to_string()))
     .bind(req.system_tag_id)
     .execute(&state.pool)
-    .await
-    .map_err(category_fk_error)?;
+    .await;
+    // ARM (a): the trigger is the backstop for a tag taken between the read above and this write.
+    // It answers the SAME 409 (the category FK's own mapping is kept inside the mapper).
+    if let Err(e) = written {
+        return Err(map_product_write_error(&state, e, req.system_tag_id, id).await);
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -399,8 +530,13 @@ pub async fn update_affiliate_product(
     // Absent key / null = keep the stored flag (a no-touch save must not re-tick a retired product);
     // an explicit true/false persists; anything else is a 400 (see parse_is_active).
     let is_active = parse_is_active(req.is_active.as_ref(), existing.10)?;
+    // ARM (b) of the 075 tag rule (kanban t_c149b025), before the write and against the EFFECTIVE
+    // values: the check is skipped when the row is being retired, when no tag is set, and — exactly
+    // like the trigger's own `IS NOT DISTINCT FROM` early return — when the stored tag is unchanged
+    // (re-saving a product must not be refused for a tag the database would leave alone).
+    ensure_tag_route_free(&state, system_tag_id, id, existing.9, is_active).await?;
 
-    sqlx::query(
+    let written = sqlx::query(
         "UPDATE affiliate_products SET name=$1, description=$2, price=$3, default_commission_rate=$4,
          is_third_party=$5, url=$6, category_id=$7, product_type=$8, owner_name=$9, system_tag_id=$10,
          is_active=$11, updated_at=NOW()
@@ -420,8 +556,11 @@ pub async fn update_affiliate_product(
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
-    .await
-    .map_err(category_fk_error)?;
+    .await;
+    // ARM (a): the trigger's own raise answers the SAME 409 (the category FK's mapping is kept).
+    if let Err(e) = written {
+        return Err(map_product_write_error(&state, e, system_tag_id, id).await);
+    }
 
     Ok(Json(json!({"message": "Product updated"})))
 }
@@ -571,5 +710,58 @@ mod tests {
                 "only 23503 on that constraint is a field-level 400: {code:?} {constraint:?}"
             );
         }
+    }
+
+    // ── the 075 tag rule's backstop (kanban t_c149b025) ──────────────────────────────────────────
+    //
+    // `ensure_tag_route_free` (arm b) is what the live probe exercises; the mapping is asserted here
+    // for the TOCTOU case no probe can time — another writer takes the tag between the read and the
+    // write, so the trigger fires and the admin must still get the SAME 409.
+
+    use super::{is_tag_rule_raise, tag_already_routed, TAG_RULE_MESSAGE};
+
+    /// The real message migration 075's trigger raises (`%` filled in), byte for byte minus the
+    /// interpolated names.
+    const TRIGGER_MESSAGE: &str =
+        "affiliate product \"Probe B\" cannot be routed by that system tag: \
+                                   product \"Probe A\" already is. One tag routes one product — \
+                                   retire that product first, or use another tag.";
+
+    /// Migration 070's own refusal (`trg_affiliate_products_free_only`) — the neighbouring raise
+    /// this mapping must NOT swallow, measured from that migration file.
+    const FREE_ONLY_MESSAGE: &str = "affiliate product \"Probe B\" may not be linked to a PAID plan \
+                                     (price 49). Affiliates may only hand out free plans; the customer \
+                                     upgrades in app and pays for it themselves.";
+
+    #[test]
+    fn the_tag_rule_raise_is_the_apps_own_409() {
+        assert!(is_tag_rule_raise(Some("P0001"), TRIGGER_MESSAGE));
+        // The trigger's text is the discriminator, not the class: 070 raises from the same SQLSTATE.
+        assert!(!is_tag_rule_raise(Some("P0001"), FREE_ONLY_MESSAGE));
+        assert!(!is_tag_rule_raise(None, TRIGGER_MESSAGE));
+        assert!(!is_tag_rule_raise(Some("23505"), TRIGGER_MESSAGE));
+        assert!(!is_tag_rule_raise(Some("P0001"), "some other failure"));
+        // The marker is the whole contract, so assert it against the REAL trigger text rather than
+        // against itself: if a migration reworded the raise, this is the assertion that fails.
+        assert!(is_tag_rule_raise(Some("P0001"), TRIGGER_MESSAGE));
+    }
+
+    #[test]
+    fn the_409_names_the_holder_and_never_implies_a_generic_failure() {
+        let named = tag_already_routed(Some("Probe A"));
+        let text = named.to_string();
+        assert!(text.contains("Probe A"), "the holder must be named: {text}");
+        assert!(text.contains("one tag routes one product"));
+        assert!(matches!(named, crate::error::AppError::Conflict(_)));
+
+        // The fallback (the holder vanished between the raise and the re-read) keeps the ADVICE and
+        // never leaks the database's own text into the panel.
+        let unnamed = tag_already_routed(None).to_string();
+        assert!(unnamed.contains("Retire that product first, or pick another tag"));
+        assert!(!unnamed.contains(TAG_RULE_MESSAGE));
+        assert!(matches!(
+            tag_already_routed(None),
+            crate::error::AppError::Conflict(_)
+        ));
     }
 }
