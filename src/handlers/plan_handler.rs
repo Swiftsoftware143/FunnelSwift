@@ -718,6 +718,342 @@ pub async fn admin_assign_plan(
     ))
 }
 
+// ── Feature registry / entitlements (kanban t_35acff73, AF-5 "the top tier gets everything") ──
+// The registry itself (`crate::feature_registry`) is the ONE list of gated keys; these three
+// admin endpoints are what make its state readable and changeable FROM THE PANEL, so a plan
+// change is a click for the owner instead of an engineering ticket.
+
+fn kind_str(k: crate::feature_registry::Kind) -> &'static str {
+    match k {
+        crate::feature_registry::Kind::Boolean => "boolean",
+        crate::feature_registry::Kind::Limit => "limit",
+    }
+}
+
+/// `plan` may be a slug or a UUID — the panel has both in hand.
+async fn resolve_plan_id(state: &AppState, key: &str) -> AppResult<Option<Uuid>> {
+    if let Ok(id) = Uuid::parse_str(key) {
+        return Ok(sqlx::query_scalar("SELECT id FROM plans WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?);
+    }
+    Ok(sqlx::query_scalar("SELECT id FROM plans WHERE slug = $1")
+        .bind(key)
+        .fetch_optional(&state.pool)
+        .await?)
+}
+
+async fn plan_row_by_id(state: &AppState, id: Uuid) -> AppResult<Option<serde_json::Value>> {
+    Ok(sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT to_jsonb(p) FROM plans p WHERE p.id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?)
+}
+
+/// The value the GATE will see for `(plan, spec)` — read back through the same resolver the panel
+/// renders, so the answer to a write is the trade the app will actually enforce.
+async fn effective_value(
+    state: &AppState,
+    plan_id: Uuid,
+    s: &crate::feature_registry::Spec,
+) -> AppResult<serde_json::Value> {
+    let row = plan_row_by_id(state, plan_id)
+        .await?
+        .unwrap_or(serde_json::Value::Null);
+    let fl: Option<Option<i32>> = sqlx::query_scalar(
+        "SELECT limit_value FROM feature_limits WHERE plan_id = $1 AND feature_key = $2 ORDER BY created_at LIMIT 1",
+    )
+    .bind(plan_id)
+    .bind(s.key)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(crate::feature_registry::resolved_value(
+        s,
+        &row,
+        fl.flatten(),
+    ))
+}
+
+/// GET /api/v1/admin/plans/registry
+///
+/// One row per registry key, one column per plan, plus the superset verdict: every key the gates
+/// can read, what each plan resolves to, and whether any plan beats the top tier on any key.
+pub async fn admin_plan_registry(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    let rows = crate::feature_registry::plan_rows(&state).await?;
+    let limits = crate::feature_registry::feature_limit_rows(&state).await?;
+    let top = crate::feature_registry::top_plan_id(&state).await?;
+
+    // (plan_id, serialised plan row, {key: resolved value})
+    let mut plans: Vec<(
+        Uuid,
+        serde_json::Value,
+        serde_json::Map<String, serde_json::Value>,
+    )> = Vec::new();
+    for row in rows {
+        let Some(pid) = row
+            .get("id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+        else {
+            continue;
+        };
+        let mut values = serde_json::Map::new();
+        for s in crate::feature_registry::SPECS {
+            let fl = limits
+                .iter()
+                .find(|(p, k, _)| *p == pid && k == s.key)
+                .map(|(_, _, v)| *v);
+            values.insert(
+                s.key.to_string(),
+                crate::feature_registry::resolved_value(s, &row, fl),
+            );
+        }
+        plans.push((pid, row, values));
+    }
+
+    let slug_of = |row: &serde_json::Value| {
+        row.get("slug")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    let plans_json: Vec<serde_json::Value> = plans
+        .iter()
+        .map(|(pid, row, values)| {
+            json!({
+                "id": pid.to_string(),
+                "slug": slug_of(row),
+                "name": row.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                "price": row.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                "is_top": Some(*pid) == top,
+                "values": serde_json::Value::Object(values.clone()),
+            })
+        })
+        .collect();
+
+    // The property the directive is really about: no other plan may beat the top tier on any key.
+    let mut violations: Vec<serde_json::Value> = Vec::new();
+    let mut inert: Vec<serde_json::Value> = Vec::new();
+    if let Some(top_pid) = top {
+        if let Some((_, _, top_values)) = plans.iter().find(|(p, _, _)| *p == top_pid) {
+            for s in crate::feature_registry::SPECS {
+                let top_v = top_values
+                    .get(s.key)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                if crate::feature_registry::is_inert(s, &top_v) {
+                    inert.push(json!({
+                        "key": s.key,
+                        "label": s.label,
+                        "kind": kind_str(s.kind),
+                        "note": "no feature_limits row and no plans column — the gate allows by ABSENCE, not by a grant",
+                    }));
+                }
+                let top_rank = crate::feature_registry::generosity(s, &top_v);
+                for (_, row, values) in plans.iter().filter(|(p, _, _)| *p != top_pid) {
+                    let other = values
+                        .get(s.key)
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
+                    let other_rank = crate::feature_registry::generosity(s, &other);
+                    let beats = match (top_rank, other_rank) {
+                        (None, Some(_)) => true,
+                        (Some(t), Some(o)) => o > t,
+                        _ => false,
+                    };
+                    if beats {
+                        violations.push(json!({
+                            "feature": s.key,
+                            "top": top_v,
+                            "beats_plan": slug_of(row),
+                            "beats_value": other,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    let top_json = plans
+        .iter()
+        .find(|(p, _, _)| Some(*p) == top)
+        .map(|(pid, row, _)| {
+            json!({
+                "id": pid.to_string(),
+                "slug": slug_of(row),
+                "name": row.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                "price": row.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0),
+            })
+        })
+        .unwrap_or(serde_json::Value::Null);
+
+    let features_json: Vec<serde_json::Value> = crate::feature_registry::SPECS
+        .iter()
+        .map(|s| {
+            json!({
+                "key": s.key,
+                "label": s.label,
+                "kind": kind_str(s.kind),
+                "unit": s.unit,
+                "jsonb_key": s.jsonb_key,
+                "column": s.column,
+                "enforced_by": s.enforced_by,
+                "read_by_gate": s.read_by_gate,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "top_plan": top_json,
+        "top_rule": "`plans` has no sort_order / is_active column — the top tier is the highest price, then name",
+        "features": features_json,
+        "plans": plans_json,
+        "superset_ok": violations.is_empty(),
+        "superset_violations": violations,
+        "inert_on_top": inert,
+        "limit_semantics": "limit: -1 unlimited, 0 disabled, n a cap; null = not configured = the gate ALLOWS (inert)",
+        "boolean_semantics": "boolean: true granted, false refused (an absent jsonb key falls back to the has_* column, whose default is false)",
+    })))
+}
+
+/// PUT /api/v1/admin/plans/entitlement
+/// {"plan": "<slug|uuid>", "feature": "<registry key>", "value": <bool|int|null>}
+pub async fn admin_set_entitlement(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(req): Json<serde_json::Value>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let plan_key = req
+        .get("plan")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("plan (slug or id) is required".into()))?;
+    let feature_key = req
+        .get("feature")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::BadRequest("feature is required".into()))?;
+    let s = crate::feature_registry::spec(feature_key).ok_or_else(|| {
+        AppError::BadRequest(format!(
+            "unknown feature '{feature_key}' — it is not in the plan feature registry"
+        ))
+    })?;
+    let plan_id = resolve_plan_id(&state, plan_key)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("no plan '{plan_key}'")))?;
+    let value = req.get("value").cloned().unwrap_or(serde_json::Value::Null);
+
+    match s.kind {
+        crate::feature_registry::Kind::Boolean => {
+            let on = value.as_bool().ok_or_else(|| {
+                AppError::BadRequest("value must be true or false for a boolean feature".into())
+            })?;
+            crate::feature_registry::write_boolean(&state, plan_id, s, on).await?;
+        }
+        crate::feature_registry::Kind::Limit => {
+            let v = if value.is_null() {
+                None
+            } else {
+                Some(
+                    value
+                        .as_i64()
+                        .and_then(|n| i32::try_from(n).ok())
+                        .ok_or_else(|| {
+                            AppError::BadRequest(
+                                "value must be an integer (or null to clear) for a limit feature"
+                                    .into(),
+                            )
+                        })?,
+                )
+            };
+            crate::feature_registry::write_limit(&state, plan_id, s.key, v).await?;
+        }
+    }
+
+    let effective = effective_value(&state, plan_id, s).await?;
+    Ok(Json(json!({
+        "message": format!("{} set for this plan", s.label),
+        "plan": plan_key,
+        "feature": s.key,
+        "kind": kind_str(s.kind),
+        "effective": effective,
+    })))
+}
+
+/// POST /api/v1/admin/plans/grant-top-tier — gap-filling, idempotent, safe to press after a key
+/// or a plan is added. Existing limit caps are NEVER raised (an owner-set number stays), and
+/// booleans not already granted are turned on in both stores.
+pub async fn admin_grant_top_tier(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let Some(top) = crate::feature_registry::top_plan_id(&state).await? else {
+        return Err(AppError::NotFound("no plans to grant".into()));
+    };
+    let row = plan_row_by_id(&state, top)
+        .await?
+        .unwrap_or(serde_json::Value::Null);
+    let limits = crate::feature_registry::feature_limit_rows(&state).await?;
+
+    let mut limits_filled: Vec<serde_json::Value> = Vec::new();
+    let mut booleans_set: Vec<&str> = Vec::new();
+
+    for s in crate::feature_registry::SPECS {
+        match s.kind {
+            crate::feature_registry::Kind::Limit => {
+                if limits.iter().any(|(p, k, _)| *p == top && k == s.key) {
+                    continue; // a cap the owner already set is never raised
+                }
+                // "One affiliate account per customer" is a uniform business rule (migration 069),
+                // so unlimited is NOT its grant — 1 is what every plan carries.
+                let v = if s.key == "max_affiliates" { 1 } else { -1 };
+                crate::feature_registry::write_limit(&state, top, s.key, Some(v)).await?;
+                limits_filled.push(json!({"key": s.key, "limit_value": v}));
+            }
+            crate::feature_registry::Kind::Boolean => {
+                let fl: Option<i32> = None;
+                if crate::feature_registry::resolved_value(s, &row, fl).as_bool() != Some(true) {
+                    crate::feature_registry::write_boolean(&state, top, s, true).await?;
+                    booleans_set.push(s.key);
+                }
+            }
+        }
+    }
+
+    let after = plan_row_by_id(&state, top)
+        .await?
+        .unwrap_or(serde_json::Value::Null);
+    Ok(Json(json!({
+        "message": format!(
+            "Top tier granted every registry feature ({} limit(s) filled, {} boolean(s) turned on)",
+            limits_filled.len(),
+            booleans_set.len()
+        ),
+        "plan": {
+            "id": top.to_string(),
+            "slug": after.get("slug").and_then(|v| v.as_str()).unwrap_or(""),
+            "name": after.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+        },
+        "limits_filled": limits_filled,
+        "booleans_set": booleans_set,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

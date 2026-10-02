@@ -599,6 +599,20 @@ pub fn create_router(
             "/api/v1/admin/plans/assign",
             post(crate::handlers::plan_handler::admin_assign_plan),
         )
+        // Feature registry / entitlements (kanban t_35acff73): read the whole key × plan matrix,
+        // set one entitlement, or gap-fill the top tier — all three from the admin panel.
+        .route(
+            "/api/v1/admin/plans/registry",
+            get(crate::handlers::plan_handler::admin_plan_registry),
+        )
+        .route(
+            "/api/v1/admin/plans/entitlement",
+            put(crate::handlers::plan_handler::admin_set_entitlement),
+        )
+        .route(
+            "/api/v1/admin/plans/grant-top-tier",
+            post(crate::handlers::plan_handler::admin_grant_top_tier),
+        )
         .route(
             "/api/v1/admin/plans/:id/features",
             put(crate::handlers::plan_handler::admin_update_plan_features),

@@ -9,109 +9,56 @@
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
-use sqlx::FromRow;
 use uuid::Uuid;
 
-/// Numeric limit, read from `feature_limits` (custom override) first, then the
-/// active plan's concrete `plans` column. Returns `Ok(None)` when the tenant has
-/// no active plan, the column is NULL, or the key is not a known plan column
-/// (feature_limits-only keys such as max_webhooks / max_api_keys / max_portfolios
-/// / max_affiliates / max_tag_groups / max_routing_targets / max_integrations are
-/// resolved solely by the feature_limits lookup in `enforce_feature_limit`).
+/// The `plans` column that backs a numeric limit key, when the key has one.
+/// `None` for feature_limits-only keys (max_webhooks / max_api_keys / max_portfolios /
+/// max_affiliates / max_tag_groups / max_routing_targets / max_integrations), which
+/// `enforce_feature_limit` resolves from the `feature_limits` table alone.
 ///
-/// Each arm uses a fixed, allowlisted column literal — no dynamic SQL.
+/// ONE allowlist: `plan_limit` and the admin feature registry both read the column through
+/// this function, so a key cannot be enforced against one column while the admin panel shows
+/// another (or nothing) — the drift class this table exists to kill.
+pub fn limit_column(feature_key: &str) -> Option<&'static str> {
+    Some(match feature_key {
+        "max_cards" | "max_kinetic_cards" => "max_cards",
+        "max_leads" => "max_leads",
+        "max_tags" => "max_tags",
+        "max_forms" => "max_forms",
+        "max_custom_domains" => "max_custom_domains",
+        "max_team_members" | "team_members" => "max_team_members",
+        "max_qr_codes" => "max_qr_codes",
+        "max_action_buttons" => "max_action_buttons",
+        "max_ocr_scans" => "max_ocr_scans",
+        _ => return None,
+    })
+}
+
+/// Numeric limit for the tenant's active plan: `feature_limits` first (custom override), then
+/// the plan's own column through [`limit_column`]. `Ok(None)` when the tenant has no active
+/// plan, the key has neither a row nor a column, or the column is NULL — all of which mean
+/// "not configured", which the house rule treats as allow.
+///
+/// The column is read out of the serialised plan row (`to_jsonb(p)`), so the statement stays a
+/// fixed literal — the key never reaches the SQL text.
 async fn plan_limit(
     state: &AppState,
     tenant_id: Uuid,
     feature_key: &str,
 ) -> AppResult<Option<i32>> {
-    let limit: Option<i32> = match feature_key {
-        "max_cards" | "max_kinetic_cards" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_cards FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_leads" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_leads FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_tags" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_tags FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_forms" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_forms FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_custom_domains" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_custom_domains FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_team_members" | "team_members" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_team_members FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_qr_codes" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_qr_codes FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_action_buttons" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_action_buttons FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        "max_ocr_scans" => {
-            sqlx::query_scalar::<_, Option<i32>>(
-                "SELECT p.max_ocr_scans FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-            )
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-        }
-        // feature_limits-only keys and unknown keys: no plan column to read.
-        _ => None,
+    let Some(column) = limit_column(feature_key) else {
+        return Ok(None);
     };
+    let row: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT to_jsonb(p) FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
 
-    Ok(limit)
+    Ok(row
+        .and_then(|r| r.get(column).and_then(|v| v.as_i64()))
+        .map(|n| n as i32))
 }
 
 /// Evaluate a raw numeric limit against current usage. `limit` values follow the
@@ -141,8 +88,27 @@ pub async fn enforce_feature_limit(
     feature_key: &str,
     label: &str,
 ) -> AppResult<()> {
-    // First check the feature_limits table (custom overrides)
-    let fl: Option<i32> = sqlx::query_scalar(
+    match resolved_limit(state, tenant_id, feature_key).await? {
+        None => Ok(()), // No plan assigned, no row and no column — allow
+        Some(limit) => {
+            let usage = get_usage_count(state, tenant_id, feature_key).await;
+            check_numeric_limit(limit, usage, label)
+        }
+    }
+}
+
+/// The effective numeric limit for the tenant's active plan: a `feature_limits` row (the custom
+/// per-plan override the admin panel writes) FIRST, then the plan's own column through
+/// [`plan_limit`]. `None` = the key is not configured anywhere, which the house rule treats as
+/// allow. ONE resolver, so a number the owner sets on a plan is the number every limit gate reads
+/// — including `enforce_action_button_limit`, which used to read the column only and would have
+/// made the panel's number for that key inert.
+async fn resolved_limit(
+    state: &AppState,
+    tenant_id: Uuid,
+    feature_key: &str,
+) -> AppResult<Option<i32>> {
+    let fl: Option<Option<i32>> = sqlx::query_scalar(
         "SELECT fl.limit_value FROM feature_limits fl
          JOIN tenant_plan_subscriptions tps ON tps.plan_id = fl.plan_id
          WHERE tps.tenant_id = $1 AND tps.status = 'active' AND fl.feature_key = $2
@@ -151,60 +117,16 @@ pub async fn enforce_feature_limit(
     .bind(tenant_id)
     .bind(feature_key)
     .fetch_optional(&state.pool)
-    .await?
-    .flatten();
-
-    if let Some(val) = fl {
-        if val == -1 {
-            return Ok(());
-        } // unlimited
-        if val == 0 {
-            return Err(AppError::UpgradeRequired(format!(
-                "{} is not available on your current plan. Upgrade to access this feature.",
-                label
-            )));
-        }
-        // Check usage against limit
-        let usage = get_usage_count(state, tenant_id, feature_key).await;
-        if usage >= val as i64 {
-            return Err(AppError::UpgradeRequired(format!(
-                "{} limit reached ({}/{}). Upgrade to increase your limit.",
-                label, usage, val
-            )));
-        }
-        return Ok(());
+    .await?;
+    if let Some(val) = fl.flatten() {
+        return Ok(Some(val));
     }
-
-    // Fall back to plans table columns (fixed, allowlisted — no dynamic SQL)
-    let limit_val = plan_limit(state, tenant_id, feature_key).await?;
-    match limit_val {
-        None => Ok(()), // No plan assigned or no limit set — allow
-        Some(limit) => {
-            let usage = get_usage_count(state, tenant_id, feature_key).await;
-            check_numeric_limit(limit, usage, label)
-        }
-    }
-}
-
-/// Boolean plan flags for the active tenant's plan.
-#[derive(FromRow)]
-struct PlanFlags {
-    features: Option<serde_json::Value>,
-    has_webhooks: bool,
-    has_api: bool,
-    has_dual_routing: bool,
-    has_mini_funnels: bool,
-    has_card_gating: bool,
-    has_remove_branding: bool,
-    has_white_label: bool,
-    has_multi_tenant: bool,
-    has_analytics: bool,
-    has_import_export: bool,
+    plan_limit(state, tenant_id, feature_key).await
 }
 
 /// Map a `has_*` column name to the corresponding `features` jsonb key.
 /// Returns `None` for unknown flags (no jsonb override).
-fn flag_jsonb_key(feature_key: &str) -> Option<&'static str> {
+pub fn flag_jsonb_key(feature_key: &str) -> Option<&'static str> {
     match feature_key {
         "has_webhooks" => Some("webhooks"),
         "has_api" => Some("api_access"),
@@ -216,8 +138,31 @@ fn flag_jsonb_key(feature_key: &str) -> Option<&'static str> {
         "has_multi_tenant" => Some("multi_tenant"),
         "has_analytics" => Some("analytics"),
         "has_import_export" => Some("import_export"),
+        // Premium themes/templates is a jsonb-ONLY flag (no `has_*` column). Registering it here
+        // lets `plan_row_flag` and the admin feature registry resolve it through the same rule as
+        // every other boolean instead of special-casing it.
+        "premium_themes" => Some("premium_themes"),
         _ => None,
     }
+}
+
+/// Resolve a boolean plan flag from a serialised `plans` row (as produced by `to_jsonb(p)`).
+///
+/// Single source of truth for the flag rule, shared by `enforce_feature_flag` (per tenant) and
+/// the admin feature registry (per plan): a PRESENT `features` jsonb key wins — `true` granted,
+/// `false` refused; otherwise the `has_*` column. `None` means the row carries neither, i.e.
+/// the plan configures nothing (callers decide what absence means: the gate refuses).
+pub fn plan_row_flag(row: &serde_json::Value, feature_key: &str) -> Option<bool> {
+    if let Some(alias) = flag_jsonb_key(feature_key) {
+        if let Some(v) = row
+            .get("features")
+            .and_then(|f| f.get(alias))
+            .and_then(|v| v.as_bool())
+        {
+            return Some(v);
+        }
+    }
+    row.get(feature_key).and_then(|v| v.as_bool())
 }
 
 /// Enforce a boolean plan flag (e.g. `has_dual_routing`).
@@ -232,11 +177,8 @@ pub async fn enforce_feature_flag(
     feature_key: &str,
     label: &str,
 ) -> AppResult<()> {
-    let flags: Option<PlanFlags> = sqlx::query_as(
-        "SELECT p.features, p.has_webhooks, p.has_api, p.has_dual_routing, p.has_mini_funnels,
-                p.has_card_gating, p.has_remove_branding, p.has_white_label, p.has_multi_tenant,
-                p.has_analytics, p.has_import_export
-         FROM plans p
+    let row: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT to_jsonb(p) FROM plans p
          JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
          WHERE tps.tenant_id = $1 AND tps.status = 'active'
          ORDER BY tps.start_date DESC LIMIT 1",
@@ -245,34 +187,11 @@ pub async fn enforce_feature_flag(
     .fetch_optional(&state.pool)
     .await?;
 
-    let Some(flags) = flags else {
+    let Some(row) = row else {
         return Ok(()); // no active plan — allow (consistent with numeric gating)
     };
 
-    // jsonb override when the key is present (single source of truth), else the column.
-    let enabled = flag_jsonb_key(feature_key)
-        .and_then(|k| {
-            flags
-                .features
-                .as_ref()
-                .and_then(|f| f.get(k))
-                .and_then(|v| v.as_bool())
-        })
-        .unwrap_or(match feature_key {
-            "has_webhooks" => flags.has_webhooks,
-            "has_api" => flags.has_api,
-            "has_dual_routing" => flags.has_dual_routing,
-            "has_mini_funnels" => flags.has_mini_funnels,
-            "has_card_gating" => flags.has_card_gating,
-            "has_remove_branding" => flags.has_remove_branding,
-            "has_white_label" => flags.has_white_label,
-            "has_multi_tenant" => flags.has_multi_tenant,
-            "has_analytics" => flags.has_analytics,
-            "has_import_export" => flags.has_import_export,
-            _ => false,
-        });
-
-    if enabled {
+    if plan_row_flag(&row, feature_key).unwrap_or(false) {
         Ok(())
     } else {
         Err(AppError::UpgradeRequired(format!(
@@ -288,7 +207,9 @@ pub async fn enforce_action_button_limit(
     tenant_id: Uuid,
     card_id: Uuid,
 ) -> AppResult<()> {
-    let limit = plan_limit(state, tenant_id, "max_action_buttons").await?;
+    // Through the SAME resolver as every other limit, so the `feature_limits` row the admin panel
+    // writes for `max_action_buttons` actually moves this gate (it used to read the column only).
+    let limit = resolved_limit(state, tenant_id, "max_action_buttons").await?;
     let Some(limit) = limit else {
         return Ok(());
     };

@@ -136,31 +136,86 @@
       <p>Plans define what each tenant can access. Navigate to <code>/admin/plans</code> to manage them. Each plan has a set of feature toggles stored as JSONB:</p>
 
       <div class="card">
-        <h3>Plan Features</h3>
+        <h3>Feature registry — every gated key</h3>
+        <p>Every gate in the app reads its key through ONE registry (<code>src/feature_registry.rs</code>),
+        and the operator surface for it is the <strong>Plans &amp; Features</strong> view in the admin console.</p>
+        <p><strong>Absence is not refusal for a numeric limit.</strong> A limit with no <code>feature_limits</code>
+        row and a NULL <code>plans</code> column is “not configured”, and the gate then <em>allows</em> the action —
+        that key enforces nothing (it is <em>inert</em>) until a number is set. A boolean is the opposite: an absent
+        <code>features</code> jsonb key falls back to the <code>has_*</code> column, whose default is
+        <code>false</code>, so absence <strong>refuses</strong>. That is why the top tier's grant has to exist as
+        data, not as an assumption.</p>
         <table>
-          <tr><th>Feature Key</th><th>Type</th><th>Description</th></tr>
-          <tr><td>max_kinetic_cards</td><td>Number</td><td>How many cards a tenant can create</td></tr>
-          <tr><td>kinetic_custom_colors</td><td>Toggle</td><td>Allow custom accent/bg colors</td></tr>
-          <tr><td>kinetic_video</td><td>Toggle</td><td>Video embeds in cards</td></tr>
-          <tr><td>kinetic_source_tracking</td><td>Toggle</td><td>Track per-source card analytics</td></tr>
-          <tr><td>kinetic_minipage</td><td>Toggle</td><td>Mini Page archetype access</td></tr>
-          <tr><td>kinetic_branding</td><td>Toggle</td><td>Show branding badge on cards</td></tr>
-          <tr><td>kinetic_minifunnel</td><td>Toggle</td><td>Mini Funnel archetype access</td></tr>
-          <tr><td>kinetic_custom_domain</td><td>Toggle</td><td>Use own domain for cards</td></tr>
-          <tr><td>kinetic_analytics</td><td>Toggle</td><td>Insights dashboard</td></tr>
-          <tr><td>kinetic_cta_buttons_max</td><td>Number</td><td>Max CTA buttons (0=none, -1=unlimited)</td></tr>
-          <tr><td>kinetic_social_links_max</td><td>Number</td><td>Max social links (0=none, -1=unlimited)</td></tr>
-          <tr><td>white_label</td><td>Toggle</td><td>Remove all FunnelSwift branding (see below)</td></tr>
+          <tr><th>Key</th><th>Type</th><th>What it gates</th></tr>
+          <tr><td><code>max_cards</code></td><td>Number (cards)</td><td>Card limit — POST /api/v1/kinetic/cards</td></tr>
+          <tr><td><code>max_leads</code></td><td>Number (leads)</td><td>Lead limit — POST /api/v1/leads</td></tr>
+          <tr><td><code>max_tags</code></td><td>Number (tags)</td><td>Tag limit — POST /api/v1/tags</td></tr>
+          <tr><td><code>max_forms</code></td><td>Number (forms)</td><td>Web-to-lead forms — POST /api/v1/web-to-lead</td></tr>
+          <tr><td><code>max_custom_domains</code></td><td>Number (domains)</td><td>Custom domains — PUT /api/v1/kinetic/custom-domain</td></tr>
+          <tr><td><code>max_qr_codes</code></td><td>Number (codes)</td><td>QR codes — POST /api/v1/kinetic/qr</td></tr>
+          <tr><td><code>max_ocr_scans</code></td><td>Number (scans)</td><td>Card scans — POST /api/v1/ocr/parse-card</td></tr>
+          <tr><td><code>max_action_buttons</code></td><td>Number (buttons)</td><td>Action buttons per card — POST /api/v1/kinetic/cards/:id/buttons</td></tr>
+          <tr><td><code>max_webhooks</code></td><td>Number (webhooks)</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
+          <tr><td><code>max_api_keys</code></td><td>Number (keys)</td><td>API keys — POST /api/v1/api-keys</td></tr>
+          <tr><td><code>max_portfolios</code></td><td>Number (companies)</td><td>Portfolio companies — POST /api/v1/portfolio-companies</td></tr>
+          <tr><td><code>max_tag_groups</code></td><td>Number (groups)</td><td>Tag groups — POST /api/v1/tag-groups</td></tr>
+          <tr><td><code>max_routing_targets</code></td><td>Number (targets)</td><td>Routing targets — POST /api/v1/integration-targets</td></tr>
+          <tr><td><code>max_integrations</code></td><td>Number (targets)</td><td>Integration targets — POST /api/v1/integration-targets</td></tr>
+          <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates</td></tr>
+          <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — (dashboard usage counter only — no gate calls it)</td></tr>
+          <tr><td><code>has_api</code></td><td>Toggle</td><td>API access — POST /api/v1/api-keys</td></tr>
+          <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
+          <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead export — GET /api/v1/leads/export</td></tr>
+          <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — POST /api/v1/integration-targets</td></tr>
+          <tr><td><code>has_mini_funnels</code></td><td>Toggle</td><td>Mini funnels — POST /api/v1/kinetic/cards (mini_funnel type)</td></tr>
+          <tr><td><code>has_card_gating</code></td><td>Toggle</td><td>Card gating (password / consent / age) — PUT /api/v1/kinetic/cards/:id/password|gating</td></tr>
+          <tr><td><code>has_analytics</code></td><td>Toggle</td><td>Card analytics — GET /api/v1/card-analytics/:card_id</td></tr>
+          <tr><td><code>premium_themes</code></td><td>Toggle</td><td>Premium themes & templates — POST /api/v1/kinetic/cards, GET /api/v1/kinetic/themes</td></tr>
+          <tr><td><code>has_white_label</code></td><td>Toggle</td><td>White label — (card render SQL — branding)</td></tr>
+          <tr><td><code>has_remove_branding</code></td><td>Toggle</td><td>Remove branding — (card render SQL — branding)</td></tr>
+          <tr><td><code>has_multi_tenant</code></td><td>Toggle</td><td>Multi-tenant workspaces — (no gate reads it yet)</td></tr>
         </table>
       </div>
 
       <div class="card">
+        <h3>Feature registry matrix (in the panel)</h3>
+        <p>The <strong>Plans &amp; Features</strong> view renders one row per registry key and one column per plan,
+        showing the value the <em>gate</em> will actually see (not merely what a row stores):</p>
+        <ul>
+          <li><strong>✅ / ❌</strong> — a boolean: granted / refused.</li>
+          <li><strong>∞</strong> — a limit set to <code>-1</code>: unlimited.</li>
+          <li><strong>off</strong> — a limit set to <code>0</code>: not available on that plan (a 402).</li>
+          <li><strong>a number</strong> — the cap.</li>
+          <li><strong>unset</strong> — no row and no column: the gate allows by absence. The line under the table
+              lists those keys for the top tier.</li>
+          <li><strong>★</strong> marks the top tier (the highest price — never assumed from the name).</li>
+        </ul>
+        <p><strong>Click any cell</strong> to change that one entitlement on that one plan: type
+        <code>true</code>/<code>false</code> for a boolean, or a number for a limit (<code>-1</code> unlimited,
+        <code>0</code> off, blank clears the row). The save re-reads the value through the same resolver the gate
+        uses, so the answer you get back is the trade the app will enforce.</p>
+        <p><strong>Grant everything to the top tier</strong> fills the top plan's gaps: every registry limit with no
+        row gets <code>-1</code> and every boolean not already on is turned on. It never raises a cap you set
+        yourself, so it is safe to press again after a new key or a new plan is added. The status line above the
+        table reports whether any other plan beats the top tier on any key — that is what “the top tier gets
+        everything” actually means, and it is checked, not assumed.</p>
+        <p><strong>Affiliates:</strong> <code>max_affiliates</code> is <strong>1</strong> on every plan
+        (one affiliate account per customer, enforced by a unique index) and is deliberately not part of the
+        “unlimited” grant.</p>
+      </div>
+
+      <div class="card">
         <h3>Default Plans</h3>
+        <p>FunnelSwift ships six plans. The per-plan feature values are <em>not</em> duplicated here — the matrix
+        above is the source of truth, so this page cannot drift from the panel.</p>
         <table>
-          <tr><th>Plan</th><th>Cards</th><th>Templates</th><th>Branding</th><th>White Label</th></tr>
-          <tr><td><strong>Free</strong></td><td>1 card</td><td>8 (4 starters + 4 blanks)</td><td>Always ON</td><td>❌</td></tr>
-          <tr><td><strong>Pro</strong></td><td>500 cards</td><td>All 54 templates</td><td>Toggleable</td><td>❌</td></tr>
-          <tr><td><strong>Enterprise</strong></td><td>9999 cards</td><td>All 54 templates</td><td>Toggleable</td><td>✅</td></tr>
+          <tr><th>Plan</th><th>Slug</th><th>Price</th></tr>
+          <tr><td><strong>Agency / Scale</strong> (top tier)</td><td><code>agency</code></td><td>$79/mo · $790/yr</td></tr>
+          <tr><td>Suite</td><td><code>suite</code></td><td>$29/mo</td></tr>
+          <tr><td>Kinetic Pro</td><td><code>kinetic-pro</code></td><td>$9/mo</td></tr>
+          <tr><td>Capture Starter</td><td><code>capture-starter</code></td><td>$9/mo</td></tr>
+          <tr><td>Kinetic Free</td><td><code>kinetic-free</code></td><td>free</td></tr>
+          <tr><td>Capture Free</td><td><code>capture-free</code></td><td>free</td></tr>
         </table>
       </div>
 
@@ -453,6 +508,9 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
           <tr><td>POST</td><td>/api/v1/admin/plans</td><td>Create a plan</td></tr>
           <tr><td>PUT</td><td>/api/v1/admin/plans/:id/features</td><td>Update plan features</td></tr>
           <tr><td>POST</td><td>/api/v1/admin/plans/assign</td><td>Assign plan to tenant</td></tr>
+          <tr><td>GET</td><td>/api/v1/admin/plans/registry</td><td>Feature registry: every gated key × every plan, plus the superset verdict</td></tr>
+          <tr><td>PUT</td><td>/api/v1/admin/plans/entitlement</td><td>Set one entitlement ({plan, feature, value}) — what a matrix cell click sends</td></tr>
+          <tr><td>POST</td><td>/api/v1/admin/plans/grant-top-tier</td><td>Fill the top tier's gaps (never raises a cap you set)</td></tr>
           <tr><td>GET</td><td>/api/v1/admin/plans/:id/templates</td><td>View allowed templates</td></tr>
           <tr><td>PUT</td><td>/api/v1/admin/plans/:id/templates</td><td>Set allowed templates</td></tr>
         </table>

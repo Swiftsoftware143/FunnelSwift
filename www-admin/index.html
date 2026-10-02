@@ -2650,6 +2650,14 @@ async function renderPlanAdmin() {
       </table></div>
     </div>
     <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Feature registry — every gated key × every plan</div>
+        <div class="card-subtitle">GET /api/v1/admin/plans/registry · click a cell to change it (PUT /api/v1/admin/plans/entitlement)</div></div>
+        <button class="btn btn-primary btn-sm" id="planadmin-grant-top">Grant everything to the top tier</button>
+      </div>
+      <div id="planadmin-registry"><div class="empty" style="padding:14px"><div class="desc">Loading the registry…</div></div></div>
+    </div>
+    <div class="card">
       <div class="card-title">Assign plan to tenant</div>
       <div class="card-subtitle">POST /api/v1/admin/plans/assign</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -2723,7 +2731,98 @@ function bindPlanAdmin() {
     } catch (e) { if (out) out.textContent = '✗ ' + e.message; }
     ol.disabled = false;
   };
+  const gt = $('planadmin-grant-top');
+  if (gt) gt.onclick = async () => {
+    if (!confirm('Grant EVERY registry feature to the top tier?\n\nExisting limit caps are never raised, and booleans not already granted are turned on.')) return;
+    gt.disabled = true;
+    try { const r = await api('/admin/plans/grant-top-tier', { method: 'POST' }); showToast(r.message || 'Top tier granted', 'success'); }
+    catch (e) { showToast('✗ ' + e.message, 'error'); }
+    gt.disabled = false;
+    loadPlanRegistry();
+  };
+  loadPlanRegistry();
 }
+
+// ── Feature registry matrix (kanban t_35acff73, AF-5) ─────────────────────────────────────────
+// One row per key the app's gates can read, one column per plan, showing the value the GATE will
+// actually see (not just what the row stores). Loaded AFTER its container exists, in
+// bindPlanAdmin — a loader that runs before its own element is the bug that leaves a panel stuck
+// on "Loading…" forever.
+async function loadPlanRegistry() {
+  const host = $('planadmin-registry');
+  if (!host) return;
+  try {
+    const d = await api('/admin/plans/registry');
+    host.innerHTML = planRegistryHTML(d);
+  } catch (e) {
+    host.innerHTML = '<div class="empty" style="padding:14px"><div class="desc">Could not load the registry: ' + x(e.message) + '</div></div>';
+  }
+}
+
+function planRegistryValue(kind, v) {
+  if (kind === 'boolean') return v === true ? '✅' : (v === false ? '❌' : '—');
+  if (v === null || v === undefined) return '<span style="color:var(--muted)" title="not configured — the gate ALLOWS">unset</span>';
+  if (v === -1) return '∞';
+  if (v === 0) return '<span class="badge badge-red">off</span>';
+  return String(v);
+}
+
+function planRegistryHTML(d) {
+  const feats = (d && d.features) || [], plans = (d && d.plans) || [];
+  if (!feats.length || !plans.length) return '<div class="empty" style="padding:14px"><div class="desc">The registry returned nothing.</div></div>';
+  const head = '<tr><th style="text-align:left">Feature (gate key)</th>' +
+    plans.map(p => '<th>' + (p.is_top ? '★ ' : '') + x(p.name) +
+      '<div style="font-weight:400;font-size:11px;color:var(--muted)">' + x(p.slug) + ' · ' + formatCurrency(p.price) + '</div></th>').join('') +
+    '</tr>';
+  const rows = feats.map(f => {
+    const cells = plans.map(p => {
+      const v = (p.values || {})[f.key];
+      const hint = f.kind === 'boolean' ? 'true or false' : 'a number: -1 unlimited, 0 off, blank = unset';
+      return '<td style="text-align:center;cursor:pointer" title="click to change — ' + x(hint) + '" ' +
+        'onclick="window._fsEditEntitlement(\'' + x(p.slug) + '\',\'' + x(f.key) + '\',\'' + x(f.kind) + '\')">' +
+        planRegistryValue(f.kind, v) + '</td>';
+    }).join('');
+    return '<tr><td style="text-align:left"><strong>' + x(f.label) + '</strong>' +
+      '<div style="font-size:11px;color:var(--muted)"><code>' + x(f.key) + '</code> · ' + x(f.kind) +
+      (f.unit ? ' (' + x(f.unit) + ')' : '') + ' · ' + x(f.enforced_by) + '</div></td>' + cells + '</tr>';
+  }).join('');
+  const viol = (d && d.superset_violations) || [];
+  const inert = (d && d.inert_on_top) || [];
+  const topName = (d && d.top_plan && d.top_plan.name) || 'the top tier';
+  const status = (viol.length === 0
+    ? '<div style="color:#16a34a;font-weight:600">✅ No plan beats ' + x(topName) + ' on any registry key.</div>'
+    : '<div style="color:#dc2626;font-weight:600">⚠ ' + viol.length + ' key(s) where another plan beats the top tier: ' +
+      viol.map(v => x(v.feature) + ' (' + x(v.beats_plan) + ' = ' + x(v.beats_value) + ', top = ' + x(v.top) + ')').join('; ') + '</div>') +
+    (inert.length
+      ? '<div style="color:#b45309;margin-top:4px">Inert on the top tier (no row, no column — the gate allows by ABSENCE, not by a grant): ' +
+        inert.map(i => x(i.key)).join(', ') + '</div>'
+      : '');
+  return '<div style="font-size:12px;margin-bottom:8px">' + status + '</div>' +
+    '<div class="table-wrap"><table class="table"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:6px">' + x((d && d.limit_semantics) || '') + '<br>' + x((d && d.boolean_semantics) || '') + '</div>';
+}
+
+window._fsEditEntitlement = async function (plan, feature, kind) {
+  const answer = prompt(kind === 'boolean'
+    ? 'Set ' + feature + ' for ' + plan + ' — type true or false'
+    : 'Set ' + feature + ' for ' + plan + ' — a number (-1 = unlimited, 0 = off, blank = unset)', '');
+  if (answer === null) return;
+  let value;
+  if (kind === 'boolean') {
+    const t = answer.trim().toLowerCase();
+    if (t !== 'true' && t !== 'false') { showToast('Type true or false', 'error'); return; }
+    value = t === 'true';
+  } else if (answer.trim() === '') {
+    value = null;
+  } else {
+    value = parseInt(answer, 10);
+    if (isNaN(value)) { showToast('That is not a number', 'error'); return; }
+  }
+  try {
+    const r = await api('/admin/plans/entitlement', { method: 'PUT', body: JSON.stringify({ plan: plan, feature: feature, value: value }) });
+    showToast('Saved — the gate now sees ' + JSON.stringify(r.effective), 'success');
+  } catch (e) { showToast('✗ ' + e.message, 'error'); }
+};
 
 /* kanban t_aad42041: the plan-features editor is the one modal whose SUCCESS path calls BOTH
    showToast() (which re-renders the shell) and an inline status line. STATE.modal.content used to be
