@@ -392,8 +392,16 @@ pub const RETIRED_KEYS: &[(&str, &str)] = &[
     ),
     (
         "storage_mb",
-        "nothing in the crate measures bytes stored (no octet_length / pg_total_relation_size / \
-         SUM(size)), so there is no quantity to compare against",
+        "nothing in this crate STORES bytes, so there is nothing to measure: the live schema has no \
+         file/blob/upload table (the ONLY binary column in the whole database is \
+         _sqlx_migrations.checksum) and no code computes a size (no octet_length / \
+         pg_total_relation_size / SUM(size)); the logo and avatar fields hold LINKS, not uploads. \
+         DECIDED 2026-10-02 (kanban t_5ce5b5a3): storage stays UNMETERED on every plan — measured, \
+         the largest live workspace holds ~39 kB of rows and the ENTIRE database (16 workspaces) is \
+         14 MB, so the authored 50/500 MB caps sat 1,000x above anything stored and a wire would \
+         have been a knob that can never fire. Do not re-register it: a storage cap needs a real \
+         store (a byte-bearing table plus an upload route) before any limit has a quantity to \
+         compare against",
     ),
     (
         "team_members",
