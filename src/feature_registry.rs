@@ -148,8 +148,13 @@ pub const SPECS: &[Spec] = &[
         unit: "keys",
         jsonb_key: None,
         column: None,
-        enforced_by: "POST /api/v1/api-keys",
-        read_by_gate: true,
+        // RETIRED gate (kanban t_5a3c2d9c, decision t_538505de ARM b): the only caller,
+        // api_key_handler::create_api_key, and its route are deleted, so NO gate reads this key.
+        // `read_by_gate` must say so or the drift test below fails. The Spec stays registered on
+        // purpose — the plan DATA (feature_limits rows, the panel readout) is the plan/billing
+        // card's call (t_726416be). Do not flip this back to true without a real call site.
+        enforced_by: "retired — POST /api/v1/api-keys deleted (kanban t_5a3c2d9c)",
+        read_by_gate: false,
     },
     Spec {
         key: "max_portfolios",
@@ -209,8 +214,11 @@ pub const SPECS: &[Spec] = &[
         unit: "",
         jsonb_key: Some("api_access"),
         column: Some("has_api"),
-        enforced_by: "POST /api/v1/api-keys",
-        read_by_gate: true,
+        // RETIRED gate (kanban t_5a3c2d9c) — same reason as `max_api_keys` above: the route the
+        // flag gated is deleted, so no gate reads it. The flag, the `plans.has_api` column, the
+        // panel readout and the pricing call remain the plan/billing card's (t_726416be).
+        enforced_by: "retired — POST /api/v1/api-keys deleted (kanban t_5a3c2d9c)",
+        read_by_gate: false,
     },
     Spec {
         key: "has_webhooks",
