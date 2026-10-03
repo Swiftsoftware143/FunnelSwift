@@ -395,6 +395,33 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
+        <h3>Rates that rise by themselves (performance bands)</h3>
+        <p>An affiliate's <strong>standing rate</strong> (rule 4 above) is raised automatically as they
+        perform, so you do not have to keep an eye on who deserves a better number. Two things move it:</p>
+        <ul>
+          <li><strong>How many paying customers they brought</strong> &mdash; counted from recorded
+          commissions, so a customer counts once they have actually earned the affiliate money, not when a
+          lead merely arrives.</li>
+          <li><strong>How many apps those customers hold</strong> &mdash; counted from
+          <code>tags.source_app</code>, the same signal that already identifies a sibling app's plan. So an
+          affiliate whose customers take up a second product earns more than one whose customers stay on a
+          single product.</li>
+        </ul>
+        <p>A <strong>band</strong> is a rule: a minimum number of paying customers, a minimum number of apps
+        per customer, and the rate to pay while it applies. <strong>The best band an affiliate qualifies for
+        wins.</strong> The bands are rows you can edit &mdash; thresholds and percentages are yours, not
+        code &mdash; and an affiliate at no band keeps whatever their standing rate already was.</p>
+        <p><strong>Escalation only ever writes the standing rate.</strong> It does not add a seventh rule to
+        the order above, so how a commission is worked out stays exactly as simple as the table above says.
+        And <strong>it is never retroactive</strong>: changing a rate applies to commissions computed
+        afterwards. Nothing already earned is recalculated, in either direction.</p>
+        <p>Each affiliate records <em>why</em> their rate is what it is &mdash; for example
+        &ldquo;Portfolio &mdash; 10 paying customer(s), 2 app(s) per customer&rdquo; &mdash; so if one asks,
+        the answer is on their record rather than in your memory.</p>
+        <p>The recompute is a scheduled job (it is safe to run at any time: running it twice changes
+        nothing the second time). If you edit a band, the next run picks it up.</p>
+        </div>
+        <div class="card">
         <h3>What rate an affiliate is paid</h3>
         <p>One order decides it, and the <strong>first rule that applies wins</strong>. The order is fixed,
         and every recorded commission stores the rate <em>and which rule produced it</em>, so a payout can
@@ -405,7 +432,7 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             <tr><td>1</td><td>A <strong>personal rate for that one affiliate</strong> — beats everything else</td><td>Affiliates &rarr; the affiliate's own rate</td></tr>
             <tr><td>2</td><td>A <strong>commission group</strong> rate — one rate covering several products</td><td>Commission Groups</td></tr>
             <tr><td>3</td><td>The <strong>product's own rate</strong></td><td>Affiliate Products</td></tr>
-            <tr><td>4</td><td>The affiliate's <strong>own standing rate</strong> — set on their account when they joined</td><td>Affiliates</td></tr>
+            <tr><td>4</td><td>The affiliate's <strong>own standing rate</strong> — set on their account when they joined, and raised automatically as they perform</td><td>Affiliates</td></tr>
             <tr><td>5</td><td>The <strong>plan's rate</strong> the product is tied to</td><td>Plans</td></tr>
             <tr><td>6</td><td>A standard fallback of <strong>20%</strong> when nothing above is set</td><td>&mdash;</td></tr>
           </tbody>
