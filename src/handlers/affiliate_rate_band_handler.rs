@@ -12,9 +12,10 @@ use serde_json::{json, Value};
 /// percentage. Is there a way to automate that?"*
 ///
 /// This is the automation. It is meant to be called on a schedule (a deterministic job, not an agent
-/// turn), and it only ever WRITES `affiliates.commission_rate` — which is already one of the six sources
-/// `commission.rs` resolves a rate through. So escalation changes a stored number rather than adding a
-/// seventh source that every commission calculation would have to reason about.
+/// turn). It only ever WRITES the affiliate's standing `affiliates.commission_rate` (already one of the
+/// six sources `commission.rs` resolves a rate through) plus the explainability columns
+/// (`rate_band_id` / `rate_reason` / `rate_updated_at`). So escalation changes a stored number rather
+/// than adding a seventh source that every commission calculation would have to reason about.
 ///
 /// NOT RETROACTIVE, BY CONSTRUCTION: no commission is recomputed or rewritten here. A rate recorded
 /// before this runs stays exactly as it was.
@@ -59,7 +60,7 @@ pub async fn apply_rate_bands(
     .await
     .map_err(|e| AppError::Internal(format!("load affiliates: {e}")))?;
 
-    let (mut changed, mut unchanged, mut skipped) = (0, 0, 0);
+    let (mut changed, mut unchanged, mut skipped, mut relabelled) = (0, 0, 0, 0);
     let mut moved: Vec<Value> = Vec::new();
 
     for (affiliate_id, user_id, current) in affiliates {
@@ -101,13 +102,35 @@ pub async fn apply_rate_bands(
             continue;
         };
 
-        if current.map(|c| (c - rate).abs() < 0.005).unwrap_or(false) {
-            unchanged += 1;
-            continue;
-        }
-
         let reason =
             format!("{label} — {paying_i} paying customer(s), {apps_i} app(s) per customer");
+
+        if current.map(|c| (c - rate).abs() < 0.005).unwrap_or(false) {
+            // The RATE is already correct, but the explanation may be missing (a fresh affiliate is
+            // seeded straight onto its plan rate, so its first evaluation reads "unchanged") or stale
+            // (a band's label or thresholds were edited). Refresh only the explainability columns —
+            // never the rate — so the affiliate's own console can always answer "why this rate?".
+            // Still idempotent: the guarded UPDATE matches nothing once the stored reason/band agree.
+            let refreshed = sqlx::query(
+                "UPDATE affiliates
+                    SET rate_band_id = $2, rate_reason = $3, rate_updated_at = now()
+                  WHERE id = $1
+                    AND (rate_band_id IS DISTINCT FROM $2 OR rate_reason IS DISTINCT FROM $3)",
+            )
+            .bind(&affiliate_id)
+            .bind(band_id)
+            .bind(&reason)
+            .execute(&state.pool)
+            .await
+            .map_err(|e| AppError::Internal(format!("refresh reason for {affiliate_id}: {e}")))?
+            .rows_affected();
+            if refreshed > 0 {
+                relabelled += 1;
+            } else {
+                unchanged += 1;
+            }
+            continue;
+        }
 
         sqlx::query(
             "UPDATE affiliates
@@ -139,6 +162,7 @@ pub async fn apply_rate_bands(
         "changed": changed,
         "unchanged": unchanged,
         "skipped": skipped,
+        "relabelled": relabelled,
         "moved": moved,
     })))
 }

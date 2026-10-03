@@ -30,7 +30,17 @@ use uuid::Uuid;
 async fn my_affiliate(
     state: &AppState,
     auth: &AuthUser,
-) -> Result<Option<(String, String, Option<f64>, Option<f64>, bool)>, AppError> {
+) -> Result<
+    Option<(
+        String,
+        String,
+        Option<f64>,
+        Option<f64>,
+        bool,
+        Option<String>,
+    )>,
+    AppError,
+> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let user_id = Uuid::parse_str(&auth.user_id).ok();
@@ -39,7 +49,7 @@ async fn my_affiliate(
     // created by an admin — which has no user_id — is still recognised as "already an affiliate"
     // instead of being invited to sign up a second time.
     sqlx::query_as(
-        "SELECT id, name, commission_rate::float8, override_commission_rate::float8, is_active \
+        "SELECT id, name, commission_rate::float8, override_commission_rate::float8, is_active, rate_reason \
          FROM affiliates \
          WHERE tenant_id = $1 AND is_active = true AND (user_id = $2 OR email = $3) \
          ORDER BY (user_id = $2) DESC NULLS LAST LIMIT 1",
@@ -59,17 +69,77 @@ pub async fn affiliate_me(
 ) -> AppResult<Json<serde_json::Value>> {
     let mine = my_affiliate(&state, &auth).await?;
     match mine {
-        Some((id, name, rate, override_rate, active)) => Ok(Json(json!({
-            "is_affiliate": true,
-            "affiliate": {
-                "id": id, "name": name,
-                "commission_rate": rate,
-                "override_commission_rate": override_rate,
-                "is_active": active,
-            },
-            // The rate that actually pays, so the panel can show it next to the tab.
-            "effective_rate": override_rate.or(rate),
-        }))),
+        Some((id, name, rate, override_rate, active, rate_reason)) => {
+            // The two signals the rate-band scheduler measures, read live here so the dashboard can
+            // name the NEXT rung and how far away it is — the affiliate guide promises exactly that.
+            let affiliate_uuid = Uuid::parse_str(&id).ok();
+            let user_uuid = Uuid::parse_str(&auth.user_id).ok();
+            let paying: i64 = if let Some(aid) = affiliate_uuid {
+                sqlx::query_scalar(
+                    "SELECT count(DISTINCT l.tenant_id) \
+                       FROM affiliate_commissions c \
+                       JOIN leads l ON l.id = c.lead_id \
+                      WHERE c.affiliate_id = $1 AND c.reversed_at IS NULL",
+                )
+                .bind(aid)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+            } else {
+                0
+            };
+            let apps: i64 = if let Some(uid) = user_uuid {
+                sqlx::query_scalar(
+                    "SELECT count(DISTINCT t.source_app) \
+                       FROM leads l \
+                       JOIN tags t ON t.tenant_id = l.tenant_id \
+                      WHERE l.created_by = $1 AND t.is_system = true \
+                        AND t.source_app IS NOT NULL AND t.source_app <> ''",
+                )
+                .bind(uid)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0)
+            } else {
+                0
+            };
+            let apps_i = std::cmp::max(apps as i32, 1);
+            let effective = override_rate.or(rate);
+            // The cheapest active band that pays more than what this affiliate actually earns now.
+            let next: Option<(String, f64, i32, i32)> = sqlx::query_as(
+                "SELECT label, rate::float8, min_paying_customers, min_apps_per_customer \
+                   FROM affiliate_rate_bands \
+                  WHERE is_active = true AND rate::float8 > $1 \
+                  ORDER BY rate ASC, min_paying_customers ASC LIMIT 1",
+            )
+            .bind(effective.unwrap_or(0.0))
+            .fetch_optional(&state.pool)
+            .await?;
+            let next_band = next.map(|(label, band_rate, min_cust, min_apps)| {
+                json!({
+                    "label": label,
+                    "rate": band_rate,
+                    "min_paying_customers": min_cust,
+                    "min_apps_per_customer": min_apps,
+                    "paying_customers": paying,
+                    "apps_per_customer": apps_i,
+                })
+            });
+            Ok(Json(json!({
+                "is_affiliate": true,
+                "affiliate": {
+                    "id": id, "name": name,
+                    "commission_rate": rate,
+                    "override_commission_rate": override_rate,
+                    "is_active": active,
+                    "rate_reason": rate_reason,
+                },
+                // The rate that actually pays, so the panel can show it next to the tab.
+                "effective_rate": effective,
+                // Why the standing rate is what it is, and what the next rung requires.
+                "next_band": next_band,
+            })))
+        }
         None => Ok(Json(json!({
             "is_affiliate": false,
             "affiliate": null,
@@ -184,7 +254,7 @@ pub async fn select_products(
 ) -> AppResult<Json<serde_json::Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    let Some((affiliate_id, _, _, _, _)) = my_affiliate(&state, &auth).await? else {
+    let Some((affiliate_id, _, _, _, _, _)) = my_affiliate(&state, &auth).await? else {
         // Explicitly not a 403: the caller is authenticated and allowed, they simply are not an
         // affiliate yet — the panel shows the signup CTA for this answer.
         return Err(AppError::Forbidden(
@@ -232,7 +302,7 @@ pub async fn deselect_product(
     State(state): State<AppState>,
     Path(product_id): Path<Uuid>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    let Some((affiliate_id, _, _, _, _)) = my_affiliate(&state, &auth).await? else {
+    let Some((affiliate_id, _, _, _, _, _)) = my_affiliate(&state, &auth).await? else {
         return Err(AppError::Forbidden(
             "Become an affiliate before changing what you promote".into(),
         ));

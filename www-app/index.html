@@ -431,7 +431,10 @@ function LMA(){
           +'<td>'+(p.has_tag?X(p.tag_name||""):'<em>no tag \u2014 cannot be credited</em>')+'</td></tr>';
       });
       h+='</tbody></table><div style="margin-top:12px"><button class="btn btn-p" onclick="affSave()">Save</button> <span id="aff-saved" style="opacity:.8"></span></div></div>';
-      h+='<div class="card" style="margin-top:14px"><h3>Your rate</h3><p>You earn '+(d.effective_rate!=null?X(d.effective_rate)+"%":"your plan's rate")+' on a referred sale unless a product or group rate says otherwise, and a personal override always wins.</p></div>';
+      h+='<div class="card" style="margin-top:14px"><h3>Your rate</h3><p>You earn '+(d.effective_rate!=null?X(d.effective_rate)+"%":"your plan's rate")+' on a referred sale unless a product or group rate says otherwise, and a personal override always wins.</p>'
+        +(d.affiliate&&d.affiliate.rate_reason?'<p style="font-size:12px;color:#64748b;margin-top:6px">How your rate was set: '+X(d.affiliate.rate_reason)+'.</p>':'')
+        +(d.next_band?'<p style="font-size:12px;color:#64748b;margin-top:6px">Next step: '+X(d.next_band.label)+' at '+X(d.next_band.rate)+'% once you have '+X(d.next_band.min_paying_customers)+' paying customer(s) with '+X(d.next_band.min_apps_per_customer)+' app(s) each &mdash; you have '+X(d.next_band.paying_customers)+' customer(s) across '+X(d.next_band.apps_per_customer)+' app(s).</p>':'')
+        +'</div>';
       h+='<div class="card" style="margin-top:14px"><h3>Earnings</h3><div id="aff-earn" class="loading">Loading...</div></div>';
       h+=affGuideLink();
       c.innerHTML=h;
