@@ -373,19 +373,6 @@ pub fn create_router(
         // `/api/v1/track/lead` was deleted (kanban t_f408b7cc): a no-op that answered
         // 200 {"tracked":true} with zero callers anywhere in the fleet and no consumer.
         .route(
-            "/api/v1/affiliate-tiers",
-            get(affiliate_payout_handler::list_tiers).post(affiliate_payout_handler::create_tier),
-        )
-        .route(
-            "/api/v1/affiliate-tiers/:id",
-            put(affiliate_payout_handler::update_tier)
-                .delete(affiliate_payout_handler::delete_tier),
-        )
-        .route(
-            "/api/v1/affiliates/:id/calculate-tier",
-            post(affiliate_payout_handler::calculate_affiliate_tier),
-        )
-        .route(
             "/api/v1/affiliate-payouts",
             get(affiliate_payout_handler::list_payouts)
                 .post(affiliate_payout_handler::create_payout),

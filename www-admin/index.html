@@ -453,7 +453,6 @@ function buildNav() {
   }
   sections.push(`<div class="nav-item ${STATE.view==='affiliateProducts'?'active':''}" data-view="affiliateProducts"><span class="icon">📦</span><span class="nav-text">Affiliate Products</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='affiliatePayouts'?'active':''}" data-view="affiliatePayouts"><span class="icon">💰</span><span class="nav-text">${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='commissionTiers'?'active':''}" data-view="commissionTiers"><span class="icon">🏅</span><span class="nav-text">Commission Tiers</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='commissionGroups'?'active':''}" data-view="commissionGroups"><span class="icon">🧩</span><span class="nav-text">Commission Groups</span></div>`);
 
   // Tools
@@ -500,7 +499,6 @@ const viewRenderers = {
   // David's bar: *"I should be able to do everything in the admin panel."* These two had a backend
   // and no screen at all — the tier screen was missing entirely (a "Calculate tier" button with no
   // tiers to calculate against) and the commission-group backend had no way in.
-  commissionTiers: renderCommissionTiers,
   commissionGroups: renderCommissionGroups,
   emailTemplates: renderEmailTemplates,
   campaigns: renderCampaigns,
@@ -553,7 +551,6 @@ function bindView(view) {
     case 'affiliates': bindAffiliates(); break;
     case 'affiliateProducts': bindAffiliateProducts(); break;
     case 'affiliatePayouts': bindAffiliatePayouts(); break;
-    case 'commissionTiers': bindCommissionTiers(); break;
     case 'commissionGroups': bindCommissionGroups(); break;
     case 'emailTemplates': bindEmailTemplates(); break;
     case 'campaigns': bindCampaigns(); break;
@@ -1197,104 +1194,6 @@ async function renderAffiliatePayouts() {
 function bindAffiliatePayouts() {}
 
 // ── EMAIL TEMPLATES ──
-
-// ════════════════ COMMISSION TIERS ════════════════
-// David, 2026-09-29: *"in the admin panel I can add commission tiers and everything will work? … I
-// should be able to do everything in the admin panel."* This console had a "Calculate tier" button
-// and NO way to create, edit or delete the tiers it calculated against. The field names here are the
-// REAL columns (`commission_rate`, `min_sales`, `min_revenue`) — the previous screen posted
-// `commission_percent`/`min_leads`/`monthly_cap`, three columns that do not exist, so every value the
-// admin typed was discarded and a "Gold 12%" tier silently saved as 10%.
-async function renderCommissionTiers() {
-  let tiers = [];
-  try { tiers = await api('/affiliate-tiers'); } catch(e) { tiers = []; }
-  if (!Array.isArray(tiers)) tiers = tiers.data || tiers.tiers || [];
-  EDIT_ROWS.commissionTiers = {};
-  tiers.forEach(t => { EDIT_ROWS.commissionTiers[String(t.id)] = t; });
-  return `<div>
-    <div class="card-header" style="padding:0;margin-bottom:20px">
-      <h1 style="font-size:22px;font-weight:700">Commission Tiers</h1>
-      <button class="btn btn-primary btn-sm" id="add-tier-btn">+ Add Tier</button>
-    </div>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">A tier raises an affiliate's rate once
-    they reach the minimum sales count AND the minimum revenue. Rates are recorded on every commission with
-    the rule that produced them, so a past payout stays explainable after a tier changes.</p>
-    ${tiers.length === 0 ? `<div class="empty"><div class="icon">🏅</div><div class="title">No tiers yet</div><div class="sub">Add the first one to start rewarding your best affiliates</div></div>` : `
-    <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Tier</th><th>Rate</th><th>Min sales</th><th>Min revenue</th><th>Description</th><th>Actions</th></tr></thead>
-      <tbody>${tiers.map(t => `<tr>
-        <td><strong>${x(t.name || '-')}</strong></td>
-        <td><strong>${t.commission_rate != null ? t.commission_rate : '-'}%</strong></td>
-        <td>${t.min_sales != null ? t.min_sales : 0}</td>
-        <td>$${t.min_revenue != null ? t.min_revenue : 0}</td>
-        <td style="font-size:12px;color:var(--muted)">${x(t.description || '')}</td>
-        <td>
-          <button class="btn btn-secondary btn-xs" onclick="window._editCommissionTier('${t.id}')">Edit</button>
-          <button class="btn btn-danger btn-xs" onclick="window._deleteCommissionTier('${t.id}')">Delete</button>
-        </td></tr>`).join('')}</tbody>
-    </table></div></div>`}
-  </div>`;
-}
-function bindCommissionTiers() {
-  document.getElementById('add-tier-btn')?.addEventListener('click', () => openCommissionTierModal());
-}
-window._editCommissionTier = function(id) { openCommissionTierModal(id); };
-window._deleteCommissionTier = async function(id) {
-  if (!confirm('Delete this tier? Affiliates on it fall back to the next rule in the order.')) return;
-  try { await api('/affiliate-tiers/' + encodeURIComponent(id), { method: 'DELETE' }); showToast('Tier deleted', 'success'); renderView(); }
-  catch(e) { showToast(e.message, 'error'); }
-};
-function openCommissionTierModal(id) {
-  const t = id ? (EDIT_ROWS.commissionTiers[String(id)] || {}) : {};
-  STATE.modal = { title: id ? 'Edit Commission Tier' : 'Add Commission Tier' };
-  STATE.modalData = { id };
-  renderApp();
-  setTimeout(() => {
-    const body = document.getElementById('modal-body');
-    if (!body) return;
-    body.innerHTML = `<form id="tier-form">
-      <div class="form-group"><label class="form-label">Tier name</label>
-        <input class="input" name="name" value="${x(t.name || '')}" placeholder="e.g. Gold" required></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Commission rate (%)</label>
-          <input class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" value="${t.commission_rate != null ? t.commission_rate : ''}" placeholder="e.g. 12.5"></div>
-        <div class="form-group"><label class="form-label">Minimum sales count</label>
-          <input class="input" name="min_sales" type="number" min="0" value="${t.min_sales != null ? t.min_sales : 0}"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Minimum revenue ($)</label>
-          <input class="input" name="min_revenue" type="number" step="0.01" min="0" value="${t.min_revenue != null ? t.min_revenue : 0}"></div>
-      </div>
-      <div class="form-group"><label class="form-label">Description</label>
-        <textarea class="input" name="description" rows="2">${x(t.description || '')}</textarea></div>
-      <p style="font-size:12px;color:var(--muted)">A tier pays an affiliate this percentage once they have
-      reached BOTH minimums. A per-affiliate override still beats a tier.</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">${id ? 'Update' : 'Create'} Tier</button>
-      </div>
-    </form>`;
-    document.getElementById('tier-form').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const fd = new FormData(ev.target);
-      const num = (k, d) => { const v = fd.get(k); return (v === null || v === '') ? d : Number(v); };
-      const payload = {
-        name: (fd.get('name') || '').toString().trim(),
-        commission_rate: num('commission_rate', 10),
-        min_sales: num('min_sales', 0),
-        min_revenue: num('min_revenue', 0),
-        description: (fd.get('description') || '').toString()
-      };
-      if (!payload.name) { showToast('A tier needs a name', 'error'); return; }
-      try {
-        if (id) await api('/affiliate-tiers/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(payload) });
-        else    await api('/affiliate-tiers', { method: 'POST', body: JSON.stringify(payload) });
-        showToast(id ? 'Tier updated' : 'Tier created', 'success');
-        window._closeModal(); renderView();
-      } catch(e) { showToast(e.message, 'error'); }
-    });
-  }, 0);
-}
 
 // ════════════════ COMMISSION GROUPS ════════════════
 // David, 2026-09-29: *"I can do it override and do an overall by selecting which products are the

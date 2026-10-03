@@ -1,0 +1,33 @@
+-- FunnelSwift — retire `affiliate_tiers`: a screen that promised a rate and never paid one.
+--
+-- David, 2026-10-03: *"tiers are unnecessary. But maybe if they have a certain amount of customers I will
+-- increase their percentage as an affiliate. Or if they have customers that have multiple apps then they
+-- can earn a higher percentage."* This supersedes his 2026-09-29 request that the console be able to add
+-- commission tiers ("I should be able to do everything in the admin panel"), which is WHY this screen
+-- existed — recorded here so the removal does not read as an oversight.
+--
+-- MEASURED 2026-10-03 before dropping anything:
+--
+--   * `affiliate_tiers` held 3 rows — Bronze 20%, Silver 25% ($1,000), Gold 30% ($5,000) — every one
+--     described "Placeholder — edit to taste.": seeded examples, never edited.
+--   * the ONLY reads were that screen's own CRUD (list/create/update/delete). The commission precedence in
+--     commission.rs resolves money through SIX documented sources — personal override, product group,
+--     product default, product legacy, the affiliate's standing rate, and the plan rate — and TIERS IS NOT
+--     ONE OF THEM. A tier could be set to 30% and every affiliate still earned whatever those six said.
+--   * the one route whose name promised otherwise, `/affiliates/:id/calculate-tier`, never touched the
+--     table: its body read `affiliates.commission_rate` and summed `affiliate_commissions`. The name
+--     claimed a calculation the body did not perform.
+--   * no other table carries a tier column or a tier FK, and no doc references it, so the DROP strands
+--     nothing.
+--
+-- WHAT REPLACES IT: performance bands that escalate a rate from real data — how many paying customers an
+-- affiliate brought, and how many apps those customers hold — applied by writing
+-- `affiliates.commission_rate`, which IS one of the six sources above. That keeps the money path exactly
+-- as simple as it is today: promotion changes a STORED RATE rather than inserting a seventh source into
+-- the calculation, where a bug would mean paying affiliates the wrong amount.
+--
+-- A NEW migration rather than an edit: FunnelSwift embeds `migrations/` at build time via
+-- `sqlx::migrate!` and records each file in `_sqlx_migrations`, so this applies exactly once on boot and
+-- a fresh install drops the table it just created.
+
+DROP TABLE IF EXISTS affiliate_tiers;

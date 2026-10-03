@@ -152,7 +152,7 @@ tr:hover{background:#f8fafc}
   <div class="nav-accordion" id="acc-tags"><div class="nav-acc-header" onclick="TA('tags')"><span>Tags ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><a data-tab="stags" onclick="S('stags')">System Tags</a><a data-tab="sgroups" onclick="S('sgroups')">System Tag Groups</a></div></div>
   <a data-tab="ap" onclick="S('ap')">Affiliate Products</a>
   <a data-tab="tenants" onclick="S('tenants')">Tenants</a>
-  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><!-- kanban t_dc79fb2a: the Affiliates entry is the TENANT's own referral programme (its share link and the signups it produced), so it lives in the User nav above, which every role sees. Tiers/Payouts/Affiliate Leads stay here: every one of their routes answers 403 to a non-admin. --><a data-tab="tiers" onclick="S('tiers')">Affiliate Tiers</a><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a><!-- My Affiliate is a TENANT screen, not an admin one: it now lives in the User nav above, which every role sees (kanban t_8a4e4f04) --><a data-tab="afleads" onclick="S('afleads')">Affiliate Leads</a></div></div>
+  <div class="nav-accordion" id="acc-affiliates"><div class="nav-acc-header" onclick="TA('affiliates')"><span>Affiliates ▸</span><span class="acc-arrow">▾</span></div><div class="nav-acc-body"><!-- kanban t_dc79fb2a: the Affiliates entry is the TENANT's own referral programme (its share link and the signups it produced), so it lives in the User nav above, which every role sees. Tiers/Payouts/Affiliate Leads stay here: every one of their routes answers 403 to a non-admin. --><a data-tab="payouts" onclick="S('payouts')">Affiliate Payouts</a><!-- My Affiliate is a TENANT screen, not an admin one: it now lives in the User nav above, which every role sees (kanban t_8a4e4f04) --><a data-tab="afleads" onclick="S('afleads')">Affiliate Leads</a></div></div>
   <a data-tab="plans" onclick="S('plans')">Plans</a>
   <!-- kanban t_dc79fb2a: `domains` ("Domain Settings") was RETIRED here, not moved. It read/wrote
        the caller's own tenant_settings (GET/PUT /api/v1/settings, no admin check) but is a STRICT
@@ -214,8 +214,8 @@ var helpContent={
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
   "plans":'<h4>Plans</h4><p>Manage subscription plans, pricing, and feature toggles. Each plan is a set of permissions that controls what features tenants can use.</p><ul><li><strong>Free Plan</strong> — 1 card, 8 templates, basic features</li><li><strong>Paid Plans</strong> — Customize card limits, templates, and features per tier</li><li><strong>Plan Features Editor</strong> — Toggle 12+ features per plan (custom colors, video, analytics, etc.)</li></ul>',
   "tenants":'<h4>Tenants</h4><p>Every workspace on this install. The row is a <strong>tenant</strong> (its name, plan, status), not a login — view them per workspace, assign plans, and manage accounts. A workspace that has no user yet still appears here.</p>',
-  "affiliates":'<h4>Affiliates</h4><p>Manage your affiliate partners. Each gets a unique referral code for tracking clicks and conversions.</p><ul><li><strong>Commission Rate</strong> — Percentage per conversion</li><li><strong>Tier</strong> — Assign Bronze/Silver/Gold</li><li><strong>Payouts</strong> — Track earnings and payment history</li></ul>',
-  "tiers":'<h4>Affiliate Tiers</h4><p>Create commission tiers with different rates and minimum payout thresholds.</p><ul><li><strong>+ New Tier</strong> — Create Bronze, Silver, Gold, etc.</li><li>Set commission %, min payout, and requirements</li></ul>',
+  "affiliates":'<h4>Affiliates</h4><p>Manage your affiliate partners. Each gets a unique referral code for tracking clicks and conversions.</p><ul><li><strong>Commission Rate</strong> — Percentage per conversion</li><li><strong>Payouts</strong> — Track earnings and payment history</li></ul>',
+  
   "templates":'<h4>Template Gallery</h4><p><strong>54 templates</strong> across 5 archetypes and dozens of industries.</p><ul><li><strong>Free Plan:</strong> 8 templates (4 starters + 4 blank canvases)</li><li><strong>Paid Plans:</strong> All 54 templates unlocked</li><li><strong>Blank Canvas:</strong> Start from scratch with just a title</li><li><strong>Industry:</strong> Real Estate, Cleaning, Gym, VC, Podcast, Photography, SaaS, etc.</li></ul>',
   "themes":'<h4>8 Visual Themes</h4><ul><li><strong>Cyber Dark</strong> — Purple/black neon</li><li><strong>Ghost White</strong> — Clean glassmorphic</li><li><strong>Ocean</strong> — Blue/teal professional</li><li><strong>Forest</strong> — Green organic</li><li><strong>Sunset</strong> — Orange/amber warm</li><li><strong>Ruby</strong> — Red/crimson bold</li><li><strong>Midnight</strong> — Deep indigo</li><li><strong>Arctic</strong> — Ice blue crisp</li></ul>'
 };
@@ -265,7 +265,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",tiers:"Affiliate Tiers",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -275,7 +275,7 @@ var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg
    NOTE: is_admin is deliberately NOT widened to company_admin. company_admin is this fleet's
    TENANT-admin role, not the platform operator: widening it would show a tenant the four 403s
    above. The split is by data ownership. */
-var ADMIN_ONLY={allcards:1,stags:1,sgroups:1,ap:1,tenants:1,tiers:1,payouts:1,plans:1,seo:1};
+var ADMIN_ONLY={allcards:1,stags:1,sgroups:1,ap:1,tenants:1,payouts:1,plans:1,seo:1};
 /* kanban t_dc79fb2a - tabs RETIRED in favour of a screen that already carries them. `domains`
    ("Domain Settings") duplicated the visible `settings` screen's custom-domain control, writing the
    same tenant_settings key from the same handler, so the duplicate was removed and the tab now lands
@@ -298,7 +298,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,tiers:LTR,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
+  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -380,7 +380,7 @@ function LMA(){
     // THE CONTROL CENTRE for the affiliate programme: what the admin account is for. Counts plus the
     // tools, instead of a "sign up as an affiliate" button that made no sense here.
     c0.innerHTML='<div class="card"><h3>Affiliate programme \u2014 control centre</h3><p style="opacity:.8">You run the programme from here. Affiliates join it themselves; your account manages it.</p><div id="aff-cc" class="loading">Loading...</div></div>';
-    Promise.all([api("/api/v1/affiliates"),api("/api/v1/affiliate-tiers"),api("/api/v1/affiliate-payouts"),api("/api/v1/affiliate-products")])
+    Promise.all([api("/api/v1/affiliates"),api("/api/v1/affiliate-payouts"),api("/api/v1/affiliate-products")])
       .then(function(r){
         function n(x){ if(!x) return 0; if(Array.isArray(x)) return x.length; if(Array.isArray(x.items)) return x.items.length; if(Array.isArray(x.data)) return x.data.length; return 0; }
         var box=$("aff-cc");
@@ -389,13 +389,13 @@ function LMA(){
         box.className="";
         box.innerHTML='<div id="sr" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
           +'<div class="card" style="flex:1;min-width:130px"><h3>Affiliates</h3><div class="val">'+n(r[0])+'</div></div>'
-          +'<div class="card" style="flex:1;min-width:130px"><h3>Commission tiers</h3><div class="val">'+n(r[1])+'</div></div>'
+          +</div></div>'
           +'<div class="card" style="flex:1;min-width:130px"><h3>Payouts</h3><div class="val">'+n(r[2])+'</div></div>'
           +'<div class="card" style="flex:1;min-width:130px"><h3>Products</h3><div class="val">'+n(r[3])+'</div></div>'
           +'</div>'
           +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
           +'<button class="btn btn-p" onclick="S(\'affiliates\')">Manage affiliates</button>'
-          +'<button class="btn" onclick="S(\'tiers\')">Commission tiers</button>'
+          
           +'<button class="btn" onclick="S(\'payouts\')">Payouts</button>'
           +'<button class="btn" onclick="S(\'ap\')">Products</button>'
           +'</div>'
@@ -2599,52 +2599,6 @@ function LREF(){
   });
 }
 
-/* === AFFILIATE TIERS (DOM-based) === */
-function LTR(){
-  if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
-  api("/api/v1/affiliate-tiers").then(function(d){
-    var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    $("ct").innerHTML='<div class="cc"><h3>Affiliate Tiers <span id="ltr-add-btn"></span></h3><p style="color:#64748b;font-size:13px;margin-bottom:12px">Set commission tiers based on sales count or revenue thresholds. A tier&#39;s commission rate is the percentage the affiliate earns once the tier is reached.</p><div id="ltr-list"></div></div>';
-    $("ltr-add-btn").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MTR()}},"+ Add Tier"));
-    if(!a.length){$("ltr-list").innerHTML='<p style="color:#64748b;padding:10px">No tiers.</p>';return;}
-    var tbl=El("table");
-    tbl.innerHTML='<tr><th>Name</th><th>Min Sales</th><th>Min Revenue</th><th>Commission %</th><th>Description</th><th></th></tr>';
-    a.forEach(function(t){
-      var tr=El("tr");
-      tr.innerHTML='<td><strong>'+X(t.name||"Tier")+'</strong></td><td>'+(t.min_sales||0)+'</td><td>$'+(t.min_revenue||"0")+'</td><td>'+(t.commission_rate||"0")+'%</td><td>'+X(t.description||"-")+'</td><td></td>';
-      var td=tr.querySelectorAll("td")[5];
-      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MTR(t.id)}},"Edit"));
-      td.appendChild(document.createTextNode(" "));
-      td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DTR(t.id)}},"Del"));
-      tbl.appendChild(tr);
-    });
-    $("ltr-list").appendChild(tbl);
-  });
-}
-function MTR(id){
-  if(id) api("/api/v1/affiliate-tiers/"+id).then(function(t){RTR(id,t)});
-  else RTR(null,{commission_rate:10});
-}
-function RTR(id,t){
-  O(id?"Edit Tier":"Add Tier", function(){
-    var mb=$("mb");
-    mb.appendChild(ff("Name", El("input",{id:"fn",value:t.name||""})));
-    mb.appendChild(ff("Min Sales", El("input",{id:"fml",type:"number",value:t.min_sales||""})));
-    mb.appendChild(ff("Min Revenue ($)", El("input",{id:"fmr",type:"number",value:t.min_revenue||""})));
-    mb.appendChild(ff("Commission %", El("input",{id:"fcp",type:"number",value:t.commission_rate||10})));
-    mb.appendChild(ff("Description", El("input",{id:"fdsc",value:t.description||""})));
-    $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
-    $("mf").appendChild(El("button",{"class":"btn",onclick:function(){STR(id)}},(id?"Save":"Create")));
-  });
-}
-function STR(id){
-  var d={name:$("fn").value, min_sales:parseInt($("fml").value)||0, min_revenue:parseFloat($("fmr").value)||0, commission_rate:parseFloat($("fcp").value)||0, description:$("fdsc").value||null};
-  var m=id?"PUT":"POST", u=id?"/api/v1/affiliate-tiers/"+id:"/api/v1/affiliate-tiers";
-  showMsg("Saving...","mi");
-  api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("tiers")}).catch(function(e){showMsg(e.message||"Save failed","me")});
-}
-function DTR(id){if(confirm("Delete tier?")) api("/api/v1/affiliate-tiers/"+id,{method:"DELETE"}).then(function(){S("tiers")});}
-
 /* === AFFILIATE PAYOUTS (DOM-based) === */
 function LPA(){
   if(!U||!U.is_admin) return; // platform console: refused in S() via ADMIN_ONLY (kanban t_619533e2)
@@ -3393,8 +3347,7 @@ window.appGuidePages = {
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
   afleads:     { title: "Affiliate Leads", desc: "Every lead that came in through the affiliate programme, and which affiliate gets credited for it. Leads with nobody behind them show as system \u2014 nobody is paid for those. The last column tells you whether that lead later joined the programme themselves.", actions: ["See which affiliate a lead belongs to", "Spot leads that are not credited", "See which leads became affiliates"] },
   affiliates:  { title: "Affiliates", desc: "Your referral programme — your shareable referral link and every signup it has produced. A platform admin also manages the roster of affiliates here. One affiliate account per customer: there is no downline to manage.", actions: ["Copy your referral link", "See the signups your link produced", "Share the link everywhere"] },
-  tiers:       { title: "Commission Tiers", desc: "Tiers decide the percentage an affiliate earns once they reach a threshold. Each tier has a name, a commission rate, a minimum sales count and a minimum revenue.", actions: ["Add a tier", "Edit a rate or threshold", "Delete a tier"] },
-  payouts:     { title: "Affiliate Payouts", desc: "What has been earned and what has been paid. Nothing is earned on a free plan — a referral only pays once that customer becomes paying.", actions: ["Review commissions", "Record a payout"] },
+    payouts:     { title: "Affiliate Payouts", desc: "What has been earned and what has been paid. Nothing is earned on a free plan — a referral only pays once that customer becomes paying.", actions: ["Review commissions", "Record a payout"] },
   ap:          { title: "Affiliate Products", desc: "What affiliates can promote. Every product points at a FREE plan, because a referred customer arrives free and upgrades in app, paying for it themselves. Each product is tied to its tag, and the tag is what credits the affiliate.", actions: ["Add a product", "Set its commission rate", "Check it has a tag"] },
   integrations:{ title: "Integrations", desc: "Connect FunnelSwift to the other SwiftSoftware products and to your own tools.", actions: ["Connect CoreSwift", "Add a webhook"] },
   plans:       { title: "Plans", desc: "Your plan decides what is available to you. The top tier includes everything.", actions: ["Compare plans", "Upgrade"] },
