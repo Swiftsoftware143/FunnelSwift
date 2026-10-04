@@ -1,21 +1,19 @@
 {
   "version": 1,
   "recipe": {
-    "name": "Rust project",
-    "kind": "rust",
+    "name": "FunnelSwift served-SPA shells (static, no bundler)",
+    "kind": "static",
     "bootstrap": [],
-    "build": [
-      "cargo build"
-    ],
-    "test": [
-      "cargo test"
-    ],
-    "start": "cargo run",
-    "port": 8080,
-    "readinessPath": "/",
+    "build": ["bash /opt/swift/scripts/verify-funnelswift-shells.sh --quick"],
+    "test": ["bash /opt/swift/scripts/verify-funnelswift-shells.sh"],
+    "start": null,
+    "port": null,
+    "readinessPath": null,
     "evidence": [
-      "Detected Cargo.toml"
+      "hand-written preact/htm shells served straight from /opt/swift/nginx/www{,-app}/funnelswift - no bundler; an HTML-only FunnelSwift card needs no cargo at all",
+      "replaces the auto-detected Rust recipe (Cargo.toml): cargo build|test|run was wasted on 0-*.rs cards, and commit 38fbd9b's port 8080 pin made the readiness poll hit the LIVE container on 8080, so hermes verify reported PASS for changes it never exercised (kanban t_71523b62)",
+      "the recipe stays honest for Rust changes: the script runs the fmt/check/clippy compiler gate when a .rs file is dirty, and records 'no .rs file changed' otherwise",
+      "stage 4 refuses a BARE FRAGMENT: the Affiliate Guide answered 200 with correct bytes and sha parity while being unreadable in a browser (0 styleSheets, no <title>, windows-1252 mojibake), so the recipe asserts the served document shape, not just the status code"
     ]
-  },
-  "updatedAt": "2026-08-18T14:47:16.813935+00:00"
+  }
 }
