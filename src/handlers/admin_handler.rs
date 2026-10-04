@@ -78,25 +78,33 @@ pub async fn portfolio_sync(
         .execute(&state.pool)
         .await?;
 
-    // Assign Enterprise plan
-    let plan_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM plans WHERE name = 'Enterprise' LIMIT 1")
-            .fetch_optional(&state.pool)
-            .await
-            .ok()
-            .flatten();
+    // Portfolio tenants are sister companies David owns, so they always get THIS app's highest plan
+    // (David, 2026-10-04: "all portfolio tenants are sister companies that I own. So they always get
+    // the highest level of each software").
+    //
+    // Resolve it the way the console documents — the first ACTIVE plan in its own order — instead of
+    // binding a plan NAME. The previous code asked for name = 'Enterprise', which no live install has,
+    // so the lookup returned None and the synced tenant silently ended up on no plan at all. The
+    // INSERT's result was discarded too, which is why nothing ever reported it.
+    let plan_id: Option<Uuid> = sqlx::query_scalar(
+        // Its price column is `price` (no is_active, no price_monthly) - checked on the live schema.
+        "SELECT id FROM plans ORDER BY price DESC NULLS LAST, slug ASC LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await?;
 
-    if let Some(pid) = plan_id {
-        sqlx::query(
-            "INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date) VALUES ($1, $2, $3, 'active', NOW())"
-        )
-        .bind(Uuid::new_v4())
-        .bind(tenant_id)
-        .bind(pid)
-        .execute(&state.pool)
-        .await
-        .ok();
-    }
+    let pid = plan_id.ok_or_else(|| {
+        AppError::BadRequest("no active plan exists to place a portfolio tenant on".into())
+    })?;
+
+    sqlx::query(
+        "INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date) VALUES ($1, $2, $3, 'active', NOW())",
+    )
+    .bind(Uuid::new_v4())
+    .bind(tenant_id)
+    .bind(pid)
+    .execute(&state.pool)
+    .await?;
 
     // Create user
     let user_id = Uuid::new_v4();
