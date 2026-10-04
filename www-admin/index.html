@@ -980,7 +980,7 @@ async function renderAffiliates() {
         <td><strong>${x(a.name||a.full_name||'-')}</strong></td>
         <td>${x(a.email||'-')}</td>
         <td>${a.commission_rate?a.commission_rate+'%':'-'}</td>
-        <td><span class="badge ${a.status==='active'?'badge-green':'badge-yellow'}">${x(a.status||'pending')}</span></td>
+        <td><span class="badge ${a.is_active?'badge-green':'badge-yellow'}">${a.is_active?'Active':'Inactive'}</span></td>
         <td>${formatDate(a.created_at||a.joined_at)}</td>
         <td><button class="btn btn-secondary btn-xs" onclick="window._editAffiliate('${a.id}')">Edit</button></td>
       </tr>`).join('')}</tbody>
@@ -993,7 +993,7 @@ function bindAffiliates() {
     try {
       const items = await api('/affiliates');
       const arr = Array.isArray(items) ? items : (items.data||items.affiliates||[]);
-      const csv = 'ID,Name,Email,Commission,Status,Joined\n' + arr.map(a=>`${a.affiliate_id||a.id},${a.name||a.full_name},${a.email},${a.commission_rate}%,${a.status},${a.created_at||a.joined_at}`).join('\n');
+      const csv = 'ID,Name,Email,Commission,Status,Override,Joined\n' + arr.map(a=>`${a.affiliate_id||a.id},${a.name||a.full_name},${a.email},${a.commission_rate}%,${a.is_active?'active':'inactive'},${a.override_commission_rate!=null?a.override_commission_rate+'%':''},${a.created_at||a.joined_at}`).join('\n');
       const blob = new Blob([csv], {type:'text/csv'});
       const url = URL.createObjectURL(blob);
       const el = document.createElement('a'); el.href = url; el.download = 'affiliates.csv'; el.click();
@@ -1012,10 +1012,14 @@ function openAffiliateModal(id) {
               catch(e) { return failEdit(e, 'Could not load the affiliate'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
+    const statusSel = id ? `<div class="form-group"><label class="form-label">Status</label><select class="input" name="is_active"><option value="true" ${a.is_active!==false?'selected':''}>Active</option><option value="false" ${a.is_active===false?'selected':''}>Inactive</option></select></div>` : '';
     body.innerHTML = `<form id="affiliate-form">
       <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(a.name||a.full_name||'')}" required></div><div class="form-group"><label class="form-label">Email</label><input class="input" name="email" type="email" value="${x(a.email||'')}"></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="commission_rate" type="number" step="0.1" value="${a.commission_rate||''}"></div><div class="form-group"><label class="form-label">Status</label><select class="input" name="status"><option value="active" ${a.status==='active'?'selected':''}>Active</option><option value="pending" ${a.status==='pending'?'selected':''}>Pending</option><option value="suspended" ${a.status==='suspended'?'selected':''}>Suspended</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="commission_rate" type="number" step="0.1" value="${a.commission_rate||''}"></div>${statusSel}</div>
       <div class="form-group"><label class="form-label">Industry</label><input class="input" name="industry" value="${x(a.industry||'')}"></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Override rate (%)</label><input class="input" name="override_commission_rate" type="number" step="0.1" min="0" max="100" value="${a.override_commission_rate!=null?a.override_commission_rate:''}"></div><div class="form-group"><label class="form-label">Override note (why)</label><input class="input" name="override_note" value="${x(a.override_note||'')}"></div></div>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 6px">An override beats every group, product and plan rate for this person. The normal rate is set automatically by performance bands — leave the override blank to use it.</p>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" name="clear_override" ${a.override_commission_rate!=null?'':'disabled'}> Remove the existing override${a.override_commission_rate!=null?' (currently '+a.override_commission_rate+'%)':''}</label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Affiliate</button>
@@ -1026,6 +1030,17 @@ function openAffiliateModal(id) {
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
       if (data.commission_rate) data.commission_rate = parseFloat(data.commission_rate);
+      // is_active is a <select> -> the strings "true"/"false"; the API wants a boolean.
+      if (data.is_active !== undefined) data.is_active = (data.is_active === 'true');
+      // The override: blank means "leave the normal rate alone". Ticking the box is the ONLY way
+      // to take an existing override away (the API keeps an omitted value on purpose).
+      if (data.clear_override) { data.clear_override = true; delete data.override_commission_rate; delete data.override_note; }
+      else {
+        delete data.clear_override;
+        if (data.override_commission_rate === '') delete data.override_commission_rate;
+        else if (data.override_commission_rate !== undefined) data.override_commission_rate = parseFloat(data.override_commission_rate);
+        if (data.override_note === '') delete data.override_note;
+      }
       try {
         if (id) await api('/affiliates/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/affiliates', { method: 'POST', body: JSON.stringify(data) });
