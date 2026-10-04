@@ -902,6 +902,10 @@ pub fn create_router(
             get(campaigns_handler::list_campaigns).post(campaigns_handler::create_campaign),
         )
         .route(
+            "/api/v1/campaigns/:id",
+            get(campaigns_handler::get_campaign).put(campaigns_handler::update_campaign),
+        )
+        .route(
             "/api/v1/incentiveswift/config",
             get(incentiveswift_handler::get_incentiveswift_config),
         )
