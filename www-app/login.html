@@ -27,11 +27,35 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
 <div class="c">
 <h1>FunnelSwift</h1>
 <p class="sub">Lead Generation &amp; Affiliate Marketing</p>
+<div id="v-li">
 <input id="e" type="email" placeholder="Email">
 <input id="p" type="password" placeholder="Password">
 <button id="b" onclick="L()">Sign In</button>
 <div id="m" class="msg"></div>
+<div style="margin-top:14px;font-size:12px"><a href="#" id="fp-link" onclick="showForgot();return false" style="color:#6366f1">Forgot password?</a></div>
 <div class="lk"><a href="/admin">Admin Portal</a></div>
+</div>
+
+<!-- Password reset (kanban t_04bf3423). The back end has always had /api/v1/auth/forgot-password
+     and /api/v1/auth/reset-password (both in the anonymous allowlist) plus a password_reset email,
+     but no screen ever called them - so a user who forgot their password had no way back in. The
+     email carries a one-hour, single-use code; this is the screen that redeems it. -->
+<div id="v-fp" style="display:none">
+<p class="sub" style="margin-bottom:16px">Enter the email on your account and we'll send you a reset code.</p>
+<input id="fe" type="email" placeholder="Email">
+<button id="fb" onclick="R()">Send reset code</button>
+<div id="fm" class="msg"></div>
+<div class="lk"><a href="#" onclick="showLogin();return false">&larr; Back to sign in</a></div>
+</div>
+
+<div id="v-rs" style="display:none">
+<p class="sub" style="margin-bottom:16px">Enter the reset code from your email and choose a new password.</p>
+<input id="rc" type="text" placeholder="Reset code" autocomplete="one-time-code">
+<input id="rpw" type="password" placeholder="New password (at least 8 characters)">
+<button id="rb" onclick="RS()">Set new password</button>
+<div id="rm" class="msg"></div>
+<div class="lk"><a href="#" onclick="showLogin();return false">&larr; Back to sign in</a></div>
+</div>
 </div>
 <script>
 function L(){
@@ -56,6 +80,54 @@ try{localStorage.setItem("ws_fs_token",t);sessionStorage.setItem("wf_token",t)}c
    SPA's auth guard reads - so no URL transport is needed.
    location.replace() also keeps /login out of the back-button history. */
 window.location.replace("/app")})
+.catch(function(err){m.className="msg e";m.textContent=err.message;b.disabled=false});
+}
+/* ── Password reset (kanban t_04bf3423) ───────────────────────────────────────────────
+   ForgotPassword shows the request screen, R() posts the email, RS() redeems the code the
+   password_reset email carries. Both endpoints are anonymous by design (global_auth
+   PUBLIC_EXACT) and both answer the API's own {"error":..} / {"message":..} shape. */
+function showForgot(){
+document.getElementById("v-li").style.display="none";
+document.getElementById("v-fp").style.display="block";
+document.getElementById("v-rs").style.display="none";
+document.getElementById("fe").focus();
+}
+function showLogin(){
+document.getElementById("v-li").style.display="block";
+document.getElementById("v-fp").style.display="none";
+document.getElementById("v-rs").style.display="none";
+var f=document.getElementById("fm");if(f){f.className="msg";f.textContent=""}
+var r=document.getElementById("rm");if(r){r.className="msg";r.textContent=""}
+}
+function R(){
+var e=document.getElementById("fe").value.trim(),m=document.getElementById("fm"),b=document.getElementById("fb");
+if(!e){m.className="msg e";m.textContent="Enter your email";return}
+m.className="msg i";m.textContent="Sending...";b.disabled=true;
+fetch("/api/v1/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:e})})
+.then(function(r){return r.json().catch(function(){return {}}).then(function(x){if(!r.ok)throw new Error(x.error||"Could not send the reset code");return x})})
+.then(function(d){
+m.className="msg i";m.textContent=(d&&d.message)||"If that email exists, a reset code has been sent.";
+b.disabled=false;
+document.getElementById("v-fp").style.display="none";
+document.getElementById("v-rs").style.display="block";
+document.getElementById("rc").focus();
+})
+.catch(function(err){m.className="msg e";m.textContent=err.message;b.disabled=false});
+}
+function RS(){
+var t=document.getElementById("rc").value.trim(),p=document.getElementById("rpw").value,m=document.getElementById("rm"),b=document.getElementById("rb");
+if(!t||!p){m.className="msg e";m.textContent="Enter the reset code and a new password";return}
+if(p.length<8){m.className="msg e";m.textContent="New password must be at least 8 characters";return}
+m.className="msg i";m.textContent="Saving...";b.disabled=true;
+fetch("/api/v1/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t,new_password:p})})
+.then(function(r){return r.json().catch(function(){return {}}).then(function(x){if(!r.ok)throw new Error(x.error||"Could not reset the password");return x})})
+.then(function(d){
+showLogin();
+var m2=document.getElementById("m");m2.className="msg i";
+m2.textContent=(d&&d.message)||"Password has been reset. You can sign in now.";
+document.getElementById("p").value="";
+document.getElementById("e").focus();
+})
 .catch(function(err){m.className="msg e";m.textContent=err.message;b.disabled=false});
 }
 </script>
