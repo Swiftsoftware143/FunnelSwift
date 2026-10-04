@@ -361,6 +361,20 @@ function affJoin(){
   }).catch(function(e){alert((e&&e.message)||"Could not sign you up just now.");});
 }
 
+/* Copy the affiliate's own tracking link to the clipboard. The input is readonly; on a browser
+   without the async clipboard API we fall back to select()+execCommand and, if even that fails,
+   say so instead of claiming a copy that did not happen. */
+function affCopyLink(){
+  var el=$("aff-link"), s=$("aff-copied");
+  if(!el) return;
+  el.focus(); el.select();
+  if(el.setSelectionRange) el.setSelectionRange(0, el.value.length);
+  var ok=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(el.value); ok=true; } }catch(e){}
+  if(!ok){ try{ ok=document.execCommand("copy"); }catch(e){} }
+  if(s) s.textContent = ok ? "Copied" : "Press Ctrl+C (or Cmd+C) to copy";
+}
+
 /* THE AFFILIATE GUIDE'S ENTRY POINT (kanban t_8a4e4f04).
    `www{,-app}/funnelswift/guide-affiliate.html` documents the whole programme — how you join, how
    tracking works, how your rate is worked out, what Earned/Pending/Reversed mean — and NOTHING on any
@@ -417,7 +431,22 @@ function LMA(){
     }
     api("/api/v1/affiliate/promotable-products").then(function(r){
       var ps=(r&&r.products)||[];
-      var h='<div class="card"><h3>What you promote</h3>'
+      // YOUR TRACKING LINK — the one thing the served affiliate guide promises ("you share your
+      // affiliate link") that no served surface showed. The backend builds it from the caller's
+      // tenant referral code (`GET /api/v1/affiliate/me` -> tracking_link) and `www/signup.html`
+      // captures the ?ref= code at signup. Rendered only when the backend supplies it, so an older
+      // binary that predates the field degrades to the previous screen instead of an empty box.
+      var h='';
+      if(d.tracking_link){
+        h+='<div class="card" style="max-width:760px"><h3>Your tracking link</h3>'
+          +'<p style="opacity:.8">Share this link anywhere. Anyone who signs up through it is recorded as your referral, and you earn when they upgrade to a paid plan.</p>'
+          +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+          +'<input id="aff-link" readonly value="'+X(d.tracking_link)+'" onclick="this.select()" style="flex:1;min-width:260px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">'
+          +'<button type="button" class="btn btn-p" onclick="affCopyLink()">Copy link</button>'
+          +'<span id="aff-copied" style="opacity:.8;font-size:12px"></span>'
+          +'</div></div>';
+      }
+      h+='<div class="card" style="margin-top:14px"><h3>What you promote</h3>'
         +'<p style="opacity:.8">Tick the products you want to promote. Each one is tied to its tag, which is what credits you when someone signs up through it.</p>'
         +'<table class="tbl"><thead><tr><th></th><th>Product</th><th>Customer gets</th><th>Your rate</th><th>Tag</th></tr></thead><tbody>';
       if(!ps.length){h+='<tr><td colspan="5" style="opacity:.7">No products are available to promote yet.</td></tr>';}

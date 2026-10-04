@@ -26,6 +26,11 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
+/// The public FunnelSwift signup page that captures `?ref=` (served by `www/signup.html`, which reads
+/// `ref`/`affiliate_code` and posts it as `signup.affiliate_code`). Used to build the affiliate's own
+/// shareable link, resolved back through `public_signup_handler::RESOLVE_SQL` against `affiliates.id`.
+const AFFILIATE_SIGNUP_BASE: &str = "https://funnelswift.net/signup";
+
 /// The affiliate row for the signed-in user, if there is one.
 async fn my_affiliate(
     state: &AppState,
@@ -67,6 +72,8 @@ pub async fn affiliate_me(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let mine = my_affiliate(&state, &auth).await?;
     match mine {
         Some((id, name, rate, override_rate, active, rate_reason)) => {
@@ -113,6 +120,26 @@ pub async fn affiliate_me(
                     "apps_per_customer": apps_i,
                 })
             });
+            // The affiliate's OWN shareable link (David's onboarding model: join once, then share).
+            // The code is the caller TENANT's `affiliate_code` — the namespace the whole existing
+            // referral stack already uses: `kinetic_handler` renders it into the card badge `?ref=`,
+            // `affiliate_referral_handler` scopes the referral report by it, and the public signup
+            // resolves it through `public_signup_handler::RESOLVE_SQL`. Using the tenant code (not
+            // `affiliates.id`) is what lets the affiliate SEE the signups their link produced on the
+            // referral report — an id-based code resolves at signup but the non-admin reader, scoped
+            // to `tenants.affiliate_code`, would show them nothing. The code is minted by the
+            // `tenants_mint_affiliate_code` trigger on every tenant insert; fall back to the
+            // affiliate id only for a legacy row the trigger never touched.
+            let tenant_code: Option<String> =
+                sqlx::query_scalar("SELECT affiliate_code FROM tenants WHERE id = $1")
+                    .bind(tenant_id)
+                    .fetch_optional(&state.pool)
+                    .await?
+                    .flatten();
+            let tracking_code = tenant_code
+                .filter(|c| !c.is_empty())
+                .unwrap_or_else(|| id.clone());
+            let tracking_link = format!("{AFFILIATE_SIGNUP_BASE}?ref={tracking_code}");
             Ok(Json(json!({
                 "is_affiliate": true,
                 "affiliate": {
@@ -126,6 +153,9 @@ pub async fn affiliate_me(
                 "effective_rate": effective,
                 // Why the standing rate is what it is, and what the next rung requires.
                 "next_band": next_band,
+                // The link to share, and the bare code inside it.
+                "tracking_code": tracking_code,
+                "tracking_link": tracking_link,
             })))
         }
         None => Ok(Json(json!({
