@@ -47,7 +47,7 @@ macro_rules! affiliate_cols {
         "id, tenant_id, name, email, industry, \
     commission_rate::float8 AS commission_rate, tax_docs, is_active, is_visible, tags, \
     created_at, updated_at, override_commission_rate::float8 AS override_commission_rate, \
-    override_note"
+    override_note, rate_reason, rate_band_id, rate_updated_at"
     };
 }
 

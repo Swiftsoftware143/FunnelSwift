@@ -17,6 +17,13 @@ pub struct Affiliate {
     pub override_commission_rate: Option<f64>,
     /// Why the override exists, in the admin's own words.
     pub override_note: Option<String>,
+    /// Why this affiliate's standing `commission_rate` is what it is, in the operator's own words.
+    /// Written by the performance-band recompute (migration 094); NULL until that has run.
+    pub rate_reason: Option<String>,
+    /// The band that last set the standing rate. NULL when a person set the rate, or before any run.
+    pub rate_band_id: Option<Uuid>,
+    /// When the recompute last touched the standing rate.
+    pub rate_updated_at: Option<NaiveDateTime>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: bool,
     pub is_visible: Option<bool>,

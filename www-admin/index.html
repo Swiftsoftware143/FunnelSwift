@@ -3181,9 +3181,15 @@ async function wiredSettingDelete() {
   });
 }
 
-// ── GET /api/v1/affiliates/:id/commissions + POST /:id/calculate-tier ───────
+// ── GET /api/v1/affiliates/:id + /:id/commissions ───────────────────────────
+// kanban t_71523b62: the "Calculate tier" control that used to sit here called
+// POST /api/v1/affiliates/:id/calculate-tier, a route DELETED with affiliate tiers
+// (migration 093 / commit 0989bc9) — a dead button on a retired feature. It is replaced
+// by a read of the LIVE explainability the performance bands write (`rate_reason` /
+// `rate_band_id` / `rate_updated_at`, migration 094), so the admin can see WHY an
+// affiliate is at a rate, not just what it is.
 async function wiredAffiliateDetail() {
-  const body = wiredPanel('affiliates', '💵 Affiliate commissions & tier', 'GET /api/v1/affiliates/:id/commissions · POST /api/v1/affiliates/:id/calculate-tier');
+  const body = wiredPanel('affiliates', '💵 Affiliate commissions & rate', 'GET /api/v1/affiliates/:id · GET /api/v1/affiliates/:id/commissions');
   if (!body) return;
   let affs = [];
   try { affs = await api('/affiliates') || []; } catch (e) { }
@@ -3191,7 +3197,7 @@ async function wiredAffiliateDetail() {
   body.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
     '<select class="input" id="wired-aff-sel" style="max-width:320px"><option value="">Choose an affiliate…</option>' +
     affs.map(a => '<option value="' + x(a.id) + '">' + x(a.name || a.email || a.id) + '</option>').join('') + '</select>' +
-    '<button class="btn" id="wired-aff-tier">Calculate tier</button><button class="btn btn-primary" id="wired-aff-load">Load commissions</button>' +
+    '<button class="btn" id="wired-aff-rate">Show rate &amp; reason</button><button class="btn btn-primary" id="wired-aff-load">Load commissions</button>' +
     '<span id="wired-aff-msg" style="font-size:12px"></span></div><div id="wired-aff-out"></div>';
   const sel = document.getElementById('wired-aff-sel'), out = document.getElementById('wired-aff-out'), msg = document.getElementById('wired-aff-msg');
   /* kanban t_b2a9059b: `sel`/`out`/`msg` above are references captured BEFORE the /affiliates
@@ -3200,16 +3206,20 @@ async function wiredAffiliateDetail() {
      property write threw an uncaught TypeError and BOTH controls stayed dead (the throw aborted
      this binder before the second bind). Each bind is guarded independently so one lost node can
      never take the other control down with it. */
-  const affTier = document.getElementById('wired-aff-tier');
+  const affRate = document.getElementById('wired-aff-rate');
   const affLoad = document.getElementById('wired-aff-load');
-  if (affTier) affTier.onclick = async () => {
+  if (affRate) affRate.onclick = async () => {
     if (!sel.value) { msg.textContent = '✗ pick an affiliate'; return; }
-    msg.textContent = 'Calculating…';
+    msg.textContent = 'Loading…';
     try {
-      const r = await api('/affiliates/' + encodeURIComponent(sel.value) + '/calculate-tier', { method: 'POST' });
-      out.innerHTML = '<div class="stats-grid"><div class="stat-card"><div class="stat-value">' + x(((r.commission_rate || 0) * 1)) +
-        '%</div><div class="stat-label">Commission rate</div></div><div class="stat-card"><div class="stat-value">' + formatCurrency(r.total_earned || 0) +
-        '</div><div class="stat-label">Total earned</div></div></div>';
+      const a = await api('/affiliates/' + encodeURIComponent(sel.value));
+      const rate = (a.commission_rate === null || a.commission_rate === undefined) ? '—' : a.commission_rate + '%';
+      const why = a.rate_reason ? x(a.rate_reason) : '<span style="color:var(--muted)">not set by a performance band</span>';
+      const when = a.rate_updated_at ? formatDate(a.rate_updated_at) : '—';
+      out.innerHTML = '<div class="stats-grid"><div class="stat-card"><div class="stat-value">' + x(rate) +
+        '</div><div class="stat-label">Standing rate</div></div><div class="stat-card"><div class="stat-value">' + x(when) +
+        '</div><div class="stat-label">Rate last set</div></div></div>' +
+        '<div style="font-size:13px;margin-top:10px"><strong>Why this rate:</strong> ' + why + '</div>';
       msg.textContent = '';
     } catch (e) { msg.textContent = '✗ ' + e.message; }
   };
