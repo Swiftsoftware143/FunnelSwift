@@ -70,39 +70,27 @@ pub async fn affiliate_me(
     let mine = my_affiliate(&state, &auth).await?;
     match mine {
         Some((id, name, rate, override_rate, active, rate_reason)) => {
-            // The two signals the rate-band scheduler measures, read live here so the dashboard can
-            // name the NEXT rung and how far away it is — the affiliate guide promises exactly that.
-            let affiliate_uuid = Uuid::parse_str(&id).ok();
-            let user_uuid = Uuid::parse_str(&auth.user_id).ok();
-            let paying: i64 = if let Some(aid) = affiliate_uuid {
-                sqlx::query_scalar(
-                    "SELECT count(DISTINCT l.tenant_id) \
-                       FROM affiliate_commissions c \
-                       JOIN leads l ON l.id = c.lead_id \
-                      WHERE c.affiliate_id = $1 AND c.reversed_at IS NULL",
-                )
-                .bind(aid)
-                .fetch_one(&state.pool)
-                .await
-                .unwrap_or(0)
-            } else {
-                0
-            };
-            let apps: i64 = if let Some(uid) = user_uuid {
-                sqlx::query_scalar(
-                    "SELECT count(DISTINCT t.source_app) \
-                       FROM leads l \
-                       JOIN tags t ON t.tenant_id = l.tenant_id \
-                      WHERE l.created_by = $1 AND t.is_system = true \
-                        AND t.source_app IS NOT NULL AND t.source_app <> ''",
-                )
-                .bind(uid)
-                .fetch_one(&state.pool)
-                .await
-                .unwrap_or(0)
-            } else {
-                0
-            };
+            // The two signals the rate-band scheduler measures, read here through the SAME definition
+            // the recompute uses (see `affiliate_rate_band_handler::apply_rate_bands`) so the dashboard's
+            // "next step" and the rate the scheduler will set can never disagree.
+            let (paying, apps): (i64, i64) = sqlx::query_as(
+                "SELECT count(DISTINCT s.cust),
+                        COALESCE(max(s.apps), 0)
+                   FROM (
+                        SELECT lower(coalesce(nullif(l.email, ''), l.id::text)) AS cust,
+                               count(DISTINCT c.metadata->>'source_app') AS apps
+                          FROM affiliate_commissions c
+                          JOIN leads l ON l.id = c.lead_id
+                         WHERE c.affiliate_id = $1
+                           AND c.reversed_at IS NULL
+                           AND c.status IN ('earned', 'paid')
+                         GROUP BY 1
+                   ) s",
+            )
+            .bind(&id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or((0, 0));
             let apps_i = std::cmp::max(apps as i32, 1);
             let effective = override_rate.or(rate);
             // The cheapest active band that pays more than what this affiliate actually earns now.

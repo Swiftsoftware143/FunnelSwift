@@ -402,10 +402,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>How many paying customers they brought</strong> &mdash; counted from recorded
           commissions, so a customer counts once they have actually earned the affiliate money, not when a
           lead merely arrives.</li>
-          <li><strong>How many apps those customers hold</strong> &mdash; counted from
-          <code>tags.source_app</code>, the same signal that already identifies a sibling app's plan. So an
-          affiliate whose customers take up a second product earns more than one whose customers stay on a
-          single product.</li>
+          <li><strong>How many apps those customers hold</strong> &mdash; read from the app each
+          earning commission was recorded against, so a customer who takes up a second product counts as
+          multi-app. An affiliate whose customers take up a second product earns more than one whose
+          customers stay on a single product.</li>
         </ul>
         <p>A <strong>band</strong> is a rule: a minimum number of paying customers, a minimum number of apps
         per customer, and the rate to pay while it applies. <strong>The best band an affiliate qualifies for

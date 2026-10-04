@@ -30,9 +30,10 @@ use serde_json::{json, Value};
 ///     earned the affiliate a commission and that commission has not been reversed. The MONEY RECORD is
 ///     the authority here, deliberately: inferring "paying" from a plan name would be a guess that drifts
 ///     the moment plan names change.
-///   * apps per customer — `DISTINCT tags.source_app` on those customers' tenants. `tags.source_app` is
-///     already how a sibling app's plan is identified (the code's own example is "ADASwift — Free"), so
-///     multi-app usage needs no new instrumentation.
+///   * apps per customer — the `source_app` each EARNING commission recorded, grouped per referred
+///     customer and read as the most apps any one of them holds. NOT read from `tags`: the `source_app`
+///     tags live only under the System tenant, so a join through a lead's own tenant finds none and the
+///     multi-app rule could never fire (measured 2026-10-03 on live).
 ///
 /// Idempotent: running it twice changes nothing the second time, which is what lets it run on a timer.
 pub async fn apply_rate_bands(
@@ -58,44 +59,51 @@ pub async fn apply_rate_bands(
     .await
     .map_err(|e| AppError::Internal(format!("load bands: {e}")))?;
 
-    let affiliates: Vec<(String, uuid::Uuid, Option<f64>)> = sqlx::query_as(
-        "SELECT id, user_id, commission_rate::float8 FROM affiliates WHERE is_active = true",
-    )
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| AppError::Internal(format!("load affiliates: {e}")))?;
+    let affiliates: Vec<(String, Option<f64>)> =
+        sqlx::query_as("SELECT id, commission_rate::float8 FROM affiliates WHERE is_active = true")
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| AppError::Internal(format!("load affiliates: {e}")))?;
 
     let (mut changed, mut unchanged, mut skipped, mut relabelled) = (0, 0, 0, 0);
     let mut moved: Vec<Value> = Vec::new();
 
-    for (affiliate_id, user_id, current) in affiliates {
-        let paying: i64 = sqlx::query_scalar(
-            "SELECT count(DISTINCT l.tenant_id)
-               FROM affiliate_commissions c
-               JOIN leads l ON l.id = c.lead_id
-              WHERE c.affiliate_id = $1 AND c.reversed_at IS NULL",
+    for (affiliate_id, current) in affiliates {
+        // Both signals come from the money record, per referred customer.
+        //
+        // A "customer" is one referred lead that has actually EARNED a commission (status earned/paid,
+        // not reversed) — the same definition `affiliate_portal_handler` uses for money already earned.
+        // Customers are counted by the address the referral was captured under (the key
+        // `cross_app_webhook_handler` resolves a lead by), falling back to the lead id when the capture
+        // had no email.
+        //
+        // "apps per customer" is the most apps any ONE of those customers holds, taken from the
+        // `source_app` each earning commission recorded. It is NOT read from `tags`: the `source_app`
+        // tags are seeded only under the System tenant, so a join through a lead's OWN tenant resolves
+        // zero rows for every real affiliate (every lead a capture form creates lives in the AFFILIATE's
+        // tenant) and the multi-app rule could never fire — measured 2026-10-03 on live.
+        let (paying, apps): (i64, i64) = sqlx::query_as(
+            "SELECT count(DISTINCT s.cust),
+                    COALESCE(max(s.apps), 0)
+               FROM (
+                    SELECT lower(coalesce(nullif(l.email, ''), l.id::text)) AS cust,
+                           count(DISTINCT c.metadata->>'source_app') AS apps
+                      FROM affiliate_commissions c
+                      JOIN leads l ON l.id = c.lead_id
+                     WHERE c.affiliate_id = $1
+                       AND c.reversed_at IS NULL
+                       AND c.status IN ('earned', 'paid')
+                     GROUP BY 1
+               ) s",
         )
         .bind(&affiliate_id)
         .fetch_one(&state.pool)
         .await
-        .map_err(|e| AppError::Internal(format!("count customers for {affiliate_id}: {e}")))?;
+        .map_err(|e| AppError::Internal(format!("measure affiliate {affiliate_id}: {e}")))?;
 
-        let apps: i64 = sqlx::query_scalar(
-            "SELECT count(DISTINCT t.source_app)
-               FROM leads l
-               JOIN tags t ON t.tenant_id = l.tenant_id
-              WHERE l.created_by = $1
-                AND t.is_system = true
-                AND t.source_app IS NOT NULL
-                AND t.source_app <> ''",
-        )
-        .bind(user_id)
-        .fetch_one(&state.pool)
-        .await
-        .map_err(|e| AppError::Internal(format!("count apps for {affiliate_id}: {e}")))?;
-
-        // A live affiliate is at least on one app, even before any system tag exists for them: every band
-        // requires 1 app, so a 0 here would make every band unreachable for a brand-new affiliate.
+        // A live affiliate is at least on one app, even before any earning carries a `source_app`:
+        // every band requires 1 app, so a 0 here would make every band unreachable for a brand-new
+        // affiliate.
         let paying_i = paying as i32;
         let apps_i = std::cmp::max(apps as i32, 1);
 
