@@ -722,6 +722,18 @@ pub fn create_router(
             "/api/v1/internal/affiliate/apply-rate-bands",
             post(affiliate_rate_band_handler::apply_rate_bands),
         )
+        // David, 2026-10-03: the bands are seeded policy, not code — these four are the panel the
+        // migration and the admin guide both already promise. Admin-gated in the handler.
+        .route(
+            "/api/v1/affiliate-rate-bands",
+            get(affiliate_rate_band_handler::list_bands)
+                .post(affiliate_rate_band_handler::create_band),
+        )
+        .route(
+            "/api/v1/affiliate-rate-bands/:id",
+            put(affiliate_rate_band_handler::update_band)
+                .delete(affiliate_rate_band_handler::delete_band),
+        )
         .route(
             "/api/v1/admin/email-templates/types",
             get(email_template_handler::list_template_types),

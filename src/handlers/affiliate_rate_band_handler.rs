@@ -1,6 +1,11 @@
+use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
 use serde_json::{json, Value};
 
 /// POST /api/v1/internal/affiliate/apply-rate-bands
@@ -165,4 +170,207 @@ pub async fn apply_rate_bands(
         "relabelled": relabelled,
         "moved": moved,
     })))
+}
+
+/// ── Band CRUD (admin) ───────────────────────────────────────────────────────────────────────────
+///
+/// David, 2026-10-03: migration 094 seeds the bands as "STARTING VALUES for David to edit in the
+/// panel", and the admin guide already tells the operator the bands "are rows you can edit". Until
+/// these handlers existed there was no panel for that, so the guide was false. This is the missing
+/// half: the seeded table becomes editable policy, without a code change per rate.
+///
+/// Admin-gated like every other affiliate write in this app (`auth.is_admin`). Deleting a band is
+/// safe for money: `affiliates.rate_band_id` is `ON DELETE SET NULL`, so an affiliate keeps the
+/// `commission_rate` the band had set — it only loses the label that explained it, and the next
+/// recompute re-labels it.
+#[derive(Debug, serde::Deserialize)]
+pub struct BandInput {
+    pub label: Option<String>,
+    pub min_paying_customers: Option<i32>,
+    pub min_apps_per_customer: Option<i32>,
+    pub rate: Option<f64>,
+    pub sort_order: Option<i32>,
+    pub is_active: Option<bool>,
+}
+
+fn require_admin(auth: &AuthUser) -> AppResult<()> {
+    if auth.is_admin {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden("Admin access required".into()))
+    }
+}
+
+fn validate_rate(rate: f64) -> AppResult<()> {
+    if !rate.is_finite() || !(0.0..=100.0).contains(&rate) {
+        return Err(AppError::Validation(
+            "rate must be a number between 0 and 100".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn clean_label(input: &Option<String>) -> Option<String> {
+    input
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// GET /api/v1/affiliate-rate-bands — every band, ordered the way the operator reads them.
+pub async fn list_bands(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    require_admin(&auth)?;
+    let rows: Vec<(
+        uuid::Uuid,
+        String,
+        i32,
+        i32,
+        f64,
+        i32,
+        bool,
+        chrono::DateTime<chrono::Utc>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT id, label, min_paying_customers, min_apps_per_customer, rate::float8,
+                sort_order, is_active, created_at, updated_at
+           FROM affiliate_rate_bands
+          ORDER BY sort_order, rate",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("list bands: {e}")))?;
+
+    let bands: Vec<Value> = rows
+        .into_iter()
+        .map(
+            |(
+                id,
+                label,
+                min_cust,
+                min_apps,
+                rate,
+                sort_order,
+                is_active,
+                created_at,
+                updated_at,
+            )| {
+                json!({
+                    "id": id,
+                    "label": label,
+                    "min_paying_customers": min_cust,
+                    "min_apps_per_customer": min_apps,
+                    "rate": rate,
+                    "sort_order": sort_order,
+                    "is_active": is_active,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                })
+            },
+        )
+        .collect();
+    Ok(Json(json!({ "bands": bands })))
+}
+
+/// POST /api/v1/affiliate-rate-bands — add a band.
+pub async fn create_band(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(input): Json<BandInput>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    require_admin(&auth)?;
+    let label = clean_label(&input.label)
+        .ok_or_else(|| AppError::Validation("label is required".into()))?;
+    let rate = input
+        .rate
+        .ok_or_else(|| AppError::Validation("rate is required".into()))?;
+    validate_rate(rate)?;
+    let min_cust = input.min_paying_customers.unwrap_or(0).max(0);
+    // A band requires at least one app (migration 094): accepting 0 would make the app signal moot.
+    let min_apps = input.min_apps_per_customer.unwrap_or(1).max(1);
+    let sort_order = input.sort_order.unwrap_or(0);
+    let is_active = input.is_active.unwrap_or(true);
+
+    let id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO affiliate_rate_bands
+             (label, min_paying_customers, min_apps_per_customer, rate, sort_order, is_active)
+         VALUES ($1, $2, $3, $4::numeric, $5, $6)
+         RETURNING id",
+    )
+    .bind(&label)
+    .bind(min_cust)
+    .bind(min_apps)
+    .bind(rate)
+    .bind(sort_order)
+    .bind(is_active)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("create band: {e}")))?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": id, "created": true })),
+    ))
+}
+
+/// PUT /api/v1/affiliate-rate-bands/:id — edit a band. An absent field keeps its stored value.
+pub async fn update_band(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<uuid::Uuid>,
+    Json(input): Json<BandInput>,
+) -> AppResult<Json<Value>> {
+    require_admin(&auth)?;
+    if let Some(rate) = input.rate {
+        validate_rate(rate)?;
+    }
+    // A blank label is treated as absent so a partial edit can never store "".
+    let label = clean_label(&input.label);
+    let min_cust = input.min_paying_customers.map(|v| v.max(0));
+    let min_apps = input.min_apps_per_customer.map(|v| v.max(1));
+
+    let res = sqlx::query(
+        "UPDATE affiliate_rate_bands
+            SET label = COALESCE($2::text, label),
+                min_paying_customers = COALESCE($3::int, min_paying_customers),
+                min_apps_per_customer = COALESCE($4::int, min_apps_per_customer),
+                rate = COALESCE($5::numeric, rate),
+                sort_order = COALESCE($6::int, sort_order),
+                is_active = COALESCE($7::bool, is_active),
+                updated_at = now()
+          WHERE id = $1",
+    )
+    .bind(id)
+    .bind(label)
+    .bind(min_cust)
+    .bind(min_apps)
+    .bind(input.rate)
+    .bind(input.sort_order)
+    .bind(input.is_active)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("update band: {e}")))?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("band not found".into()));
+    }
+    Ok(Json(json!({ "id": id, "updated": true })))
+}
+
+/// DELETE /api/v1/affiliate-rate-bands/:id — remove a band. Affiliates keep the rate it set.
+pub async fn delete_band(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Json<Value>> {
+    require_admin(&auth)?;
+    let res = sqlx::query("DELETE FROM affiliate_rate_bands WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("delete band: {e}")))?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("band not found".into()));
+    }
+    Ok(Json(json!({ "id": id, "deleted": true })))
 }

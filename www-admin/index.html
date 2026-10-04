@@ -454,6 +454,7 @@ function buildNav() {
   sections.push(`<div class="nav-item ${STATE.view==='affiliateProducts'?'active':''}" data-view="affiliateProducts"><span class="icon">📦</span><span class="nav-text">Affiliate Products</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='affiliatePayouts'?'active':''}" data-view="affiliatePayouts"><span class="icon">💰</span><span class="nav-text">${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='commissionGroups'?'active':''}" data-view="commissionGroups"><span class="icon">🧩</span><span class="nav-text">Commission Groups</span></div>`);
+  if (isSuperAdmin()) sections.push(`<div class="nav-item ${STATE.view==='rateBands'?'active':''}" data-view="rateBands"><span class="icon">📈</span><span class="nav-text">Rate Bands</span></div>`);
 
   // Tools
   sections.push(`<div class="sidebar-section-label">TOOLS</div>`);
@@ -500,6 +501,7 @@ const viewRenderers = {
   // and no screen at all — the tier screen was missing entirely (a "Calculate tier" button with no
   // tiers to calculate against) and the commission-group backend had no way in.
   commissionGroups: renderCommissionGroups,
+  rateBands: renderRateBands,
   emailTemplates: renderEmailTemplates,
   campaigns: renderCampaigns,
   webhooks: renderWebhooks,
@@ -552,6 +554,7 @@ function bindView(view) {
     case 'affiliateProducts': bindAffiliateProducts(); break;
     case 'affiliatePayouts': bindAffiliatePayouts(); break;
     case 'commissionGroups': bindCommissionGroups(); break;
+    case 'rateBands': bindRateBands(); break;
     case 'emailTemplates': bindEmailTemplates(); break;
     case 'campaigns': bindCampaigns(); break;
     case 'webhooks': bindWebhooks(); break;
@@ -1192,6 +1195,99 @@ async function renderAffiliatePayouts() {
   </div>`;
 }
 function bindAffiliatePayouts() {}
+
+// ════════════════ RATE BANDS (Super Admin) ════════════════
+// David, 2026-10-03: the performance bands are seeded policy ("rows you can edit"). The admin guide
+// already said so; this is the screen that makes it true. Editing a band takes effect on the next
+// scheduled recompute (internal apply-rate-bands, daily).
+let BAND_ROWS = {};
+async function renderRateBands() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div><div class="desc">Only super admins can edit rate bands.</div></div>`;
+  let bands = [];
+  try { const r = await api('/affiliate-rate-bands'); bands = Array.isArray(r) ? r : (r.bands || []); }
+  catch(e) { showToast(e.message, 'error'); }
+  BAND_ROWS = {};
+  bands.forEach(b => { BAND_ROWS[String(b.id)] = b; });
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:16px">
+      <h1 style="font-size:22px;font-weight:700">Rate Bands</h1>
+      <button class="btn btn-primary btn-sm" id="add-band-btn">+ Add Band</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">An affiliate's standing rate rises
+    automatically to the <strong>best band they qualify for</strong> &mdash; a minimum number of paying
+    customers and a minimum number of apps per customer, with the rate to pay while it applies. These are
+    your rows: edit the thresholds or percentages here (no code change), and the next scheduled recompute
+    picks them up. An affiliate below every band keeps their existing rate.</p>
+    ${bands.length === 0 ? `<div class="empty"><div class="icon">📈</div><div class="title">No bands yet</div><div class="desc">Add one to start raising rates automatically.</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Band</th><th>Min paying customers</th><th>Min apps / customer</th><th>Rate</th><th>Order</th><th>Active</th><th>Actions</th></tr></thead>
+      <tbody>${bands.map(b=>`<tr>
+        <td><strong>${x(b.label)}</strong></td>
+        <td>${b.min_paying_customers}</td>
+        <td>${b.min_apps_per_customer}</td>
+        <td><strong>${b.rate}%</strong></td>
+        <td>${b.sort_order}</td>
+        <td><span class="badge ${b.is_active?'badge-green':'badge-yellow'}">${b.is_active?'Active':'Off'}</span></td>
+        <td>
+          <button class="btn btn-secondary btn-xs" onclick="window._editBand('${b.id}')">Edit</button>
+          <button class="btn btn-secondary btn-xs" onclick="window._deleteBand('${b.id}')">Delete</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>`}
+  </div>`;
+}
+function bindRateBands() {
+  document.getElementById('add-band-btn')?.addEventListener('click', () => openBandModal());
+}
+window._editBand = function(id) { openBandModal(id); };
+window._deleteBand = async function(id) {
+  const b = BAND_ROWS[String(id)] || {};
+  if (!confirm('Delete the band "' + (b.label || '') + '"? Affiliates whose rate it set keep their current rate.')) return;
+  try { await api('/affiliate-rate-bands/' + id, { method: 'DELETE' }); showToast('Band deleted', 'success'); renderApp(); }
+  catch(e) { showToast(e.message, 'error'); }
+};
+function openBandModal(id) {
+  const b = id ? (BAND_ROWS[String(id)] || {}) : {};
+  STATE.modal = { title: id ? 'Edit Rate Band' : 'Add Rate Band' };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(() => {
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="band-form">
+      <div class="form-group"><label class="form-label">Label</label><input class="input" name="label" value="${x(b.label||'')}" required placeholder="e.g. Growing"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Minimum paying customers</label><input class="input" name="min_paying_customers" type="number" min="0" step="1" value="${b.min_paying_customers!=null?b.min_paying_customers:0}"></div>
+        <div class="form-group"><label class="form-label">Minimum apps per customer</label><input class="input" name="min_apps_per_customer" type="number" min="1" step="1" value="${b.min_apps_per_customer!=null?b.min_apps_per_customer:1}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Rate (%)</label><input class="input" name="rate" type="number" min="0" max="100" step="0.1" value="${b.rate!=null?b.rate:''}" required></div>
+        <div class="form-group"><label class="form-label">Sort order</label><input class="input" name="sort_order" type="number" step="1" value="${b.sort_order!=null?b.sort_order:0}"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0 0"><span class="toggle ${b.is_active!==false?'on':''}" id="band-active-toggle"></span> Active</label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Band</button>
+      </div>
+    </form>`;
+    document.getElementById('band-active-toggle')?.addEventListener('click', function(){ this.classList.toggle('on'); });
+    document.getElementById('band-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      data.min_paying_customers = parseInt(data.min_paying_customers || '0', 10);
+      data.min_apps_per_customer = parseInt(data.min_apps_per_customer || '1', 10);
+      data.sort_order = parseInt(data.sort_order || '0', 10);
+      data.rate = parseFloat(data.rate);
+      data.is_active = document.getElementById('band-active-toggle').classList.contains('on');
+      try {
+        if (id) await api('/affiliate-rate-bands/' + id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/affiliate-rate-bands', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id ? 'Band updated' : 'Band created', 'success');
+        STATE.modal = null; renderApp();
+      } catch(e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
+}
 
 // ── EMAIL TEMPLATES ──
 
