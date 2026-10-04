@@ -680,7 +680,6 @@ async function renderPortfolio() {
         <td><span class="badge ${c.status==='active'?'badge-green':'badge-yellow'}">${x(c.status||'active')}</span></td>
         <td>
           <button class="btn btn-secondary btn-xs" onclick="window._editPortfolio('${c.id}')">Edit</button>
-          ${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${c.id}')">Impersonate</button>`:''}
         </td>
       </tr>`).join('')}</tbody>
     </table></div></div>`}
@@ -690,9 +689,13 @@ function bindPortfolio() {
   document.getElementById('add-portfolio-btn')?.addEventListener('click', () => openPortfolioModal());
 }
 window._editPortfolio = function(id) { openPortfolioModal(id); };
-window._impersonate = async function(companyId) {
+window._impersonate = async function(tenantId) {
   try {
-    const res = await api(`/portfolio-companies/${companyId}/impersonate`);
+    // POST /api/v1/admin/impersonate (handlers::admin_handler::impersonate) — body {account_id:<tenant>}.
+    // The served console used to call `GET /portfolio-companies/<id>/impersonate`, a route registered
+    // NOWHERE (measured live 404), and a portfolio-company id is not a tenant. Impersonation targets a
+    // TENANT, so the control lives on the Tenants list (renderTenants), not on Portfolio Companies.
+    const res = await api('/admin/impersonate', { method: 'POST', body: JSON.stringify({ account_id: tenantId }) });
     TOKEN = res.token || res.access_token;
     localStorage.setItem('ws_fs_token', TOKEN);
     await loadUser();
@@ -2281,7 +2284,7 @@ async function renderTenants() {
       <h1 style="font-size:22px;font-weight:700">🏢 Tenants</h1>
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th></tr></thead>
+      <thead><tr><th>Name</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
       <tbody>${items.map(t=>`<tr>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
@@ -2289,6 +2292,7 @@ async function renderTenants() {
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
         <td>${t.user_count||0}</td>
         <td>${formatDate(t.created_at)}</td>
+        <td>${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
   </div>`;

@@ -410,6 +410,38 @@ pub async fn stop_impersonation(auth: AuthUser) -> AppResult<impl IntoResponse> 
     })))
 }
 
+/// Platform-wide counters for the Super Admin dashboard — `GET /api/v1/admin/stats`.
+///
+/// The served admin console (`www-admin/index.html`, `renderSuperAdmin()`) has always rendered four
+/// counters read from this path, but no such route existed anywhere in the backend: the call
+/// answered 404 and the console's `try/catch` left `stats = {}`, so every card on the Super Admin
+/// dashboard read 0. The four JSON keys are the console's own. `plans` has no active/inactive
+/// column, so `total_plans` is the plan-table count (the console labels it "Active Plans").
+/// Admin-gated: these are platform-wide numbers, not tenant-scoped ones.
+pub async fn admin_stats(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let total_tenants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants")
+        .fetch_one(&state.pool)
+        .await?;
+    let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.pool)
+        .await?;
+    let total_affiliates: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM affiliates")
+        .fetch_one(&state.pool)
+        .await?;
+    let total_plans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plans")
+        .fetch_one(&state.pool)
+        .await?;
+    Ok(Json(json!({
+        "total_tenants": total_tenants,
+        "total_users": total_users,
+        "total_affiliates": total_affiliates,
+        "total_plans": total_plans,
+    })))
+}
+
 /// Set, replace or clear a tenant's single feature override (admin only).
 /// POST /api/v1/admin/tenants/:id/feature-override
 /// Body: { "feature_key": "<registry key>", "limit_value": <int|null> }

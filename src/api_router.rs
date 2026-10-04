@@ -544,6 +544,12 @@ pub fn create_router(
             "/api/v1/admin/kinetic-cards",
             get(crate::handlers::admin_handler::admin_list_all_cards),
         )
+        // Super Admin dashboard counters. The served console's `renderSuperAdmin()` has always read
+        // this path; until now nothing served it (404 => the dashboard showed four zeros).
+        .route(
+            "/api/v1/admin/stats",
+            get(crate::handlers::admin_handler::admin_stats),
+        )
         // Bulk operations
         .route("/api/v1/bulk/leads", post(bulk_handler::bulk_delete_leads))
         .route(
