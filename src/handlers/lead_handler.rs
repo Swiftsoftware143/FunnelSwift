@@ -666,6 +666,10 @@ async fn apply_lead_tags(
             .collect(),
         _ => vec![],
     };
+    // The lead's tag list as it was BEFORE this request. The provisioning arm below needs the
+    // NEWLY ADDED names only (kanban t_847f9d63): a tag already on the lead is not an event, and a
+    // tag taken OFF the lead must never delete an account.
+    let original_tags = current_tags.clone();
 
     // Determine which tags are new (to evaluate rules against).
     //
@@ -871,6 +875,32 @@ async fn apply_lead_tags(
                     .await;
             });
         }
+    }
+
+    // ── APP FREE-ACCOUNT PROVISIONING (kanban t_847f9d63) ───────────────────────────────────────
+    // THE tag → free account executor. David, 2026-10-05: tagging a lead with a software must
+    // create a FREE ACCOUNT in that app, upgradeable from inside that app. The mapping already
+    // existed on the seven `<App> — Free` system tags (`tags.source_app` + `tags.plan_slug`, plus
+    // the new `tags.provisions_account`); `src/app_provision.rs` is the one client that reads it.
+    //
+    // What is passed in: only the names this request ADDED to the lead — directly assigned
+    // (`req_tags`) and rule-driven (`to_add`) alike, computed as "present now, absent before".
+    // That is deliberately the inverse of `removed_tags` and it is what makes the two contracts
+    // hold: a tag already on the lead is not a new event (re-applying answers `already_exists` at
+    // the target, never a second account), and a tag taken OFF the lead performs NO account action
+    // — an account is never deleted because a tag came off a lead (design §3.2).
+    //
+    // `provisions_account = false`, a NULL mapping, and `source_app = 'funnelswift'` are all
+    // filtered INSIDE the provisioner, so this call site stays a single honest sentence: "these
+    // tags are new; execute whatever mapping they carry". A failure inside can never fail the tag
+    // write — every attempt is recorded in `provisioning_log` instead (see that module).
+    let added_tags: Vec<String> = current_tags
+        .iter()
+        .filter(|t| !original_tags.contains(t))
+        .cloned()
+        .collect();
+    if !added_tags.is_empty() {
+        crate::app_provision::provision_for_added_tags(state, tenant_id, id, &added_tags).await;
     }
 
     Ok((current_tags, to_remove.len() + to_add.len()))

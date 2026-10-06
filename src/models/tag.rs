@@ -14,6 +14,13 @@ pub struct Tag {
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     // pub updated_at: DateTime<Utc>,
+    /// The tag → free account mapping, carried on the row so the admin panel can render it
+    /// (kanban t_847f9d63). `source_app`/`plan_slug` existed since migration 067 and were
+    /// seed-only because no request field could write them; this card makes all three editable.
+    pub source_app: Option<String>,
+    pub plan_slug: Option<String>,
+    pub plan_id: Option<Uuid>,
+    pub provisions_account: bool,
 }
 
 // A `SystemTag` struct (tag_name / campaign_id / webhook_url / payload_template)
@@ -48,6 +55,15 @@ pub struct CreateTagRequest {
     pub group_id: Option<Uuid>,
     pub is_system: Option<bool>,
     pub metadata: Option<serde_json::Value>,
+    /// Tag → free account mapping (kanban t_847f9d63). `source_app` is the slug of the app the
+    /// tag names (`coreswift`, `funnelswift`, …) and `plan_slug` the plan to seat there; both are
+    /// consumed by `src/app_provision.rs` when the tag is applied to a lead.
+    pub source_app: Option<String>,
+    pub plan_slug: Option<String>,
+    /// Execute the mapping: applying this tag mints a free account in `source_app`.
+    /// Defaults FALSE — a new tag never starts provisioning by accident.
+    #[serde(default)]
+    pub provisions_account: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,4 +85,15 @@ pub struct UpdateTagRequest {
     pub clear_group: Option<bool>,
     pub is_system: Option<bool>,
     pub metadata: Option<serde_json::Value>,
+    /// The tag → free account mapping (kanban t_847f9d63), editable in the admin System Tags
+    /// editor. An ABSENT key means "keep the stored value" for all three.
+    ///
+    /// For `source_app` / `plan_slug` an explicitly sent EMPTY string means CLEAR (stored NULL):
+    /// the admin form always posts the field's own value, so "" is the operator emptying the box —
+    /// the same precedent `group_id` set (a value that can be SET but never CLEARED is a defect).
+    /// `provisions_account` is a plain boolean: absent keeps, `false` really means false, which is
+    /// how the "Auto-provision free account" toggle turns a shipped-ON mapping back OFF.
+    pub source_app: Option<String>,
+    pub plan_slug: Option<String>,
+    pub provisions_account: Option<bool>,
 }

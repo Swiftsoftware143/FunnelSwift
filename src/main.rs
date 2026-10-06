@@ -18,6 +18,7 @@ mod affiliate_products;
 mod api_router;
 #[path = "middleware/mod.rs"]
 mod app_middleware;
+mod app_provision;
 mod auth;
 mod body_deadline;
 mod card_blocks;

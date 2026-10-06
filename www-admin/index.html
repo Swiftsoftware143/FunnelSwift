@@ -2138,12 +2138,17 @@ async function renderSystemTags() {
     </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">🔖</div><div class="title">No system tags yet</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Group</th><th>Color</th><th>Plan Mapping</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Group</th><th>Color</th><th>Plan Mapping</th><th>Free Account</th><th>Actions</th></tr></thead>
       <tbody>${items.map(t=>`<tr>
         <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px"></span><strong>${x(t.name)}</strong> <span class="badge badge-purple">System</span></td>
         <td>${tagGroupCell(t)}</td>
         <td><div style="width:20px;height:20px;border-radius:4px;background:${x(t.color||'#6366f1')};border:1px solid #e2e8f0"></div></td>
-        <td>${t.plan_slug?`<span class="badge badge-yellow">${x(t.plan_slug)}</span>`:'-'}</td>
+        <td>${t.plan_slug?`<span class="badge badge-yellow">${x(t.source_app?t.source_app+' / ':'')}${x(t.plan_slug)}</span>`:'-'}</td>
+        <td>${t.provisions_account
+              ? (t.source_app==='funnelswift'
+                  ? `<span class="badge badge-green" title="Applying this tag needs no new account - the lead's own workspace is the FunnelSwift account">✅ Own app</span>`
+                  : `<span class="badge badge-green" title="Applying this tag creates a FREE ACCOUNT in ${x(t.source_app||'?')}">✅ Auto-provision</span>`)
+              : `<span style="font-size:11px;color:var(--muted)">Off</span>`}</td>
         <td><button class="btn btn-secondary btn-xs" onclick="window._editSysTag('${t.id}')">Edit</button></td>
       </tr>`).join('')}</tbody>
     </table></div></div>`}
@@ -2166,7 +2171,30 @@ function openSysTagModal(id) {
       <input type="hidden" name="is_system" value="true">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
       <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select class="input" name="group_id">${tagGroupOptions(t.group_id)}</select></div></div>
-      <div class="form-group"><label class="form-label">Plan Slug (optional — maps this tag to a specific plan)</label><input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="slug of one of this install's plans"></div>
+      <!-- kanban t_847f9d63: the tag -> FREE ACCOUNT mapping, editable here instead of seed-only.
+           Target app is the app slug the tag names; Free plan slug is the plan seated there when a
+           lead is tagged with this tag. Leaving either empty clears the mapping. -->
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Target app</label>
+          <input class="input" name="source_app" value="${x(t.source_app||'')}" placeholder="coreswift, incentiveswift, adaswift, workflowswift, missedcallrespondr, funnelswift">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">The software this tag signs a lead up for.</div></div>
+        <div class="form-group"><label class="form-label">Free plan slug</label>
+          <input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="free">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">The plan that app seats the new account on.</div></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" name="provisions_account" ${t.provisions_account?'checked':''}>
+          Auto-provision a free account when this tag is applied to a lead
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">
+          Applying this tag creates a free account in the Target app for the lead's email address, which
+          the business can then upgrade from inside that app. Taking the tag off the lead never deletes an
+          account. FunnelSwift's own "Capture Free"/"Kinetic Free" tags need no new account - the lead's
+          workspace already is the FunnelSwift account. Each target app must have its own
+          "provision from tags" switch turned on, or the attempt is recorded as refused.
+        </div>
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} System Tag</button>
@@ -2181,6 +2209,14 @@ function openSysTagModal(id) {
       // actually has a group, so a no-touch save of an ungrouped tag keeps the pre-existing body.
       if (id && !data.group_id && t.group_id) data.clear_group = true;
       data.is_system = true;
+      // kanban t_847f9d63: an unchecked box is ABSENT from FormData, and the server reads an absent
+      // key as "keep the stored value" -- so turning the switch OFF must send an explicit false, or
+      // the shipped-ON mapping could never be turned off from this panel.
+      data.provisions_account = !!fd.get('provisions_account');
+      // "" in either field is the operator emptying the box: the server stores NULL (clears the
+      // mapping). Sent explicitly for both create and update so the two doors agree.
+      data.source_app = (data.source_app || '').trim();
+      data.plan_slug  = (data.plan_slug  || '').trim();
       try {
         if (id) await api('/tags/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/tags', { method: 'POST', body: JSON.stringify(data) });

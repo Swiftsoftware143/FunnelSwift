@@ -12,6 +12,14 @@ use crate::features;
 use crate::models::tag::*;
 use crate::state::AppState;
 
+/// kanban t_847f9d63: a tag's optional mapping fields are TEXT, and a panel operator clears a field
+/// by emptying it. `None` (key absent) and `Some("")` (box emptied) both mean "no mapping", so both
+/// fold to SQL NULL — a zero-length `source_app` must never reach `app_provision`, which would
+/// otherwise log an `unknown_app` attempt for a field the operator simply left blank.
+fn clean_opt(v: Option<&str>) -> Option<String> {
+    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
 pub async fn list_tags(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Vec<Tag>>> {
     let tenant_id: Uuid = auth
         .tenant_id
@@ -70,7 +78,8 @@ pub async fn create_tag(
     }
 
     sqlx::query(
-        "INSERT INTO tags (id, tenant_id, name, color, group_id, metadata, is_system) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO tags (id, tenant_id, name, color, group_id, metadata, is_system, source_app, plan_slug, provisions_account) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(tag_id)
     .bind(tenant_id)
@@ -79,6 +88,12 @@ pub async fn create_tag(
     .bind(req.group_id)
     .bind(&req.metadata)
     .bind(is_system)
+    // kanban t_847f9d63: the tag → free account mapping is writable from the panel, not seed-only.
+    // `clean_opt` folds an empty/whitespace box to NULL so a blank field stores "no mapping" rather
+    // than a zero-length slug that `app_provision` would try to call.
+    .bind(clean_opt(req.source_app.as_deref()))
+    .bind(clean_opt(req.plan_slug.as_deref()))
+    .bind(req.provisions_account.unwrap_or(false))
     .execute(&state.pool)
     .await?;
 
@@ -115,9 +130,9 @@ pub async fn update_tag(
     }
     // Admin CAN modify system tags — but only on system tags, not tenant-scoped
     let update_query = if tag.is_system && auth.is_admin {
-        "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4 WHERE id=$5"
+        "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4, source_app=$5, plan_slug=$6, provisions_account=$7 WHERE id=$8"
     } else {
-        "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4 WHERE id=$5 AND tenant_id=$6"
+        "UPDATE tags SET name=$1, color=$2, group_id=$3, metadata=$4, source_app=$5, plan_slug=$6, provisions_account=$7 WHERE id=$8 AND tenant_id=$9"
     };
 
     // kanban t_e6991a42. `leads.tags` stores tag NAMES and every resolution in the tag pipeline
@@ -143,6 +158,22 @@ pub async fn update_tag(
     };
     let metadata = req.metadata.or(tag.metadata);
 
+    // ── the tag → free account mapping (kanban t_847f9d63) ───────────────────────────────────────
+    // ABSENT key = keep what the row carries (every shipped caller that knows nothing about the
+    // mapping, including the tenant Tags editor, keeps its exact current meaning). An explicitly
+    // sent EMPTY string = CLEAR to NULL, which is what the admin form posts when the operator
+    // empties the box; see `UpdateTagRequest`. `provisions_account` is a plain bool: absent keeps,
+    // `false` really turns the shipped-ON mapping OFF.
+    let source_app = match req.source_app.as_deref() {
+        None => tag.source_app.clone(),
+        Some(s) => clean_opt(Some(s)),
+    };
+    let plan_slug = match req.plan_slug.as_deref() {
+        None => tag.plan_slug.clone(),
+        Some(s) => clean_opt(Some(s)),
+    };
+    let provisions_account = req.provisions_account.unwrap_or(tag.provisions_account);
+
     let renamed = name != old_name;
 
     // One transaction: the tag row and the stored names it invalidated are one change, so a failure
@@ -156,6 +187,9 @@ pub async fn update_tag(
             .bind(&color)
             .bind(group_id)
             .bind(&metadata)
+            .bind(&source_app)
+            .bind(&plan_slug)
+            .bind(provisions_account)
             .bind(id)
             .execute(&mut *tx)
             .await?;
@@ -165,6 +199,9 @@ pub async fn update_tag(
             .bind(&color)
             .bind(group_id)
             .bind(&metadata)
+            .bind(&source_app)
+            .bind(&plan_slug)
+            .bind(provisions_account)
             .bind(id)
             .bind(tenant_id)
             .execute(&mut *tx)
