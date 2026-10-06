@@ -15,55 +15,49 @@ const JWT_ISSUER: &str = "funnelswift";
 const JWT_AUDIENCE: &str = "funnelswift-api";
 
 /// Exact public API paths that require no JWT.
-const PUBLIC_EXACT: &[&str] = &[
-    "/api/health",
-    "/api/v1/health",
-    "/api/v1/auth/register",
-    "/api/v1/auth/signup",
-    "/api/v1/auth/login",
-    "/api/v1/auth/forgot-password",
-    "/api/v1/auth/reset-password",
-    // Cross-app webhook. Public only because the senders carry no JWT: the handler gates
-    // itself on x-internal-key. `/api/v1/track/lead` was deleted with kanban t_f408b7cc
-    // (a no-op with no caller in the fleet and no consumer), and `/api/v1/track-click` with
-    // kanban t_813d51d4 (a no-op with no caller and no reader of `affiliate_clicks`).
-    "/api/v1/webhooks/conversion",
-    // Public lead capture
-    "/api/v1/web-to-lead",
-    // Public SEO
-    "/api/v1/seo/sitemap.xml",
-    "/api/v1/seo/inject",
-    // Public checkout. Public lead capture below.
-    "/api/v1/checkout/create",
-    // Stripe's payment receiver (David chose Stripe 2026-10-01). Public by necessity: Stripe cannot
-    // present a JWT, so the ONLY thing that authenticates a delivery is the Stripe-Signature HMAC —
-    // verified in the handler against the tenant's stored signing secret, with the `t=` freshness arm
-    // and a per-event idempotency guard. The previous note here ("payment webhook receivers are
-    // deliberately NOT public … FunnelSwift has no live checkout") is what left a paid upgrade unable
-    // to land: no receiver meant nothing ever called the plan change, so the affiliate was never
-    // credited. Revisit only together with the handler in checkout_handler::stripe_webhook.
-    "/api/v1/webhooks/stripe",
-];
-
+///
+/// MOVED to [`crate::auth::route_policy::PUBLIC_ROUTES`] (kanban t_1f29c01f). The list lived here
+/// as an ad-hoc array plus two `path.starts_with(..)` prefix arms; it is now a committed,
+/// unit-tested allowlist matched segment-wise, so a sibling route under one of those prefixes can
+/// no longer answer an anonymous caller. See that module for the 2026-10-06 census of all 186
+/// mounted routes and for the three internal routes, which are now gated here at the boundary
+/// instead of relying on each handler's own key check.
 fn is_public(path: &str) -> bool {
-    if PUBLIC_EXACT.contains(&path) {
-        return true;
-    }
-    // Public embed for web-to-lead forms: GET /api/v1/web-to-lead/configs/:id/embed
-    path.starts_with("/api/v1/web-to-lead/configs/") && path.ends_with("/embed")
-        // Public thank-you page confirmation: GET /api/v1/checkout/session/:id.
-        // The buyer lands back from the payment provider with no JWT; the route is
-        // id-scoped and only ever returns a non-sensitive summary of that session.
-        || path.starts_with("/api/v1/checkout/session/")
-        // Public viewer confirmation of a card's consent / age gate:
-        // POST /api/v1/kinetic/cards/:id/gate. The viewer of a public card page is
-        // anonymous and has no JWT, and the endpoint only ever issues the HMAC for
-        // the card's *current* gate configuration (an unconfigured gate gets 400).
-        || (path.starts_with("/api/v1/kinetic/cards/") && path.ends_with("/gate"))
+    crate::auth::route_policy::is_public_route(path)
 }
 
 fn is_internal(path: &str) -> bool {
-    path.starts_with("/api/v1/internal/")
+    crate::auth::route_policy::is_internal_route(path)
+}
+
+/// Length-independent constant-time compare of the shared internal key. Mirrors the handler-local
+/// helpers in `portfolio_sync_handler` / `cross_app_webhook_handler`; this copy is the one the
+/// boundary uses.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let mut diff = a.len() ^ b.len();
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= (x ^ y) as usize;
+    }
+    diff == 0
+}
+
+/// Arm for [`crate::auth::route_policy::INTERNAL_ROUTES`]: the request must carry the app's own
+/// shared secret in `X-Internal-Key`, and the app must actually have one configured (an empty
+/// configured key never authorises anything).
+fn presents_internal_key(state: &AppState, req: &Request) -> bool {
+    if state.internal_sync_key.is_empty() {
+        return false;
+    }
+    match req
+        .headers()
+        .get("x-internal-key")
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(key) => ct_eq(key, &state.internal_sync_key),
+        None => false,
+    }
 }
 
 /// The platform-admin role — `users.role = 'admin'`, the role that owns the platform console.
@@ -97,13 +91,30 @@ pub fn admin_surface_denied(path: &str, role: &str) -> bool {
     is_admin_surface(path) && !is_platform_admin(role)
 }
 
-/// Global fail-closed auth: every `/api/v1/*` route not whitelisted requires a valid JWT.
+/// Global fail-closed auth: every `/api/v1/*` route not on the committed public allowlist requires a
+/// credential (kanban t_1f29c01f).
 pub async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
 
-    // Only guard API routes; SSR pages / static assets are public.
-    if !path.starts_with("/api/") || is_public(&path) || is_internal(&path) {
+    // Only guard API routes; SSR pages / static assets are public. The served surfaces the router
+    // mounts (card/funnel pages, public lead + unlock posts, the tracking pixel, `/`, `/robots.txt`,
+    // `/admin/plans`) carry no tenant data — their census is in `auth::route_policy`'s module docs.
+    if !crate::auth::route_policy::is_api_path(&path) || is_public(&path) {
         return next.run(req).await;
+    }
+
+    // ── the internal surface (kanban t_1f29c01f) ─────────────────────────────────────────────
+    // These three routes are named in `route_policy::INTERNAL_ROUTES` and carry the app's own shared
+    // key. Before this they were a blanket bypass (`path.starts_with("/api/v1/internal/")` ->
+    // `next.run(req)`), so a NEW route under that prefix was anonymously reachable until its author
+    // remembered a key check. Now the key is required here at the boundary, in addition to the
+    // handler's own check, and an unnamed sibling under the prefix is an ordinary private route.
+    if is_internal(&path) {
+        return if presents_internal_key(&state, &req) {
+            next.run(req).await
+        } else {
+            reject(StatusCode::UNAUTHORIZED, "Authentication required")
+        };
     }
 
     let claims = match validate_jwt(&state, &req) {
@@ -263,5 +274,37 @@ mod tests {
         ] {
             assert!(!is_platform_admin(role), "{role} is not a platform admin");
         }
+    }
+
+    /// The boundary arm for `route_policy::INTERNAL_ROUTES` (kanban t_1f29c01f): the shared key is
+    /// compared length-independently, and a different-length or different-byte key never matches.
+    #[test]
+    fn the_internal_key_compare_is_exact() {
+        assert!(ct_eq("s3cret", "s3cret"));
+        assert!(!ct_eq("s3cret", "s3cre"));
+        assert!(!ct_eq("s3cre", "s3cret"));
+        assert!(!ct_eq("s3cret", "s3cres"));
+        assert!(!ct_eq("", "s3cret"));
+        // A prefix of the real key must not pass — the compare is on the whole value.
+        assert!(!ct_eq("s3cre", "s3cret"));
+        // An empty configured key is refused before the compare (see presents_internal_key).
+        assert!(ct_eq("", ""));
+    }
+
+    /// The public/internal split the boundary reads is the committed `route_policy` allowlist, not
+    /// a local array: this pins the delegation so the two cannot drift apart again.
+    #[test]
+    fn the_boundary_reads_the_committed_allowlist() {
+        assert!(is_public("/api/v1/health"));
+        assert!(!is_public("/api/v1/tenants"));
+        assert!(is_internal("/api/v1/internal/portfolio-sync"));
+        // ...and the blanket prefix bypass is gone: an unnamed sibling is NOT internal.
+        assert!(!is_internal("/api/v1/internal/whatever"));
+        // The routes that used to be caught by `path.starts_with` arms still are — by template.
+        assert!(is_public("/api/v1/checkout/session/abc"));
+        assert!(is_public("/api/v1/web-to-lead/configs/7/embed"));
+        assert!(is_public("/api/v1/kinetic/cards/7/gate"));
+        // ...but a longer sibling is now private.
+        assert!(!is_public("/api/v1/checkout/session/abc/refund"));
     }
 }
