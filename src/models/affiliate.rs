@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub struct Affiliate {
     /// The band that last set the standing rate. NULL when a person set the rate, or before any run.
     pub rate_band_id: Option<Uuid>,
     /// When the recompute last touched the standing rate.
-    pub rate_updated_at: Option<NaiveDateTime>,
+    pub rate_updated_at: Option<DateTime<Utc>>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: bool,
     pub is_visible: Option<bool>,
