@@ -2343,27 +2343,31 @@ function bindTenants() {}
 async function renderSettings() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
 
-  // The Default-Plan picker used to hard-code two plan slugs that exist on ONE install only
-  // (kanban t_c284c098): on any other install its value could not resolve. Offer the free tier of
-  // THIS install — the same source the Plans view already reads — so no slug literal is bound.
-  let freePlans = [];
-  try { freePlans = await api('/plans'); } catch(e) { freePlans = []; }
-  if (!Array.isArray(freePlans)) freePlans = freePlans.data || freePlans.plans || [];
-  freePlans = freePlans.filter(p => Number(p.price) === 0);
-  const defaultPlanOptions = freePlans.length
-    ? freePlans.map(p => `<option value="${x(p.slug)}">${x(p.name)}</option>`).join('')
-    : '<option value="">no free plan on this install</option>';
-
+  // (keep-working audit 2026-10-07) This screen used to render a "General Settings" card with a
+  // Default-Plan <select id="default-plan">, a "Max Tenants Per User" <input id="max-tenants">, a
+  // "Registration Open" toggle <span id="reg-open-toggle"> and a "Save Settings" <button>, and NOT
+  // ONE of them was wired: each id occurs only in its own markup (no reader anywhere in this file),
+  // the button has no handler (there is no `.matches()`/`.closest()` click delegation either) and
+  // bindSettings() was empty. There is no backend for any of the three either — no `max_tenants` /
+  // `registration_open` / `default_plan` column or admin_settings key exists in src/, and
+  // /api/v1/settings is the TENANT `{key,value}` store, not a platform config. A control that
+  // silently does nothing is worse than no control (David, t_00d3c751) — this app already removed
+  // `+ Add User` for the same reason — so the inert fields and the dead Save button are removed
+  // rather than faked. Making them real is a product decision: default plan / per-user tenant limit /
+  // registration-open all need a backend first.
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚡ System Settings</h1>
     <div class="card">
       <div class="card-header"><span class="card-title">General Settings</span></div>
-      <div class="form-group"><label class="form-label">Default Plan</label>
-        <select class="input" id="default-plan">${defaultPlanOptions}</select>
+      <div class="empty" style="padding:24px 12px">
+        <div class="icon">⚙️</div>
+        <div class="title">No platform-wide settings are exposed here yet</div>
+        <p style="color:var(--muted);font-size:13px;max-width:560px;margin:8px auto 0">
+          Plan configuration lives under <strong>Plans</strong> and per-customer controls under
+          <strong>Tenants</strong>. Platform-wide defaults (default plan, per-user tenant limit,
+          registration open) need a backend before they can be set from here.
+        </p>
       </div>
-      <div class="form-group"><label class="form-label">Max Tenants Per User</label><input class="input" id="max-tenants" type="number" value="5"></div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle on" id="reg-open-toggle"></span> Registration Open</label>
-      <button class="btn btn-primary btn-sm">Save Settings</button>
     </div>
   </div>`;
 }
