@@ -14,14 +14,14 @@
 //!
 //! # The census (re-measured 2026-10-08, from `api_router.rs` source)
 //!
-//! 189 `.route(..)` mounts / 188 unique paths, classified three ways:
+//! 191 `.route(..)` mounts / 190 unique paths, classified three ways:
 //!
 //! ```text
-//!   164 mounts  /api/**            163 unique after the duplicate `/api/v1/linkedin/auth`
+//!   166 mounts  /api/**            165 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     17        public            -> PUBLIC_ROUTES below (16 unique + the health pair)
+//!     18        public            -> PUBLIC_ROUTES below (16 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    143        private           -> require_auth: app JWT, tenant-status checked
+//!    145        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -32,9 +32,14 @@
 //!                                    keyed by a public slug.
 //! ```
 //!
-//! The profile-picture pair (`POST /api/v1/auth/avatar` + `GET /api/v1/auth/avatar/:user_id`,
-//! kanban t_ff948669) is the only movement since the first census: the write stays private and the
-//! read joins the public list below, because a rendered `<img src>` cannot present a bearer token.
+//! Two movements since the first census, both the same shape — an image the recipient's own client
+//! fetches with a bare `<img src>`, which cannot present a bearer token:
+//!
+//! * the profile-picture pair (`POST /api/v1/auth/avatar` + `GET /api/v1/auth/avatar/:user_id`,
+//!   kanban t_ff948669): the write stays private, the read joins the public list below;
+//! * the email-branding pair (`POST|DELETE /api/v1/settings/branding/logo` +
+//!   `GET /api/v1/branding/logo/:tenant_id`, kanban t_c06a32eb): same split, and the read is
+//!   fetched by a MAIL CLIENT, which has no session at all.
 //!
 //! **No route was found answering an anonymous caller by accident** — the `require_auth` gate was
 //! doing its job. The two changes this module makes are structural, and both close a default-allow
@@ -125,6 +130,16 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // answers 404. The UPLOAD twin (`POST /api/v1/auth/avatar`) is deliberately NOT here: writing a
     // picture is an authenticated action.
     "/api/v1/auth/avatar/:user_id",
+    // --- tenant email branding (kanban t_c06a32eb) ------------------------------
+    // The logo an account puts at the top of its transactional mail. A mail client fetches this with
+    // no credential whatsoever, so a token-gated logo would simply never appear — the same reason
+    // the avatar above is here. The route returns ONE thing: the image that tenant uploaded, keyed by
+    // an unguessable uuid, with the content type sniffed from the bytes at upload time
+    // (`handlers::branding_handler::get_logo`); it carries no tenant data, no credential and no row
+    // of customer information, and a tenant with no logo answers 404. The UPLOAD and DELETE twins
+    // (`/api/v1/settings/branding/logo`) are deliberately NOT here: writing a logo is an
+    // authenticated action against the caller's own tenant.
+    "/api/v1/branding/logo/:tenant_id",
 ];
 
 /// Internal (service-to-service) routes: reachable with the app's own shared key and nothing else.
@@ -244,9 +259,9 @@ mod tests {
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 189, "mounted route count moved");
+        assert_eq!(mounted.len(), 191, "mounted route count moved");
         assert_eq!(
-            api, 164,
+            api, 166,
             "/api/ mount count moved — update the census in the module docs"
         );
     }
@@ -309,6 +324,7 @@ mod tests {
             "/api/v1/affiliate/dashboard",
             "/api/v1/affiliate-payouts",
             "/api/v1/settings",
+            "/api/v1/settings/branding/logo",
             "/api/v1/tenant-settings",
             "/api/v1/dashboard",
             "/api/v1/analytics/overview",
@@ -361,6 +377,8 @@ mod tests {
             "/api/v1/webhooks/stripe",
             // a profile picture has to render in an `<img>`, which cannot carry a bearer token
             "/api/v1/auth/avatar/abc123",
+            // ...and a mail client has no session at all, so a TENANT LOGO cannot be gated either
+            "/api/v1/branding/logo/0a1b2c3d",
         ] {
             assert!(is_public_route(p), "{p} must stay reachable anonymously");
         }
@@ -369,6 +387,11 @@ mod tests {
         assert!(!is_public_route("/api/v1/auth/avatar"));
         assert!(!is_public_route("/api/v1/auth/avatar/abc/extra"));
         assert!(!is_public_route("/api/v1/auth/avatars/x"));
+        // the branding upload/remove twin, the collection path, and every longer shape stay private
+        assert!(!is_public_route("/api/v1/settings/branding/logo"));
+        assert!(!is_public_route("/api/v1/branding/logo"));
+        assert!(!is_public_route("/api/v1/branding/logo/abc/extra"));
+        assert!(!is_public_route("/api/v1/branding/logos/x"));
     }
 
     /// The internal surface is reachable ONLY with the shared key, so it must never be on the

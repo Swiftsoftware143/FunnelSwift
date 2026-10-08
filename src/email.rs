@@ -41,6 +41,12 @@ fn bound_vars<'a>(
     vars.insert("app_name", APP_NAME);
     vars.insert("app_url", APP_URL);
     vars.insert("login_url", APP_LOGIN_URL);
+    // Tenant branding (kanban t_c06a32eb) — DEFAULTS only: `render_template` overwrites these with
+    // the account's own values when the account has branding. Binding them here is what keeps the
+    // `bound_vars_cover_every_advertised_merge_field` contract true: an advertised field that no
+    // sender binds goes out as literal text.
+    vars.insert("brand_name", APP_NAME);
+    vars.insert("logo_url", "");
     vars
 }
 
@@ -157,27 +163,90 @@ pub(crate) fn with_support_footer(
     (text, html)
 }
 
-/// Look up + render a template (DB-backed, falling back to inline hardcoded content).
+/// Put the tenant's branding at the TOP of a rendered message (kanban t_c06a32eb).
+///
+/// The HTML part opens with the logo / brand-name header block; the plain-text part gets the brand
+/// name as a one-line header (a text part cannot carry an image). When the account HAS branding but
+/// the message has no HTML part at all — the inline arms in [`get_inline`] return `text` only — an
+/// HTML part is built from the text, escaped first, so the logo can actually render: the header is
+/// the whole point of the feature and a client with no HTML part has nowhere to put it.
+///
+/// A no-op for an account with no branding, which is what makes this additive: those renders are
+/// byte-identical to what they were before this feature existed.
+fn with_branding_header(
+    branding: Option<&crate::branding::Branding>,
+    text: Option<String>,
+    html: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let Some(b) = branding else {
+        return (text, html);
+    };
+    let logo = b.resolve_logo_url(APP_URL);
+    let header = b.header_html(logo.as_deref());
+    let html = match html {
+        Some(h) => Some(format!("{header}{h}")),
+        None => text.as_deref().map(|t| {
+            format!(
+                "{header}<div style=\"font:14px/1.6 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;white-space:pre-wrap\">{}</div>",
+                crate::branding::escape_html(t)
+            )
+        }),
+    };
+    let text = match (text, b.text_header()) {
+        (Some(t), h) if !h.is_empty() => Some(format!("{h}{t}")),
+        (t, _) => t,
+    };
+    (text, html)
+}
+
+/// Look up + render a template (DB-backed, falling back to inline hardcoded content) for ONE
+/// account, with that account's email branding applied.
+///
+/// This is the single funnel every transactional send in this app passes through — `credentials`
+/// (the new-account mail that carries the generated password), `password_reset`, and the two stored
+/// types — which is why the branding is applied HERE rather than at each send site: a template added
+/// later inherits it for free.
+///
+/// `brand_name` / `logo_url` join the merge map per render (they are per-account, so they cannot
+/// live in [`bound_vars`], which is `&'static str`): the account's own values when it has branding,
+/// the app's identity otherwise, so an admin-authored `{{brand_name}}` never goes out literally.
 async fn render_template(
     pool: &PgPool,
     aid: Uuid,
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
 ) -> (String, Option<String>, Option<String>) {
-    match get_db_template(pool, aid, template_type).await {
-        Ok(Some((subject, body, html_body))) => {
-            let subject = render(&subject, vars);
-            let body = body.map(|b| render(&b, vars));
-            let html = html_body.map(|h| render(&h, vars));
-            let (body, html) = with_support_footer(body, html);
-            (subject, body, html)
-        }
-        _ => {
-            let (subject, body, html) = get_inline(template_type, vars);
-            let (body, html) = with_support_footer(body, html);
-            (subject, body, html)
-        }
+    let branding = crate::branding::load(pool, aid).await;
+    let brand_name = branding
+        .as_ref()
+        .map(|b| b.brand_name.clone())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| APP_NAME.to_string());
+    let logo_url = branding
+        .as_ref()
+        .and_then(|b| b.resolve_logo_url(APP_URL))
+        .unwrap_or_default();
+
+    let mut all: std::collections::HashMap<&str, &str> =
+        std::collections::HashMap::with_capacity(vars.len() + 2);
+    for (k, v) in vars {
+        all.insert(k, v);
     }
+    all.insert("brand_name", &brand_name);
+    all.insert("logo_url", &logo_url);
+
+    let (subject, body, html) = match get_db_template(pool, aid, template_type).await {
+        Ok(Some((subject, body, html_body))) => (
+            render(&subject, &all),
+            body.map(|b| render(&b, &all)),
+            html_body.map(|h| render(&h, &all)),
+        ),
+        _ => get_inline(template_type, &all),
+    };
+
+    let (body, html) = with_branding_header(branding.as_ref(), body, html);
+    let (body, html) = with_support_footer(body, html);
+    (subject, body, html)
 }
 
 /// Send a template email for a specific tenant, resolving the Mailgun/SMTP config from the
@@ -411,10 +480,32 @@ mod tests {
         // was absent from this list, so the panel could not offer the type and an admin could not
         // edit the one mail every new customer receives.
         let advertised: [&[&str]; 4] = [
-            &["name", "email", "password", "login_url", "app_name"],
-            &["name", "token", "app_name"],
-            &["name", "email", "login_url", "app_name"],
-            &["name", "plan_name", "login_url", "app_name"],
+            &[
+                "name",
+                "email",
+                "password",
+                "login_url",
+                "app_name",
+                "brand_name",
+                "logo_url",
+            ],
+            &["name", "token", "app_name", "brand_name", "logo_url"],
+            &[
+                "name",
+                "email",
+                "login_url",
+                "app_name",
+                "brand_name",
+                "logo_url",
+            ],
+            &[
+                "name",
+                "plan_name",
+                "login_url",
+                "app_name",
+                "brand_name",
+                "logo_url",
+            ],
         ];
         let bound = bound_vars(vars(&[
             ("name", "n"),
@@ -463,6 +554,61 @@ mod tests {
                 "{field} advertised but bound by no sender"
             );
         }
+    }
+
+    #[test]
+    fn branding_is_bound_for_every_type_and_headerless_without_it() {
+        // kanban t_c06a32eb. `brand_name` / `logo_url` are advertised for every type, so they must
+        // be bound on every send path even for an account with no branding — otherwise an
+        // admin-authored `{{brand_name}}` reaches the recipient as literal text.
+        let v = bound_vars(vars(&[("name", "Ada")]));
+        assert_eq!(v.get("brand_name").copied(), Some(APP_NAME));
+        assert_eq!(v.get("logo_url").copied(), Some(""));
+        let out = render("Hi {{name}} — from {{brand_name}} {{logo_url}}!", &v);
+        assert!(unsubstituted(&out).is_empty(), "{out}");
+
+        // A branded account: the header goes on TOP of the HTML, the text part gets the name.
+        let b = crate::branding::Branding {
+            brand_name: "Giraudy Capital".to_string(),
+            brand_color: "#0ea5e9".to_string(),
+            logo_url: "/api/v1/branding/logo/abc?v=7".to_string(),
+        };
+        let (text, html) = with_branding_header(
+            Some(&b),
+            Some("Body".to_string()),
+            Some("<p>Body</p>".to_string()),
+        );
+        let html = html.unwrap();
+        assert!(html.starts_with("<div style=\"text-align:center"));
+        assert!(html.contains("<p>Body</p>"), "the original body survives");
+        assert!(html.contains("https://app.funnelswift.net/api/v1/branding/logo/abc?v=7"));
+        assert!(html.contains("Giraudy Capital"));
+        assert_eq!(text.unwrap(), "Giraudy Capital\n\nBody");
+
+        // ...and an account with NO branding is untouched, byte for byte.
+        let (text, html) = with_branding_header(
+            None,
+            Some("Body".to_string()),
+            Some("<p>Body</p>".to_string()),
+        );
+        assert_eq!(text.unwrap(), "Body");
+        assert_eq!(html.unwrap(), "<p>Body</p>");
+    }
+
+    #[test]
+    fn a_text_only_branded_message_gains_an_html_part_carrying_the_logo() {
+        // The inline arms return `text` only. Branding that never appears is not branding, so an
+        // HTML part is built — with the text ESCAPED into it, never injected as markup.
+        let b = crate::branding::Branding {
+            brand_name: "Acme".to_string(),
+            brand_color: String::new(),
+            logo_url: "/api/v1/branding/logo/abc?v=1".to_string(),
+        };
+        let (_, html) = with_branding_header(Some(&b), Some("<b>hi</b>".to_string()), None);
+        let html = html.expect("an html part is built so the logo can render");
+        assert!(html.contains("<img"));
+        assert!(html.contains("&lt;b&gt;hi&lt;/b&gt;"));
+        assert!(!html.contains("<b>hi</b>"));
     }
 
     #[test]

@@ -243,6 +243,11 @@ Every type also binds `{{app_name}}` (`FunnelSwift`), `{{app_url}}` (`https://ap
 `{{login_url}}` (`https://app.funnelswift.net/login`) — the same names
 `GET /api/v1/admin/email-templates/types` advertises, so a body built from that list always renders.
 
+Every type also binds `{{brand_name}}` and `{{logo_url}}` (kanban t_c06a32eb): the *recipient account's*
+email branding, resolved on every send by `crate::email::render_template` and overwritten with the
+account's own values when the account has set any. An account with no branding renders the app name and
+an empty logo URL, so neither token ever reaches a recipient literally. See *Email Branding* below.
+
 **Only the double-brace form is a placeholder.** `{{name}}` is substituted; `{name}` is not — it reaches
 the recipient verbatim. The renderer logs a warning naming every placeholder left unsubstituted, so a
 half-rendered email appears in the app log instead of going out silently (kanban t_2349e6ce).
@@ -278,6 +283,28 @@ the table above. `credentials` also binds **`{{password}}`** — the generated f
 mail is the customer's only way in: signup collects a name and an email and nothing else, and the password
 is generated server-side (`send_credentials_email`, `src/email.rs`). A body may only use the fields its own
 type binds; any other brace token reaches the recipient literally.
+
+### Email Branding (per account)
+
+Each ACCOUNT can put its own logo and display name at the top of the transactional mail it receives, so a
+business's users get that business's mail. David 2026-10-08 (kanban t_c06a32eb): *"even though these are
+transactional emails he wants the branding uniform, with somewhere to put a logo"* — per tenant, not per
+app.
+
+| Piece | Where |
+|---|---|
+| `brand_name`, `brand_color`, `logo_url` | the account's own `tenant_settings` row, key `email_branding` — one jsonb document, read and written by `GET`/`PUT /api/v1/settings` (the same store the tenant console's Settings screen already used) |
+| the logo's BYTES | `tenant_logos`, one row per tenant (migration 099). Same storage decision as `user_avatars`: the container binds only its release binary and `migrations/`, so a run-time file would die with the next `docker restart`. `crate::image_store` is the ONE accept/store/serve path, shared with the profile picture |
+| `POST /api/v1/settings/branding/logo` | authenticated multipart upload against the caller's OWN tenant; the ONLY writer of `logo_url`, which it version-stamps (`?v=<epoch>`) so a browser/CDN cache key moves with the bytes |
+| `DELETE /api/v1/settings/branding/logo` | removes the bytes and clears only `logo_url`, keeping name/colour |
+| `GET /api/v1/branding/logo/:tenant_id` | PUBLIC by design (`auth::route_policy::PUBLIC_ROUTES`) — a mail client renders `<img src>` with no credential at all, so a token-gated logo would simply never appear. It returns one thing: the image that tenant uploaded, keyed by an unguessable uuid; 404 when there is none |
+| `PUT /api/v1/settings` (`key = email_branding`) | writes `brand_name` / `brand_color`, validated there (name ≤ 60 chars and no control characters; colour `#rgb` / `#rrggbb` / `#rrggbbaa`). An OMITTED `logo_url` inherits the stored value, so a panel echo cannot un-reference a logo |
+| the renderer | `src/branding.rs` + `crate::email::render_template`: the header block is prepended to the HTML part (and the brand name to the text part) for every type, in the one funnel all four senders pass through |
+
+Authorization is that of every other tenant setting (any authenticated member of that account). An
+account with no branding sends **byte-identical** mail to what it sent before the feature existed — the
+header is only added when a name or a logo is actually set. The admin panel's *Send test email* button
+is a diagnostic that renders no template and is deliberately not branded; the customer-facing mails are.
 
 ### Account & Plan Flow (there is no purchase flow)
 

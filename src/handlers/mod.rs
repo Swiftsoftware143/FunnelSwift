@@ -12,6 +12,8 @@ pub mod affiliate_product_handler;
 pub mod affiliate_rate_band_handler;
 pub mod affiliate_referral_handler;
 pub mod affiliate_tracking_handler;
+// Per-tenant email branding: the logo upload/remove/serve arms (kanban t_c06a32eb).
+pub mod branding_handler;
 pub mod bulk_handler;
 pub mod campaigns_handler;
 pub mod card_analytics_handler;

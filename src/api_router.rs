@@ -15,24 +15,27 @@ use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
     affiliate_onboarding_handler, affiliate_payout_handler, affiliate_portal_handler,
     affiliate_product_handler, affiliate_rate_band_handler, affiliate_referral_handler,
-    affiliate_tracking_handler, bulk_handler, campaigns_handler, checkout_handler,
-    coreswift_integration_handler, coreswift_push, cross_app_webhook_handler, dashboard_handler,
-    email_template_handler, funnel_handler, incentiveswift_handler, insight_handler,
-    kinetic_handler, lead_handler, linkedin, linkedin_auth_handler, ocr, plan_handler,
-    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    affiliate_tracking_handler, branding_handler, bulk_handler, campaigns_handler,
+    checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
+    dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
+    insight_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler, ocr,
+    plan_handler, portfolio_handler, product_category_handler, provider_keys_handler,
+    public_signup_handler, qr_handler, seo_handler, settings_handler, site_handler,
+    site_settings_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 
-/// The request-body ceiling for `POST /api/v1/auth/avatar` (kanban t_ff948669).
+/// The request-body ceiling for BOTH image uploads — the profile picture
+/// (`POST /api/v1/auth/avatar`, kanban t_ff948669) and the tenant email logo
+/// (`POST /api/v1/settings/branding/logo`, kanban t_c06a32eb).
 ///
 /// axum's default body limit is 2 MB, which a 2 MB image plus the multipart envelope would exceed —
-/// so a user picking a picture that the handler itself accepts would still be refused, with a bare
-/// 413. A little headroom makes the two ceilings agree: the envelope fits, and the handler's own
-/// 2 MB check on the decoded image is the one that actually decides.
-const AVATAR_BODY_LIMIT_BYTES: usize = 3 * 1024 * 1024;
+/// so a customer picking a picture that the handler itself accepts would still be refused, with a
+/// bare 413. ONE constant for both uploads keeps the two surfaces from drifting: the envelope fits,
+/// and `image_store::MAX_IMAGE_BYTES` on the decoded image is the check that actually decides.
+const IMAGE_BODY_LIMIT_BYTES: usize = 3 * 1024 * 1024;
 
 /// `GET /api/health` (and `/api/v1/health`) — liveness + the schema gate (kanban t_c3823fd1).
 ///
@@ -173,11 +176,23 @@ pub fn create_router(
         // design — an `<img src>` cannot carry a bearer token (see auth::route_policy::PUBLIC_ROUTES).
         .route(
             "/api/v1/auth/avatar",
-            post(upload_avatar).layer(axum::extract::DefaultBodyLimit::max(
-                AVATAR_BODY_LIMIT_BYTES,
-            )),
+            post(upload_avatar).layer(axum::extract::DefaultBodyLimit::max(IMAGE_BODY_LIMIT_BYTES)),
         )
         .route("/api/v1/auth/avatar/:user_id", get(get_avatar))
+        // Tenant email branding (kanban t_c06a32eb): the logo the account puts on its transactional
+        // mail. The upload/remove are authenticated writes owned by the caller's OWN tenant (no
+        // path id to spoof); the GET is public by design — a mail client renders an `<img src>` with
+        // no credential at all (see auth::route_policy::PUBLIC_ROUTES).
+        .route(
+            "/api/v1/settings/branding/logo",
+            post(branding_handler::upload_logo)
+                .delete(branding_handler::delete_logo)
+                .layer(axum::extract::DefaultBodyLimit::max(IMAGE_BODY_LIMIT_BYTES)),
+        )
+        .route(
+            "/api/v1/branding/logo/:tenant_id",
+            get(branding_handler::get_logo),
+        )
         .route(
             "/api/v1/leads",
             get(lead_handler::list_leads).post(lead_handler::create_lead),

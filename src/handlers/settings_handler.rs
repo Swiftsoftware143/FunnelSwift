@@ -72,6 +72,31 @@ pub async fn update_settings(
             .map_err(|e| AppError::Internal(format!("Failed to seal email credentials: {e}")))?;
     }
 
+    // Email branding (kanban t_c06a32eb). The document has two owners: `brand_name` /
+    // `brand_color` are written HERE (and validated here), while `logo_url` belongs to the logo
+    // endpoints. A panel echo that omits `logo_url` must not un-reference a logo that is still
+    // stored, so an omitted key INHERITS the stored value; an explicit "" (= "no logo") is kept.
+    if req.key == crate::branding::SETTINGS_KEY {
+        crate::branding::validate_value(&value).map_err(AppError::BadRequest)?;
+        if let Some(obj) = value.as_object_mut() {
+            if !obj.contains_key("logo_url") {
+                let stored_logo: Option<String> = sqlx::query_scalar(
+                    "SELECT value->>'logo_url' FROM tenant_settings WHERE tenant_id = $1 AND key = $2",
+                )
+                .bind(tenant_id)
+                .bind(crate::branding::SETTINGS_KEY)
+                .fetch_optional(&state.pool)
+                .await
+                .ok()
+                .flatten();
+                obj.insert(
+                    "logo_url".to_string(),
+                    serde_json::Value::String(stored_logo.unwrap_or_default()),
+                );
+            }
+        }
+    }
+
     // tenant_settings.id is NOT NULL with no default — the insert omitted it, so every
     // settings save died with "null value in column id violates not-null constraint".
     sqlx::query(

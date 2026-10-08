@@ -10,9 +10,8 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    body::Body,
     extract::{Multipart, Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::Response,
     Json,
 };
@@ -385,32 +384,11 @@ pub async fn update_profile(
     Ok(Json(json!({"status": "ok"})))
 }
 
-/// The most bytes an uploaded profile picture may carry. The router limits the upload route to a
-/// little more than this (`DefaultBodyLimit`) so an oversized body is refused before it is buffered,
-/// and the handler checks the decoded length as well.
-const AVATAR_MAX_BYTES: usize = 2 * 1024 * 1024;
-
-/// Recognise an image by its MAGIC BYTES, never by the caller's `Content-Type`.
-///
-/// These bytes are stored and later served back from our own origin with the type this returns, so
-/// trusting the client's header would let a caller upload HTML or JavaScript labelled `image/png`
-/// and have the app serve it as an image on a FunnelSwift URL. SVG is deliberately NOT accepted: it
-/// is a scriptable document rather than a bitmap, and this surface carries no HTML sanitiser.
-fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
-        return Some("image/png");
-    }
-    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        return Some("image/jpeg");
-    }
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return Some("image/gif");
-    }
-    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
-        return Some("image/webp");
-    }
-    None
-}
+// The image capability itself — the 2 MB cap, the magic-byte sniff, the multipart read and the
+// stored-bytes response — lives in `crate::image_store` (kanban t_c06a32eb), the ONE
+// accept/store/serve path, shared with the tenant email logo. This handler keeps only what is
+// specific to a PROFILE PICTURE: whose picture it is, which table holds it, and the version-stamped
+// URL written onto `users.avatar_url`.
 
 /// `POST /api/v1/auth/avatar` — store the caller's own profile picture and return its URL.
 ///
@@ -419,8 +397,8 @@ fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
 /// a bind-mounted container that exposes ONLY its release binary and `migrations/`: a file written
 /// at run time lives inside the container and dies on the next `docker restart`, and no host webroot
 /// could serve it either. The image is therefore held in `user_avatars` (one row per user, migration
-/// 098) and streamed back by [`get_avatar`]. The multipart field handling is the fleet's existing
-/// one — read the first part that carries a filename, cap the size, then persist.
+/// 098) and streamed back by [`get_avatar`]. The multipart read, the size cap and the magic-byte
+/// sniff are `crate::image_store`'s, shared with the tenant email logo (kanban t_c06a32eb).
 pub async fn upload_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -429,36 +407,9 @@ pub async fn upload_avatar(
     let user_id = Uuid::parse_str(&auth.user_id)
         .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
 
-    let mut stored: Option<(&'static str, Vec<u8>)> = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| AppError::BadRequest(format!("Multipart error: {e}")))?
-    {
-        // Only a part that carries a filename is the picture; a form with extra text parts still works.
-        if field.file_name().is_none() {
-            continue;
-        }
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| AppError::BadRequest(format!("Failed to read the image: {e}")))?;
-        if data.is_empty() {
-            return Err(AppError::BadRequest("The image file is empty".into()));
-        }
-        if data.len() > AVATAR_MAX_BYTES {
-            return Err(AppError::BadRequest(
-                "The image must be 2 MB or smaller".into(),
-            ));
-        }
-        let kind = sniff_image(&data)
-            .ok_or_else(|| AppError::BadRequest("Upload a PNG, JPEG, GIF or WebP image".into()))?;
-        stored = Some((kind, data.to_vec()));
-        break;
-    }
-
-    let (content_type, bytes) =
-        stored.ok_or_else(|| AppError::BadRequest("No image was uploaded".into()))?;
+    // The ONE shared image path (crate::image_store): the first part carrying a filename, the 2 MB
+    // cap, and the magic-byte sniff to PNG / JPEG / GIF / WebP.
+    let (content_type, bytes) = crate::image_store::read_uploaded_image(&mut multipart).await?;
 
     sqlx::query(
         r#"INSERT INTO user_avatars (user_id, content_type, bytes, updated_at)
@@ -509,15 +460,9 @@ pub async fn get_avatar(
     let (content_type, bytes) =
         row.ok_or_else(|| AppError::NotFound("No such profile picture".into()))?;
 
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        // `private`: the browser may reuse it for the session; no shared cache is invited to keep
-        // one customer's picture. `nosniff` pins the type to the one sniffed above.
-        .header(header::CACHE_CONTROL, "private, max-age=300")
-        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .body(Body::from(bytes))
-        .map_err(|e| AppError::Internal(format!("Could not build the image response: {e}")))
+    // The shared response arm (crate::image_store): the sniffed type pinned, `nosniff`, and
+    // caching that never invites a shared cache to keep one customer's picture.
+    crate::image_store::image_response(content_type, bytes)
 }
 
 pub async fn change_password(

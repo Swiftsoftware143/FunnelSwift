@@ -318,15 +318,21 @@ pub async fn get_template(
 ///
 /// `welcome` / `purchase_confirmed` stay listed (their rows exist and are editable) but their
 /// description says plainly that nothing sends them, rather than implying mail that never goes out.
+///
+/// `brand_name` / `logo_url` (kanban t_c06a32eb) are advertised for EVERY type because the render
+/// funnel binds them on every send: the recipient's account sets its branding in the tenant console
+/// (Settings -> Email branding) and `crate::email::render_template` adds the header block whether or
+/// not the copy mentions the fields. An account with no branding renders the app's own name and an
+/// empty logo URL, so `{{brand_name}}` still never reaches a recipient literally.
 pub async fn list_template_types(
     user: crate::auth::middleware::AuthUser,
 ) -> Result<Json<Vec<serde_json::Value>>, AppError> {
     require_platform_admin(&user)?;
     Ok(Json(vec![
-        serde_json::json!({"type": "credentials", "description": "Sent when an account is created (signup, or an admin adds a user) — carries the generated first password", "merge_fields": ["name", "email", "password", "login_url", "app_name"]}),
-        serde_json::json!({"type": "password_reset", "description": "Sent when a user requests a password reset — carries the reset code", "merge_fields": ["name", "token", "app_name"]}),
-        serde_json::json!({"type": "welcome", "description": "Stored only — no sender in this app reaches it; signup sends `credentials`", "merge_fields": ["name", "email", "login_url", "app_name"]}),
-        serde_json::json!({"type": "purchase_confirmed", "description": "Stored only — no sender in this app (there is no in-app checkout)", "merge_fields": ["name", "plan_name", "login_url", "app_name"]}),
+        serde_json::json!({"type": "credentials", "description": "Sent when an account is created (signup, or an admin adds a user) — carries the generated first password", "merge_fields": ["name", "email", "password", "login_url", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "password_reset", "description": "Sent when a user requests a password reset — carries the reset code", "merge_fields": ["name", "token", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "welcome", "description": "Stored only — no sender in this app reaches it; signup sends `credentials`", "merge_fields": ["name", "email", "login_url", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "purchase_confirmed", "description": "Stored only — no sender in this app (there is no in-app checkout)", "merge_fields": ["name", "plan_name", "login_url", "app_name", "brand_name", "logo_url"]}),
     ]))
 }
 

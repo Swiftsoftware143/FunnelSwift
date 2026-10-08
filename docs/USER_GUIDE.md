@@ -81,10 +81,38 @@ Transactional emails are rendered from database-stored templates in `email_templ
 | `welcome` | **Not sent by any code path** — stored and editable, but nothing sends it; your new-account email is `credentials` | `{{name}}`, `{{email}}` |
 | `purchase_confirmed` | **Not sent — there is no payment flow**; `send_purchase_confirmed_email()` has no caller | `{{name}}`, `{{plan_name}}` |
 
-All types also bind `{{app_name}}`, `{{app_url}}` and `{{login_url}}`. Placeholders must be written with
+All types also bind `{{app_name}}`, `{{app_url}}`, `{{login_url}}`, `{{brand_name}}` and
+`{{logo_url}}` — the last two are your workspace's own branding (see *Email Branding* below).
+Placeholders must be written with
 **double braces** — `{name}` is treated as literal text and is sent to the recipient as-is.
 
 Admins can edit these templates in the admin panel (`Email Templates`) — modify subject lines, the plain-text body and the HTML body (two separate boxes, so neither overwrites the other), and tick *Default for this type* to make a template the one that type's emails are rendered from. The panel lists the merge fields each type supports (read from `GET /api/v1/admin/email-templates/types`), but the editor is plain text: the placeholders are typed by hand.
+
+### Email Branding
+
+Every transactional email your workspace sends can carry **your** logo and display name instead of the
+app's. Set it once in **Settings → Email branding**:
+
+- **Brand display name** — the name printed at the top of the message.
+- **Brand colour** — the rule under the header.
+- **Logo** — a PNG, JPEG, GIF or WebP, 2 MB or smaller. It sits above every message, so pick one that
+  still reads small (about 56 px tall).
+
+How it behaves:
+
+- Branding is **per workspace**, and it applies to *every* transactional email — the sign-in details
+  sent to a new user, and password-reset mail. The header is added by the renderer, so you do not have
+  to edit any template to get it.
+- A message body may also use `{{brand_name}}` and `{{logo_url}}` if you want the branding inline.
+- **Nothing changes until you set it.** A workspace with no branding sends exactly the mail it always
+  sent: the app's own name and no header.
+- The very first email of a brand-new account goes out before that account has had a chance to set a
+  logo, so it carries the app's own identity.
+- Removing the logo keeps your display name and colour (they are separate fields).
+
+These are the same endpoints the panel card calls, if you script against them:
+`PUT /api/v1/settings` with `{key:"email_branding"}`, `POST|DELETE /api/v1/settings/branding/logo`, and
+the public `GET /api/v1/branding/logo/:tenant_id` a mail client fetches (no session needed).
 
 ## Affiliate Program
 

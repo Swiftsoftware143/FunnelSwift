@@ -244,7 +244,7 @@ var helpContent={
   "apr":'<h4>Affiliate Products</h4><p>Products that your affiliates can promote. Each product has a name, price, and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
   "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own provider key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Email</strong> — SMTP / Mailgun / SendGrid / Sendiio sending</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
   "webhooks":'<h4>Webhooks</h4><p>Your own endpoints, so other software can be told what happens here. Each webhook has a name, a URL and the list of events it is registered for.</p><ul><li><strong>+ Add Webhook</strong> &mdash; name it, paste an <code>https://</code> URL (private, loopback and unresolvable hosts are refused) and list the events</li><li><strong>Edit</strong> &mdash; rename it, retarget the URL, change its events or switch it off</li><li><strong>Test</strong> &mdash; posts a one-off test payload and reports the HTTP status your endpoint answered</li><li><strong>Log</strong> &mdash; the delivery history: when each attempt was made, the event, the status it got back and which attempt it was</li><li><strong>Del</strong> &mdash; removes the webhook</li></ul><p><strong>Deliveries:</strong> the events you register fire automatically &mdash; <code>lead.created</code> (any captured lead: web form, Kinetic card, console or affiliate) and <code>tag.updated</code>. Only <strong>Active</strong> webhooks are called. A failed delivery is retried three times before it is recorded as failed.</p>',
-  "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li></ul>',
+  "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li><li><strong>Email branding</strong> — Upload a logo and set the display name every transactional email from this workspace carries (sign-in details, password reset)</li></ul>',
   "stags":'<h4>System Tags</h4><p>Tags an <strong>admin</strong> creates once — every tenant sees them in its Tags list.</p><ul><li><strong>Admin only</strong> — create, rename, recolor, delete</li><li><strong>No cross-app targets</strong> — a System Tag does not create accounts or contacts in other Swift apps</li></ul>',
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
   "plans":'<h4>Plans</h4><p>Manage subscription plans, pricing, and feature toggles. Each plan is a set of permissions that controls what features tenants can use.</p><ul><li><strong>Free Plan</strong> — 1 card, 8 templates, basic features</li><li><strong>Paid Plans</strong> — Customize card limits, templates, and features per tier</li><li><strong>Plan Features Editor</strong> — Toggle 12+ features per plan (custom colors, video, analytics, etc.)</li></ul>',
@@ -3412,13 +3412,64 @@ function UPF(){
     .catch(function(e){ pfMsg("pf-avmsg",(e&&e.message)||"Upload failed","me"); });
 }
 
+/* === Email branding (kanban t_c06a32eb) =====================================================
+   The logo + brand name every transactional email from THIS workspace carries (the sign-in details
+   at signup, the password reset). Two writes, two owners:
+     * brand_name / brand_color -> PUT /api/v1/settings {key:"email_branding"} (validated server-side)
+     * logo_url                -> POST|DELETE /api/v1/settings/branding/logo (the only writer)
+   The server keeps the stored logo_url when the Save below posts a document without it, so a stale
+   echo can never un-reference a logo that is still there. */
+function LBM(t,kind){
+  var m=$("lm-brand-msg"); if(!m) return;
+  m.style.color=(kind==="e"?"#dc2626":(kind==="s"?"#16a34a":"#64748b"));
+  m.textContent=t;
+}
+function SLB(){
+  var n=(($("lm-bn")||{}).value||"").trim(), c=(($("lm-bc")||{}).value||"#4f46e5");
+  LBM("Saving...","i");
+  api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"email_branding",value:{brand_name:n,brand_color:c}})})
+    .then(function(){ LBM("Branding saved","s"); })
+    .catch(function(e){ LBM((e&&e.message)||"Could not save","e"); });
+}
+function ULB(){
+  var f=$("lm-logo"), file=f&&f.files?f.files[0]:null;
+  if(!file){ LBM("Choose an image first","e"); return; }
+  if(file.size>2*1024*1024){ LBM("That image is larger than 2 MB","e"); return; }
+  var fd=new FormData(); fd.append("file",file);
+  LBM("Uploading...","i");
+  fetch("/api/v1/settings/branding/logo",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd})
+    .then(function(r){
+      return r.text().then(function(t){
+        var d=null; try{ d=JSON.parse(t); }catch(err){}
+        if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
+        return d||{};
+      });
+    })
+    .then(function(d){
+      var im=$("lm-logo-prev");
+      if(im&&d.logo_url){ im.src=d.logo_url; im.style.display="block"; }
+      if($("lm-logo")) $("lm-logo").value="";
+      LBM("Logo uploaded","s");
+    })
+    .catch(function(e){ LBM((e&&e.message)||"Upload failed","e"); });
+}
+function DLB(){
+  LBM("Removing...","i");
+  api("/api/v1/settings/branding/logo",{method:"DELETE"})
+    .then(function(){
+      var im=$("lm-logo-prev"); if(im){ im.style.display="none"; im.removeAttribute("src"); }
+      LBM("Logo removed","s");
+    })
+    .catch(function(e){ LBM((e&&e.message)||"Could not remove the logo","e"); });
+}
+
 function LM(){
   api("/api/v1/settings").then(function(d){
     /* kanban t_619533e2: this screen reads and writes the CALLER'S OWN tenant_settings row, so it
        is a tenant screen and its heading has to say so. The old copy ("Global Settings" /
        "System-wide configuration") described the platform console, which is GET/PUT
        /api/v1/admin/site in www-admin — not this. */
-    $("ct").innerHTML='<div class="cc"><h3>Settings</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">Your card subdomain, your custom domain and your lead pipeline.</p><div id="lm-list"></div></div>';
+    $("ct").innerHTML='<div class="cc"><h3>Settings</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">Your card subdomain, your custom domain, your lead pipeline and your email branding.</p><div id="lm-list"></div></div>';
     
     var list=$("lm-list");
     var sd=d.find(function(s){return s.key==="subdomain"})||{value:"ss"};
@@ -3442,6 +3493,35 @@ function LM(){
     var stagesDisp=Array.isArray(lsVal)?lsVal.join(" → "):String(lsVal);
     lsDiv.appendChild(El("p",{style:"color:#6366f1;font-size:12px;margin-top:8px;font-weight:500"},stagesDisp));
     list.appendChild(lsDiv);
+
+    // Email branding (kanban t_c06a32eb). The document lives in tenant_settings under
+    // `email_branding`, so this screen renders the values the server just returned — never a
+    // hardcoded default — and the logo preview is the URL the upload route handed back.
+    var brRaw=d.find(function(s){return s.key==="email_branding"});
+    var br=(brRaw&&brRaw.value&&typeof brRaw.value==="object")?brRaw.value:{};
+    var color=/^#[0-9a-fA-F]{6}$/.test(br.brand_color||"")?br.brand_color:"#4f46e5";
+    var ebDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
+    ebDiv.innerHTML='<strong style="font-size:13px">Email branding</strong>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">The logo and name every transactional email from this workspace carries — the sign-in details sent to a new user, and password resets.</p>'
+      +'<div class="fld"><label style="font-size:12px">Brand display name</label><input id="lm-bn" value="'+X(br.brand_name||"")+'" placeholder="Your business name" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"></div>'
+      +'<div class="fld"><label style="font-size:12px">Brand colour</label><input id="lm-bc" type="color" value="'+X(color)+'" style="width:64px;height:30px;padding:1px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"></div>'
+      +'<div id="lm-logo-wrap"></div>';
+    list.appendChild(ebDiv);
+    // Everything below is APPENDED after the last markup write on this parent: a re-parse recreates
+    // children without their property-assigned handlers (the t_7caf7873 trap).
+    var wrap=$("lm-logo-wrap");
+    var prev=El("img",{id:"lm-logo-prev",style:"max-height:44px;max-width:180px;display:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px;background:#fff"});
+    if(br.logo_url){ prev.src=br.logo_url; prev.style.display="block"; }
+    wrap.appendChild(prev);
+    wrap.appendChild(El("input",{id:"lm-logo",type:"file",accept:"image/png,image/jpeg,image/gif,image/webp",style:"font-size:12px;display:block;margin-top:8px"}));
+    var ebRow=El("div",{style:"display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"});
+    ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ULB();}},"Upload logo"));
+    var ebRm=El("button",{"class":"btn btn-sm btn-o",onclick:function(){DLB();}},"Remove logo");
+    if(!br.logo_url) ebRm.style.display="none";
+    ebRow.appendChild(ebRm);
+    ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){SLB();}},"Save branding"));
+    ebRow.appendChild(El("span",{id:"lm-brand-msg",style:"font-size:11px;color:#64748b"}));
+    wrap.appendChild(ebRow);
   });
 }
 /* === Updated group edit — handle system flag === */
