@@ -77,29 +77,27 @@
       nav .links{display:none}
       .features{grid-template-columns:1fr}
       footer .container{grid-template-columns:1fr}
-/* Signup Modal */
-.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
-.modal-overlay.active{display:flex}
-.modal-box{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative}
-.modal-box h2{font-size:22px;font-weight:700;color:#111827;margin-bottom:4px}
-.modal-box .subtitle{color:#6b7280;font-size:13px;margin-bottom:20px}
-.modal-close{position:absolute;top:16px;right:16px;background:none;border:none;font-size:22px;color:#9ca3af;cursor:pointer}
-.modal-close:hover{color:#111827}
-.modal-box label{display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px;margin-top:12px}
-.modal-box input{width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:10px;font-size:14px;transition:border-color .2s;box-sizing:border-box}
-.modal-box input:focus{outline:none;border-color:var(--primary,#f27f2f);box-shadow:0 0 0 3px rgba(242,127,47,0.1)}
-.modal-error{color:#ef4444;font-size:12px;margin-top:8px;display:none}
-.modal-error.show{display:block}
-.modal-success{color:#10b981;font-size:13px;margin-top:8px;display:none;text-align:center}
-.modal-success.show{display:block}
-.btn-modal{width:100%;padding:12px;background:linear-gradient(135deg,#f27f2f,#e06e1a);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
-.btn-modal:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(242,127,47,0.4)}
-.btn-modal:disabled{opacity:0.6;cursor:not-allowed;transform:none}
-.modal-spinner{display:none;width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.modal-footer{text-align:center;margin-top:12px;font-size:12px;color:#9ca3af}
-.modal-footer a{color:var(--primary,#f27f2f);text-decoration:none;font-weight:600}
-.modal-footer a:hover{text-decoration:underline}
+    }
+    /* kanban t_acf7d068: the fixed consent banner is anchored to the viewport bottom, so on
+       short/narrow windows it parks over the hero signup CTA (measured live: 800x600 banner
+       443..600 vs CTA 423..479; 390x640 banner 438..640 vs CTA 433..487) and a real click lands
+       on the banner - the button "does nothing". The CTA must NOT be z-indexed above the banner
+       (that would bury the banner's own Accept buttons), so tighten the hero band instead so the
+       button clears the banner on arrival. Height-gated: tall phones (390x844) and desktop
+       heights (>=681px) are untouched. */
+    @media(max-height:680px){
+      .hero{padding:26px 0 30px}
+      .hero h1{font-size:30px;margin-bottom:8px}
+      .hero p{font-size:15px;margin-bottom:16px}
+    }
+    @media(max-height:680px) and (max-width:767px){
+      .hero{padding:20px 0 26px}
+      .hero h1{font-size:22px;margin-bottom:6px}
+      .hero p{font-size:13px;margin-bottom:12px}
+    }
+    @media(max-height:680px) and (max-width:359px){
+      .hero h1{font-size:19px}
+      .hero p{font-size:12px;margin-bottom:10px}
     }
   </style>
 
@@ -386,67 +384,15 @@ document.querySelectorAll('.animate-in').forEach(function(el) {
 });
 </script>
 
-<!-- Signup Modal -->
-<div class="modal-overlay" id="signupModal">
-<div class="modal-box">
-<button class="modal-close" onclick="closeSignupModal()">&times;</button>
-<h2>Create Your Free Account</h2>
-<p class="subtitle">Start capturing and routing leads in minutes. No credit card required.</p>
-<form onsubmit="handleSignup(event)">
-<label>Name *</label>
-<input type="text" id="signupName" placeholder="Your full name" required>
-<label>Email *</label>
-<input type="email" id="signupEmail" placeholder="you@example.com" required>
-<label>Password *</label>
-<input type="password" id="signupPassword" placeholder="Min 8 characters" minlength="8" required>
-<div class="modal-error" id="signupError"></div>
-<div class="modal-success" id="signupSuccess"></div>
-<button type="submit" class="btn-modal" id="signupBtn">
-<span id="signupBtnText">Create Free Account</span>
-<div class="modal-spinner" id="signupBtnSpinner"></div>
-</button>
-</form>
-<p class="modal-footer">Already have an account? <a href="https://app.funnelswift.net/login">Sign In</a></p>
-</div>
-</div>
-
-<script>
-function openSignupModal(){document.getElementById('signupModal').classList.add('active')}
-function closeSignupModal(){document.getElementById('signupModal').classList.remove('active');document.getElementById('signupError').classList.remove('show')}
-async function handleSignup(e){
-  e.preventDefault();
-  const btn=document.getElementById('signupBtn');const btnText=document.getElementById('signupBtnText');const spinner=document.getElementById('signupBtnSpinner');const err=document.getElementById('signupError');
-  const name=document.getElementById('signupName').value.trim();
-  const email=document.getElementById('signupEmail').value.trim();
-  const password=document.getElementById('signupPassword').value;
-  err.classList.remove('show');
-  if(!email||!password||!name){err.textContent='Please fill in all fields';err.classList.add('show');return}
-  if(password.length<8){err.textContent='Password must be at least 8 characters';err.classList.add('show');return}
-  btn.disabled=true;btnText.textContent='Creating...';spinner.style.display='inline-block';
-  try{
-    const body={email,password,name,tenant_name:name};
-    const res=await fetch('/api/v1/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const data=await res.json();
-    if(!res.ok||!data.token){err.textContent=data.message||data.error||'Registration failed';err.classList.add('show');btn.disabled=false;btnText.textContent='Create Free Account';spinner.style.display='none';return}
-    localStorage.setItem("ws_fs_token",data.token);
-    /* kanban t_a724790f: hand the session over in the URL FRAGMENT. A fragment is never sent
-       to the server, so nginx/Cloudflare cannot record it; the previous "?token=" form wrote a
-       live 24h session JWT into the 14-day access log on every signup. The app origin
-       (app.funnelswift.net) reads location.hash before its auth guard runs. */
-    window.location.href="https://app.funnelswift.net/#token="+encodeURIComponent(data.token);
-  }catch(ex){err.textContent='Network error. Please try again.';err.classList.add('show');btn.disabled=false;btnText.textContent='Create Free Account';spinner.style.display='none'}
-}
-</script>
-
-<div id="cookie-consent" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1e293b;color:#e2e8f0;padding:14px 24px;z-index:99999;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 -4px 12px rgba(0,0,0,.3);font-family:system-ui,sans-serif">
+<div id="cookie-consent" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1e293b;color:#e2e8f0;padding:10px 18px;z-index:99999;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 -4px 12px rgba(0,0,0,.3);font-family:system-ui,sans-serif">
   <div style="flex:1;min-width:250px">
-    <p style="margin:0;font-size:13px;line-height:1.5">
+    <p style="margin:0;font-size:12px;line-height:1.4">
       🍪 This site uses essential cookies for functionality and analytics. By continuing, you accept our <a href="/privacy" style="color:#818cf8;text-decoration:underline">Privacy Policy</a> and <a href="/cookies" style="color:#818cf8;text-decoration:underline">Cookie Policy</a>.
     </p>
   </div>
   <div style="display:flex;gap:8px;flex-shrink:0">
-    <button onclick="document.getElementById('cookie-consent').remove();localStorage.setItem('cookie_consent','accepted')" style="background:#6366f1;color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">Accept All</button>
-    <button onclick="document.getElementById('cookie-consent').remove();localStorage.setItem('cookie_consent','essential')" style="background:transparent;color:#94a3b8;border:1px solid #475569;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">Essential Only</button>
+    <button onclick="document.getElementById('cookie-consent').remove();localStorage.setItem('cookie_consent','accepted')" style="background:#6366f1;color:#fff;border:0;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">Accept All</button>
+    <button onclick="document.getElementById('cookie-consent').remove();localStorage.setItem('cookie_consent','essential')" style="background:transparent;color:#94a3b8;border:1px solid #475569;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap">Essential Only</button>
   </div>
 </div>
 <script>
