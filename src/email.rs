@@ -129,7 +129,11 @@ pub const SUPPORT_EMAIL: &str = "support@funnelswift.net";
 /// from the `email_templates` row (the authoritative source for these sends) carries the
 /// address exactly like an inline fallback does, and a template added later inherits it.
 /// Idempotent: a body that already carries the address is returned untouched.
-fn with_support_footer(
+///
+/// `pub(crate)` (kanban t_f1931c05) so the admin "Send test email" route — which builds its
+/// body inline and never touches `render_template` — can put the SAME footer on the message
+/// an admin inspects, instead of a second, quietly drifting copy of the wording.
+pub(crate) fn with_support_footer(
     text: Option<String>,
     html: Option<String>,
 ) -> (Option<String>, Option<String>) {

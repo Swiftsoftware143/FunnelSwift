@@ -489,11 +489,21 @@ pub async fn test_email_config(
         user.email.clone()
     };
 
+    // The same support footer every transactional send carries (kanban t_f1931c05). An admin
+    // clicking "Send test email" must see exactly what a customer's mail carries, so this body
+    // goes through the ONE footer helper rather than a second, quietly drifting copy of the
+    // wording. Before this, the test route bypassed `render_template` (where the footer is
+    // applied) and its mail carried no support address at all.
+    let (body, _) = crate::email::with_support_footer(
+        Some("This is a test of the FunnelSwift system email provider.\n\nIf you received it, sending works.\n\n- FunnelSwift".to_string()),
+        None,
+    );
+
     match crate::email_provider::deliver(
         &cfg,
         &to,
         "FunnelSwift System Email Test",
-        "This is a test of the FunnelSwift system email provider.\n\nIf you received it, sending works.\n\n- FunnelSwift",
+        body.as_deref().unwrap_or_default(),
         None,
     )
     .await
