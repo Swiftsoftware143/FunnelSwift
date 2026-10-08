@@ -348,8 +348,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
-        <h3>What They Do Not Do</h3>
-        <p>Assigning a System Tag to a lead does <strong>not</strong> create accounts, contacts or clients in other Swift apps. FunnelSwift has no per-tag target and no provisioning webhook: this app has no <code>system_tags</code> table, and the System Tag form holds a name, a tag group and a color &mdash; nothing to point at another app.</p>
+        <h3>Tag to free account</h3>
+        <p>A tag can carry a <strong>target app and plan</strong>. When a lead is given that tag, FunnelSwift asks the named app to create a <strong>free account</strong> for the lead, using the lead's own name and email &mdash; the same address the lead was captured with. That app emails the new user their login details, and the business upgrades from inside that app whenever it is ready.</p>
+        <p>Each of the seven <strong>&lt;App&gt; &mdash; Free</strong> system tags already points at its app (for example <code>CoreSwift &mdash; Free</code> &rarr; CoreSwift, free plan). On any tag the mapping is three fields: the app it targets, the plan to seat the lead on, and an <strong>Auto-provision a free account</strong> switch. A brand-new tag starts with the switch <strong>off</strong>, so creating a System Tag does not provision anything by itself.</p>
+        <p>Tagging the same lead twice does <strong>not</strong> create a second account &mdash; the target app recognises the email and answers "already exists". Taking a tag <strong>off</strong> a lead never deletes an account. If a target app has its own provisioning switch turned off, the lead is still tagged here and no account is created; every attempt is visible in the provisioning log.</p>
       </div>
 
       <div class="card">
