@@ -225,7 +225,7 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 186 mounts, 161 of them on the API surface. If a route is
+    /// The census the module docs quote: 187 mounts, 162 of them on the API surface. If a route is
     /// added or removed the documented numbers move, so the doc gets re-read.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
