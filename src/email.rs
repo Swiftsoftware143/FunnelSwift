@@ -117,6 +117,42 @@ async fn dispatch_for_tenant(
         })
 }
 
+/// The app's OWN support address. David (2026-10-08): the reply-to/support address in
+/// a transactional mail is ALWAYS `support@` the app's own main domain — never the
+/// platform's or a sibling company's. FunnelSwift mail carried none at all (no address
+/// in any body), so [`with_support_footer`] adds this to every rendered message.
+pub const SUPPORT_EMAIL: &str = "support@funnelswift.net";
+
+/// Append the support line to a rendered transactional message.
+///
+/// Applied in [`render_template`] rather than to one body literal, so a body that comes
+/// from the `email_templates` row (the authoritative source for these sends) carries the
+/// address exactly like an inline fallback does, and a template added later inherits it.
+/// Idempotent: a body that already carries the address is returned untouched.
+fn with_support_footer(
+    text: Option<String>,
+    html: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let text = text.map(|t| {
+        if t.contains(SUPPORT_EMAIL) {
+            t
+        } else {
+            format!("{}\n\nNeed help? Contact {}\n", t, SUPPORT_EMAIL)
+        }
+    });
+    let html = html.map(|h| {
+        if h.contains(SUPPORT_EMAIL) {
+            h
+        } else {
+            format!(
+                "{}\n<p style=\"font-size:13px;color:#6b7280;text-align:center;\">Need help? Contact <a href=\"mailto:{}\">{}</a></p>",
+                h, SUPPORT_EMAIL, SUPPORT_EMAIL
+            )
+        }
+    });
+    (text, html)
+}
+
 /// Look up + render a template (DB-backed, falling back to inline hardcoded content).
 async fn render_template(
     pool: &PgPool,
@@ -129,9 +165,14 @@ async fn render_template(
             let subject = render(&subject, vars);
             let body = body.map(|b| render(&b, vars));
             let html = html_body.map(|h| render(&h, vars));
+            let (body, html) = with_support_footer(body, html);
             (subject, body, html)
         }
-        _ => get_inline(template_type, vars),
+        _ => {
+            let (subject, body, html) = get_inline(template_type, vars);
+            let (body, html) = with_support_footer(body, html);
+            (subject, body, html)
+        }
     }
 }
 
