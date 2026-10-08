@@ -192,16 +192,50 @@ pub async fn public_signup(
     // still succeeds (the account is real), but the operator must be able to see that the password
     // never reached the customer — which is exactly why the old flow was invisible: it generated a
     // password and emailed nobody.
-    match crate::email::send_credentials_email(&state.pool, tenant_id, &email, &name, &password)
-        .await
-    {
-        Ok(()) => tracing::info!(email = %email, "signup: login credentials emailed"),
-        Err(e) => tracing::error!(
+    //
+    // ── PROBE / HARNESS ACCOUNTS NEVER SEND (kanban t_36b55ed2) ─────────────────────────────────
+    // The fleet's probes mint accounts through THIS route, and the fleet's harness domains
+    // (`swiftsoftware.dev` / `.net`) are routable: David was receiving the welcome mail of accounts
+    // created by machinery, and every probe burned a delivery on the domain's reputation. Two
+    // independent reasons suppress the send, so silencing a probe needs no address change anywhere:
+    //   1. the request carried `X-Swift-Harness` — the tenant is harness-marked (attribution by data,
+    //      the `harness-marker-at-creation` contract); or
+    //   2. the recipient is on a fleet harness domain (`crate::security::probe_addr`) — the layer
+    //      that also catches an ad-hoc probe that never learned to send the header.
+    // The account itself is still created, with its generated password, exactly as before: a probe
+    // that needs the token in the response keeps getting it. Only the mail is withheld. A REAL
+    // customer (no header, a domain of their own) reaches the send below byte-identically to before.
+    let probe_send_reason = probe_harness
+        .as_deref()
+        .map(|marker| format!("X-Swift-Harness: {marker}"))
+        .or_else(|| {
+            crate::security::probe_addr::harness_domain(&email)
+                .map(|domain| format!("fleet harness domain {domain}"))
+        });
+    match probe_send_reason {
+        Some(reason) => tracing::info!(
             email = %email,
-            error = %e,
-            "signup: account created but the CREDENTIAL EMAIL FAILED — the customer has no password. \
-             Check Admin > Settings > Email Provider."
+            reason = %reason,
+            "signup: credentials email SUPPRESSED — probe/harness account. The account is real and \
+             the generated password was returned to the caller; no mail was sent."
         ),
+        None => match crate::email::send_credentials_email(
+            &state.pool,
+            tenant_id,
+            &email,
+            &name,
+            &password,
+        )
+        .await
+        {
+            Ok(()) => tracing::info!(email = %email, "signup: login credentials emailed"),
+            Err(e) => tracing::error!(
+                email = %email,
+                error = %e,
+                "signup: account created but the CREDENTIAL EMAIL FAILED — the customer has no password. \
+                 Check Admin > Settings > Email Provider."
+            ),
+        },
     }
 
     // Log source if provided

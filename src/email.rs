@@ -360,12 +360,22 @@ fn get_inline(
         // generates the first password and sends it here, and the user replaces it in their profile.
         // Before this arm existed there was NO email in this app that carried a password — the
         // generated password for an admin-created user was thrown away and the account was unusable.
+        //
+        // kanban t_36b55ed2 — ONE onboarding identity. The authoritative copy of this mail is the
+        // `credentials` ROW in `email_templates` (admin-editable, seeded by migration); this arm is
+        // the fallback for an install where that row is absent. It used to carry a DIFFERENT subject
+        // ("Your FunnelSwift login details") and different wording, so the same signup produced two
+        // different-looking onboarding mails depending on whether the row existed — and that, not a
+        // double send, is the "two welcome emails" David saw (a row-less send at 16:13, the row's
+        // copy at 16:26 once the migration landed). Subject and body below now mirror the row, so
+        // the customer sees one message identity whichever path renders it.
         "credentials" => {
             let password = vars.get("password").unwrap_or(&"").to_string();
-            let subject = "Your FunnelSwift login details".to_string();
+            let login_url = vars.get("login_url").unwrap_or(&APP_LOGIN_URL);
+            let subject = format!("Your {APP_NAME} account is ready");
             let text = format!(
-                "Hi {0},\n\nYour FunnelSwift account is ready.\n\nEmail: {1}\nTemporary password: {2}\n\nSign in at {3}/login\n\nThen set your own password in your profile — the temporary one stops being useful once you do.\n\n- FunnelSwift Team",
-                name, email, password, app_url
+                "Hi {0},\n\nYour {1} account has been created and is ready to use.\n\nSign in at {2} with:\nEmail: {3}\nPassword: {4}\n\nThe password above is temporary. After you sign in, go to your profile settings and replace it with one of your own.\n\nIf you weren't expecting this email, someone may have entered your address by mistake - contact support and we'll take a look.\n\n- The {1} Team",
+                name, APP_NAME, login_url, email, password
             );
             (subject, Some(text), None)
         }
@@ -609,6 +619,33 @@ mod tests {
         assert!(html.contains("<img"));
         assert!(html.contains("&lt;b&gt;hi&lt;/b&gt;"));
         assert!(!html.contains("<b>hi</b>"));
+    }
+
+    #[test]
+    fn inline_credentials_arm_matches_the_shipped_row() {
+        // kanban t_36b55ed2. The authoritative copy of the new-account mail is the seeded
+        // `email_templates` row; `get_inline` is its fallback. The two used to disagree on the
+        // SUBJECT ("Your FunnelSwift login details" vs "Your {{app_name}} account is ready"), so the
+        // same signup produced two different-looking onboarding mails depending on whether the row
+        // existed. The row's subject, rendered, is the string this asserts.
+        let v = bound_vars(vars(&[
+            ("name", "Ada Lovelace"),
+            ("email", "ada@example.com"),
+            ("password", "S3cret-pw!"),
+        ]));
+        let (subject, body, _) = get_inline("credentials", &v);
+        assert_eq!(subject, "Your FunnelSwift account is ready");
+        let body = body.expect("the credentials arm is a text body");
+        assert!(
+            unsubstituted(&body).is_empty(),
+            "placeholder left on the wire: {:?}",
+            unsubstituted(&body)
+        );
+        // Everything the customer needs to sign in, on the wire.
+        assert!(body.contains("Ada Lovelace"), "{body}");
+        assert!(body.contains("ada@example.com"), "{body}");
+        assert!(body.contains("S3cret-pw!"), "{body}");
+        assert!(body.contains(APP_LOGIN_URL), "{body}");
     }
 
     #[test]
