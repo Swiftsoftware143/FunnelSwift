@@ -50,7 +50,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;d
 .header h1{font-size:20px;color:#1e1b4b}
 .badge{padding:4px 12px;border-radius:100px;font-size:11px;font-weight:600}
 .badge.bg{background:#6366f1;color:#fff}
-.badge.bb{background:#e2e8f0;color:#475569}
+.badge.bb{background:#312e81;color:#c7d2fe}
+/* kanban t_ff948669 — the dashboard's `<div class="card">` tiles had NO rule here, so the four
+   stats and the activity panel rendered as bare stacked text. `.card`/`.val` are used by the
+   dashboard AND the affiliate panels, so one rule cleans both. */
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px}
+.card h3{font-size:13px;color:#1e1b4b;font-weight:700;margin:0 0 8px}
+.card .val{font-size:26px;font-weight:700;color:#1e1b4b;line-height:1.2}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+.uav{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#312e81;flex-shrink:0}
+.uav-ph{width:34px;height:34px;border-radius:50%;background:#4338ca;color:#e0e7ff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0}
+.pf-av{width:80px;height:80px;border-radius:50%;object-fit:cover;background:#e2e8f0}
 .ct{padding:24px;overflow-y:auto;flex:1}
 .loading{padding:40px;text-align:center;color:#94a3b8;font-size:14px}
 .cc h3{font-size:16px;color:#1e1b4b;margin-bottom:12px;display:flex;align-items:center;gap:8px}
@@ -96,6 +106,10 @@ tr:hover{background:#f8fafc}
 .msg.mi{display:block;background:#dbeafe;color:#1e40af}
 .msg.me{display:block;background:#fee2e2;color:#991b1b}
 .msg.ms{display:block;background:#dcfce7;color:#166534}
+/* `.mk` is the success class the Settings screen and the card editor already pass to showMsg(); it
+   had NO rule, so `class="msg mk"` matched nothing and every one of those saves reported silently.
+   Alias it to the success style rather than rewording the call sites. */
+.msg.mk{display:block;background:#dcfce7;color:#166534}
 .cfr{display:flex;gap:4px;margin-bottom:4px}
 .cfk{flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px}
 .cfv{flex:2;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px}
@@ -112,9 +126,23 @@ tr:hover{background:#f8fafc}
 </head>
 <body>
 <div class="sidebar" id="sidebar">
-  <div class="brand"><h2>FunnelSwift</h2><p id="ue">Loading...</p><p id="rb"></p></div>
-  <div class="sec">User</div>
+  <div class="brand"><h2>FunnelSwift</h2>
+    <!-- kanban t_ff948669: the profile picture and the workspace TIER live here. `#rb` used to
+         print the raw role word ("User"), which is the stray label David reported — the tier is
+         what belongs under the account name. -->
+    <div style="display:flex;align-items:center;gap:9px;margin:8px 0 2px">
+      <img id="uav" class="uav" alt="" style="display:none">
+      <span id="uavph" class="uav-ph">?</span>
+      <div style="min-width:0">
+        <p id="ue" style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Loading...</p>
+        <p id="rb" style="margin:3px 0 0"></p>
+      </div>
+    </div>
+  </div>
+  <div class="sec">Workspace</div>
   <a class="active" data-tab="dashboard" onclick="S('dashboard')">Dashboard</a>
+  <!-- kanban t_ff948669: the account's own screen — name, company, password, picture. -->
+  <a data-tab="profile" onclick="S('profile')">Profile</a>
   <a data-tab="leads" onclick="S('leads')">Leads</a>
   <a data-tab="upgrade" onclick="S('upgrade')" style="color:#fbbf24;font-weight:600">⭐ Upgrade</a>
   <a data-tab="cards" onclick="S('cards')">Kinetic Cards</a>
@@ -267,7 +295,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+var TI={dashboard:"Dashboard",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -300,7 +328,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
+  var L={dashboard:D,profile:LPROF,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -572,7 +600,13 @@ if(T){
     if(u.error){window.location.href="/login"}
     else{
       U=u; $("ue").textContent=u.name||u.email;
-      $("rb").innerHTML=u.is_admin?'<span class="badge bg">Admin</span>':'<span class="badge bb">User</span>';
+      /* kanban t_ff948669 — this badge used to print the raw role word ("User"), which is the
+         stray label David reported: under the account name belongs the workspace's TIER. The API
+         resolves `plan_name` from the active subscription (falling back to "Free"); "Admin" stays
+         as a second badge only for the platform operator. */
+      $("rb").innerHTML='<span class="badge bb">'+X(u.plan_name||"Free")+'</span>'
+        +(u.is_admin?' <span class="badge bg">Admin</span>':'');
+      renderAvatar();
       if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}
       S("dashboard");
       affBanner();   // David: banner the user can X out of, back on next login
@@ -595,17 +629,20 @@ function D(){
   // `if(old&&old.parentNode)` shape this shell already uses for a removed node).
   var sr=$("sr"), da=$("da");
   api("/api/v1/dashboard/stats").then(function(d){
-    var h="";
+    // kanban t_ff948669 — these tiles are `<div class="card">` again now that `.card` has a rule
+    // (they were bare stacked text), laid out in a grid so four numbers read as four tiles.
+    var h='<div class="stat-grid">';
     h+='<div class="card"><h3>Total Leads</h3><div class="val">'+(d&&d.leads_total?d.leads_total:0)+'</div></div>';
     h+='<div class="card"><h3>Conv. Rate</h3><div class="val">'+(d&&d.conversion_rate?(d.conversion_rate*100).toFixed(1)+"%":"0%")+'</div></div>';
     h+='<div class="card"><h3>Cards</h3><div class="val">'+(d&&d.cards_total?d.cards_total:0)+'</div></div>';
     h+='<div class="card"><h3>Plans</h3><div class="val">'+(d&&d.plans_total?d.plans_total:0)+'</div></div>';
+    h+='</div>';
     if(!sr||!sr.parentNode) return;
     sr.innerHTML=h;
   });
   api("/api/v1/dashboard/activity").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
-    var h='<div class="cc"><h3>Recent Activity</h3>';
+    var h='<div class="card"><h3>Recent Activity</h3>';
     if(!a.length) h+='<p style="color:#64748b;font-size:13px">No recent activity.</p>';
     else{
       h+='<table><tr><th>Action</th><th>Description</th></tr>';
@@ -3257,6 +3294,119 @@ function LLSR(stages){
 }
 
 /* === SETTINGS (tenant: the caller's own tenant_settings) === */
+/* === PROFILE (kanban t_ff948669) ==============================================================
+   David: "there is no user profile, so he cannot change his password". The backend already
+   existed (/api/v1/auth/me, /auth/profile, /auth/password) plus the new /auth/avatar pair; this is
+   the screen that calls it. /auth/me is re-read every time the tab opens, so what the form shows
+   is what the server holds — never a stale copy held in the page.
+
+   The picture is posted as multipart and therefore NOT through api(): that helper forces
+   `Content-Type: application/json`, which would destroy the multipart boundary the browser
+   generates for a FormData body. */
+function renderAvatar(){
+  var av=$("uav"), ph=$("uavph");
+  if(!av||!ph) return;
+  var url=(U&&U.avatar_url)||"";
+  var initial=((((U&&(U.name||U.email))||"?")+"?").charAt(0)).toUpperCase();
+  if(url){ av.src=url; av.style.display="block"; ph.style.display="none"; }
+  else{
+    av.removeAttribute("src"); av.style.display="none";
+    ph.style.display="flex"; ph.textContent=initial;
+  }
+}
+function pfMsg(id,text,cls){
+  var m=$(id); if(!m) return;
+  m.className="msg "+(cls||"ms"); m.textContent=text;
+  if(cls==="ms") setTimeout(function(){ if(m) m.className="msg"; },2500);
+}
+function LPROF(){
+  api("/api/v1/auth/me").then(function(u){
+    if(u&&!u.error) U=u;
+    var av=(U&&U.avatar_url)||"";
+    var nm=(U&&U.name)||"";
+    var co=(U&&U.company)||"";
+    var initial=(((nm||(U&&U.email)||"?")+"?").charAt(0)).toUpperCase();
+    var h='<div class="cc"><h3>Profile</h3>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:14px">Your name, company, picture and sign-in password.</p>';
+    /* picture */
+    h+='<div class="card" style="margin-bottom:14px"><h3>Profile picture</h3>';
+    h+='<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
+    h+='<img id="pf-av" class="pf-av" alt="" src="'+X(av)+'" style="'+(av?"":"display:none")+'">';
+    h+='<span id="pf-avph" class="pf-av" style="display:'+(av?"none":"flex")+';align-items:center;justify-content:center;color:#64748b;font-size:28px;font-weight:700">'+X(initial)+'</span>';
+    h+='<div><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
+    h+='<p style="font-size:11px;color:#94a3b8;margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>';
+    h+='<button class="btn btn-sm" onclick="UPF()">Upload picture</button>';
+    h+='<span id="pf-avmsg" class="msg" style="margin:6px 0 0"></span></div></div></div>';
+    /* details */
+    h+='<div class="card" style="margin-bottom:14px"><h3>Your details</h3>';
+    h+='<div class="fld"><label>Name</label><input id="pf-name" value="'+X(nm)+'" placeholder="Your name"></div>';
+    h+='<div class="fld"><label>Company</label><input id="pf-co" value="'+X(co)+'" placeholder="Your company"></div>';
+    h+='<div class="fld"><label>Email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">Your sign-in address cannot be changed here.</p></div>';
+    h+='<button class="btn" onclick="SPF()">Save</button><span id="pf-msg" class="msg" style="margin-left:8px"></span></div>';
+    /* password: the new password, its confirmation, and the CURRENT password LAST as the check */
+    h+='<div class="card"><h3>Change Password</h3>';
+    h+='<div class="fld"><label>New password</label><input id="pf-np" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>';
+    h+='<div class="fld"><label>Confirm new password</label><input id="pf-np2" type="password" autocomplete="new-password"></div>';
+    h+='<div class="fld"><label>Current password (verifies it is you)</label><input id="pf-cp" type="password" autocomplete="current-password"></div>';
+    h+='<button class="btn" onclick="CPF()">Save</button><span id="pf-pmsg" class="msg" style="margin-left:8px"></span></div>';
+    h+='</div>';
+    $("ct").innerHTML=h;
+  }).catch(function(e){
+    $("ct").innerHTML='<div class="cc"><h3>Profile</h3><p class="msg me">Could not load your profile: '+X((e&&e.message)||e)+'</p></div>';
+  });
+}
+function SPF(){
+  var n=(($("pf-name")||{}).value||"").trim(), c=(($("pf-co")||{}).value||"").trim();
+  if(!n){ pfMsg("pf-msg","Enter your name","me"); return; }
+  pfMsg("pf-msg","Saving...","mi");
+  api("/api/v1/auth/profile",{method:"PUT",body:JSON.stringify({name:n,company:c})})
+    .then(function(){
+      U.name=n; U.company=c;
+      $("ue").textContent=n||U.email;
+      renderAvatar();
+      pfMsg("pf-msg","Saved","ms");
+    })
+    .catch(function(e){ pfMsg("pf-msg",(e&&e.message)||"Could not save","me"); });
+}
+function CPF(){
+  var np=(($("pf-np")||{}).value||""), np2=(($("pf-np2")||{}).value||""), cp=(($("pf-cp")||{}).value||"");
+  if(np.length<8){ pfMsg("pf-pmsg","The new password must be at least 8 characters","me"); return; }
+  if(np!==np2){ pfMsg("pf-pmsg","The two new passwords do not match","me"); return; }
+  if(!cp){ pfMsg("pf-pmsg","Enter your current password to confirm","me"); return; }
+  pfMsg("pf-pmsg","Saving...","mi");
+  api("/api/v1/auth/password",{method:"PUT",body:JSON.stringify({current_password:cp,new_password:np})})
+    .then(function(){
+      $("pf-np").value=""; $("pf-np2").value=""; $("pf-cp").value="";
+      pfMsg("pf-pmsg","Password changed","ms");
+    })
+    .catch(function(e){ pfMsg("pf-pmsg",(e&&e.message)||"Could not change the password","me"); });
+}
+function UPF(){
+  var f=$("pf-file"), file=f&&f.files?f.files[0]:null;
+  if(!file){ pfMsg("pf-avmsg","Choose an image first","me"); return; }
+  if(file.size>2*1024*1024){ pfMsg("pf-avmsg","That image is larger than 2 MB","me"); return; }
+  var fd=new FormData(); fd.append("file",file);
+  pfMsg("pf-avmsg","Uploading...","mi");
+  fetch("/api/v1/auth/avatar",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd})
+    .then(function(r){
+      return r.text().then(function(t){
+        var d=null; try{ d=JSON.parse(t); }catch(err){}
+        if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
+        return d||{};
+      });
+    })
+    .then(function(d){
+      if(d.avatar_url) U.avatar_url=d.avatar_url;
+      var im=$("pf-av"), ph=$("pf-avph");
+      if(im){ im.src=U.avatar_url; im.style.display="block"; }
+      if(ph) ph.style.display="none";
+      if($("pf-file")) $("pf-file").value="";
+      renderAvatar();
+      pfMsg("pf-avmsg","Picture updated","ms");
+    })
+    .catch(function(e){ pfMsg("pf-avmsg",(e&&e.message)||"Upload failed","me"); });
+}
+
 function LM(){
   api("/api/v1/settings").then(function(d){
     /* kanban t_619533e2: this screen reads and writes the CALLER'S OWN tenant_settings row, so it
@@ -3376,6 +3526,7 @@ function SG(id,returnTab,isSystem){
    FunnelSwift's console switches tabs in JS, so it is told via window.inlineGuidePage(tab). */
 window.appGuidePages = {
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
+  profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you.", actions: ["Update your name and company", "Upload a profile picture", "Change your password"] },
   leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms.", actions: ["Filter and search", "Apply tags", "Export"] },
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
   afleads:     { title: "Affiliate Leads", desc: "Every lead that came in through the affiliate programme, and which affiliate gets credited for it. Leads with nobody behind them show as system \u2014 nobody is paid for those. The last column tells you whether that lead later joined the programme themselves.", actions: ["See which affiliate a lead belongs to", "Spot leads that are not credited", "See which leads became affiliates"] },
@@ -3384,7 +3535,7 @@ window.appGuidePages = {
   ap:          { title: "Affiliate Products", desc: "What affiliates can promote. Every product points at a FREE plan, because a referred customer arrives free and upgrades in app, paying for it themselves. Each product is tied to its tag, and the tag is what credits the affiliate.", actions: ["Add a product", "Set its commission rate", "Check it has a tag"] },
   integrations:{ title: "Integrations", desc: "Connect FunnelSwift to the other SwiftSoftware products and to your own tools.", actions: ["Connect CoreSwift", "Add a webhook"] },
   plans:       { title: "Plans", desc: "Your plan decides what is available to you. The top tier includes everything.", actions: ["Compare plans", "Upgrade"] },
-  settings:    { title: "Settings", desc: "Your workspace, profile and email provider.", actions: ["Update your profile and password", "Set the email provider so the system can send credentials"] }
+  settings:    { title: "Settings", desc: "Your workspace: the card subdomain, your custom domain and your lead pipeline. Your own name, picture and password live on the Profile screen.", actions: ["Set your card subdomain", "Point a custom domain", "Edit your lead stages"] }
 };
 </script>
 <script src="/inline-guide-widget.js"></script>

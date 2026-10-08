@@ -12,16 +12,16 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (measured 2026-10-08, from `api_router.rs` source)
+//! # The census (re-measured 2026-10-08, from `api_router.rs` source)
 //!
-//! 187 `.route(..)` mounts / 186 unique paths, classified three ways:
+//! 189 `.route(..)` mounts / 188 unique paths, classified three ways:
 //!
 //! ```text
-//!   162 mounts  /api/**            161 unique after the duplicate `/api/v1/linkedin/auth`
+//!   164 mounts  /api/**            163 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     16        public            -> PUBLIC_ROUTES below (15 unique + the health pair)
+//!     17        public            -> PUBLIC_ROUTES below (16 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    142        private           -> require_auth: app JWT, tenant-status checked
+//!    143        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -31,6 +31,10 @@
 //!                                    — they render a public page or accept a public form post
 //!                                    keyed by a public slug.
 //! ```
+//!
+//! The profile-picture pair (`POST /api/v1/auth/avatar` + `GET /api/v1/auth/avatar/:user_id`,
+//! kanban t_ff948669) is the only movement since the first census: the write stays private and the
+//! read joins the public list below, because a rendered `<img src>` cannot present a bearer token.
 //!
 //! **No route was found answering an anonymous caller by accident** — the `require_auth` gate was
 //! doing its job. The two changes this module makes are structural, and both close a default-allow
@@ -112,6 +116,15 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // is the `Stripe-Signature` HMAC against the tenant's stored signing secret, with the `t=`
     // freshness arm and a per-event idempotency guard, in `checkout_handler::stripe_webhook`.
     "/api/v1/webhooks/stripe",
+    // --- profile pictures (kanban t_ff948669) -----------------------------------
+    // A rendered `<img src>` cannot carry the `Authorization` header, so a customer's own profile
+    // picture has to be fetchable without one — the same reason the fleet serves card images from a
+    // URL. The route returns ONE thing: the image that user uploaded, keyed by an unguessable uuid,
+    // with the content type sniffed from the bytes at upload time (`auth::handlers::get_avatar`).
+    // It carries no tenant column, no credential and no row of user data, and a user with no picture
+    // answers 404. The UPLOAD twin (`POST /api/v1/auth/avatar`) is deliberately NOT here: writing a
+    // picture is an authenticated action.
+    "/api/v1/auth/avatar/:user_id",
 ];
 
 /// Internal (service-to-service) routes: reachable with the app's own shared key and nothing else.
@@ -231,9 +244,9 @@ mod tests {
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 187, "mounted route count moved");
+        assert_eq!(mounted.len(), 189, "mounted route count moved");
         assert_eq!(
-            api, 162,
+            api, 164,
             "/api/ mount count moved — update the census in the module docs"
         );
     }
@@ -346,9 +359,16 @@ mod tests {
             "/api/v1/kinetic/cards/0a1b2c3d/gate",
             "/api/v1/webhooks/conversion",
             "/api/v1/webhooks/stripe",
+            // a profile picture has to render in an `<img>`, which cannot carry a bearer token
+            "/api/v1/auth/avatar/abc123",
         ] {
             assert!(is_public_route(p), "{p} must stay reachable anonymously");
         }
+        // ...but the UPLOAD twin is an authenticated write and must NOT be public, and the read
+        // template must not swallow a sibling path under the same prefix.
+        assert!(!is_public_route("/api/v1/auth/avatar"));
+        assert!(!is_public_route("/api/v1/auth/avatar/abc/extra"));
+        assert!(!is_public_route("/api/v1/auth/avatars/x"));
     }
 
     /// The internal surface is reachable ONLY with the shared key, so it must never be on the

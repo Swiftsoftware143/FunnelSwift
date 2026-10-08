@@ -10,8 +10,10 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::State,
-    http::{HeaderMap, StatusCode},
+    body::Body,
+    extract::{Multipart, Path, State},
+    http::{header, HeaderMap, StatusCode},
+    response::Response,
     Json,
 };
 use chrono::Utc;
@@ -272,10 +274,14 @@ pub async fn login(
 }
 
 pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Value> {
-    // Get user's name and username
-    let user_info: Option<(String, Option<String>)> =
-        sqlx::query_as::<_, (String, Option<String>)>(
-            "SELECT name, username FROM users WHERE id::text = $1",
+    // Get user's name, username, company and profile picture.
+    //
+    // `company` (migration 098) and `avatar_url` are the two fields the profile screen renders and
+    // writes. Both live only on `users` — the picture's BYTES are in `user_avatars` and are read by
+    // `get_avatar`, never here, so this row stays small.
+    let user_info: Option<(String, Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>)>(
+            "SELECT name, username, company, avatar_url FROM users WHERE id::text = $1",
         )
         .bind(&auth.user_id)
         .fetch_optional(&state.pool)
@@ -318,16 +324,30 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
     .unwrap_or(None)
     .map(|(r,)| r);
 
+    // The workspace's actual TIER, as one display string. The console used to paint a raw role word
+    // ("User"/"Admin") under the account name, which is where the tier belongs (David 2026-10-08):
+    // a customer reads "Kinetic Free", not "User". `current_plan` is the plans row (jsonb) of the
+    // active subscription; a workspace with none answers "Free" rather than an empty badge.
+    let plan_name = current_plan
+        .as_ref()
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .unwrap_or("Free")
+        .to_string();
+
     Json(json!({
         "user_id": auth.user_id,
         "tenant_id": auth.tenant_id,
         "email": auth.email,
-        "name": user_info.as_ref().map(|(n,_)| n.clone()).unwrap_or_default(),
-        "username": user_info.as_ref().and_then(|(_,u)| u.clone()).unwrap_or_default(),
+        "name": user_info.as_ref().map(|(n,_,_,_)| n.clone()).unwrap_or_default(),
+        "username": user_info.as_ref().and_then(|(_,u,_,_)| u.clone()).unwrap_or_default(),
+        "company": user_info.as_ref().and_then(|(_,_,c,_)| c.clone()).unwrap_or_default(),
+        "avatar_url": user_info.as_ref().and_then(|(_,_,_,a)| a.clone()).unwrap_or_default(),
         "role": auth.role,
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
-        "current_plan": current_plan
+        "current_plan": current_plan,
+        "plan_name": plan_name
     }))
 }
 
@@ -335,6 +355,9 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
 pub struct UpdateProfileRequest {
     pub name: Option<String>,
     pub username: Option<String>,
+    /// The Company the profile screen collects. Nothing else in the product writes it (signup is
+    /// NAME + EMAIL only), so this is its only writer.
+    pub company: Option<String>,
 }
 
 pub async fn update_profile(
@@ -342,15 +365,159 @@ pub async fn update_profile(
     auth: AuthUser,
     Json(req): Json<UpdateProfileRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    sqlx::query("UPDATE users SET name = COALESCE($1, name), username = COALESCE($2, username) WHERE id::text = $3")
-        .bind(&req.name)
-        .bind(&req.username)
+    // A blank NAME would leave the console header and every "signed in as" line empty, so it is
+    // refused rather than stored. Company may legitimately be cleared, so an empty value is written.
+    if let Some(name) = req.name.as_deref() {
+        if name.trim().is_empty() {
+            return Err(AppError::BadRequest("Name cannot be empty".into()));
+        }
+    }
+
+    sqlx::query("UPDATE users SET name = COALESCE($1, name), username = COALESCE($2, username), company = COALESCE($3, company), updated_at = NOW() WHERE id::text = $4")
+        .bind(req.name.as_deref().map(str::trim))
+        .bind(req.username.as_deref().map(str::trim))
+        .bind(req.company.as_deref().map(str::trim))
         .bind(&auth.user_id)
         .execute(&state.pool)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to update profile: {e}")))?;
 
     Ok(Json(json!({"status": "ok"})))
+}
+
+/// The most bytes an uploaded profile picture may carry. The router limits the upload route to a
+/// little more than this (`DefaultBodyLimit`) so an oversized body is refused before it is buffered,
+/// and the handler checks the decoded length as well.
+const AVATAR_MAX_BYTES: usize = 2 * 1024 * 1024;
+
+/// Recognise an image by its MAGIC BYTES, never by the caller's `Content-Type`.
+///
+/// These bytes are stored and later served back from our own origin with the type this returns, so
+/// trusting the client's header would let a caller upload HTML or JavaScript labelled `image/png`
+/// and have the app serve it as an image on a FunnelSwift URL. SVG is deliberately NOT accepted: it
+/// is a scriptable document rather than a bitmap, and this surface carries no HTML sanitiser.
+fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    None
+}
+
+/// `POST /api/v1/auth/avatar` — store the caller's own profile picture and return its URL.
+///
+/// Storage decision (kanban t_ff948669). The fleet's existing upload shape — IncentiveSwift's
+/// `upload_file` — writes the file into a served webroot and stores the resulting URL. This app is
+/// a bind-mounted container that exposes ONLY its release binary and `migrations/`: a file written
+/// at run time lives inside the container and dies on the next `docker restart`, and no host webroot
+/// could serve it either. The image is therefore held in `user_avatars` (one row per user, migration
+/// 098) and streamed back by [`get_avatar`]. The multipart field handling is the fleet's existing
+/// one — read the first part that carries a filename, cap the size, then persist.
+pub async fn upload_avatar(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    mut multipart: Multipart,
+) -> AppResult<Json<serde_json::Value>> {
+    let user_id = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
+
+    let mut stored: Option<(&'static str, Vec<u8>)> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Multipart error: {e}")))?
+    {
+        // Only a part that carries a filename is the picture; a form with extra text parts still works.
+        if field.file_name().is_none() {
+            continue;
+        }
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("Failed to read the image: {e}")))?;
+        if data.is_empty() {
+            return Err(AppError::BadRequest("The image file is empty".into()));
+        }
+        if data.len() > AVATAR_MAX_BYTES {
+            return Err(AppError::BadRequest(
+                "The image must be 2 MB or smaller".into(),
+            ));
+        }
+        let kind = sniff_image(&data)
+            .ok_or_else(|| AppError::BadRequest("Upload a PNG, JPEG, GIF or WebP image".into()))?;
+        stored = Some((kind, data.to_vec()));
+        break;
+    }
+
+    let (content_type, bytes) =
+        stored.ok_or_else(|| AppError::BadRequest("No image was uploaded".into()))?;
+
+    sqlx::query(
+        r#"INSERT INTO user_avatars (user_id, content_type, bytes, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (user_id) DO UPDATE
+             SET content_type = EXCLUDED.content_type,
+                 bytes = EXCLUDED.bytes,
+                 updated_at = NOW()"#,
+    )
+    .bind(user_id)
+    .bind(content_type)
+    .bind(&bytes)
+    .execute(&state.pool)
+    .await?;
+
+    // A version stamp in the URL: the bytes behind an avatar change while the path stays the same,
+    // and both the browser and the CDN cache by URL.
+    let avatar_url = format!("/api/v1/auth/avatar/{user_id}?v={}", Utc::now().timestamp());
+    sqlx::query("UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&avatar_url)
+        .bind(user_id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(json!({ "status": "ok", "avatar_url": avatar_url })))
+}
+
+/// `GET /api/v1/auth/avatar/:user_id` — stream a stored profile picture back.
+///
+/// Deliberately reachable with NO credential (see `auth::route_policy::PUBLIC_ROUTES`): an HTML
+/// `<img src>` cannot carry the bearer token, and a profile picture is not a secret. The route can
+/// only ever return the image one user uploaded — the id is an unguessable uuid, the stored
+/// `content_type` was sniffed from the bytes at upload time, and a user with no picture answers 404
+/// so the console falls back to its initial-letter placeholder.
+pub async fn get_avatar(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> AppResult<Response> {
+    let uid = Uuid::parse_str(&user_id)
+        .map_err(|_| AppError::NotFound("No such profile picture".into()))?;
+
+    let row: Option<(String, Vec<u8>)> =
+        sqlx::query_as("SELECT content_type, bytes FROM user_avatars WHERE user_id = $1")
+            .bind(uid)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    let (content_type, bytes) =
+        row.ok_or_else(|| AppError::NotFound("No such profile picture".into()))?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        // `private`: the browser may reuse it for the session; no shared cache is invited to keep
+        // one customer's picture. `nosniff` pins the type to the one sniffed above.
+        .header(header::CACHE_CONTROL, "private, max-age=300")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .body(Body::from(bytes))
+        .map_err(|e| AppError::Internal(format!("Could not build the image response: {e}")))
 }
 
 pub async fn change_password(

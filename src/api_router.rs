@@ -8,8 +8,8 @@ use tower_http::trace::TraceLayer;
 use askama::Template;
 
 use crate::auth::handlers::{
-    change_password, forgot_password, get_usage, login, me, register, reset_password,
-    update_profile,
+    change_password, forgot_password, get_avatar, get_usage, login, me, register, reset_password,
+    update_profile, upload_avatar,
 };
 use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
@@ -25,6 +25,14 @@ use crate::handlers::{
     theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
+
+/// The request-body ceiling for `POST /api/v1/auth/avatar` (kanban t_ff948669).
+///
+/// axum's default body limit is 2 MB, which a 2 MB image plus the multipart envelope would exceed —
+/// so a user picking a picture that the handler itself accepts would still be refused, with a bare
+/// 413. A little headroom makes the two ceilings agree: the envelope fits, and the handler's own
+/// 2 MB check on the decoded image is the one that actually decides.
+const AVATAR_BODY_LIMIT_BYTES: usize = 3 * 1024 * 1024;
 
 /// `GET /api/health` (and `/api/v1/health`) — liveness + the schema gate (kanban t_c3823fd1).
 ///
@@ -160,6 +168,16 @@ pub fn create_router(
         .route("/api/v1/me/usage", get(get_usage))
         .route("/api/v1/auth/password", put(change_password))
         .route("/api/v1/auth/profile", put(update_profile))
+        // Profile picture (kanban t_ff948669). The upload is bounded a little above the handler's own
+        // 2 MB ceiling so an oversized body is refused before it is buffered; the GET is public by
+        // design — an `<img src>` cannot carry a bearer token (see auth::route_policy::PUBLIC_ROUTES).
+        .route(
+            "/api/v1/auth/avatar",
+            post(upload_avatar).layer(axum::extract::DefaultBodyLimit::max(
+                AVATAR_BODY_LIMIT_BYTES,
+            )),
+        )
+        .route("/api/v1/auth/avatar/:user_id", get(get_avatar))
         .route(
             "/api/v1/leads",
             get(lead_handler::list_leads).post(lead_handler::create_lead),
