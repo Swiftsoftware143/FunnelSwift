@@ -39,6 +39,9 @@
      read answers TRUE, i.e. "already seen": the panel then never auto-opens rather than opening on
      every single load, which is the annoyance this flag exists to remove. */
   var SEEN_KEY = 'inline_guide_seen';
+  /* Set the first time this page load decides to auto-open, so the MutationObserver (which re-runs
+     updateGuide whenever the SPA paints) cannot close the panel again a moment after it opened. */
+  var autoOpenedThisLoad = false;
   function seenAnyGuide(mark) {
     if (mark) { try { localStorage.setItem(SEEN_KEY, '1'); } catch(e) {} return true; }
     try { return localStorage.getItem(SEEN_KEY) === '1'; } catch(e) { return true; }
@@ -179,8 +182,10 @@
     // Show panel if not dismissed
     if (closed === true) {
       panel.classList.remove('open');
-    } else if (!seenAnyGuide()) {
-      /* First screen this browser has ever opened: show it once, as the discovery moment. */
+    } else if (!autoOpenedThisLoad && !seenAnyGuide()) {
+      /* First screen this browser has ever opened: show it once, and leave it open for this page
+         load (autoOpenedThisLoad stops the observer from closing it under the user). */
+      autoOpenedThisLoad = true;
       seenAnyGuide(true);
       panel.classList.add('open');
     } else {

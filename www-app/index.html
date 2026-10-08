@@ -193,7 +193,12 @@ tr:hover{background:#f8fafc}
   <div style="margin-top:auto;padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)">
     <a href="/guide.html" target="_blank" rel="noopener" style="color:#94a3b8;font-size:12px">User Guide</a>
     <span style="color:#334155;font-size:12px"> &middot; </span>
-    <a href="/logout" style="color:#94a3b8;font-size:12px">Sign Out</a>
+    <!-- kanban t_ff948669: this pointed at `/logout`, which the app root does NOT map to the sign-out
+         page — `try_files ... /index.html` served the SPA shell instead, so clicking Sign Out
+         re-rendered the dashboard with the session intact. `/logout.html` is the real page (it clears
+         ws_fs_token and lands on /login); measured live: /logout -> 200 text/html 241888 B (the
+         shell), /logout.html -> 200 238 B "Signing out…". -->
+    <a href="/logout.html" style="color:#94a3b8;font-size:12px">Sign Out</a>
   </div>
 </div>
 <div class="main">
@@ -3538,6 +3543,11 @@ window.appGuidePages = {
   settings:    { title: "Settings", desc: "Your workspace: the card subdomain, your custom domain and your lead pipeline. Your own name, picture and password live on the Profile screen.", actions: ["Set your card subdomain", "Point a custom domain", "Edit your lead stages"] }
 };
 </script>
-<script src="/inline-guide-widget.js"></script>
+<!-- kanban t_ff948669: the widget gained the once-only panel behaviour and Cloudflare holds the
+     bare path for its 14 400 s static TTL with nothing on this box able to purge the edge
+     (measured: cf-cache-status HIT, age 4269, and the edge body still had 0 `seenAnyGuide`). A
+     versioned query string is a NEW cache key, so the fix is visible on the next load; bump it
+     whenever this file changes. -->
+<script src="/inline-guide-widget.js?v=20261008b"></script>
 </body>
 </html>
