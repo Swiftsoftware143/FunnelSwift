@@ -68,6 +68,26 @@ pub async fn get_dashboard_stats(
         0.0
     };
 
+    // The console's dashboard paints four tiles: Total Leads, Conv. Rate, Cards and Plans. The last
+    // two read `cards_total` / `plans_total`, and this endpoint never returned either — so both fell
+    // back to the SPA's `||0` and showed a hard zero for EVERY workspace whatever it owned (the two
+    // names were born in the frontend's baseline commit and never had a producer). Both are
+    // tenant-scoped counts of rows the CALLER owns, never catalog/global totals: `cards_total` is
+    // what the "My Cards" screen lists, `plans_total` is how many subscriptions this workspace holds
+    // (the Upgrade screen's "Current" rows).
+    let cards_total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+
+    let plans_total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tenant_plan_subscriptions WHERE tenant_id = $1 AND status = 'active'",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await?;
+
     let stats = serde_json::json!({
         "total_leads": total_leads,
         "leads_by_stage": leads_by_stage,
@@ -76,6 +96,8 @@ pub async fn get_dashboard_stats(
         "leads_today": leads_today,
         "leads_this_week": leads_this_week,
         "leads_this_month": leads_this_month,
+        "cards_total": cards_total,
+        "plans_total": plans_total,
     });
 
     Ok(Json(stats))
