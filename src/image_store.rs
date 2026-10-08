@@ -25,10 +25,28 @@ use axum::{
 
 use crate::error::{AppError, AppResult};
 
-/// The most bytes an uploaded image may carry. The upload routes are bounded a little above this
-/// (`DefaultBodyLimit`, `api_router::IMAGE_BODY_LIMIT_BYTES`) so an oversized body is refused
-/// before it is buffered, and this check decides on the decoded image.
-pub const MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
+/// The platform's request-body ceiling for these uploads: axum refuses a body over 2 MB by default.
+///
+/// The per-route `DefaultBodyLimit` (`api_router::IMAGE_BODY_LIMIT_BYTES`) does NOT raise it, and
+/// that is measured, not assumed: the body is read by
+/// `body_deadline::body_read_deadline_middleware`, which runs OUTSIDE the route layer and therefore
+/// reads with axum's own default. Measured 2026-10-08 (kanban t_c06a32eb), a 2 MB + 4 KB multipart
+/// body answers `413 Failed to buffer the request body: length limit exceeded` before any handler
+/// runs. So the ENVELOPE — image plus multipart framing — is what has to fit in 2 MB.
+pub const ENVELOPE_BYTES: usize = 2 * 1024 * 1024;
+
+/// Multipart framing reserve: boundary lines, the part headers and a real filename. Kept out of the
+/// envelope so a file the picker accepts can never be refused by the envelope instead of by the
+/// handler (which is the difference between the friendly message and a bare 413).
+pub const ENVELOPE_HEADROOM: usize = 64 * 1024;
+
+/// The most image bytes an upload may carry.
+///
+/// `ENVELOPE_BYTES - ENVELOPE_HEADROOM`, because the framing has to fit in the same 2 MB envelope.
+/// This is also the number the two pickers in the tenant console check before uploading, so the
+/// client and the server refuse the SAME set of files. The handler still checks the decoded length
+/// as the authoritative backstop.
+pub const MAX_IMAGE_BYTES: usize = ENVELOPE_BYTES - ENVELOPE_HEADROOM;
 
 /// The `Content-Type` an upload is served back as, recognised from the MAGIC BYTES.
 ///
@@ -75,9 +93,10 @@ pub async fn read_uploaded_image(multipart: &mut Multipart) -> AppResult<(String
             return Err(AppError::BadRequest("The image file is empty".into()));
         }
         if data.len() > MAX_IMAGE_BYTES {
-            return Err(AppError::BadRequest(
-                "The image must be 2 MB or smaller".into(),
-            ));
+            return Err(AppError::BadRequest(format!(
+                "The image must be {} bytes or smaller (2 MB minus the upload envelope)",
+                MAX_IMAGE_BYTES
+            )));
         }
         let kind = sniff(&data)
             .ok_or_else(|| AppError::BadRequest("Upload a PNG, JPEG, GIF or WebP image".into()))?;

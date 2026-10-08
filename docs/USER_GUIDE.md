@@ -95,7 +95,7 @@ app's. Set it once in **Settings → Email branding**:
 
 - **Brand display name** — the name printed at the top of the message.
 - **Brand colour** — the rule under the header.
-- **Logo** — a PNG, JPEG, GIF or WebP, 2 MB or smaller. It sits above every message, so pick one that
+- **Logo** — a PNG, JPEG, GIF or WebP, up to 2 MB. It sits above every message, so pick one that
   still reads small (about 56 px tall).
 
 How it behaves:

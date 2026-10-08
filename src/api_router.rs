@@ -27,14 +27,17 @@ use crate::handlers::{
 };
 use crate::state::AppState;
 
-/// The request-body ceiling for BOTH image uploads — the profile picture
+/// The intended request-body ceiling for BOTH image uploads — the profile picture
 /// (`POST /api/v1/auth/avatar`, kanban t_ff948669) and the tenant email logo
 /// (`POST /api/v1/settings/branding/logo`, kanban t_c06a32eb).
 ///
-/// axum's default body limit is 2 MB, which a 2 MB image plus the multipart envelope would exceed —
-/// so a customer picking a picture that the handler itself accepts would still be refused, with a
-/// bare 413. ONE constant for both uploads keeps the two surfaces from drifting: the envelope fits,
-/// and `image_store::MAX_IMAGE_BYTES` on the decoded image is the check that actually decides.
+/// MEASURED CAVEAT (kanban t_c06a32eb, 2026-10-08): this layer is NOT the binding ceiling. The
+/// body is read first by `body_deadline::body_read_deadline_middleware`, which runs outside every
+/// route layer and therefore reads with axum's own 2 MB default — a 2 MB + 4 KB body answers 413
+/// with this 3 MB ceiling in place. So the real contract is
+/// `image_store::MAX_IMAGE_BYTES` (2 MB minus the multipart framing reserve), and the two pickers
+/// check exactly that. The layer is kept because it is the ceiling that WOULD apply if the body
+/// ever reached the route unread; do not read it as the limit a customer can upload.
 const IMAGE_BODY_LIMIT_BYTES: usize = 3 * 1024 * 1024;
 
 /// `GET /api/health` (and `/api/v1/health`) — liveness + the schema gate (kanban t_c3823fd1).

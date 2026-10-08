@@ -214,6 +214,12 @@ tr:hover{background:#f8fafc}
 /* No inline onclick escaping — zero-bug approach */
 
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
+/* The most bytes an image the two pickers accept may carry — the server's
+   `image_store::MAX_IMAGE_BYTES` (2 MB minus a 64 KB multipart-framing reserve). Checking the SAME
+   number is what makes the friendly message the one a customer sees: over it the handler refuses
+   400, and above the whole 2 MB request envelope axum refuses the body with a bare 413 before any
+   handler runs (measured 2026-10-08, kanban t_c06a32eb). */
+var MAXIMG=2031616;
 
 /* kanban t_2f2c184b: the two nav accordions are collapsed by CSS (`.nav-acc-body{max-height:0;
    overflow:hidden}`, only `.nav-accordion.open` reveals the links) and their headers call `TA(...)`
@@ -3389,7 +3395,7 @@ function CPF(){
 function UPF(){
   var f=$("pf-file"), file=f&&f.files?f.files[0]:null;
   if(!file){ pfMsg("pf-avmsg","Choose an image first","me"); return; }
-  if(file.size>2*1024*1024){ pfMsg("pf-avmsg","That image is larger than 2 MB","me"); return; }
+  if(file.size>MAXIMG){ pfMsg("pf-avmsg","That image is too large — 2 MB maximum","me"); return; }
   var fd=new FormData(); fd.append("file",file);
   pfMsg("pf-avmsg","Uploading...","mi");
   fetch("/api/v1/auth/avatar",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd})
@@ -3434,7 +3440,7 @@ function SLB(){
 function ULB(){
   var f=$("lm-logo"), file=f&&f.files?f.files[0]:null;
   if(!file){ LBM("Choose an image first","e"); return; }
-  if(file.size>2*1024*1024){ LBM("That image is larger than 2 MB","e"); return; }
+  if(file.size>MAXIMG){ LBM("That image is too large — 2 MB maximum","e"); return; }
   var fd=new FormData(); fd.append("file",file);
   LBM("Uploading...","i");
   fetch("/api/v1/settings/branding/logo",{method:"POST",headers:{"Authorization":"Bearer "+T},body:fd})
