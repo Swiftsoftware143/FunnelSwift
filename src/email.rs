@@ -407,16 +407,21 @@ mod tests {
     #[test]
     fn bound_vars_cover_every_advertised_merge_field() {
         // Exactly the lists served by GET /api/v1/admin/email-templates/types.
-        let advertised: [&[&str]; 3] = [
-            &["name", "email", "login_url", "app_name"],
+        // kanban t_2f9a6576: `credentials` (the signup mail that carries the generated password)
+        // was absent from this list, so the panel could not offer the type and an admin could not
+        // edit the one mail every new customer receives.
+        let advertised: [&[&str]; 4] = [
+            &["name", "email", "password", "login_url", "app_name"],
             &["name", "token", "app_name"],
+            &["name", "email", "login_url", "app_name"],
             &["name", "plan_name", "login_url", "app_name"],
         ];
         let bound = bound_vars(vars(&[
             ("name", "n"),
             ("email", "e"),
+            ("password", "pw"),
             ("token", "t"),
-            ("plan_name", "p"),
+            ("plan_name", "pl"),
         ]));
         for list in advertised {
             for field in list {
@@ -425,6 +430,38 @@ mod tests {
                     "advertised merge field {field} is bound by no sender"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn credentials_path_renders_the_generated_password() {
+        // GAP 1 (kanban t_2f9a6576): the new-account mail must show the generated first password —
+        // it is the customer's ONLY way in, because the signup form never asks for one. The render
+        // map substitutes any bound key, so the contract to hold is that this sender binds
+        // `password` and that every advertised field renders with no placeholder left over.
+        let advertised = ["name", "email", "password", "login_url", "app_name"];
+        let v = bound_vars(vars(&[
+            ("name", "Ada Lovelace"),
+            ("email", "ada@example.com"),
+            ("password", "S3cret-pw!"),
+        ]));
+        let tpl = "Hi {{name}},\n\nEmail: {{email}}\nPassword: {{password}}\nSign in: {{login_url}}\n\n- The {{app_name}} Team";
+        let out = render(tpl, &v);
+        assert!(
+            unsubstituted(&out).is_empty(),
+            "placeholder left on the wire: {:?}",
+            unsubstituted(&out)
+        );
+        assert!(
+            out.contains("S3cret-pw!"),
+            "the generated password is not in the body"
+        );
+        assert!(!out.contains('{'));
+        for field in advertised {
+            assert!(
+                v.contains_key(field),
+                "{field} advertised but bound by no sender"
+            );
         }
     }
 

@@ -230,13 +230,14 @@ Transactional emails use database-stored templates in the `email_templates` tabl
 
 ### Template Types
 
-`template_type` is a free-form string (the API validates nothing); `GET /api/v1/admin/email-templates/types` advertises three types — and only one of them is ever sent by this app:
+`template_type` is a free-form string (the API validates nothing); `GET /api/v1/admin/email-templates/types` advertises four types. Two of them are the mails this app actually sends, and every one of them has a row you can edit in the panel's **Email Templates** editor:
 
 | Type | When Sent | Merge Fields (what the sender binds) |
 |---|---|---|
-| `password_reset` | User requests a password reset (`src/auth/handlers.rs:448`) — **the only send path in the codebase** | `{{name}}`, `{{token}}` |
-| `welcome` | **Never sent** — `send_welcome_email()` (`src/email.rs`) has no caller; signup does not email anybody | `{{name}}`, `{{email}}` |
-| `purchase_confirmed` | **Never sent — there is no purchase flow** (see *Account & Plan Flow*); `send_purchase_confirmed_email()` (`src/email.rs`) has no caller | `{{name}}`, `{{plan_name}}` |
+| `credentials` | **The new-account mail** — sent at signup (`POST /api/v1/auth/signup`) and when an admin creates a user (`src/handlers/public_signup_handler.rs:195`, `src/handlers/admin_handler.rs:142`). It carries the generated first password | `{{name}}`, `{{email}}`, `{{password}}`, `{{login_url}}` |
+| `password_reset` | User requests a password reset (`src/auth/handlers.rs:448`) — carries the reset code | `{{name}}`, `{{token}}` |
+| `welcome` | **Stored only — no sender in this app reaches it**; `send_welcome_email()` (`src/email.rs`) has no caller, and the live new-account mail is `credentials` | `{{name}}`, `{{email}}` |
+| `purchase_confirmed` | **Stored only — there is no purchase flow** (see *Account & Plan Flow*); `send_purchase_confirmed_email()` (`src/email.rs`) has no caller | `{{name}}`, `{{plan_name}}` |
 
 Every type also binds `{{app_name}}` (`FunnelSwift`), `{{app_url}}` (`https://app.funnelswift.net`) and
 `{{login_url}}` (`https://app.funnelswift.net/login`) — the same names
@@ -263,7 +264,7 @@ There is no `merge-fields` route: `/api/email-templates/merge-fields` answers 40
 ### Template Fields
 
 - **name** — display label
-- **template_type** — free-form string; the admin panel offers `welcome`, `password_reset` and `purchase_confirmed` from `GET /api/v1/admin/email-templates/types`, and the API accepts any value
+- **template_type** — free-form string; the admin panel offers `credentials`, `password_reset`, `welcome` and `purchase_confirmed` from `GET /api/v1/admin/email-templates/types`, and the API accepts any value
 - **subject** — subject line with `{{variable}}` insertion
 - **body** — plain-text body
 - **html_body** — HTML body; when it is non-empty the email is sent as HTML, otherwise the plain-text `body` is used (there is no `is_html` column)
@@ -272,9 +273,11 @@ There is no `merge-fields` route: `/api/email-templates/merge-fields` answers 40
 
 ### Merge Fields Available
 
-Every template type binds the shared `{{app_name}}`, `{{app_url}}`, `{{login_url}}` plus its own fields
-(table above). There is **no `{{password}}` merge field anywhere in the codebase** — no sender holds the
-plaintext password, so a body that uses it sends that literal text.
+Every template type binds the shared `{{app_name}}`, `{{app_url}}` and `{{login_url}}`, plus the fields in
+the table above. `credentials` also binds **`{{password}}`** — the generated first password — because that
+mail is the customer's only way in: signup collects a name and an email and nothing else, and the password
+is generated server-side (`send_credentials_email`, `src/email.rs`). A body may only use the fields its own
+type binds; any other brace token reaches the recipient literally.
 
 ### Account & Plan Flow (there is no purchase flow)
 
@@ -285,13 +288,14 @@ nothing in this app is triggered by a payment. What actually happens:
 2. The system creates the tenant and seeds `tenant_settings` (e.g. the default lead stages)
 3. The plan assigned is the **free tier of the product being signed up**, resolved from the `plans` table itself — `price = 0` plus the row's `side` (`main` for `/api/v1/auth/register`, `kinetic` for `/api/v1/auth/signup`, `both` accepted by either; `src/plan_resolver.rs`). No plan **slug** is hardcoded: a slug the install does not carry can no longer silently leave the new tenant with no subscription. A plan slug sent in the request is ignored either way, and each signup response reports what it assigned under `plan_assignment` (with `assigned: false` if this install has no free plan at all)
 4. Only an admin can change it: `POST /api/v1/admin/plans/assign` writes the active `tenant_plan_subscriptions` row (`set_active_plan`, `src/handlers/plan_handler.rs`), cancelling the previous one with `status = 'cancelled'` first
-5. **No email is sent at any of these steps.** `send_welcome_email()` and `send_purchase_confirmed_email()` have no callers; the only email this app sends on its own is `password_reset`
+5. **Creating an account sends exactly one mail — and it is the important one.** The `credentials` mail (generated first password + login link) is sent after the user row and the plan subscription exist, so the details in it are true by the time they arrive; a send failure is logged loudly and never aborts the signup. `welcome` and `purchase_confirmed` have no sender at all
 
 ### Fallback Content (not database seeds)
 
-No migration seeds `email_templates` — the table is edited by admins. When no matching row is found,
-the app renders hardcoded fallback content from `get_inline()` in `src/email.rs` for `welcome`,
-`purchase_confirmed` and `password_reset`.
+Migrations `074` and `097` seed one default row per type, so the copy lives in the database and an admin
+edits it in the panel. A missing row does **not** drop the mail: `get_inline()` in `src/email.rs` renders a
+hardcoded fallback for `credentials`, `welcome`, `purchase_confirmed` and `password_reset`. Deleting a row
+therefore degrades the copy rather than stopping the send.
 
 ## Per-Tenant Email (Mailgun) Resolution
 

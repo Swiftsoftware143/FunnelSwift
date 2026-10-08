@@ -1705,8 +1705,9 @@ function openEmailTemplateModal(id) {
        REQUIRES `template_type` (kanban t_052b4c7a): the old form sent `type`, so every POST was a 422
        ("missing field `template_type`", nothing written) and the Type select could never leave its
        default. The type list is the one endpoint that advertises types AND their merge fields. */
-    let types = [{ type: 'welcome', merge_fields: ['name', 'email', 'login_url', 'app_name'] },
+    let types = [{ type: 'credentials', merge_fields: ['name', 'email', 'password', 'login_url', 'app_name'] },
                  { type: 'password_reset', merge_fields: ['name', 'token', 'app_name'] },
+                 { type: 'welcome', merge_fields: ['name', 'email', 'login_url', 'app_name'] },
                  { type: 'purchase_confirmed', merge_fields: ['name', 'plan_name', 'login_url', 'app_name'] }];
     let rows = [];
     try { const ty = await api('/admin/email-templates/types'); if (Array.isArray(ty) && ty.length) types = ty; } catch(e) {}

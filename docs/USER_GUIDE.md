@@ -76,8 +76,9 @@ Transactional emails are rendered from database-stored templates in `email_templ
 
 | Template Type | When Sent | Merge Fields |
 |---|---|---|
-| `password_reset` | User requests a password reset — **the only type the app actually sends** | `{{name}}`, `{{token}}` |
-| `welcome` | **Not sent by any code path** — the template is stored and editable, but `send_welcome_email()` has no caller (signup sends no email) | `{{name}}`, `{{email}}` |
+| `credentials` | **The new-account email** — sent when you sign up, and when an admin creates a user. It carries the first password the system generated for you | `{{name}}`, `{{email}}`, `{{password}}`, `{{login_url}}` |
+| `password_reset` | You ask for a password reset — carries the reset code | `{{name}}`, `{{token}}` |
+| `welcome` | **Not sent by any code path** — stored and editable, but nothing sends it; your new-account email is `credentials` | `{{name}}`, `{{email}}` |
 | `purchase_confirmed` | **Not sent — there is no payment flow**; `send_purchase_confirmed_email()` has no caller | `{{name}}`, `{{plan_name}}` |
 
 All types also bind `{{app_name}}`, `{{app_url}}` and `{{login_url}}`. Placeholders must be written with

@@ -309,14 +309,24 @@ pub async fn get_template(
 }
 
 /// GET /api/v1/admin/email-templates/types
+///
+/// The types the senders can actually reach, each with the merge fields that sender binds
+/// (`src/email.rs`). This list is the panel's Type select, so a type absent from it cannot be
+/// chosen and its copy cannot be edited. Before kanban t_2f9a6576 the list held the two types no
+/// sender in this app ever reaches (`welcome`, `purchase_confirmed`) and omitted `credentials` —
+/// the mail that carries the generated password on every signup and every admin-created user.
+///
+/// `welcome` / `purchase_confirmed` stay listed (their rows exist and are editable) but their
+/// description says plainly that nothing sends them, rather than implying mail that never goes out.
 pub async fn list_template_types(
     user: crate::auth::middleware::AuthUser,
 ) -> Result<Json<Vec<serde_json::Value>>, AppError> {
     require_platform_admin(&user)?;
     Ok(Json(vec![
-        serde_json::json!({"type": "welcome", "description": "Sent after user registration", "merge_fields": ["name", "email", "login_url", "app_name"]}),
-        serde_json::json!({"type": "password_reset", "description": "Sent when user requests password reset", "merge_fields": ["name", "token", "app_name"]}),
-        serde_json::json!({"type": "purchase_confirmed", "description": "Sent after successful payment", "merge_fields": ["name", "plan_name", "login_url", "app_name"]}),
+        serde_json::json!({"type": "credentials", "description": "Sent when an account is created (signup, or an admin adds a user) — carries the generated first password", "merge_fields": ["name", "email", "password", "login_url", "app_name"]}),
+        serde_json::json!({"type": "password_reset", "description": "Sent when a user requests a password reset — carries the reset code", "merge_fields": ["name", "token", "app_name"]}),
+        serde_json::json!({"type": "welcome", "description": "Stored only — no sender in this app reaches it; signup sends `credentials`", "merge_fields": ["name", "email", "login_url", "app_name"]}),
+        serde_json::json!({"type": "purchase_confirmed", "description": "Stored only — no sender in this app (there is no in-app checkout)", "merge_fields": ["name", "plan_name", "login_url", "app_name"]}),
     ]))
 }
 
