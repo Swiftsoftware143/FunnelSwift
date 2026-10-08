@@ -1,7 +1,7 @@
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
 use axum::{
-    extract::{Json, Path, State},
+    extract::{Json, Path, Query, State},
     response::IntoResponse,
 };
 use chrono::Utc;
@@ -695,4 +695,82 @@ pub async fn admin_list_all_cards(
         .collect();
 
     Ok(Json(json!({"cards": cards, "total": cards.len()})))
+}
+
+/// Query string for [`list_provisioning_log`]. `limit` is clamped server-side.
+#[derive(serde::Deserialize)]
+pub struct ProvisionLogQuery {
+    pub limit: Option<i64>,
+}
+
+/// List recent free-account provisioning attempts for the caller's tenant (admin only).
+///
+/// `provisioning_log` has recorded every tag-driven provisioning attempt since its migration
+/// (one row per attempt, written `pending` before the sibling call and updated with the real
+/// outcome), and the admin guide tells the operator "every attempt is visible in the provisioning
+/// log". Until this route the table had a writer and NO door onto its rows for the operator: the
+/// only reader was `app_provision::history_for_lead`, called from the probe harness, and the console
+/// had no view — so the guide promised a screen that did not exist. This is that screen's reader.
+///
+/// Tenant-scoped on purpose: an admin sees only their own leads' attempts. Newest first.
+pub async fn list_provisioning_log(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Query(params): Query<ProvisionLogQuery>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
+
+    let rows: Vec<(
+        Uuid,
+        Option<Uuid>,
+        String,
+        Option<String>,
+        String,
+        Option<i32>,
+        Option<String>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT id, lead_id, source_app, plan_slug, status, http_status, error_message, created_at \
+         FROM provisioning_log WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2",
+    )
+    .bind(tenant_id)
+    .bind(limit)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let attempts: Vec<Value> = rows
+        .iter()
+        .map(
+            |(
+                id,
+                lead_id,
+                source_app,
+                plan_slug,
+                status,
+                http_status,
+                error_message,
+                created_at,
+            )| {
+                json!({
+                    "id": id.to_string(),
+                    "lead_id": lead_id.map(|l| l.to_string()),
+                    "source_app": source_app,
+                    "plan_slug": plan_slug,
+                    "status": status,
+                    "http_status": http_status,
+                    "error_message": error_message,
+                    "created_at": created_at.to_rfc3339(),
+                })
+            },
+        )
+        .collect();
+
+    Ok(Json(
+        json!({ "count": attempts.len(), "attempts": attempts }),
+    ))
 }

@@ -12,7 +12,7 @@ use crate::auth::handlers::{
     update_profile,
 };
 use crate::handlers::{
-    affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
+    admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
     affiliate_onboarding_handler, affiliate_payout_handler, affiliate_portal_handler,
     affiliate_product_handler, affiliate_rate_band_handler, affiliate_referral_handler,
     affiliate_tracking_handler, bulk_handler, campaigns_handler, checkout_handler,
@@ -274,6 +274,13 @@ pub fn create_router(
         .route(
             "/api/v1/admin/system-tags",
             get(affiliate_product_handler::list_system_tags),
+        )
+        // The console's door onto `provisioning_log`: one row per tag-driven free-account attempt.
+        // The table had a writer and no operator reader until this route (the admin guide promised
+        // the log was visible; only the probe harness could read it). Private by default.
+        .route(
+            "/api/v1/admin/provisioning-log",
+            get(admin_handler::list_provisioning_log),
         )
         .route(
             "/api/v1/admin/tag-groups",
