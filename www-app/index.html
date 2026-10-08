@@ -3508,16 +3508,29 @@ function SG(id,returnTab,isSystem){
 <script>
 (function(){
   var choice = localStorage.getItem('cookie_consent');
+  // kanban t_ff948669: the banner is a fixed 91px-tall bar at z-index 99999, so on a short
+  // window it covers whatever lands in the last stretch of the viewport — measured on the
+  // live console at 1280x577: the Change Password "Save" sat at y 506..536 while the banner
+  // occupied y 486..577, so the click hit the banner and the password never changed. Give the
+  // document the banner's own height of bottom padding while it is up, so every control (this
+  // screen's last Save included) can still be scrolled clear of it.
+  function cookieBannerReserve(on){
+    var bn = document.getElementById('cookie-banner');
+    document.body.style.paddingBottom = on ? (bn.offsetHeight || 0) + 'px' : '';
+  }
   if (!choice) {
     document.getElementById('cookie-banner').style.display = 'block';
+    cookieBannerReserve(true);
   }
   window.acceptCookies = function(){
     localStorage.setItem('cookie_consent','accepted');
     document.getElementById('cookie-banner').style.display = 'none';
+    cookieBannerReserve(false);
   };
   window.declineCookies = function(){
     localStorage.setItem('cookie_consent','declined');
     document.getElementById('cookie-banner').style.display = 'none';
+    cookieBannerReserve(false);
     // Disable GA/GTM if present
     if (typeof gtag === 'function') { window['ga-disable-all'] = true; }
     var scripts = document.querySelectorAll('script[src*="googletagmanager"],script[src*="analytics"]');
