@@ -12,17 +12,17 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (measured 2026-10-06, from `api_router.rs` source)
+//! # The census (measured 2026-10-08, from `api_router.rs` source)
 //!
-//! 186 `.route(..)` mounts / 185 unique paths, classified three ways:
+//! 187 `.route(..)` mounts / 186 unique paths, classified three ways:
 //!
 //! ```text
-//!   161 mounts  /api/**            160 unique after the duplicate `/api/v1/linkedin/auth`
+//!   162 mounts  /api/**            161 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     16        public            -> PUBLIC_ROUTES below (15 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    141        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (29 of them `/api/v1/admin/**` = the operator surface,
+//!    142        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -231,9 +231,9 @@ mod tests {
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 186, "mounted route count moved");
+        assert_eq!(mounted.len(), 187, "mounted route count moved");
         assert_eq!(
-            api, 161,
+            api, 162,
             "/api/ mount count moved — update the census in the module docs"
         );
     }
