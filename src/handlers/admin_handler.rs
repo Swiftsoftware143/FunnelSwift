@@ -52,6 +52,54 @@ pub async fn portfolio_sync(
     let email =
         crate::security::email_addr::normalize(&email).map_err(AppError::UnprocessableEntity)?;
 
+    // Idempotency on the sync `id` (kanban t_149639f7).
+    //
+    // This door PROVISIONS ACCOUNTS: it mints a `tenants` row (with its own plan subscription), an
+    // argon2-hashed `users` row and a generated credential BEFORE the `portfolio_companies` upsert
+    // further down. The upsert is keyed on the sync `id`; the mint was not — so a REPEAT push of a
+    // company that already had an account ran the mint again. Because the tenant slug is derived
+    // deterministically from the company name, that second mint died on `tenants_slug_key` and the
+    // route answered `500 Database error` with NOTHING refreshed (measured live pre-fix: push2 of one
+    // id answered 500, the company row still carried the push1 email/description), and a repeat that
+    // reached the email check at all answered 409 — so a portfolio sync could never simply be re-run.
+    //
+    // The account is keyed on the COMPANY, so look the company up FIRST: an id we already hold is a
+    // refresh, never a re-provision. Only the descriptive columns move (name, email, description) —
+    // NOT `tenant_id` (the scoping key, and the parent of the company's own children, which carry
+    // their own) and NOT `slug` (bound at mint to its OWN tenant's slug; re-deriving it would
+    // manufacture drift). This is the contract the fleet settled on for the twin door
+    // (MissedCall Respondr, t_ff373bd1) and in t_e63b1450's verdict on the upsert's DO UPDATE arm,
+    // which this branch mirrors by construction.
+    let owner_tenant_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT tenant_id FROM portfolio_companies WHERE id = $1")
+            .bind(sync_id)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    if let Some(account_id) = owner_tenant_id {
+        sqlx::query(
+            "UPDATE portfolio_companies SET name = $2, email = $3, description = $4, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(sync_id)
+        .bind(&name)
+        .bind(&email)
+        .bind(&description)
+        .execute(&state.pool)
+        .await?;
+
+        // 200, the account that already owns the company, and NO `user_id`/`password` — nothing was
+        // minted this time, so there is no credential to share and no credential mail is sent. Same
+        // answer shape the twin door gives (`already_exists`).
+        return Ok(Json(json!({
+            "status": "already_exists",
+            "id": sync_id.to_string(),
+            "name": name,
+            "email": email,
+            "account_id": account_id.to_string(),
+            "note": "This company already has an account; its contact details were refreshed and no new credentials were created."
+        })));
+    }
+
     // Check email uniqueness
     let existing =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
