@@ -773,8 +773,7 @@
  const name = document.getElementById('signupName').value.trim();
  const email = document.getElementById('signupEmail').value.trim();
 
- if(!name || !email || !password) return showError('All fields are required.');
- if(password.length < 8) return showError('Password must be at least 8 characters.');
+ if(!name || !email) return showError('All fields are required.');
 
  document.getElementById('signupBtnText').style.display = 'none';
  document.getElementById('signupBtnSpinner').style.display = 'inline-block';
@@ -801,16 +800,16 @@
  throw new Error(data.error || data.message || 'Signup failed');
  }
 
- // The API now returns a JWT for the new account. The app lives on its own origin, so the
- // session is handed over in the URL FRAGMENT (kanban t_a724790f): a fragment is never sent
- // to the server, so it cannot be logged, while the old "?token=" form wrote a live 24h
- // session JWT into the nginx access log on every signup. The app origin reads
- // location.hash before its auth guard runs.
- if (data.token) {
- window.location.href = 'https://app.funnelswift.net/#token=' + encodeURIComponent(data.token);
- } else {
- window.location.href = 'https://app.funnelswift.net/login';
- }
+ // David's signup model: the marketing form collects NAME + EMAIL only. The server generated
+ // the login credentials and emailed them, so there is NO auto-login here - the user confirms
+ // their address by signing in with the password we sent (a real two-step check).
+ document.getElementById('signupBtnText').textContent = 'Check your email';
+ var okBox = document.createElement('p');
+ okBox.setAttribute('style','text-align:center;font-size:13px;color:#16a34a;margin-top:14px;line-height:1.55');
+ okBox.innerHTML = '<strong>Account created!</strong><br>Check your email. We sent your login '
+   + 'details to ' + email.replace(/[<>&]/g, '') + '.<br>You can change your password any time in '
+   + 'your profile settings.';
+ document.getElementById('signupBtn').parentNode.appendChild(okBox);
 
  } catch(err) {
  showError(err.message);
