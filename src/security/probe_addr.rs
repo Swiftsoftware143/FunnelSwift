@@ -16,16 +16,20 @@
 //! DATA. This module is the outbound half of that: a signup addressed into the harness class is
 //! created normally but its credentials mail is never sent, so a probe can never reach an inbox.
 //!
-//! WHAT IS *NOT* HERE, AND WHY
+//! RESERVED CLASS — SUPPRESSED TOO (kanban t_e4d94bd9)
 //!
-//! The RFC 2606 / 6761 class (`example.com/.net/.org`, `*.invalid`, `*.test`, `*.local`,
-//! `localhost`) is deliberately NOT suppressed here. Those names cannot resolve to a mailbox, so a
-//! send to them can never reach a customer — it only bounces — and that is exactly the address class
-//! the content-level harnesses use on purpose:
-//! `scripts/fs-cr1-credential-proof.py` points the provider at a local SMTP sink and signs up as
-//! `cr1sink<hex>@probe.local` so it can read the credential message off the wire. Suppressing that
-//! class in the send path would delete the only harness that can prove the send itself still works.
-//! The harness class above is where the real leak was, and it is closed at the app.
+//! The RFC 2606 / 6761 names (`example.com/.net/.org`, `*.invalid`, `*.test`) cannot resolve to a
+//! mailbox, so a send to them can only bounce. Measured on the sibling CoreSwift-CRM domain
+//! (t_e4d94bd9): harness rows addressed there produced 16 real bounces in ~5 minutes (`accepted`
+//! then `failed`, Mailgun code 498) — and a sustained bounce rate is how Mailgun disables a domain,
+//! which would take out the transactional mail of every app on the shared account. Those names are
+//! therefore suppressed here too: the relay is never handed a message it can only bounce.
+//!
+//! ONE DELIBERATE EXCEPTION — `*.local` / `localhost`. Those stay OPEN because the content-level
+//! harness `scripts/fs-cr1-credential-proof.py` points the provider at a local SMTP sink and signs
+//! up as `cr1sink<hex>@probe.local` to read the credential message off the wire; suppressing `.local`
+//! would delete the only harness that can prove the send itself still works. Only the fleet's own
+//! `swiftsoftware.local` identity is listed, never the bare `local` TLD.
 //!
 //! The other half of the fix is the tenant marker (`crate::probe_harness`): a harness that sends
 //! `X-Swift-Harness` marks its tenant, and the signup path suppresses on the marker too — so a probe
@@ -37,6 +41,12 @@ pub const FLEET_HARNESS_DOMAINS: &[&str] = &[
     "swiftsoftware.dev",
     "swiftsoftware.net",
     "swiftsoftware.local",
+    "example.invalid",
+    "example.com",
+    "example.net",
+    "example.org",
+    "invalid",
+    "test",
 ];
 
 /// The fleet harness domain `addr` belongs to, if any. A subdomain counts
@@ -87,6 +97,13 @@ mod tests {
             harness_domain("probe@mail.swiftsoftware.dev"),
             Some("swiftsoftware.dev")
         );
+        // Reserved RFC 2606 / 6761 names are suppressed too (kanban t_e4d94bd9): a send to them can
+        // only bounce, and bounces are how a sending domain gets disabled.
+        assert_eq!(harness_domain("x@example.com"), Some("example.com"));
+        assert_eq!(harness_domain("probe@example.org"), Some("example.org"));
+        assert_eq!(harness_domain("probe@example.net"), Some("example.net"));
+        assert_eq!(harness_domain("x@foo.invalid"), Some("invalid"));
+        assert_eq!(harness_domain("x@foo.test"), Some("test"));
     }
 
     #[test]
@@ -100,9 +117,10 @@ mod tests {
         // A domain that merely CONTAINS a harness domain is not a match.
         assert_eq!(harness_domain("x@notswiftsoftware.dev"), None);
         assert_eq!(harness_domain("x@swiftsoftware.dev.evil.com"), None);
-        // Reserved non-routable names are not this rule's business (see the module doc).
+        // `*.local` stays OPEN on purpose (the local SMTP-sink credential harness needs it — see the
+        // module doc). Everything else reserved is suppressed now.
         assert_eq!(harness_domain("cr1sink0a1b@probe.local"), None);
-        assert_eq!(harness_domain("x@example.com"), None);
+        assert_eq!(harness_domain("x@probe.local"), None);
     }
 
     #[test]
