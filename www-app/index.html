@@ -3385,7 +3385,17 @@ function CPF(){
   if(np!==np2){ pfMsg("pf-pmsg","The two new passwords do not match","me"); return; }
   if(!cp){ pfMsg("pf-pmsg","Enter your current password to confirm","me"); return; }
   pfMsg("pf-pmsg","Saving...","mi");
-  api("/api/v1/auth/password",{method:"PUT",body:JSON.stringify({current_password:cp,new_password:np})})
+  /* kanban t_fsprofile20261009: a wrong CURRENT password is a FIELD-level answer (the API replies
+     401 "Current password is incorrect"), NOT an expired session. Posting it through api() hit that
+     helper's 401 arm, which clears the token and bounces to /login — so a customer who mistyped one
+     character was logged out with nothing explained, and the inline message never appeared. This
+     posts directly (same shape as UPF() below) so the refusal lands in the field's own message. */
+  fetch("/api/v1/auth/password",{method:"PUT",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+      body:JSON.stringify({current_password:cp,new_password:np})})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+      if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
+      return d||{};})})
     .then(function(){
       $("pf-np").value=""; $("pf-np2").value=""; $("pf-cp").value="";
       pfMsg("pf-pmsg","Password changed","ms");
