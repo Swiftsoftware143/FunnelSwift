@@ -88,6 +88,34 @@ pub async fn get_dashboard_stats(
     .fetch_one(&state.pool)
     .await?;
 
+    // The TENANT ADMIN console (admin.funnelswift.net) paints a different four tiles from the SAME
+    // route: Total Leads, Cards Created, Affiliates and Tags, reading `total_cards`,
+    // `total_affiliates` and `total_tags`. None of the three was ever emitted here, so three of its
+    // four tiles fell back to `||0` and showed a hard zero for EVERY workspace (the fourth,
+    // `total_leads`, was the one name this endpoint did return). Same class as the app console's
+    // cards_total/plans_total bug fixed in 00a5b2b; this is its admin-console half. Each count
+    // mirrors the tenant-scoped LIST the console opens from the tile:
+    //   total_cards      == GET /api/v1/kinetic/cards      (WHERE tenant_id = $1)
+    //   total_affiliates == GET /api/v1/affiliates         (WHERE tenant_id = $1)
+    //   total_tags       == GET /api/v1/tags               (tenant_id = $1 OR is_system = true)
+    let total_cards: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM kinetic_cards WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+
+    let total_affiliates: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM affiliates WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+
+    let total_tags: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE tenant_id = $1 OR is_system = true")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+
     let stats = serde_json::json!({
         "total_leads": total_leads,
         "leads_by_stage": leads_by_stage,
@@ -98,6 +126,9 @@ pub async fn get_dashboard_stats(
         "leads_this_month": leads_this_month,
         "cards_total": cards_total,
         "plans_total": plans_total,
+        "total_cards": total_cards,
+        "total_affiliates": total_affiliates,
+        "total_tags": total_tags,
     });
 
     Ok(Json(stats))
