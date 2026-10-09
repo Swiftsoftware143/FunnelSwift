@@ -556,13 +556,29 @@ pub async fn forgot_password(
             .execute(&state.pool)
             .await?;
 
-        match send_reset_email(&state.pool, user.tenant_id, &user.email, &token, &user.name).await {
-            Ok(_) => tracing::info!("Password reset email sent to {}", user.email),
-            Err(e) => tracing::error!(
-                "Failed to send password reset email to {}: {}",
-                user.email,
-                e
+        // A reserved / harness destination can only bounce (kanban t_e4d94bd9): Mailgun counts the
+        // bounce against the sending domain's reputation, and the fleet's own probes call THIS route
+        // with addresses like `probe-prof-…@example.invalid`. Withhold exactly what the signup path
+        // withholds — the reset row is still written, only the mail that cannot arrive is skipped. A
+        // real customer's address is unaffected.
+        match crate::security::probe_addr::harness_domain(&user.email) {
+            Some(domain) => tracing::info!(
+                email = %user.email,
+                domain = %domain,
+                "forgot-password: reset email SUPPRESSED — reserved/harness address; a send could only bounce"
             ),
+            None => {
+                match send_reset_email(&state.pool, user.tenant_id, &user.email, &token, &user.name)
+                    .await
+                {
+                    Ok(_) => tracing::info!("Password reset email sent to {}", user.email),
+                    Err(e) => tracing::error!(
+                        "Failed to send password reset email to {}: {}",
+                        user.email,
+                        e
+                    ),
+                }
+            }
         }
         // Send password reset email via SMTP
     }
