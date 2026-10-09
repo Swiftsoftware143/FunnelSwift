@@ -885,7 +885,7 @@ pub async fn admin_plan_registry(
                         "key": s.key,
                         "label": s.label,
                         "kind": kind_str(s.kind),
-                        "note": "no feature_limits row and no plans column — the gate allows by ABSENCE, not by a grant",
+                        "note": "not listed on this plan, so the plan sets no limit on it",
                     }));
                 }
                 let top_rank = crate::feature_registry::generosity(s, &top_v);
@@ -952,7 +952,7 @@ pub async fn admin_plan_registry(
 
     Ok(Json(json!({
         "top_plan": top_json,
-        "top_rule": "`plans` has no sort_order / is_active column — the top tier is the highest price, then name",
+        "top_rule": "The top tier is the plan with the highest price (ties broken by name).",
         "features": features_json,
         "retired_keys": retired_json,
         "retired_keys_rule": "retired = no gate reads the key. The `feature_limits` rows for 086/088/090 are DELETED (nothing could honour them); `has_api` is a retired boolean whose `plans.has_api` COLUMN values are deliberately untouched (plan/billing data, a pricing call). The authored numbers survive in the migration headers and the admin guide.",
@@ -960,8 +960,8 @@ pub async fn admin_plan_registry(
         "superset_ok": violations.is_empty(),
         "superset_violations": violations,
         "inert_on_top": inert,
-        "limit_semantics": "limit: -1 unlimited, 0 disabled, n a cap; null = not configured = the gate ALLOWS (inert)",
-        "boolean_semantics": "boolean: true granted, false refused (an absent jsonb key falls back to the has_* column, whose default is false)",
+        "limit_semantics": "For a limit: -1 means unlimited, 0 turns the feature off, a number sets a cap, and a blank means no limit is set (the plan allows it).",
+        "boolean_semantics": "For an on/off feature: ticked means allowed, unticked means not allowed. If the plan leaves it unset it falls back to the older account-wide switch, which is off unless someone turned it on.",
     })))
 }
 
