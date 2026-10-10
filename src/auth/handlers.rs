@@ -10,7 +10,7 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Path, Request, State},
     http::{HeaderMap, StatusCode},
     response::Response,
     Json,
@@ -402,14 +402,16 @@ pub async fn update_profile(
 pub async fn upload_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
-    mut multipart: Multipart,
+    headers: HeaderMap,
+    request: Request,
 ) -> AppResult<Json<serde_json::Value>> {
     let user_id = Uuid::parse_str(&auth.user_id)
         .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
 
-    // The ONE shared image path (crate::image_store): the first part carrying a filename, the 2 MB
-    // cap, and the magic-byte sniff to PNG / JPEG / GIF / WebP.
-    let (content_type, bytes) = crate::image_store::read_uploaded_image(&mut multipart).await?;
+    // The ONE shared image path (crate::image_store): a multipart form OR a raw image body, the
+    // 2 MB cap, and the magic-byte sniff to PNG / JPEG / GIF / WebP.
+    let (content_type, bytes) =
+        crate::image_store::read_request_image(&state, &headers, request).await?;
 
     sqlx::query(
         r#"INSERT INTO user_avatars (user_id, content_type, bytes, updated_at)

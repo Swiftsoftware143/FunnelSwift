@@ -17,7 +17,8 @@
 //! stored value when the tenant saves name/colour, so a panel echo cannot un-reference a logo.
 
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Path, Request, State},
+    http::HeaderMap,
     response::Response,
     Json,
 };
@@ -87,12 +88,13 @@ RETURNING value";
 pub async fn upload_logo(
     auth: AuthUser,
     State(state): State<AppState>,
-    mut multipart: Multipart,
+    headers: HeaderMap,
+    request: Request,
 ) -> AppResult<Json<serde_json::Value>> {
     let tenant_id = caller_tenant(&auth)?;
 
-    // The ONE shared image path: multipart read, 2 MB cap, magic-byte sniff.
-    let (content_type, bytes) = image_store::read_uploaded_image(&mut multipart).await?;
+    // The ONE shared image path: a multipart form OR a raw image body, the 2 MB cap, magic-byte sniff.
+    let (content_type, bytes) = image_store::read_request_image(&state, &headers, request).await?;
 
     sqlx::query(
         r#"INSERT INTO tenant_logos (tenant_id, content_type, bytes, updated_at)
