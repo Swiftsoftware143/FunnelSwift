@@ -463,6 +463,9 @@ function buildNav() {
   sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></div>`);
+  // Email Branding (kanban t_c06a32eb follow-up): the per-tenant email-branding backend shipped
+  // with NO screen anywhere in this console. David's rule: "A backend route with no UI is a DEFECT".
+  sections.push(`<div class="nav-item ${STATE.view==='emailBranding'?'active':''}" data-view="emailBranding"><span class="icon">🎨</span><span class="nav-text">Email Branding</span></div>`);
 
   // Super Admin (divider + admin-only)
   if (isSuperAdmin()) {
@@ -510,6 +513,7 @@ const viewRenderers = {
   systemTags: renderSystemTags,
   tagGroups: renderTagGroups,
   tenants: renderTenants,
+  emailBranding: renderEmailBranding,
   settings: renderSettings,
   siteSettings: renderSiteSettings,
   tagRules: renderTagRules,
@@ -564,6 +568,7 @@ function bindView(view) {
     case 'tagGroups': bindTagGroups(); break;
     case 'tenants': bindTenants(); break;
     case 'settings': bindSettings(); break;
+    case 'emailBranding': bindEmailBranding(); break;
     case 'siteSettings': bindSiteSettings(); break;
     case 'tagRules': bindTagRules(); break;
     case 'checkoutSessions': break;
@@ -2412,6 +2417,121 @@ async function renderSettings() {
   </div>`;
 }
 function bindSettings() {}
+
+// ── EMAIL BRANDING (per-tenant identity on transactional email) ─────────────────────
+// Backend (kanban t_c06a32eb) had NO screen: brand_name / brand_color live in this tenant's
+// `tenant_settings` row under key `email_branding` (GET / PUT /api/v1/settings), and the logo
+// BYTES live in `tenant_logos` (POST|DELETE /api/v1/settings/branding/logo, served by the public
+// GET /api/v1/branding/logo/:tenant_id). Every rendered mail opens with the header block, so a
+// tenant that sets nothing here simply sends with the app's own identity.
+async function renderEmailBranding() {
+  let brand = {};
+  try {
+    const rows = await api('/settings');
+    const list = Array.isArray(rows) ? rows : ((rows && rows.data) || []);
+    const row = list.find(r => r && r.key === 'email_branding');
+    if (row && row.value && typeof row.value === 'object') brand = row.value;
+  } catch (e) { /* an unreadable settings list still renders an unbranded pane, never an error page */ }
+  const name = x(brand.brand_name || '');
+  const color = x(brand.brand_color || '#4f46e5');
+  const logo = brand.logo_url || '';
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">🎨 Email Branding</h1>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title">Your branding on transactional email</span>
+        <span class="badge ${logo||brand.brand_name?'badge-green':'badge-yellow'}">${logo||brand.brand_name?'branded':'not branded'}</span>
+      </div>
+      <div style="padding:16px">
+        <div style="font-size:12px;color:#64748b;margin-bottom:12px">
+          This is what your customers see at the top of the signup, password-reset and purchase
+          emails sent for your account. Leave it empty to send with the app's default identity.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 220px;gap:16px;align-items:start">
+          <div>
+            <div class="form-group"><label class="form-label">Brand display name</label>
+              <input class="input" id="brand-name" maxlength="60" value="${name}" placeholder="e.g. Acme Capital"></div>
+            <div class="form-group"><label class="form-label">Brand colour</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="color" id="brand-color-picker" value="${color}" style="width:44px;height:34px;padding:2px;border:1px solid var(--border);border-radius:8px;background:#fff">
+                <input class="input" id="brand-color" value="${color}" placeholder="#4f46e5">
+              </div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">A hex colour such as #4f46e5. It draws the rule under your logo.</div>
+            </div>
+            <div style="margin-top:14px">
+              <button class="btn btn-primary btn-sm" id="brand-save">Save branding</button>
+            </div>
+          </div>
+          <div>
+            <div class="form-label">Logo</div>
+            <div id="brand-logo-box" style="border:1px dashed var(--border);border-radius:10px;height:110px;display:flex;align-items:center;justify-content:center;background:#f8fafc;overflow:hidden">
+              ${logo ? `<img id="brand-logo-img" src="${x(logo)}" alt="${name||'Your logo'}" style="max-width:100%;max-height:100%">` : `<span style="font-size:12px;color:#94a3b8">No logo yet</span>`}
+            </div>
+            <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none">
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" id="brand-logo-pick">${logo?'Replace logo':'Upload logo'}</button>
+              ${logo ? `<button class="btn btn-secondary btn-sm" id="brand-logo-remove">Remove</button>` : ''}
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:6px">PNG, JPEG, WebP or GIF, up to 2 MB.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindEmailBranding() {
+  const picker = document.getElementById('brand-color-picker');
+  const hex = document.getElementById('brand-color');
+  if (picker && hex) {
+    picker.addEventListener('input', () => { hex.value = picker.value; });
+    hex.addEventListener('input', () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value.trim())) picker.value = hex.value.trim(); });
+  }
+  document.getElementById('brand-save')?.addEventListener('click', saveEmailBranding);
+  const file = document.getElementById('brand-logo-file');
+  document.getElementById('brand-logo-pick')?.addEventListener('click', () => { if (file) file.click(); });
+  if (file) file.addEventListener('change', uploadBrandLogo);
+  document.getElementById('brand-logo-remove')?.addEventListener('click', removeBrandLogo);
+}
+
+async function saveEmailBranding() {
+  const name = ((document.getElementById('brand-name') || {}).value || '').trim();
+  const color = ((document.getElementById('brand-color') || {}).value || '').trim();
+  try {
+    await api('/settings', { method: 'PUT', body: JSON.stringify({ key: 'email_branding', value: { brand_name: name, brand_color: color } }) });
+    showToast('Email branding saved', 'success');
+    renderApp();
+  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+}
+
+async function uploadBrandLogo() {
+  const file = document.getElementById('brand-logo-file');
+  const f = file && file.files && file.files[0];
+  if (!f) return;
+  if (f.size > 2 * 1024 * 1024) { showToast('That image is larger than 2 MB', 'error'); return; }
+  const fd = new FormData();
+  fd.append('logo', f, f.name);
+  try {
+    const res = await fetch(API_BASE + '/settings/branding/logo', {
+      method: 'POST',
+      headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {},
+      body: fd
+    });
+    if (res.status === 401) { TOKEN = ''; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; return; }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
+    showToast('Logo uploaded', 'success');
+    renderApp();
+  } catch (e) { showToast('Upload failed: ' + e.message, 'error'); }
+}
+
+async function removeBrandLogo() {
+  try {
+    await api('/settings/branding/logo', { method: 'DELETE' });
+    showToast('Logo removed', 'success');
+    renderApp();
+  } catch (e) { showToast('Remove failed: ' + e.message, 'error'); }
+}
 
 
 // ═══════════════════════════════════════════════════════════════════
