@@ -144,14 +144,14 @@ async function api(path, opts={}) {
   if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
   const res = await fetch(API_BASE + path, { ...opts, headers });
   if (res.status === 401) { TOKEN = ''; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; throw new Error('auth'); }
-  if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error'); throw new Error('402'); }
+  if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error', false); throw new Error('402'); }
   if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); throw new Error(e.error||e.message||'Error '+res.status); }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
 
 // ── Toast ──
-function showToast(msg, type='info') {
+function showToast(msg, type='info', reRender=true) {
   STATE.toast = { msg, type };
   /* kanban t_d10ac776/[post]: a modal's body is NOT part of this shell's markup -- renderApp()
      paints `<div class="modal-body" id="modal-body">${m.content||''}</div>` from the PLACEHOLDER
@@ -165,7 +165,7 @@ function showToast(msg, type='info') {
      showToast's 93 call sites (classify-renders.py: those sites call no renderView themselves), so
      dropping it everywhere would stop those panels reloading. This is arm (a) narrowed to the one
      situation where the repaint is destructive. */
-  if (!STATE.modal) {
+  if (!STATE.modal && reRender) {
     renderApp();
   } else {
     const prev = document.getElementById('toast');
