@@ -735,6 +735,12 @@ pub fn create_router(
                 .put(tenant_handler::update_tenant)
                 .delete(tenant_handler::delete_tenant),
         )
+        // Static segment registered alongside `:id`; axum matches the literal first, so
+        // /tenants/bulk-delete can never be read as a tenant id.
+        .route(
+            "/api/v1/tenants/bulk-delete",
+            post(tenant_handler::bulk_delete_tenants),
+        )
         .route(
             "/api/v1/tenants/:id/plan",
             post(tenant_handler::assign_plan),

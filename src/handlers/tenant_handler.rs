@@ -310,6 +310,41 @@ pub async fn update_tenant(
     Ok(Json(json!({"message": "Tenant updated"})))
 }
 
+/// David's sister companies (portfolio). Their accounts exist in every app and are kept by rule, so a
+/// delete must never be able to remove one.
+const PORTFOLIO_MARKERS: [&str; 3] = ["swiftimpact", "zaarhub", "giraudy"];
+
+/// Refuse to delete two things: the account the caller is signed in as (a lockout, not a cleanup) and
+/// a portfolio company (kept by rule). Everything else behaves exactly as before.
+async fn guard_protected(
+    state: &AppState,
+    tenant_id: Uuid,
+    caller: &AuthUser,
+) -> Result<(), AppError> {
+    if let Ok(own) = Uuid::parse_str(caller.tenant_id.trim()) {
+        if own == tenant_id {
+            return Err(AppError::BadRequest(
+                "refusing to delete the account you are signed in as".to_string(),
+            ));
+        }
+    }
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT COALESCE(name, ''), COALESCE(email, '') FROM tenants WHERE id = $1")
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    if let Some((name, email)) = row {
+        let hay = format!("{} {}", name, email).to_lowercase();
+        if let Some(hit) = PORTFOLIO_MARKERS.iter().find(|m| hay.contains(*m)) {
+            return Err(AppError::BadRequest(format!(
+                "refusing to delete a portfolio account ({})",
+                hit
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub async fn delete_tenant(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -318,11 +353,67 @@ pub async fn delete_tenant(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin only".into()));
     }
+    guard_protected(&state, id, &auth).await?;
+
     sqlx::query("DELETE FROM tenants WHERE id=$1")
         .bind(id)
         .execute(&state.pool)
         .await?;
     Ok(Json(json!({"message": "Tenant deleted"})))
+}
+
+/// POST /api/v1/admin/tenants/bulk-delete — delete several tenants in one call.
+/// Per-id results, so one bad or protected id does not sink the whole batch.
+pub async fn bulk_delete_tenants(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(req): Json<serde_json::Value>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin only".into()));
+    }
+    let raw = req
+        .get("ids")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut deleted: Vec<String> = Vec::new();
+    let mut failed: Vec<serde_json::Value> = Vec::new();
+    for v in raw {
+        let raw_s = v.as_str().unwrap_or_default().trim().to_string();
+        match Uuid::parse_str(&raw_s) {
+            Err(_) => failed.push(json!({"id": raw_s, "error": "not a valid id"})),
+            Ok(tid) => match guard_protected(&state, tid, &auth).await {
+                Err(e) => failed.push(json!({"id": raw_s, "error": e.to_string()})),
+                Ok(()) => {
+                    match sqlx::query("DELETE FROM tenants WHERE id=$1")
+                        .bind(tid)
+                        .execute(&state.pool)
+                        .await
+                    {
+                        Ok(r) if r.rows_affected() == 0 => {
+                            failed.push(json!({"id": raw_s, "error": "tenant not found"}))
+                        }
+                        Ok(_) => deleted.push(raw_s.clone()),
+                        Err(e) => failed.push(json!({"id": raw_s, "error": e.to_string()})),
+                    }
+                }
+            },
+        }
+    }
+    let status = if failed.is_empty() {
+        "deleted"
+    } else if deleted.is_empty() {
+        "failed"
+    } else {
+        "partial"
+    };
+    Ok(Json(json!({
+        "status": status,
+        "deleted": deleted.len(),
+        "deleted_ids": deleted,
+        "failed": failed,
+    })))
 }
 
 pub async fn assign_plan(
