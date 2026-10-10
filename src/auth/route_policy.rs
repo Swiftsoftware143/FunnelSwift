@@ -12,16 +12,16 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-08, from `api_router.rs` source)
+//! # The census (re-measured 2026-10-10, from `api_router.rs` source)
 //!
-//! 191 `.route(..)` mounts / 190 unique paths, classified three ways:
+//! 192 `.route(..)` mounts / 191 unique paths, classified three ways:
 //!
 //! ```text
-//!   166 mounts  /api/**            165 unique after the duplicate `/api/v1/linkedin/auth`
+//!   167 mounts  /api/**            166 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     18        public            -> PUBLIC_ROUTES below (16 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    145        private           -> require_auth: app JWT, tenant-status checked
+//!    146        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -32,14 +32,17 @@
 //!                                    keyed by a public slug.
 //! ```
 //!
-//! Two movements since the first census, both the same shape — an image the recipient's own client
-//! fetches with a bare `<img src>`, which cannot present a bearer token:
+//! Three movements since the first census. The first two share one shape — an image the recipient's
+//! own client fetches with a bare `<img src>`, which cannot present a bearer token:
 //!
 //! * the profile-picture pair (`POST /api/v1/auth/avatar` + `GET /api/v1/auth/avatar/:user_id`,
 //!   kanban t_ff948669): the write stays private, the read joins the public list below;
 //! * the email-branding pair (`POST|DELETE /api/v1/settings/branding/logo` +
 //!   `GET /api/v1/branding/logo/:tenant_id`, kanban t_c06a32eb): same split, and the read is
-//!   fetched by a MAIL CLIENT, which has no session at all.
+//!   fetched by a MAIL CLIENT, which has no session at all;
+//! * `POST /api/v1/tenants/bulk-delete` (the admin bulk tenant delete, commit d85b5fd) — a NEW
+//!   private route with no public twin, which is why the mount count moved and the classification
+//!   below moved with it.
 //!
 //! **No route was found answering an anonymous caller by accident** — the `require_auth` gate was
 //! doing its job. The two changes this module makes are structural, and both close a default-allow
@@ -253,15 +256,15 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 187 mounts, 162 of them on the API surface. If a route is
+    /// The census the module docs quote: 192 mounts, 167 of them on the API surface. If a route is
     /// added or removed the documented numbers move, so the doc gets re-read.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 191, "mounted route count moved");
+        assert_eq!(mounted.len(), 192, "mounted route count moved");
         assert_eq!(
-            api, 166,
+            api, 167,
             "/api/ mount count moved — update the census in the module docs"
         );
     }
