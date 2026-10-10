@@ -535,6 +535,10 @@ async function renderView() {
     container.innerHTML = html;
     bindView(STATE.view);
     mountWiredPanels(STATE.view);
+    // FS-10 (kanban queue): the console switches views in JS without touching the path
+    // or the hash, so the inline guide's own path matching can never follow it. Tell the
+    // widget which screen is open, on every render.
+    if (window.inlineGuidePage) window.inlineGuidePage(STATE.view);
   } catch(e) {
     container.innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="title">Error</div><div class="desc">${x(e.message)}</div></div>`;
   }
@@ -3656,6 +3660,55 @@ async function renderCheckoutSessions() {
   </div>`;
 }
 
+</script>
+<script>
+/* Inline guide content for the FunnelSwift ADMIN CONSOLE (fleet standard, FS-10).
+   The widget's own path matching cannot follow this console — it switches tabs in JS without
+   touching the path or the hash — so every key here is a STATE.view id and the widget is told
+   which screen is open by renderView() and by the sync below. */
+window.appGuidePages = {
+  "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data.", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Check My Account for your plan and profile"] },
+  "myAccount": { title: "My Account", desc: "Your own profile — name, company, email, password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Change your password", "See the plan you are on"] },
+  "portfolio": { title: "Portfolio", desc: "The capture pages your account has published. Each card is a live page a visitor can open and claim.", actions: ["Open a card to edit its content and design", "Publish or unpublish a card", "Copy a card's public link"] },
+  "plans": { title: "Upgrade", desc: "The plans available to this workspace and how to move to one. A plan is a bundle of limits and features (cards, templates, custom domains and more).", actions: ["Compare the plans", "Upgrade or change your plan"] },
+  "planAdmin": { title: "Plans", desc: "Manage subscription plans, pricing and the feature toggles each plan grants. Every plan is a set of permissions that decides what a tenant can use.", actions: ["Create or edit a plan", "Turn features on or off per plan", "Set the monthly and yearly price"] },
+  "leads": { title: "Leads", desc: "Everyone who has signed up through one of your pages, with the tag and stage they are on. Use it to see how a funnel is performing.", actions: ["Filter leads by tag or stage", "Open a lead to see its detail", "Export the list"] },
+  "tags": { title: "Tags", desc: "The labels that decide what a lead gets — a tag can be the trigger that provisions a free account in another SwiftSoftware product.", actions: ["Create a tag", "Assign a tag to a lead", "Set what a tag provisions"] },
+  "affiliates": { title: "Affiliates", desc: "The people who promote your products for a commission. Each affiliate gets a referral code and their own earnings record.", actions: ["Review the affiliate list", "Set an affiliate's rate", "Open an affiliate's referrals and payouts"] },
+  "affiliateProducts": { title: "Affiliate Products", desc: "Which of your products affiliates can promote, and the tag that credits the referral. A product points at a free plan — the customer arrives free and upgrades in app.", actions: ["Add a product to the catalogue", "Set the tag that credits the sale", "Set a product-level rate"] },
+  "affiliatePayouts": { title: "Affiliate Payouts", desc: "What has been earned and what has been paid to your affiliates. Nothing is earned on a free plan — a referral pays once that customer becomes paying.", actions: ["Review commissions owed", "Record a payout", "See the running balance"] },
+  "commissionGroups": { title: "Commission Groups", desc: "Bundle several products under one commission rate, so you set a rate once instead of per product. An affiliate's own override still wins over the group rate.", actions: ["Create a group", "Add products to it", "Set the group's rate"] },
+  "rateBands": { title: "Rate Bands", desc: "Tiered commission rates that rise (or fall) with the volume an affiliate brings, so a high performer earns a better rate automatically.", actions: ["Define the bands", "Set the rate for each band", "Check which band an affiliate is in"] },
+  "emailTemplates": { title: "Email Templates", desc: "The transactional emails this app sends — the welcome that carries a new customer's login details, and the others. Edit the wording without touching code.", actions: ["Preview a template", "Edit the subject and body", "Re-enable a template you switched off"] },
+  "campaigns": { title: "Campaigns", desc: "Email campaigns sent to your leads. You choose the audience by tag and watch how it performs.", actions: ["Create a campaign", "Pick the audience by tag", "Send or schedule it"] },
+  "cardAnalytics": { title: "Card Analytics", desc: "How each capture card performs — views, claims and conversion. This is where you see which card is doing the work.", actions: ["Compare cards", "See views and claims over time", "Open a card to improve it"] },
+  "webhooks": { title: "Webhooks", desc: "Outgoing notifications: when something happens here, we POST it to a URL you control. Useful for wiring FunnelSwift into another system.", actions: ["Add a webhook URL", "Choose the events it receives", "Review recent deliveries"] },
+  "providerKeys": { title: "Provider Keys", desc: "Your own API keys for the third-party services this app uses. Keys are stored encrypted and are never shown again in full.", actions: ["Save a provider key", "See which providers are connected", "Replace or remove a key"] },
+  "emailBranding": { title: "Email Branding", desc: "Put your own name, colour and logo on the transactional email sent for your account, instead of the default FunnelSwift header.", actions: ["Upload your logo", "Set your brand name and colour", "Preview how a mail will look"] },
+  "siteSettings": { title: "Site Settings", desc: "Settings that apply to this workspace as a whole, including the door that lets a tag in another SwiftSoftware product provision a free account here.", actions: ["Turn tag-driven provisioning on or off", "Choose the free plan a provisioned account starts on"] },
+  "tagRules": { title: "Tag Rules", desc: "Automation: when a lead gets a tag, do something. Used to chain FunnelSwift into the rest of the fleet without manual work.", actions: ["Create a rule", "Choose the trigger tag and the action", "Enable or disable a rule"] },
+  "systemTags": { title: "System Tags", desc: "The tags owned by the platform and the other SwiftSoftware apps — the ones that drive cross-app provisioning. These are shared, not per-tenant.", actions: ["See which system tags exist", "See the product and plan each points at"] },
+  "tagGroups": { title: "Tag Groups", desc: "Group related tags so a rule or an audience can target several at once.", actions: ["Create a group", "Add tags to it", "Use the group in a rule or campaign"] },
+  "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts"] },
+  "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
+  "settings": { title: "Settings", desc: "This app's own configuration for your account — the mail server it sends through and the other integration slots.", actions: ["Set the mail server credentials", "Check whether email is configured", "Review the other settings"] },
+  "superAdmin": { title: "Super Admin", desc: "Platform-wide controls, visible only to a platform administrator.", actions: ["Review the platform settings", "Check the features registry"] }
+};
+</script>
+<script src="/inline-guide-widget.js"></script>
+<script>
+  /* Kick the guide once the console has rendered (renderView also re-syncs on every tab change). */
+  (function(){
+    function sync(){
+      try{
+        if (window.inlineGuidePage && typeof STATE !== 'undefined' && document.getElementById('view-container')) {
+          window.inlineGuidePage(STATE.view);
+        }
+      }catch(e){}
+    }
+    window.addEventListener('load', function(){ setTimeout(sync, 150); });
+    setTimeout(sync, 400);
+  })();
 </script>
 </body>
 </html>
