@@ -2366,12 +2366,14 @@ async function renderTenants() {
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
 
   return `<div>
-    <div class="card-header" style="padding:0;margin-bottom:20px">
-      <h1 style="font-size:22px;font-weight:700">🏢 Tenants</h1>
+    <div class="card-header" style="padding:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+      <h1 style="font-size:22px;font-weight:700;margin:0">🏢 Tenants</h1>
+      <button class="btn btn-danger btn-sm" id="tnDel" disabled>Delete selected</button>
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
+      <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
       <tbody>${items.map(t=>`<tr>
+        <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td><span class="badge badge-blue">${x(t.plan_slug||'free')}</span></td>
@@ -2383,7 +2385,42 @@ async function renderTenants() {
     </table></div></div>
   </div>`;
 }
-function bindTenants() {}
+// Bulk tenant delete (kanban t_ac2fe688). The backend refuses two deletes — the account you are
+// signed in as, and a portfolio company — and answers per-id, so a refused row shows its reason
+// instead of hiding behind a generic failure.
+function bindTenants() {
+  const all = document.getElementById('tnAll');
+  const del = document.getElementById('tnDel');
+  const boxes = () => Array.from(document.querySelectorAll('.tn-chk'));
+  const sync = () => {
+    const picked = boxes().filter(b => b.checked);
+    if (del) {
+      del.disabled = picked.length === 0;
+      del.textContent = picked.length ? `Delete selected (${picked.length})` : 'Delete selected';
+    }
+    if (all) all.checked = boxes().length > 0 && picked.length === boxes().length;
+  };
+  if (all) all.addEventListener('change', () => { boxes().forEach(b => { b.checked = all.checked; }); sync(); });
+  boxes().forEach(b => b.addEventListener('change', sync));
+  if (del) del.addEventListener('click', async () => {
+    const ids = boxes().filter(b => b.checked).map(b => b.value).filter(Boolean);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} tenant(s)? This cannot be undone.`)) return;
+    del.disabled = true;
+    try {
+      const r = await api('/tenants/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) });
+      const n = r && typeof r.deleted === 'number' ? r.deleted : 0;
+      const refused = (r && r.failed) || [];
+      showToast(`${n} tenant(s) deleted` + (refused.length ? ` — ${refused.length} refused or not found` : ''),
+                refused.length ? 'error' : 'success');
+      if (refused.length && refused[0] && refused[0].error) showToast(refused[0].error, 'error');
+    } catch (e) {
+      showToast((e && e.message) || 'Delete failed', 'error');
+    }
+    renderApp();
+  });
+  sync();
+}
 
 // (kanban t_5a3c2d9c) The Super Admin key-management screen (renderApiKeys + bindApiKeys +
 // window._revokeKey) was RETIRED with the credential surface: its list, mint and revoke routes
