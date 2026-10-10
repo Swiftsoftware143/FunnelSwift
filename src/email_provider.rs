@@ -540,6 +540,24 @@ pub async fn deliver(
     text: &str,
     html: Option<&str>,
 ) -> Result<(), String> {
+    // ── HARNESS / RESERVED RECIPIENTS NEVER REACH A RELAY (kanban t_36b55ed2) ───────────────────
+    // The signup handler refuses this class before it gets here, but two admin surfaces call
+    // `deliver` DIRECTLY and so bypassed that guard: the admin create-user credentials send and the
+    // "Send test email" button. Measured 2026-10-10: with an `@example.invalid` platform-admin
+    // address, "Send test email" reached Mailgun and produced a real bounce. A reserved/harness
+    // name can only bounce or land in a fleet mailbox, and every such send burns the domain's
+    // sending reputation — the same class the sibling apps suppress inside their own email module.
+    // The guard lives at the provider chokepoint so a send path added later inherits it. `*.local`
+    // / `localhost` stay OPEN on purpose: the content harness points the provider at a local SMTP
+    // sink and reads the message off the wire, and `harness_domain` returns None for it.
+    if let Some(domain) = crate::security::probe_addr::harness_domain(to) {
+        tracing::info!(
+            to = %to,
+            domain = %domain,
+            "email suppressed: recipient is a fleet harness/reserved address (no send attempted)"
+        );
+        return Ok(());
+    }
     match cfg.provider.as_str() {
         "smtp" => {
             let sc = crate::smtp::SmtpConfig {
