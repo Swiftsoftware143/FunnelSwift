@@ -59,7 +59,7 @@ A: Instantly. The HTML file is written to disk immediately on save.
 A: No. Settings are stored in the database. The HTML file is regenerated from DB on each save.
 
 **Q: Can team members edit site settings?**
-A: No — only the admin account (`swiftsoftware143@yahoo.com`) can access the Sites tab.
+A: No — only the platform admin account can access the Sites tab.
 
 **Q: What about WorkflowSwift?**
 A: Builder Bot is handling that. The spec has been prepared for handoff.
