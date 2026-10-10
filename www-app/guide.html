@@ -170,6 +170,7 @@
       <a href="#kinetic-analytics" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📈</span> Insights</a>
       <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
       <a href="#branding-badge" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Branding Badge</a>
+      <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎨</span> Email Branding</a>
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
@@ -483,6 +484,23 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
       <div class="alert alert-success">
         <strong>Pro tip:</strong> As an affiliate, you can keep the badge enabled even on paid plans — turning free views into referral signups that earn you recurring commissions.
       </div>
+
+      <!-- ==================== EMAIL BRANDING SECTION ==================== -->
+      <h2 id="email-branding">🎨 Email Branding</h2>
+      <p>Separate from the card badge above: your account can put <strong>its own logo, display name and colour
+        at the top of every transactional email</strong> FunnelSwift sends for you. Open the
+        <strong>🎨 Email Branding</strong> item in the console and set:</p>
+      <ul>
+        <li><strong>Logo</strong> — upload a PNG, JPEG, WebP or GIF up to 2 MB. A <strong>Remove logo</strong>
+          button appears once one is set.</li>
+        <li><strong>Brand display name</strong> — up to 60 characters, printed above the message.</li>
+        <li><strong>Brand colour</strong> — a hex colour such as <code>#4f46e5</code>; it draws the rule under your logo.</li>
+      </ul>
+      <p>Click <strong>Save branding</strong>. From then on the welcome / login-credentials mail, purchase
+        confirmations and password resets for this account open with your logo and name. The logo is stored
+        against your account and served from a public URL (<code>GET /api/v1/branding/logo/{tenant_id}</code>),
+        which is what lets the recipient's mail app load it. Nothing changes until you set a name or a logo —
+        branding is per account, and an unbranded account's mail is exactly what it was before.</p>
 
       <!-- ==================== WEB-TO-LEAD SECTION ==================== -->
       <h2 id="web-to-lead">🌐 Web-to-Lead</h2>

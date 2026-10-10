@@ -339,6 +339,31 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <p>Paid tenants who are also affiliates benefit from keeping branding ON — the badge links to <code>funnelswift.net/kinetic?ref={their_code}</code>, giving them referral credit for every signup that comes through their card.</p>
       </div>
 
+      <!-- ============ EMAIL BRANDING ============ -->
+      <h2 id="email-branding">🎨 Email Branding (per tenant)</h2>
+      <div class="card">
+        <h3>A different feature from the badge above</h3>
+        <p>Each tenant can put <strong>their own logo, display name and colour at the top of the transactional
+        email FunnelSwift sends for them</strong> (kanban t_c06a32eb). It is set from the
+        <strong>🎨 Email Branding</strong> item in the tenant's console; the operator sees the same screen when
+        impersonating a tenant.</p>
+        <ul>
+          <li><strong>Where it lives:</strong> <code>brand_name</code> / <code>brand_color</code> sit in the
+            tenant's <code>tenant_settings</code> row under key <code>email_branding</code> (read/written through
+            <code>GET|PUT /api/v1/settings</code>); the logo BYTES live in <code>tenant_logos</code> and are
+            streamed back by the <strong>public</strong> <code>GET /api/v1/branding/logo/:tenant_id</code> — a
+            mail client renders the <code>&lt;img&gt;</code> with no credential, so that read is deliberately
+            anonymous and narrow.</li>
+          <li><strong>Logo upload:</strong> <code>POST|DELETE /api/v1/settings/branding/logo</code>,
+            <em>multipart</em> (field name <code>logo</code>), PNG/JPEG/WebP/GIF up to 2 MB, authenticated to the
+            caller's own tenant.</li>
+          <li><strong>Where it renders:</strong> every rendered mail for that tenant opens with the branding
+            header block — welcome, login credentials, purchase confirmations and password resets.</li>
+          <li><strong>Additive by construction:</strong> a tenant with no name and no logo gets byte-identical
+            mail to before the feature existed, so it is safe for every existing account.</li>
+        </ul>
+      </div>
+
       <!-- ============ SYSTEM TAGS ============ -->
       <h2 id="system-tags">🏷️ System Tags</h2>
 
