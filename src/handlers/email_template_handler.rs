@@ -1,7 +1,7 @@
 //! Email Template Admin API
 //! Manage email templates (welcome, password_reset, purchase_confirmed, etc.)
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::Query, extract::State, http::StatusCode, Json};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -485,10 +485,22 @@ pub async fn update_email_config(
     })))
 }
 
+/// Optional explicit recipient for the "Send test email" button: `POST …/test?to=<addr>`.
+///
+/// When `to` is absent the test goes to the signed-in admin's own address — the button's original
+/// behaviour, unchanged. Added 2026-10-10 (test-mail-hygiene): an automated fleet probe MUST be able
+/// to aim the test at a disposable mailbox, because otherwise every probe run mails whatever inbox
+/// the signed-in admin owns (the class that flooded the owner ~270 times).
+#[derive(Deserialize)]
+pub struct TestRecipient {
+    pub to: Option<String>,
+}
+
 /// POST /api/v1/admin/email-config/test — send a real message and return the
 /// provider's true response (used by the "Send test email" button).
 pub async fn test_email_config(
     State(state): State<AppState>,
+    Query(q): Query<TestRecipient>,
     user: crate::auth::middleware::AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_platform_admin(&user)?;
@@ -499,10 +511,10 @@ pub async fn test_email_config(
         })));
     };
 
-    let to = if user.email.trim().is_empty() {
-        "swiftsoftware143@yahoo.com".to_string()
-    } else {
-        user.email.clone()
+    let to = match q.to.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(explicit) => explicit.to_string(),
+        None if user.email.trim().is_empty() => "swiftsoftware143@yahoo.com".to_string(),
+        None => user.email.clone(),
     };
 
     // The same support footer every transactional send carries (kanban t_f1931c05). An admin
