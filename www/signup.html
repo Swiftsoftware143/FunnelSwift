@@ -47,10 +47,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <label>Email</label>
 <input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email">
 </div>
-<div class="form-group">
-<!-- No password field: the server generates the login credentials and emails them, so signup
-     uses the SAME path as the auto-created tag accounts. They confirm their email by signing in. -->
-</div>
+<!-- No password field here by design: the server generates the login credentials and emails them,
+     so signup uses the SAME path as the auto-created tag accounts; the user confirms their address
+     by signing in with the password we sent. The empty .form-group wrapper that used to hold this
+     note rendered a stray 14px gap under the Email field, so the note is a comment now. -->
 <button type="submit" class="btn" id="signup-btn">Create Free Account</button>
 </form>
 <div class="loading" id="signup-loading">Creating your workspace...</div>
