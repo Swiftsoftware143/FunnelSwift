@@ -394,7 +394,12 @@ function renderShell() {
   const nav = buildNav();
   const u = USER || {};
   const initials = (u.email||'U')[0].toUpperCase();
-  const roleLabel = isSuperAdmin() ? 'Super Admin' : 'User';
+  // kanban t_4e4695da — this badge used to print the raw role word ("User"/"Super Admin"),
+  // which is the stray label David reported: under the account name belongs the workspace's
+  // TIER. `/auth/me` already resolves `plan_name` from the active subscription (falling back
+  // to "Free"); "Admin" stays as a second badge only for the platform operator. Mirrors the
+  // app-root console fix (t_ff948669) so both FunnelSwift consoles read the same way.
+  const planLabel = (u.plan_name || 'Free');
 
   return `<div class="flex">
     <div class="sidebar">
@@ -409,7 +414,7 @@ function renderShell() {
           <div class="avatar">${initials}</div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(u.email)}</div>
-            <div class="role-badge ${isSuperAdmin()?'admin':''}">${roleLabel}</div>
+            <div class="role-badge">${x(planLabel)}</div>${isSuperAdmin() ? '<div class="role-badge admin">Admin</div>' : ''}
           </div>
           <span class="logout" onclick="window._logout()" title="Sign Out">⏻</span>
         </div>
