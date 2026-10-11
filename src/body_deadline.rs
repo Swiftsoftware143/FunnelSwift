@@ -132,6 +132,32 @@ fn body_deadline_response(deadline: std::time::Duration) -> Response {
         })
 }
 
+/// The `413` an over-limit body is answered with - in the app's own JSON error shape.
+///
+/// MEASURED 2026-10-11 (cron `default`): an over-limit body was answered with axum's own rejection,
+/// `413 text/plain "Failed to buffer the request body: length limit exceeded"`. Every other error
+/// this API returns is JSON, and both image pickers (the profile picture and the tenant email logo)
+/// parse the response as JSON - so the one sentence a customer needed to read arrived as a body the
+/// panel could not parse, and the upload looked like it had failed for no reason. The deadline's
+/// own `408` above is hand-rolled JSON for the same reason; this is its sibling.
+///
+/// Only the ENVELOPE is named here (2 MB, axum's own default read limit). A body over that envelope
+/// never reaches a handler, so no handler's own (smaller) image cap applies to it.
+fn body_too_large_response() -> Response {
+    const BODY: &str = "{\"error\":\"That file is too large to upload. The maximum size is 2 MB - please choose a smaller image and try again.\",\"status\":413}";
+    Response::builder()
+        .status(StatusCode::PAYLOAD_TOO_LARGE)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(BODY))
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::PAYLOAD_TOO_LARGE)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::empty())
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        })
+}
+
 /// Middleware: bound how long a request BODY may take to arrive, and answer `408` if it has not
 /// finished within [`BodyReadDeadline`] of the headers.
 ///
@@ -185,9 +211,17 @@ pub async fn body_read_deadline_middleware(
             next.run(Request::from_parts(parts, Body::from(bytes)))
                 .await
         }
-        // Over the body limit, or a read error on the way in: exactly the rejection the handler's
-        // own extractor would have produced, produced by the same extractor.
-        Ok(Err(rejection)) => rejection.into_response(),
+        // Over the body limit, or a read error on the way in: the rejection the handler's own
+        // extractor would have produced, produced by the same extractor - EXCEPT that an over-limit
+        // body is answered in the app's JSON shape (see `body_too_large_response`). A read error on
+        // the way in is passed through unchanged, because its shape is not ours to invent.
+        Ok(Err(rejection)) => {
+            if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                body_too_large_response()
+            } else {
+                rejection.into_response()
+            }
+        }
         Err(_elapsed) => {
             warn!(
                 "request body not received within {:?} (stalled body) — answered 408 for {} {}",
@@ -317,19 +351,45 @@ mod tests {
 
     /// A body over axum's own 2 MiB limit gets the extractor's own rejection: the deadline must not
     /// become a wider hole for a single unauthenticated request to pin memory.
+    ///
+    /// And that rejection must be READABLE: JSON with an `error` sentence, because the pickers on
+    /// the profile and email-branding screens parse the response. Measured live 2026-10-11: before
+    /// this the answer was `text/plain "Failed to buffer the request body: length limit exceeded"`,
+    /// which a browser `await r.json()` cannot read.
     #[tokio::test]
     async fn body_over_the_default_limit_is_rejected_413() {
         let app = body_deadline_app(std::time::Duration::from_secs(30));
         let oversized = vec![b'x'; 2 * 1024 * 1024 + 1];
+        // The content-length header is what MAKES this the middleware's case: without it the
+        // middleware sees "nothing to wait for" and hands the request straight to the handler, which
+        // is a different (also-413) path. Measured 2026-10-11: the first version of this test omitted
+        // it and asserted the handler's own axum rejection, not the middleware's answer.
+        let declared = oversized.len().to_string();
         let resp = app
             .oneshot(
                 HttpRequest::post("/webhook")
+                    .header("content-length", declared)
                     .body(Body::from(oversized))
                     .expect("request"),
             )
             .await
             .expect("router");
         assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            resp.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok()),
+            Some("application/json"),
+            "an over-limit body must answer in the app's own error shape"
+        );
+        let body = axum::body::to_bytes(resp.into_body(), 4096)
+            .await
+            .expect("body");
+        let text = String::from_utf8_lossy(&body);
+        assert!(
+            text.contains("\"status\":413") && text.contains("\"error\""),
+            "body was {text}"
+        );
     }
 
     /// The scope proof at unit level: a request with nothing to wait for is NOT held. A GET that
