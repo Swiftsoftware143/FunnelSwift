@@ -1971,6 +1971,7 @@ function openWebhookModal(id) {
 
 // ── PROVIDER KEYS + PAYMENT PROVIDERS (DB-backed, admin-entered — nothing hardwired) ──
 let _providerCatalog = [];
+let _providerComingSoon = [];
 
 function _rowField(row, name, idx) {
   if (row && !Array.isArray(row) && row[name] !== undefined) return row[name];
@@ -1985,8 +1986,14 @@ async function renderProviderKeys() {
   if (!Array.isArray(payments)) payments = payments.items || [];
   try { catalog = await api('/available-providers'); } catch(e) { catalog = []; }
   if (!Array.isArray(catalog)) catalog = [];
-  _providerCatalog = catalog.filter(p => typeof p === 'string');
-  if (_providerCatalog.length === 0) _providerCatalog = ['stripe','paypal','openai','gemini','anthropic','sendgrid','twilio','mailgun'];
+  // kanban t_c10c05b6 — the API serves OBJECTS ({key,name,coming_soon,...}); the old
+  // `typeof p === 'string'` filter always yielded [] and fell through to a hardcoded list of
+  // providers this app does not even have (stripe, gemini, anthropic, twilio). Read the real key,
+  // and keep coming_soon rows out of the picker because the API now refuses a key for them.
+  _providerComingSoon = (catalog || []).filter(p => p && p.coming_soon === true).map(p => p.name);
+  _providerCatalog = (catalog || [])
+    .filter(p => p && typeof p === 'object' && p.key && p.coming_soon !== true).map(p => p.key);
+  if (_providerCatalog.length === 0) _providerCatalog = ['coreswift','incentiveswift'];
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:8px">
@@ -2029,6 +2036,9 @@ async function renderProviderKeys() {
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Save Key</button>
       </form>
+      ${(_providerComingSoon && _providerComingSoon.length)
+        ? `<p style="font-size:12px;color:var(--muted);margin-top:10px">Coming Soon — not connectable, because nothing in this app reads their key: ${x(_providerComingSoon.join(', '))}. Listed so you know they are planned, not missing.</p>`
+        : ''}
     </div>
 
     <div class="card">

@@ -2052,6 +2052,16 @@ function LIC(){
     var native=(p.key==="coreswift"||p.key==="incentiveswift");
     var it=El("div",{"class":"it"});
     if(p.key==="coreswift") it.style.cssText="grid-column:1/-1;border:2px solid #6366f1;background:#f5f3ff";
+    // kanban t_c10c05b6 — a catalogue row flagged coming_soon has NO code path in this app that can
+    // spend a key, so the card is informational: a badge, no key box, no Connect/Test. The API
+    // refuses the key too (upsert_provider_key), so this is the honest rendering, not the only gate.
+    if(p.coming_soon===true){
+      it.innerHTML='<h4>'+X(p.name)+' <span class="badge" style="background:#e2e8f0;color:#475569">Coming Soon</span></h4>'
+        +'<p>'+X(p.description||"")+'</p>'
+        +'<p style="font-size:12px;color:#64748b;margin:6px 0">Not connectable yet — FunnelSwift has no code that reads a '+X(p.name)+' key, so there is nothing to paste one into. It is listed here so you know it is planned, not missing.</p>';
+      grd.appendChild(it);
+      return;
+    }
     it.innerHTML='<h4>'+X(p.name)+' '+(native?'<span class="badge bg">Native</span> ':'')+'<span class="badge '+(connected?"bg":"br")+'">'+(connected?"Connected":"Not connected")+'</span></h4>'
       +'<p>'+X(p.description||"")+'</p>'
       +'<div id="li-cs-status" style="font-size:12px;color:#6366f1;margin:4px 0"></div>';
