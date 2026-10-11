@@ -74,6 +74,33 @@ pub async fn upsert_provider_key(
         .ok_or_else(|| AppError::Validation("provider required".into()))?;
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
 
+    // CATALOGUE GATE (kanban t_c10c05b6). Until now this route stored a credential for ANY string
+    // the caller sent, and the catalogue carried six rows (openai, deepseek, nexweave, sam_gov,
+    // usaspending, telnyx) that NO code path in this app can spend — so a customer could paste a
+    // real key and nothing would ever read it. Two refusals, both 400:
+    //   * a provider that is not in available_providers at all (the form was free text);
+    //   * a catalogue row flagged coming_soon, which is the flag migration 100 sets on the six.
+    // The refusal names the reason, so the operator learns why rather than seeing a generic error.
+    let catalogue: Option<(String, bool)> = sqlx::query_as(
+        "SELECT name, COALESCE(coming_soon, false) FROM available_providers WHERE key = $1",
+    )
+    .bind(&provider)
+    .fetch_optional(&state.pool)
+    .await?;
+    match catalogue {
+        None => {
+            return Err(AppError::Validation(format!(
+                "'{provider}' is not an integration this app offers — nothing in FunnelSwift reads a key for it."
+            )));
+        }
+        Some((name, true)) => {
+            return Err(AppError::Validation(format!(
+                "{name} is Coming Soon and cannot be connected yet — nothing in FunnelSwift reads its key."
+            )));
+        }
+        Some((_, false)) => {}
+    }
+
     // A key is required unless the tenant is only recording a base URL for a provider that
     // already has one (the Integration Center's "update endpoint" flow).
     let api_key = payload["api_key"].as_str().unwrap_or("").trim().to_string();
@@ -209,8 +236,8 @@ pub async fn list_available_providers(
     // (DEFAULT '[]') are NULLABLE; the catalogue drives whether the Integration Center
     // shows a base-URL field and a metadata editor, so a NULL is COALESCEd to the
     // schema's own default rather than handed to the SPA as null.
-    let rows: Vec<(String, String, Option<String>, bool, Value, Option<String>)> = sqlx::query_as(
-        "SELECT key, name, description, COALESCE(requires_base_url, false) AS requires_base_url, COALESCE(requires_metadata, '[]'::jsonb) AS requires_metadata, icon \
+    let rows: Vec<(String, String, Option<String>, bool, Value, Option<String>, bool)> = sqlx::query_as(
+        "SELECT key, name, description, COALESCE(requires_base_url, false) AS requires_base_url, COALESCE(requires_metadata, '[]'::jsonb) AS requires_metadata, icon, COALESCE(coming_soon, false) AS coming_soon \
          FROM available_providers \
          ORDER BY (key = 'coreswift') DESC, name",
     )
@@ -219,7 +246,7 @@ pub async fn list_available_providers(
     let out: Vec<Value> = rows
         .into_iter()
         .map(
-            |(key, name, description, requires_base_url, requires_metadata, icon)| {
+            |(key, name, description, requires_base_url, requires_metadata, icon, coming_soon)| {
                 json!({
                     "key": key,
                     "name": name,
@@ -227,6 +254,7 @@ pub async fn list_available_providers(
                     "requires_base_url": requires_base_url,
                     "requires_metadata": requires_metadata,
                     "icon": icon,
+                    "coming_soon": coming_soon,
                     "native": key == "coreswift" || key == "incentiveswift",
                 })
             },
