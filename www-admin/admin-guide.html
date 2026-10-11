@@ -93,6 +93,9 @@
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">💳</span> Plans</a>
       <a href="#template-gating" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔒</span> Template Gating</a>
       <a href="#branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Branding Toggle</a>
+      <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Email Branding</a>
+      <a href="#account" class="section-title" onclick="closeMobile()">Account</a>
+      <a href="#my-account" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👤</span> My Account</a>
       <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
       <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> What System Tags Do</a>
       <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🤝</span> Affiliates</a>
@@ -361,6 +364,29 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             header block — welcome, login credentials, purchase confirmations and password resets.</li>
           <li><strong>Additive by construction:</strong> a tenant with no name and no logo gets byte-identical
             mail to before the feature existed, so it is safe for every existing account.</li>
+        </ul>
+      </div>
+
+      <!-- ============ MY ACCOUNT ============ -->
+      <h2 id="my-account">👤 My Account — the operator's own profile</h2>
+      <div class="card">
+        <h3>What it holds</h3>
+        <p>The <strong>My Account</strong> item at the foot of the sidebar is <em>your own</em> account, not a
+        tenant's: your name, company, profile picture, sign-in email, password and the plan this workspace is
+        on. What you set here is what the console shows everywhere.</p>
+        <ul>
+          <li><strong>Name &amp; Company</strong> — <code>PUT /api/v1/auth/profile</code>. A tenant's company
+            is writable from a tenant console, and from the operator's own when impersonating one.</li>
+          <li><strong>Profile picture</strong> — <code>POST /api/v1/auth/avatar</code>, <em>multipart</em>
+            (field name <code>file</code>), PNG/JPEG/GIF/WebP up to 2 MB. The bytes live in
+            <code>user_avatars</code> and are streamed back by the <strong>public</strong>
+            <code>GET /api/v1/auth/avatar/:user_id</code> — an <code>&lt;img&gt;</code> carries no credential, so
+            that read is deliberately anonymous and narrow. The sidebar chip shows the picture once one is set.</li>
+          <li><strong>Password</strong> — <code>PUT /api/v1/auth/password</code>: the new password twice, plus
+            the current one as the check. A wrong current password is answered as a field error, not a sign-out.</li>
+          <li><strong>The plan shown</strong> — the workspace's real tier from
+            <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, falling back to <em>Free</em>), never the
+            role word “User”.</li>
         </ul>
       </div>
 
