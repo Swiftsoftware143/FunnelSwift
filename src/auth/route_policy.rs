@@ -19,9 +19,9 @@
 //! ```text
 //!   169 mounts  /api/**            168 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     18        public            -> PUBLIC_ROUTES below (16 unique + the health pair)
+//!     16        public            -> PUBLIC_ROUTES below (14 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    148        private           -> require_auth: app JWT, tenant-status checked
+//!    150        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -49,6 +49,18 @@
 //! configuration a send would actually use) and `POST /api/v1/settings/email-config/test` (send one
 //! message through that workspace's own configuration). Both are private — the WRITE stays the
 //! existing `PUT /api/v1/settings`, so this pair adds no second writer and nothing anonymous.
+//!
+//! The fifth movement REMOVES two entries rather than adding any (kanban t_34987283, found by the
+//! fleet allowlist census t_e5e86046). `GET /api/v1/web-to-lead/configs/:id/embed` and
+//! `POST /api/v1/checkout/create` each carried a comment promising an anonymous contract their
+//! handler refuses — and the handler was right in both cases: the embed route is the tenant's own
+//! snippet generator, which returns its config's `public_key` (the very credential the public
+//! `POST /api/v1/web-to-lead` resolves a tenant from), and checkout/create loads the authenticated
+//! tenant's own payment-provider row. Both are documented as JWT routes (`docs/ADMIN_GUIDE.md`,
+//! `README.md`), the one shipped caller of checkout (`www-app/upgrade.js`) sends a bearer token, and
+//! nothing credential-less calls either. Measured anonymous, both answered 401 before and after, so
+//! the removal changes no live behaviour — it makes the committed list say what the app already does.
+//! The census above moved 18 -> 16 public and 148 -> 150 private with it.
 //!
 //! **No route was found answering an anonymous caller by accident** — the `require_auth` gate was
 //! doing its job. The two changes this module makes are structural, and both close a default-allow
@@ -110,11 +122,34 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // anonymous by construction); the handler scopes the write to the tenant it resolves from the
     // submitted context.
     "/api/v1/web-to-lead",
-    // Public embed for a web-to-lead form: `GET /api/v1/web-to-lead/configs/:id/embed`.
-    "/api/v1/web-to-lead/configs/:id/embed",
-    // A visitor starting a checkout has no session yet; the handler creates the session and scopes
-    // it to the tenant named in the request.
-    "/api/v1/checkout/create",
+    // --- TWO ENTRIES REMOVED, and their handlers are the reason (kanban t_34987283) ----------
+    // Both were INERT: each asserted an anonymous contract its handler refuses, and refusing is
+    // correct — so the entry list, not the handler, was wrong. Reinstating either path here would
+    // reopen the hole the removal closes.
+    //
+    //   * `GET /api/v1/web-to-lead/configs/:id/embed` was commented "Public embed for a web-to-lead
+    //     form". It is the tenant's OWN embed-code generator
+    //     (`handlers::web_to_lead_handler::get_web_to_lead_embed`): it takes a hard `AuthUser` and
+    //     returns the CALLER's config's `public_key`. Admitted anonymously it would hand out another
+    //     tenant's public key — and that key is precisely the credential the `POST /api/v1/web-to-lead`
+    //     entry above resolves a tenant from, so the entry was asking the boundary to leak the POST's
+    //     own credential. Building the snippet is an authenticated action in the workspace UI (the
+    //     link icon on the Web-to-Lead screen, which holds a session); the public half of the pair is
+    //     the POST, and it stays above.
+    //   * `POST /api/v1/checkout/create` was commented "the handler creates the session and scopes it
+    //     to the tenant named in the request". It does not: `handlers::checkout_handler::
+    //     create_checkout_session` takes a hard `AuthUser` and loads THAT tenant's own
+    //     `payment_providers` row to reach that tenant's Stripe key. Its only shipped caller,
+    //     `www-app/upgrade.js`, sends `Authorization: Bearer`. Anonymous it would let anyone start a
+    //     checkout in any tenant, so that sentence is false and must not be made true.
+    //
+    // Measured live with no credential, on 127.0.0.1:8080: both paths answer 401 before and after the
+    // removal — the STATUS is unchanged, which is the point (no caller loses anything). The refusing
+    // LAYER is what moved, and it is visible in the body: an anonymous probe used to reach the handler
+    // and be refused by its `AuthUser` extractor (`{"error":"Missing authorization header"}`), and now
+    // the boundary refuses it one step earlier (`require_auth` -> `{"error":"Authentication required",
+    // "status":401}`, `global_auth::reject`). That body change is the deploy proof for this card: the
+    // entry list, not just the handler, is doing the refusing.
     // The buyer lands back from the payment provider with no JWT. The route is session-id-scoped
     // and returns only that session's own non-sensitive summary.
     "/api/v1/checkout/session/:id",
@@ -343,6 +378,12 @@ mod tests {
             "/api/v1/portfolio-companies",
             "/api/v1/provider-keys",
             "/api/v1/web-to-lead/configs",
+            // the embed-code generator and checkout/create are the caller's OWN tenant actions
+            // (kanban t_34987283): both handlers take a hard `AuthUser`, both answered 401 to an
+            // anonymous probe, so neither may sit on the public list. These two pins are the
+            // negative control for that removal — re-adding either entry turns this test red.
+            "/api/v1/web-to-lead/configs/0a1b2c3d/embed",
+            "/api/v1/checkout/create",
             "/api/v1/checkout/sessions",
             "/api/v1/available-providers",
             // operator surface
@@ -378,8 +419,6 @@ mod tests {
             "/api/v1/seo/sitemap.xml",
             "/api/v1/seo/inject",
             "/api/v1/web-to-lead",
-            "/api/v1/web-to-lead/configs/0a1b2c3d/embed",
-            "/api/v1/checkout/create",
             "/api/v1/checkout/session/abc123",
             "/api/v1/kinetic/cards/0a1b2c3d/gate",
             "/api/v1/webhooks/conversion",
@@ -450,6 +489,10 @@ mod tests {
             "/api/v1/web-to-lead",
             "/api/v1/web-to-leadX"
         ));
+        // Matcher coverage only — the 4-segment embed template is deliberately NOT on
+        // PUBLIC_ROUTES any more (kanban t_34987283; pinned private by
+        // `tenant_and_operator_surfaces_are_not_public`). It stays here because a `:param`
+        // template must still refuse a longer sibling whatever list it lives in.
         assert!(matches_template(
             "/api/v1/web-to-lead/configs/:id/embed",
             "/api/v1/web-to-lead/configs/7/embed"

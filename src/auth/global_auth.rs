@@ -302,7 +302,10 @@ mod tests {
         assert!(!is_internal("/api/v1/internal/whatever"));
         // The routes that used to be caught by `path.starts_with` arms still are — by template.
         assert!(is_public("/api/v1/checkout/session/abc"));
-        assert!(is_public("/api/v1/web-to-lead/configs/7/embed"));
+        // The embed-code generator was in this list and is deliberately NOT any more (kanban
+        // t_34987283): it is the tenant's own snippet builder and takes a hard `AuthUser`, so an
+        // anonymous caller is refused by the boundary exactly as the handler refused it before.
+        assert!(!is_public("/api/v1/web-to-lead/configs/7/embed"));
         assert!(is_public("/api/v1/kinetic/cards/7/gate"));
         // ...but a longer sibling is now private.
         assert!(!is_public("/api/v1/checkout/session/abc/refund"));
