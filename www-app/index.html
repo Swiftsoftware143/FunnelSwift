@@ -249,9 +249,9 @@ var helpContent={
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "apr":'<h4>Products to Promote</h4><p>The products you can promote as an affiliate. Each row shows its category, price and the commission you earn. Contact an admin to change the catalogue.</p>',
   "ap":'<h4>Affiliate Products</h4><p>The platform affiliate product catalogue. Each product has a name, price and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
-  "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own provider key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Coming Soon</strong> cards are listed for information only — FunnelSwift has no code that reads their key yet, so the card has no key box and the API refuses one.</li><li><strong>Set up elsewhere</strong> cards are read from another screen: the email rows (SMTP / Mailgun / SendGrid / Sendiio) use the Email Provider setting, so there is no key box on them either.</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
+  "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own provider key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Coming Soon</strong> cards are listed for information only — FunnelSwift has no code that reads their key yet, so the card has no key box and the API refuses one.</li><li><strong>Set up elsewhere</strong> cards are read from another screen: the email rows (SMTP / Mailgun / SendGrid / Sendiio) use the Email Provider setting, which you set for <strong>this workspace</strong> in <strong>Settings → Email provider</strong> (the link on the card takes you there).</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
   "webhooks":'<h4>Webhooks</h4><p>Your own endpoints, so other software can be told what happens here. Each webhook has a name, a URL and the list of events it is registered for.</p><ul><li><strong>+ Add Webhook</strong> &mdash; name it, paste an <code>https://</code> URL (private, loopback and unresolvable hosts are refused) and list the events</li><li><strong>Edit</strong> &mdash; rename it, retarget the URL, change its events or switch it off</li><li><strong>Test</strong> &mdash; posts a one-off test payload and reports the HTTP status your endpoint answered</li><li><strong>Log</strong> &mdash; the delivery history: when each attempt was made, the event, the status it got back and which attempt it was</li><li><strong>Del</strong> &mdash; removes the webhook</li></ul><p><strong>Deliveries:</strong> the events you register fire automatically &mdash; <code>lead.created</code> (any captured lead: web form, Kinetic card, console or affiliate) and <code>tag.updated</code>. Only <strong>Active</strong> webhooks are called. A failed delivery is retried three times before it is recorded as failed.</p>',
-  "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li><li><strong>Email branding</strong> — Upload a logo and set the display name every transactional email from this workspace carries (sign-in details, password reset)</li></ul>',
+  "settings":'<h4>Settings</h4><p>Configure your workspace. Update company name, email, colors, and domain.</p><ul><li><strong>Hide Branding Badge</strong> — (Paid plans only) Remove the "Claim your free..." badge from your public cards. Leave unchecked if you are an affiliate — the badge links through your referral code earning you commissions.</li><li><strong>Custom Domain</strong> — Serve cards from your own domain</li><li><strong>Email branding</strong> — Upload a logo and set the display name every transactional email from this workspace carries (sign-in details, password reset)</li><li><strong>Email provider</strong> — Send this workspace\'s email through your own Mailgun, SendGrid, Sendiio or SMTP account instead of FunnelSwift\'s mail service. The screen shows which one is actually in use, keeps your key encrypted, and can send one test message to your own address. Leave it on FunnelSwift\'s mail service and nothing of yours is stored.</li></ul>',
   "stags":'<h4>System Tags</h4><p>Tags an <strong>admin</strong> creates once — every tenant sees them in its Tags list.</p><ul><li><strong>Admin only</strong> — create, rename, recolor, delete</li><li><strong>No cross-app targets</strong> — a System Tag does not create accounts or contacts in other Swift apps</li></ul>',
   "seo":'<h4>SEO Settings</h4><p>Control how search engines and social media see your site. Once configured, all public cards and funnels automatically inject these meta tags.</p><ul><li><strong>Site Name & Description</strong> — Appear in Google search results and Open Graph</li><li><strong>Open Graph Image</strong> — 1200×630px image shown on Facebook, LinkedIn, Slack shares</li><li><strong>Google Analytics ID</strong> — GA4 or UA tracking; auto-injected on every public card</li><li><strong>Facebook Pixel ID</strong> — Conversion tracking; auto-injected on every public card</li><li><strong>Schema Type</strong> — Organization, LocalBusiness, or SoftwareApplication JSON-LD</li><li><strong>Google Site Verification</strong> — For Google Search Console</li></ul><p>Public endpoints: <code>/api/v1/seo/sitemap.xml</code> and <code>/robots.txt</code> are always live.</p>',
   "plans":'<h4>Plans</h4><p>Manage subscription plans, pricing, and feature toggles. Each plan is a set of permissions that controls what features tenants can use.</p><ul><li><strong>Free Plan</strong> — 1 card, 8 templates, basic features</li><li><strong>Paid Plans</strong> — Customize card limits, templates, and features per tier</li><li><strong>Plan Features Editor</strong> — Toggle 12+ features per plan (custom colors, video, analytics, etc.)</li></ul>',
@@ -2060,9 +2060,14 @@ function LIC(){
     // src/email_provider.rs, never from provider_keys). A key box here stored a credential nothing
     // reads, so the card names the real door instead. The API refuses the key too.
     if(p.credential_note){
+      // kanban t_7ac7ceb5 — the note names a SETTING, so the card now also names the SCREEN that
+      // writes it FOR THE READER: this console is the workspace's own, and its own door is
+      // Settings → Email provider (the platform admin's is the admin console's System Email card).
+      // Before this, the card pointed at a door a customer could not open.
       it.innerHTML='<h4>'+X(p.name)+' <span class="badge" style="background:#e0f2fe;color:#0369a1">Set up elsewhere</span></h4>'
         +'<p>'+X(p.description||"")+'</p>'
-        +'<p style="font-size:12px;color:#64748b;margin:6px 0">Not connected from here — FunnelSwift reads this integration\'s credential from '+X(p.credential_note)+', not from a key pasted on this card.</p>';
+        +'<p style="font-size:12px;color:#64748b;margin:6px 0">Not connected from here — FunnelSwift reads this integration\'s credential from '+X(p.credential_note)+', not from a key pasted on this card. '
+        +'Use <a href="#" onclick="S(\'settings\');return false" style="color:#4f46e5;font-weight:600">Settings → Email provider</a> to send this workspace\'s mail through your own account, or leave it on FunnelSwift\'s mail service.</p>';
       grd.appendChild(it);
       return;
     }
@@ -3509,6 +3514,130 @@ function DLB(){
     .catch(function(e){ LBM((e&&e.message)||"Could not remove the logo","e"); });
 }
 
+/* === Email provider — THIS WORKSPACE's own sending identity (kanban t_7ac7ceb5) =================
+   The customer-facing half of `PUT /api/v1/settings {key:"email_config"}`. Before this card that
+   route existed with NO screen: the Integration Center told a customer their email credential is
+   read "from the Email Provider setting" and named a door only the platform admin could open.
+
+   * The stored credential is CIPHERTEXT at rest (tenant_settings config-seal guard, migration 084)
+     and the API returns it MASKED — the browser never receives it. An empty credential box means
+     "leave the saved one alone", never "erase it" (the server restores the stored value for a blank
+     or masked field): the copy on the card says so, because the opposite is what a user assumes.
+   * What is in use RIGHT NOW is not computed here. Only the server's resolution order (own row →
+     legacy rows → system row, and a half-filled own row FALLS THROUGH) matches what a send does, so
+     this screen renders the answer from GET /api/v1/settings/email-config rather than guessing.
+   * "Send test email" goes to the signed-in user's OWN address and is refused unless the workspace's
+     own setting is the one in use — so this card cannot be used to send a message to anyone else,
+     and cannot spend the installation's sending reputation. */
+var LEPSTATE={provider:"platform",vals:{},own:null,effective:null};
+var LEP_KEYS=["from_name","from_address","api_key","domain","api_url","smtp_host","smtp_port","smtp_username","smtp_password","smtp_encryption"];
+function EPMSG(t,kind){
+  var m=$("lep-msg"); if(!m) return;
+  m.style.color=(kind==="e"?"#dc2626":(kind==="s"?"#16a34a":"#64748b"));
+  m.textContent=t;
+}
+function EPP(v){
+  LEP_KEYS.forEach(function(k){ var el=$("lep-"+k); if(el) LEPSTATE.vals[k]=(el.value||""); });
+  LEPSTATE.provider=v;
+  EPRFIELDS();
+}
+function EPRFIELDS(){
+  var box=$("lep-fields"); if(!box) return;
+  var v=LEPSTATE.provider, f=LEPSTATE.vals||{};
+  var inp='style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"';
+  if(v==="platform"){
+    box.innerHTML='<p style="font-size:12px;color:#64748b;margin:8px 0 0">'
+      +'Nothing of your own is stored: this workspace\'s email leaves through FunnelSwift\'s own mail service, with your email branding applied.</p>';
+    return;
+  }
+  var h='';
+  h+='<div class="fld"><label style="font-size:12px">From name</label><input id="lep-from_name" value="'+X(f.from_name||"")+'" placeholder="Your business name" '+inp+'></div>';
+  h+='<div class="fld"><label style="font-size:12px">From address</label><input id="lep-from_address" value="'+X(f.from_address||"")+'" placeholder="you@yourdomain.com" '+inp+'></div>';
+  if(v==="smtp"){
+    h+='<div class="fld"><label style="font-size:12px">SMTP host</label><input id="lep-smtp_host" value="'+X(f.smtp_host||"")+'" placeholder="smtp.yourdomain.com" '+inp+'></div>';
+    h+='<div class="fld"><label style="font-size:12px">SMTP port</label><input id="lep-smtp_port" value="'+X(f.smtp_port||"")+'" placeholder="587" '+inp+'></div>';
+    h+='<div class="fld"><label style="font-size:12px">SMTP username</label><input id="lep-smtp_username" value="'+X(f.smtp_username||"")+'" '+inp+'></div>';
+    h+='<div class="fld"><label style="font-size:12px">SMTP password '+((f.smtp_password_set||f.password_set)?'(saved — leave blank to keep)':'')+'</label><input id="lep-smtp_password" type="password" autocomplete="new-password" value="" placeholder="'+((f.smtp_password_set||f.password_set)?"•••••••• saved":"SMTP password")+'" '+inp+'></div>';
+    h+='<div class="fld"><label style="font-size:12px">Encryption</label><select id="lep-smtp_encryption" '+inp+'>';
+    [["","Automatic"],["none","None"],["starttls","STARTTLS"],["tls","TLS"]].forEach(function(o){
+      h+='<option value="'+X(o[0])+'"'+(String(f.smtp_encryption||"")===o[0]?" selected":"")+'>'+X(o[1])+'</option>';
+    });
+    h+='</select></div>';
+  } else {
+    if(v==="mailgun"){
+      h+='<div class="fld"><label style="font-size:12px">Mailgun domain</label><input id="lep-domain" value="'+X(f.domain||"")+'" placeholder="mg.yourdomain.com" '+inp+'></div>';
+      h+='<div class="fld"><label style="font-size:12px">API URL (optional)</label><input id="lep-api_url" value="'+X(f.api_url||"")+'" placeholder="https://api.mailgun.net/v3/…/messages" '+inp+'></div>';
+    }
+    h+='<div class="fld"><label style="font-size:12px">'+X(v==="sendgrid"?"SendGrid API key":(v==="sendiio"?"Sendiio API key":"Mailgun API key"))+' '+((f.api_key_set)?'(saved — leave blank to keep)':'')+'</label><input id="lep-api_key" type="password" autocomplete="new-password" value="" placeholder="'+(f.api_key_set?"•••••••• saved":"paste the provider key")+'" '+inp+'></div>';
+  }
+  box.innerHTML=h;
+}
+function EPLOAD(){
+  api("/api/v1/settings/email-config").then(function(d){
+    LEPSTATE.own=(d&&d.own&&typeof d.own==="object")?d.own:null;
+    LEPSTATE.effective=(d&&d.effective)||null;
+    var own=LEPSTATE.own, eff=LEPSTATE.effective||{};
+    var stored=(own&&own.provider)?String(own.provider).toLowerCase():"platform";
+    LEPSTATE.provider=stored;
+    LEPSTATE.vals={};
+    if(own){
+      LEP_KEYS.forEach(function(k){ if(own[k]!==undefined&&own[k]!==null) LEPSTATE.vals[k]=own[k]; });
+      /* The `_set` flags are what tell the form a credential is ALREADY stored (they are computed
+         server-side from the OPENED value, so a row this deployment cannot open reports false).
+         Without them the credential box renders as if nothing were saved and a user cannot tell a
+         stored key from an empty one — measured on the live screen. */
+      ["api_key_set","smtp_password_set","password_set","pass_set"].forEach(function(k){
+        if(own[k]!==undefined&&own[k]!==null) LEPSTATE.vals[k]=own[k];
+      });
+      /* the credential arrives MASKED and stays out of the form: the box starts empty so that
+         "leave the saved one alone" is the default, not a re-post of the mask. */
+      LEPSTATE.vals.smtp_password=""; LEPSTATE.vals.api_key=""; }
+    var sel=$("lep-provider"); if(sel) sel.value=stored;
+    EPRFIELDS();
+    var st=$("lep-status"); if(st){
+      var what=eff.sender?(" — sender "+eff.sender):"";
+      if(eff.source==="workspace") st.innerHTML='<strong style="color:#16a34a">Sending through your own '+X(String(eff.provider||"").toUpperCase())+'</strong>'+X(what);
+      else if(eff.source==="system"){
+        st.innerHTML='<strong>Sending through FunnelSwift\'s own mail service</strong>'+X(what)
+          +X(own?' — the provider saved below is incomplete, so it is not being used yet.':' — nothing of your own is stored.');
+      } else st.innerHTML='<strong style="color:#b45309">No email provider is configured on this installation.</strong>';
+    }
+    var rm=$("lep-remove"); if(rm) rm.style.display=own?"":"none";
+  }).catch(function(e){ EPMSG("Could not read the email provider: "+((e&&e.message)||e),"e"); });
+}
+function SEP(){
+  var v=LEPSTATE.provider;
+  if(v==="platform"){
+    if(!confirm("Remove your workspace's own email provider and go back to FunnelSwift's mail service?"))return;
+    EPMSG("Saving...","i");
+    api("/api/v1/settings/email_config",{method:"DELETE"})
+      .then(function(){ EPMSG("Removed — this workspace is back on FunnelSwift's mail service","s"); EPLOAD(); })
+      .catch(function(e){ EPMSG((e&&e.message)||"Could not remove it","e"); });
+    return;
+  }
+  var doc={provider:v};
+  ["from_name","from_address","domain","api_url","smtp_host","smtp_username","smtp_encryption"].forEach(function(k){
+    var el=$("lep-"+k); if(el) doc[k]=(el.value||"").trim();
+  });
+  var port=($("lep-smtp_port")||{}).value;
+  if(port!==undefined&&String(port).trim()!=="") doc.smtp_port=parseInt(String(port).trim(),10);
+  ["api_key","smtp_password"].forEach(function(k){ var el=$("lep-"+k); if(el&&el.value) doc[k]=el.value; });
+  EPMSG("Saving...","i");
+  api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"email_config",value:doc})})
+    .then(function(){ EPMSG("Saved","s"); EPLOAD(); })
+    .catch(function(e){ EPMSG((e&&e.message)||"Could not save","e"); });
+}
+function TEP(){
+  EPMSG("Sending a test to your sign-in address...","i");
+  api("/api/v1/settings/email-config/test",{method:"POST",body:"{}"})
+    .then(function(r){
+      var d=(r&&r.detail)?r.detail:"";
+      if(r&&r.success) EPMSG("Test sent — "+d+" (a provider accepting the message is not proof of delivery; check the inbox)","s");
+      else EPMSG("Test not sent — "+d,"e");
+    })
+    .catch(function(e){ EPMSG((e&&e.message)||"Test failed","e"); });
+}
+
 function LM(){
   api("/api/v1/settings").then(function(d){
     /* kanban t_619533e2: this screen reads and writes the CALLER'S OWN tenant_settings row, so it
@@ -3568,6 +3697,37 @@ function LM(){
     ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){SLB();}},"Save branding"));
     ebRow.appendChild(El("span",{id:"lm-brand-msg",style:"font-size:11px;color:#64748b"}));
     wrap.appendChild(ebRow);
+
+    /* Email provider — THIS workspace's OWN sending identity (kanban t_7ac7ceb5). Built LAST, after
+       every innerHTML write on this parent, and its dynamic half renders into its own #lep-fields
+       container, so switching provider re-parses only that container (the t_7caf7873 trap: a
+       re-parse recreates children without their property-assigned handlers). */
+    var epDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
+    epDiv.innerHTML='<strong style="font-size:13px">Email provider</strong>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">How this workspace\'s email is sent. Leave it on FunnelSwift\'s mail service, or connect your own provider and mail leaves through your own account. Your email branding above is applied either way. The saved key is stored encrypted and is never shown again — an empty key box keeps the one already saved.</p>'
+      +'<p id="lep-status" style="font-size:12px;color:#334155;margin:0 0 10px">Checking…</p>'
+      +'<div class="fld"><label style="font-size:12px">Provider</label><select id="lep-provider" onchange="EPP(this.value)" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
+      +'<option value="platform">FunnelSwift\'s mail service (nothing of your own)</option>'
+      +'<option value="mailgun">Mailgun (my own account)</option>'
+      +'<option value="sendgrid">SendGrid (my own account)</option>'
+      +'<option value="sendiio">Sendiio (my own account)</option>'
+      +'<option value="smtp">SMTP (my own mail server)</option>'
+      +'</select></div>'
+      +'<div id="lep-fields"></div>';
+    list.appendChild(epDiv);
+    var epRow=El("div",{style:"display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap"});
+    epRow.appendChild(El("button",{"class":"btn btn-sm",id:"lep-save",onclick:function(){SEP();}},"Save"));
+    epRow.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"lep-test",onclick:function(){TEP();}},"Send test email"));
+    var epRm=El("button",{"class":"btn btn-sm btn-o",id:"lep-remove",onclick:function(){
+      LEPSTATE.provider="platform";
+      var s=$("lep-provider"); if(s) s.value="platform";
+      EPRFIELDS(); SEP();
+    }},"Use FunnelSwift's mail");
+    epRm.style.display="none";
+    epRow.appendChild(epRm);
+    epRow.appendChild(El("span",{id:"lep-msg",style:"font-size:11px;color:#64748b"}));
+    epDiv.appendChild(epRow);
+    EPLOAD();
   });
 }
 /* === Updated group edit — handle system flag === */
@@ -3679,7 +3839,7 @@ window.appGuidePages = {
   ap:          { title: "Affiliate Products", desc: "What affiliates can promote. Every product points at a FREE plan, because a referred customer arrives free and upgrades in app, paying for it themselves. Each product is tied to its tag, and the tag is what credits the affiliate.", actions: ["Add a product", "Set its commission rate", "Check it has a tag"] },
   integrations:{ title: "Integrations", desc: "Connect FunnelSwift to the other SwiftSoftware products and to your own tools.", actions: ["Connect CoreSwift", "Add a webhook"] },
   plans:       { title: "Plans", desc: "Your plan decides what is available to you. The top tier includes everything.", actions: ["Compare plans", "Upgrade"] },
-  settings:    { title: "Settings", desc: "Your workspace: the card subdomain, your custom domain and your lead pipeline. Your own name, picture and password live on the Profile screen.", actions: ["Set your card subdomain", "Point a custom domain", "Edit your lead stages"] }
+  settings:    { title: "Settings", desc: "Your workspace: the card subdomain, your custom domain, your lead pipeline, your email branding and your own email provider. Your own name, picture and password live on the Profile screen.", actions: ["Set your card subdomain", "Point a custom domain", "Edit your lead stages", "Connect your own email provider"] }
 };
 </script>
 <!-- kanban t_ff948669: the widget gained the once-only panel behaviour and Cloudflare holds the
@@ -3687,6 +3847,6 @@ window.appGuidePages = {
      (measured: cf-cache-status HIT, age 4269, and the edge body still had 0 `seenAnyGuide`). A
      versioned query string is a NEW cache key, so the fix is visible on the next load; bump it
      whenever this file changes. -->
-<script src="/inline-guide-widget.js?v=20261008b"></script>
+<script src="/inline-guide-widget.js?v=20261011c"></script>
 </body>
 </html>

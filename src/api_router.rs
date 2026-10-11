@@ -542,6 +542,17 @@ pub fn create_router(
             "/api/v1/settings/:key",
             delete(settings_handler::delete_setting),
         )
+        // The workspace's OWN sending identity (kanban t_7ac7ceb5). The write is the EXISTING
+        // `PUT /api/v1/settings {key:'email_config'}` — the sealed, masked door this pair merely
+        // reads and tests, so there is one writer and one vocabulary, not a second one.
+        .route(
+            "/api/v1/settings/email-config",
+            get(settings_handler::get_email_config),
+        )
+        .route(
+            "/api/v1/settings/email-config/test",
+            post(settings_handler::test_email_config),
+        )
         // Portfolio companies
         .route(
             "/api/v1/portfolio-companies",

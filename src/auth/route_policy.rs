@@ -12,16 +12,16 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-10, from `api_router.rs` source)
+//! # The census (re-measured 2026-10-11, from `api_router.rs` source)
 //!
-//! 192 `.route(..)` mounts / 191 unique paths, classified three ways:
+//! 194 `.route(..)` mounts / 193 unique paths, classified three ways:
 //!
 //! ```text
-//!   167 mounts  /api/**            166 unique after the duplicate `/api/v1/linkedin/auth`
+//!   169 mounts  /api/**            168 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     18        public            -> PUBLIC_ROUTES below (16 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    146        private           -> require_auth: app JWT, tenant-status checked
+//!    148        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -43,6 +43,12 @@
 //! * `POST /api/v1/tenants/bulk-delete` (the admin bulk tenant delete, commit d85b5fd) — a NEW
 //!   private route with no public twin, which is why the mount count moved and the classification
 //!   below moved with it.
+//!
+//! The fourth movement is the pair the workspace Email Provider screen required (kanban
+//! t_7ac7ceb5): `GET /api/v1/settings/email-config` (read the workspace's own sender and which
+//! configuration a send would actually use) and `POST /api/v1/settings/email-config/test` (send one
+//! message through that workspace's own configuration). Both are private — the WRITE stays the
+//! existing `PUT /api/v1/settings`, so this pair adds no second writer and nothing anonymous.
 //!
 //! **No route was found answering an anonymous caller by accident** — the `require_auth` gate was
 //! doing its job. The two changes this module makes are structural, and both close a default-allow
@@ -262,9 +268,9 @@ mod tests {
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 192, "mounted route count moved");
+        assert_eq!(mounted.len(), 194, "mounted route count moved");
         assert_eq!(
-            api, 167,
+            api, 169,
             "/api/ mount count moved — update the census in the module docs"
         );
     }

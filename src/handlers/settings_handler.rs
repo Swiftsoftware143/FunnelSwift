@@ -59,6 +59,10 @@ pub async fn update_settings(
     // sealed) value instead of storing the mask as the credential.
     let mut value = req.value.clone();
     if crate::email_provider::TENANT_CONFIG_KEYS.contains(&req.key.as_str()) {
+        // Refuse a document the send path could only misread (kanban t_7ac7ceb5). This runs BEFORE
+        // the row is touched, so a rejected save stores nothing — the same discipline the API uses
+        // for a provider key nothing can read.
+        crate::email_provider::validate_config_document(&value).map_err(AppError::BadRequest)?;
         let stored: Option<serde_json::Value> = sqlx::query_scalar(
             "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = $2",
         )
@@ -138,4 +142,137 @@ pub async fn delete_setting(
     }
 
     Ok(Json(json!({"message": "Setting deleted"})))
+}
+
+/// GET /api/v1/settings/email-config — the workspace's OWN sending identity, and which
+/// configuration a send would actually use right now.
+///
+/// Why a route instead of reading `GET /api/v1/settings` in the browser: the answer to "who sends
+/// this workspace's mail" is decided by the SERVER's resolution order (own row → legacy rows →
+/// system row, and a half-filled own row FALLS THROUGH). A console that re-implemented that order
+/// would eventually disagree with the send path, so the screen asks the same function the send
+/// uses (kanban t_7ac7ceb5, the "render the same truth as the API" requirement).
+///
+/// The credential fields are masked exactly as `GET /api/v1/settings` masks them. The `effective`
+/// arm carries no credential at all — only which configuration would speak and the sender it uses.
+pub async fn get_email_config(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let own_raw: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = 'email_config'",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let own = match own_raw {
+        Some(v) => crate::email_provider::open_and_mask_config_secrets(&state.pool, &v).await,
+        None => serde_json::Value::Null,
+    };
+
+    let effective = crate::email_provider::resolve_source(&state.pool, Some(tenant_id))
+        .await
+        .map(|(cfg, src)| {
+            json!({
+                "source": src.as_str(),
+                "provider": cfg.provider,
+                "sender": cfg.sender(),
+            })
+        })
+        .unwrap_or_else(|| json!({"source": "none", "provider": null, "sender": null}));
+
+    Ok(Json(json!({
+        "own": own,
+        "own_set": !own.is_null(),
+        "effective": effective,
+    })))
+}
+
+/// POST /api/v1/settings/email-config/test — send ONE real message through THIS WORKSPACE's own
+/// configuration and report what the transport answered.
+///
+/// Three deliberate constraints (kanban t_7ac7ceb5):
+///
+/// * the recipient is the CALLER'S OWN sign-in address and is never taken from the request, so this
+///   route cannot be aimed at a third party and is not a relay;
+/// * it sends only when the workspace's OWN row is the one in use (`ConfigSource::Workspace`).
+///   Without that, a signed-in user of any workspace could post to this route repeatedly and spend
+///   the installation's shared sending reputation on messages to themselves — the system-mail door
+///   already has its own admin-only test;
+/// * a 2xx here is the transport's answer, NOT delivery proof — the panel says so, and the fleet's
+///   proof of delivery reads the message off the transport (see the card's live-send proof).
+pub async fn test_email_config(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let to = auth.email.trim().to_string();
+    if to.is_empty() || !to.contains('@') {
+        return Ok(Json(json!({
+            "success": false,
+            "detail": "Your sign-in address is not a usable recipient for a test message.",
+        })));
+    }
+
+    let Some((cfg, source)) =
+        crate::email_provider::resolve_source(&state.pool, Some(tenant_id)).await
+    else {
+        return Ok(Json(json!({
+            "success": false,
+            "detail": "No email provider is configured for this workspace yet.",
+        })));
+    };
+    if source != crate::email_provider::ConfigSource::Workspace {
+        return Ok(Json(json!({
+            "success": false,
+            "source": source.as_str(),
+            "detail": "Save your own email provider first — this test sends through YOUR \
+                       workspace's setting, not through FunnelSwift's own mail service.",
+        })));
+    }
+
+    let (body, _) = crate::email::with_support_footer(
+        Some(
+            "This is a test of YOUR workspace's email provider.\n\nIf you received it, the \
+             workspace's own provider is sending.\n\n- FunnelSwift"
+                .to_string(),
+        ),
+        None,
+    );
+
+    match crate::email_provider::deliver(
+        &cfg,
+        &to,
+        "FunnelSwift — workspace email test",
+        body.as_deref().unwrap_or_default(),
+        None,
+    )
+    .await
+    {
+        Ok(()) => Ok(Json(json!({
+            "success": true,
+            "source": source.as_str(),
+            "provider": cfg.provider,
+            "sender": cfg.sender(),
+            "to": to,
+            "detail": format!("{} accepted the message", cfg.provider),
+        }))),
+        Err(e) => Ok(Json(json!({
+            "success": false,
+            "source": source.as_str(),
+            "provider": cfg.provider,
+            "to": to,
+            "detail": e,
+        }))),
+    }
 }

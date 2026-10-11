@@ -469,17 +469,143 @@ pub async fn ensure_tenant_config_seal_guard(pool: &PgPool) {
     }
 }
 
-async fn row(pool: &PgPool, sql: &str, binds: &[&str]) -> Option<Value> {
-    let mut q = sqlx::query_scalar::<_, Value>(sql);
-    for b in binds {
-        q = q.bind(*b);
+/// The transports a stored mail-config document may name — exactly the arms [`deliver`] can send
+/// through. Anything else is refused at the write (kanban t_7ac7ceb5): [`EmailConfig::from_json`]
+/// leaves an unknown provider in place and `deliver` then sends it down the Mailgun arm, so a
+/// typo'd `"mailgum"` used to store a document that silently never sends the way it was read.
+pub const CONFIG_PROVIDERS: [&str; 4] = ["smtp", "mailgun", "sendgrid", "sendiio"];
+
+/// Refuse a mail-config document the send path could only misread, BEFORE it is stored.
+///
+/// This is the write half of the same rule the seal guard enforces on the credential: a document
+/// reaching `tenant_settings` (or `admin_settings.email`) has to be one [`EmailConfig::from_json`]
+/// reads the way the panel that wrote it meant. Only the fields a document actually carries are
+/// checked, and only for the three keys [`TENANT_CONFIG_KEYS`] — an unconfigured (partial) save is
+/// legal on purpose, because the send path falls through to the next candidate rather than failing.
+pub fn validate_config_document(cfg: &Value) -> Result<(), String> {
+    if !cfg.is_object() {
+        return Err("The email configuration must be a JSON object".to_string());
     }
-    q.fetch_optional(pool).await.ok().flatten()
+    let provider = s(cfg, "provider").to_ascii_lowercase();
+    if !provider.is_empty() && !CONFIG_PROVIDERS.contains(&provider.as_str()) {
+        return Err(format!(
+            "Unknown email provider '{}' — choose one of {}",
+            provider,
+            CONFIG_PROVIDERS.join(", ")
+        ));
+    }
+    for port_key in ["smtp_port", "port"] {
+        let Some(raw) = cfg.get(port_key) else {
+            continue;
+        };
+        if raw.is_null() {
+            continue;
+        }
+        let port = raw
+            .as_u64()
+            .or_else(|| raw.as_str().and_then(|s| s.trim().parse::<u64>().ok()));
+        match port {
+            Some(p) if (1..=65535).contains(&p) => {}
+            _ => {
+                return Err(format!(
+                    "Invalid {port_key} — enter a port number (1-65535)"
+                ))
+            }
+        }
+    }
+    let from = first(cfg, &["from_address", "from_email"]);
+    if !from.is_empty() && (!from.contains('@') || from.chars().any(char::is_whitespace)) {
+        return Err("Invalid from address — enter a single email address".to_string());
+    }
+    Ok(())
 }
 
-/// Resolve the email configuration for a tenant, falling back to the global
-/// `admin_settings.email` row (system mail). Returns `None` when nothing is configured.
-pub async fn resolve(pool: &PgPool, tenant_id: Option<Uuid>) -> Option<EmailConfig> {
+/// One `tenant_settings` row for a tenant, or `None` when the tenant has no such key.
+///
+/// The parameter is bound as a real [`Uuid`] on purpose — the same defect ADASwift closed
+/// (t_22d74415) and this card re-measured live on FunnelSwift (t_7ac7ceb5): `tenant_settings.tenant_id`
+/// is `uuid` and sqlx declares a `&str` parameter as TEXT, so binding `&tid.to_string()` makes
+/// Postgres answer `42883 operator does not exist: uuid = text` for EVERY tenant, at PREPARE. The
+/// helper this replaces swallowed that error (`.ok().flatten()`), so the workspace arm of
+/// [`resolve_source`] read nothing for every workspace and each send quietly used the installation's
+/// row: a credential stored by a workspace that nothing read. Measured before the fix — the row was
+/// present in `tenant_settings`, the read path masked it, and `resolve` still answered `system`.
+async fn tenant_setting(pool: &PgPool, tenant_id: Uuid, key: &str) -> Option<Value> {
+    let q = sqlx::query_scalar::<_, Value>(
+        "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = $2",
+    )
+    .bind(tenant_id)
+    .bind(key);
+    match q.fetch_optional(pool).await {
+        Ok(v) => v,
+        Err(e) => {
+            // A failed lookup is NOT "not configured". Silence here is exactly what hid the defect
+            // above for as long as it lived.
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                key = %key,
+                error = %e,
+                "workspace email provider lookup failed — treating this workspace as having no \
+                 configuration of its own"
+            );
+            None
+        }
+    }
+}
+
+/// One `admin_settings` row (the installation-wide document).
+async fn admin_row(pool: &PgPool, sql: &str) -> Option<Value> {
+    match sqlx::query_scalar::<_, Value>(sql)
+        .fetch_optional(pool)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "system email provider lookup failed");
+            None
+        }
+    }
+}
+
+/// Where the configuration a send actually used came from (kanban t_7ac7ceb5).
+///
+/// A workspace may store its OWN sending identity; the installation always has the system row
+/// (`admin_settings.email`). `resolve` prefers the workspace's, and this enum is what lets a reader
+/// REPORT which one spoke — answered by the same function that performs the send, so no console can
+/// claim "your workspace's provider is in use" while a message leaves through the platform's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigSource {
+    /// The caller's own `tenant_settings` mail row.
+    Workspace,
+    /// The installation-wide `admin_settings.email` row.
+    System,
+}
+
+impl ConfigSource {
+    /// The wire value every reader (and both consoles) renders.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConfigSource::Workspace => "workspace",
+            ConfigSource::System => "system",
+        }
+    }
+}
+
+/// Resolve the email configuration for a tenant, **and name where it came from**.
+///
+/// Resolution order for a tenant:
+///   1. `tenant_settings` `email_config`   (explicit `provider`)
+///   2. `tenant_settings` `mailgun_config` (legacy → "mailgun")
+///   3. `tenant_settings` `smtp_config`    (legacy → "smtp")
+///   4. `admin_settings`  `email`          (system mail)
+///
+/// A stored workspace row that cannot carry its transport ([`EmailConfig::is_configured`] false —
+/// a half-filled form) falls THROUGH to the next candidate rather than failing the send, so a
+/// workspace can never break its own mail by saving an incomplete credential.
+pub async fn resolve_source(
+    pool: &PgPool,
+    tenant_id: Option<Uuid>,
+) -> Option<(EmailConfig, ConfigSource)> {
     if let Some(tid) = tenant_id {
         let candidates: [(&str, &str); 3] = [
             ("email_config", "smtp"),
@@ -487,13 +613,7 @@ pub async fn resolve(pool: &PgPool, tenant_id: Option<Uuid>) -> Option<EmailConf
             ("smtp_config", "smtp"),
         ];
         for (key, default_provider) in candidates {
-            if let Some(mut v) = row(
-                pool,
-                "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = $2",
-                &[&tid.to_string(), key],
-            )
-            .await
-            {
+            if let Some(mut v) = tenant_setting(pool, tid, key).await {
                 // The credential is ciphertext at rest; the provider must see the plaintext
                 // (an envelope sent as a password is a guaranteed 401, not a send).
                 if let Err(e) = open_config_secrets(pool, &mut v).await {
@@ -502,18 +622,14 @@ pub async fn resolve(pool: &PgPool, tenant_id: Option<Uuid>) -> Option<EmailConf
                 }
                 let cfg = EmailConfig::from_json(&v, default_provider);
                 if cfg.is_configured() {
-                    return Some(cfg);
+                    return Some((cfg, ConfigSource::Workspace));
                 }
             }
         }
     }
 
-    if let Some(mut v) = row(
-        pool,
-        "SELECT value FROM admin_settings WHERE key = 'email'",
-        &[],
-    )
-    .await
+    if let Some(mut v) =
+        admin_row(pool, "SELECT value FROM admin_settings WHERE key = 'email'").await
     {
         if let Err(e) = open_config_secrets(pool, &mut v).await {
             tracing::error!(
@@ -525,11 +641,19 @@ pub async fn resolve(pool: &PgPool, tenant_id: Option<Uuid>) -> Option<EmailConf
         }
         let cfg = EmailConfig::from_json(&v, "smtp");
         if cfg.is_configured() {
-            return Some(cfg);
+            return Some((cfg, ConfigSource::System));
         }
     }
 
     None
+}
+
+/// Resolve the email configuration for a tenant, falling back to the global
+/// `admin_settings.email` row (system mail). Returns `None` when nothing is configured.
+///
+/// Thin wrapper over [`resolve_source`] for the callers that only need to send.
+pub async fn resolve(pool: &PgPool, tenant_id: Option<Uuid>) -> Option<EmailConfig> {
+    resolve_source(pool, tenant_id).await.map(|(cfg, _)| cfg)
 }
 
 /// Deliver a message through the configured provider.
@@ -821,5 +945,56 @@ mod tests {
                 key
             );
         }
+    }
+
+    /// Compile-time pin (kanban t_7ac7ceb5). The parameter TYPE is the whole defect: bound as a
+    /// string it PREPAREs as TEXT against a `uuid` column, Postgres refuses with
+    /// `42883 operator does not exist: uuid = text` for EVERY tenant, and the old helper swallowed
+    /// that refusal — so every workspace send used the installation's row. This function never runs
+    /// and asserts nothing; it stops COMPILING if `tenant_setting` stops taking a `Uuid`.
+    #[allow(dead_code)]
+    async fn _pin_tenant_lookup_takes_a_uuid(pool: &PgPool) -> Option<Value> {
+        tenant_setting(pool, Uuid::nil(), "email_config").await
+    }
+
+    /// kanban t_7ac7ceb5 — the workspace Email Provider screen writes the document this validator
+    /// judges, so the two vocabularies have to agree: every provider the screen can offer must pass
+    /// the write, and every provider `deliver` can send through must be offerable.
+    #[test]
+    fn validator_accepts_exactly_the_transports_deliver_can_send_through() {
+        for p in CONFIG_PROVIDERS {
+            assert!(
+                validate_config_document(&json!({"provider": p, "from_address": "a@b.c"})).is_ok(),
+                "the write refuses `{}`, which deliver can send through",
+                p
+            );
+            // `available()` is what the panels' dropdown is served from; a provider the write
+            // accepts but no dropdown offers is a door with no handle.
+            assert!(
+                available()
+                    .iter()
+                    .any(|o| o.get("value").and_then(|v| v.as_str()) == Some(p)),
+                "`{}` passes the write but is not offered by available()",
+                p
+            );
+        }
+        assert!(validate_config_document(&json!({"provider": "mailgum"})).is_err());
+        assert!(validate_config_document(&json!(["not", "an", "object"])).is_err());
+    }
+
+    /// A typo'd port used to be stored as-is and silently ignored by `from_json` (which reads
+    /// `smtp_port` as a number only and otherwise falls back to 587) — the send then dialled a port
+    /// the operator never chose. The write now refuses it. `""`/absent stays legal: that is an
+    /// incomplete save, which the resolver is designed to skip over.
+    #[test]
+    fn validator_refuses_a_misreadable_port_and_from_address() {
+        assert!(validate_config_document(&json!({"smtp_port": 587})).is_ok());
+        assert!(validate_config_document(&json!({"smtp_port": "587"})).is_ok());
+        assert!(validate_config_document(&json!({"smtp_port": ""})).is_err());
+        assert!(validate_config_document(&json!({"smtp_port": 0})).is_err());
+        assert!(validate_config_document(&json!({"smtp_port": 70000})).is_err());
+        assert!(validate_config_document(&json!({"from_address": "not an address"})).is_err());
+        assert!(validate_config_document(&json!({"from_address": "ok@example.com"})).is_ok());
+        assert!(validate_config_document(&json!({})).is_ok());
     }
 }
