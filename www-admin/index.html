@@ -2118,8 +2118,11 @@ function bindProviderKeys() {
     const data = Object.fromEntries(new FormData(e.target));
     if (!data.base_url) delete data.base_url;
     try {
-      // upsert semantics: the endpoint appends, so clear the provider's row first
-      await api('/provider-keys/' + encodeURIComponent(data.provider), { method: 'DELETE' }).catch(() => {});
+      // ONE call. POST /provider-keys upserts (ON CONFLICT (tenant_id, provider) DO UPDATE) and a
+      // BLANK api_key KEEPS the stored one -- the promise the field's help text makes. The DELETE
+      // that used to sit here destroyed the row first, so a blank key really did wipe the stored
+      // credential and the request then answered 400 "api_key required" (measured live 2026-10-11).
+      // Re-keying needs no delete: the upsert replaces exactly what it is given.
       await api('/provider-keys', { method: 'POST', body: JSON.stringify(data) });
       showToast('Provider key saved', 'success');
       renderView();
@@ -2131,7 +2134,12 @@ function bindProviderKeys() {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
     try {
-      await api('/payment-providers/' + encodeURIComponent(data.provider_type), { method: 'DELETE' }).catch(() => {});
+      // ONE call. POST /payment-providers upserts and keeps a blank field's stored value
+      // (COALESCE(NULLIF(EXCLUDED.api_key,''), payment_providers.api_key)) -- the promise this
+      // form's own help text makes ("Leave either field blank to keep the value already stored").
+      // The pre-DELETE that used to sit here destroyed the stored API key whenever the operator
+      // left the Secret key box blank (measured live 2026-10-11: stored key length 0). Removing a
+      // provider is the Delete button's job, never the Save form's.
       await api('/payment-providers', { method: 'POST', body: JSON.stringify(data) });
       showToast('Payment provider saved', 'success');
       renderView();
