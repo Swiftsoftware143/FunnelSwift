@@ -1972,6 +1972,7 @@ function openWebhookModal(id) {
 // ── PROVIDER KEYS + PAYMENT PROVIDERS (DB-backed, admin-entered — nothing hardwired) ──
 let _providerCatalog = [];
 let _providerComingSoon = [];
+let _providerElsewhere = [];
 
 function _rowField(row, name, idx) {
   if (row && !Array.isArray(row) && row[name] !== undefined) return row[name];
@@ -1986,13 +1987,17 @@ async function renderProviderKeys() {
   if (!Array.isArray(payments)) payments = payments.items || [];
   try { catalog = await api('/available-providers'); } catch(e) { catalog = []; }
   if (!Array.isArray(catalog)) catalog = [];
-  // kanban t_c10c05b6 — the API serves OBJECTS ({key,name,coming_soon,...}); the old
+  // kanban t_c10c05b6 — the API serves OBJECTS ({key,name,coming_soon,credential_note,...}); the old
   // `typeof p === 'string'` filter always yielded [] and fell through to a hardcoded list of
   // providers this app does not even have (stripe, gemini, anthropic, twilio). Read the real key,
   // and keep coming_soon rows out of the picker because the API now refuses a key for them.
+  // kanban t_2a019b99 — a row carrying credential_note is read from ANOTHER surface (the email rows
+  // resolve from the Email Provider setting, never from provider_keys), so the API refuses a key for
+  // it too and it must stay out of the picker.
   _providerComingSoon = (catalog || []).filter(p => p && p.coming_soon === true).map(p => p.name);
+  _providerElsewhere = (catalog || []).filter(p => p && p.credential_note).map(p => p.name + ' (' + p.credential_note + ')');
   _providerCatalog = (catalog || [])
-    .filter(p => p && typeof p === 'object' && p.key && p.coming_soon !== true).map(p => p.key);
+    .filter(p => p && typeof p === 'object' && p.key && p.coming_soon !== true && !p.credential_note).map(p => p.key);
   if (_providerCatalog.length === 0) _providerCatalog = ['coreswift','incentiveswift'];
 
   return `<div>
@@ -2036,6 +2041,9 @@ async function renderProviderKeys() {
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Save Key</button>
       </form>
+      ${(_providerElsewhere && _providerElsewhere.length)
+        ? `<p style="font-size:12px;color:var(--muted);margin-top:10px">Set up elsewhere — ${x(_providerElsewhere.join(', '))}, so this form refuses a key for them. <!-- kanban t_2a019b99: every row carrying credential_note is an email row today, so the jump target below is the Email Provider card (Email Templates view). Add a target per note if a non-email row ever gets one. -->See <a href="#" onclick="window._goEmailProvider();return false">Email Templates → Email Provider</a>.</p>`
+        : ''}
       ${(_providerComingSoon && _providerComingSoon.length)
         ? `<p style="font-size:12px;color:var(--muted);margin-top:10px">Coming Soon — not connectable, because nothing in this app reads their key: ${x(_providerComingSoon.join(', '))}. Listed so you know they are planned, not missing.</p>`
         : ''}
@@ -2082,6 +2090,14 @@ async function renderProviderKeys() {
     </div>
   </div>`;
 }
+
+// kanban t_2a019b99 — jump from the Provider Keys screen to the real door for the rows whose
+// credential is read elsewhere (the four email rows resolve from the Email Provider setting).
+window._goEmailProvider = function() {
+  STATE.view = 'emailTemplates';
+  STATE.subView = null;
+  renderApp();
+};
 
 window._deleteProviderKey = async function(provider) {
   if (!confirm('Delete the ' + provider + ' key?')) return;

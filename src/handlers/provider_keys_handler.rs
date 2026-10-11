@@ -74,15 +74,20 @@ pub async fn upsert_provider_key(
         .ok_or_else(|| AppError::Validation("provider required".into()))?;
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
 
-    // CATALOGUE GATE (kanban t_c10c05b6). Until now this route stored a credential for ANY string
-    // the caller sent, and the catalogue carried six rows (openai, deepseek, nexweave, sam_gov,
-    // usaspending, telnyx) that NO code path in this app can spend — so a customer could paste a
-    // real key and nothing would ever read it. Two refusals, both 400:
+    // CATALOGUE GATE (kanban t_c10c05b6, extended by t_2a019b99). Until the first card this route
+    // stored a credential for ANY string the caller sent, and the catalogue carried rows that NO code
+    // path in this app can spend — so a customer could paste a real key and nothing would ever read
+    // it. Three refusals, all 400:
     //   * a provider that is not in available_providers at all (the form was free text);
-    //   * a catalogue row flagged coming_soon, which is the flag migration 100 sets on the six.
-    // The refusal names the reason, so the operator learns why rather than seeing a generic error.
-    let catalogue: Option<(String, bool)> = sqlx::query_as(
-        "SELECT name, COALESCE(coming_soon, false) FROM available_providers WHERE key = $1",
+    //   * a row flagged coming_soon (migration 100, extended by 101) — nothing reads its key;
+    //   * a row carrying credential_note (migration 101) — the credential IS read, but from another
+    //     surface (email resolves from tenant_settings / admin_settings, see src/email_provider.rs),
+    //     so a provider_keys row for it is unreachable by construction.
+    // Each refusal names the reason, so the operator learns where to go instead of seeing a generic
+    // error.
+    let catalogue: Option<(String, bool, Option<String>)> = sqlx::query_as(
+        "SELECT name, COALESCE(coming_soon, false), credential_note \
+           FROM available_providers WHERE key = $1",
     )
     .bind(&provider)
     .fetch_optional(&state.pool)
@@ -93,12 +98,17 @@ pub async fn upsert_provider_key(
                 "'{provider}' is not an integration this app offers — nothing in FunnelSwift reads a key for it."
             )));
         }
-        Some((name, true)) => {
+        Some((name, true, _)) => {
             return Err(AppError::Validation(format!(
                 "{name} is Coming Soon and cannot be connected yet — nothing in FunnelSwift reads its key."
             )));
         }
-        Some((_, false)) => {}
+        Some((name, false, Some(note))) => {
+            return Err(AppError::Validation(format!(
+                "{name} is not connected from the Integration Center — FunnelSwift reads its credential from {note}, and nothing in this app reads a {name} provider key."
+            )));
+        }
+        Some((_, false, None)) => {}
     }
 
     // A key is required unless the tenant is only recording a base URL for a provider that
@@ -236,8 +246,19 @@ pub async fn list_available_providers(
     // (DEFAULT '[]') are NULLABLE; the catalogue drives whether the Integration Center
     // shows a base-URL field and a metadata editor, so a NULL is COALESCEd to the
     // schema's own default rather than handed to the SPA as null.
-    let rows: Vec<(String, String, Option<String>, bool, Value, Option<String>, bool)> = sqlx::query_as(
-        "SELECT key, name, description, COALESCE(requires_base_url, false) AS requires_base_url, COALESCE(requires_metadata, '[]'::jsonb) AS requires_metadata, icon, COALESCE(coming_soon, false) AS coming_soon \
+    // credential_note (migration 101, kanban t_2a019b99): non-NULL means the credential for this row is
+    // read from ANOTHER surface, so the card must not offer a key box and the API refuses one.
+    let rows: Vec<(
+        String,
+        String,
+        Option<String>,
+        bool,
+        Value,
+        Option<String>,
+        bool,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT key, name, description, COALESCE(requires_base_url, false) AS requires_base_url, COALESCE(requires_metadata, '[]'::jsonb) AS requires_metadata, icon, COALESCE(coming_soon, false) AS coming_soon, credential_note \
          FROM available_providers \
          ORDER BY (key = 'coreswift') DESC, name",
     )
@@ -246,7 +267,16 @@ pub async fn list_available_providers(
     let out: Vec<Value> = rows
         .into_iter()
         .map(
-            |(key, name, description, requires_base_url, requires_metadata, icon, coming_soon)| {
+            |(
+                key,
+                name,
+                description,
+                requires_base_url,
+                requires_metadata,
+                icon,
+                coming_soon,
+                credential_note,
+            )| {
                 json!({
                     "key": key,
                     "name": name,
@@ -255,6 +285,7 @@ pub async fn list_available_providers(
                     "requires_metadata": requires_metadata,
                     "icon": icon,
                     "coming_soon": coming_soon,
+                    "credential_note": credential_note,
                     "native": key == "coreswift" || key == "incentiveswift",
                 })
             },

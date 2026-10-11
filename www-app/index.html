@@ -2055,6 +2055,17 @@ function LIC(){
     // kanban t_c10c05b6 — a catalogue row flagged coming_soon has NO code path in this app that can
     // spend a key, so the card is informational: a badge, no key box, no Connect/Test. The API
     // refuses the key too (upsert_provider_key), so this is the honest rendering, not the only gate.
+    // kanban t_2a019b99 — a row carrying credential_note is DIFFERENT: its credential IS read, but
+    // from another surface (the email rows resolve from tenant_settings / admin_settings, see
+    // src/email_provider.rs, never from provider_keys). A key box here stored a credential nothing
+    // reads, so the card names the real door instead. The API refuses the key too.
+    if(p.credential_note){
+      it.innerHTML='<h4>'+X(p.name)+' <span class="badge" style="background:#e0f2fe;color:#0369a1">Set up elsewhere</span></h4>'
+        +'<p>'+X(p.description||"")+'</p>'
+        +'<p style="font-size:12px;color:#64748b;margin:6px 0">Not connected from here — FunnelSwift reads this integration\'s credential from '+X(p.credential_note)+', not from a key pasted on this card.</p>';
+      grd.appendChild(it);
+      return;
+    }
     if(p.coming_soon===true){
       it.innerHTML='<h4>'+X(p.name)+' <span class="badge" style="background:#e2e8f0;color:#475569">Coming Soon</span></h4>'
         +'<p>'+X(p.description||"")+'</p>'
