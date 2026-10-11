@@ -64,7 +64,8 @@ Web-to-Lead section added to the main SPA at `/var/www/funnelswift/funnelswift.j
 cd /opt/swift/funnelswift
 export PATH=/root/.cargo/bin:/usr/bin:/usr/local/bin:$PATH
 cargo build --release
-systemctl restart funnelswift
+docker restart funnelswift   # the release binary is bind-mounted, so the restart applies it;
+                             # there is no `funnelswift` systemd unit
 ```
 
 ### JS Snippet

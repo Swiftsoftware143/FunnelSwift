@@ -604,7 +604,7 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
 
       <div class="card">
         <h3>Q: How do I add new templates?</h3>
-        <p>Edit <code>src/handlers/theme_endpoint.rs</code> and add a new JSON object to the template array. Follow the existing schema for <code>layout_blocks</code>. Deploy with <code>cargo build --release</code> and <code>systemctl restart funnelswift</code>.</p>
+        <p>Edit <code>src/handlers/theme_endpoint.rs</code> and add a new JSON object to the template array. Follow the existing schema for <code>layout_blocks</code>. Deploy with <code>cargo build --release</code> and then <code>docker restart funnelswift</code> &mdash; the release binary is bind-mounted into the container, so a restart picks up the rebuilt one. There is no <code>funnelswift</code> systemd unit to restart.</p>
       </div>
 
       <div class="card">
