@@ -2023,7 +2023,7 @@ async function renderProviderKeys() {
       <form id="provider-key-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
         <div class="form-group" style="margin:0;min-width:170px">
           <label class="form-label">Provider</label>
-          <input class="input" name="provider" list="provider-catalog" placeholder="e.g. openai" required>
+          <input class="input" name="provider" list="provider-catalog" placeholder="e.g. coreswift" required>
           <datalist id="provider-catalog">${_providerCatalog.map(p => `<option value="${x(p)}">`).join('')}</datalist>
         </div>
         <div class="form-group" style="margin:0;min-width:220px;flex:1">
