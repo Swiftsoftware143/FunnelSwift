@@ -2594,7 +2594,28 @@ function destroyAnalyticsCharts() {
 // ── CARD ANALYTICS (Main Dashboard) ──
 async function renderCardAnalytics() {
   let overview = null;
-  try { overview = await api('/analytics/overview'); } catch(e) { overview = null; }
+  /* A 402 here is the entitlement gate on GET /analytics/overview (has_analytics), NOT an empty
+     report. The screen used to swallow every failure and then say "No tracking data yet. Share your
+     cards to see analytics." — a false cause on a workspace whose plan simply does not include the
+     feature. Measured 2026-10-11 on admin.funnelswift.net: a 402 rendered five zero stat-cards and
+     the no-data line, with no hint that the plan is the reason. Name the plan limit instead. */
+  let planGate = false;
+  try { overview = await api('/analytics/overview'); }
+  catch(e) { overview = null; planGate = String((e && e.message) || '') === '402'; }
+
+  if (planGate) {
+    return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">📊 Card Analytics</h1>
+    <div class="card" style="padding:36px 24px;text-align:center">
+      <div style="font-size:40px;line-height:1;margin-bottom:10px">🔒</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Card Analytics is not included in this workspace's plan</div>
+      <div style="color:var(--muted);font-size:13px;max-width:560px;margin:0 auto;line-height:1.6">
+        Views, clicks and per-card conversion are a paid-plan feature. This is a plan limit, not an empty
+        report — the numbers appear here once the workspace's plan includes analytics.
+      </div>
+    </div>
+  </div>`;
+  }
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">📊 Card Analytics</h1>
