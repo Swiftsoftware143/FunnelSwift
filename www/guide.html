@@ -171,6 +171,7 @@
       <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
       <a href="#branding-badge" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Branding Badge</a>
       <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎨</span> Email Branding</a>
+      <a href="#email-provider" class="nav-item" onclick="closeMobile()"><span class="nav-icon">✉️</span> Email Provider</a>
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
@@ -501,6 +502,30 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
         against your account and served from a public URL (<code>GET /api/v1/branding/logo/{tenant_id}</code>),
         which is what lets the recipient's mail app load it. Nothing changes until you set a name or a logo —
         branding is per account, and an unbranded account's mail is exactly what it was before.</p>
+
+      <!-- ==================== EMAIL PROVIDER SECTION ==================== -->
+      <h2 id="email-provider">✉️ Email Provider</h2>
+      <p>By default every email FunnelSwift sends <em>for your workspace</em> leaves through FunnelSwift's
+        own mail service. If you would rather it left through <strong>your own account</strong> — your
+        Mailgun, SendGrid or Sendiio account, or your own mail server over SMTP — open
+        <strong>Settings &rarr; Email provider</strong> in the console and pick the provider. The card at
+        the top of that screen always says which one is <em>actually</em> in use right now, so you never
+        have to guess:</p>
+      <ul>
+        <li><strong>Sending through your own SMTP / MAILGUN / SENDGRID / SENDIIO</strong> — your saved
+          credential is the one being used.</li>
+        <li><strong>Sending through FunnelSwift's own mail service</strong> — either nothing of yours is
+          stored, or what you saved is still incomplete (for example an SMTP host with no from-address),
+          so it is not being used yet. A half-filled form can never break your mail.</li>
+      </ul>
+      <p>Fill in the provider's fields and click <strong>Save</strong>. Your key is stored encrypted and is
+        <strong>never shown again</strong>: the box comes back empty, and leaving it empty keeps the key you
+        already saved rather than erasing it. <strong>Send test email</strong> sends one real message to your
+        own sign-in address through your provider, so you can prove it works — a provider accepting the
+        message is not proof of delivery, so check the inbox. <strong>Use FunnelSwift's mail</strong> removes
+        your stored provider and puts the workspace back on FunnelSwift's own mail service. This is also the
+        setting the email rows in the <strong>Integrations</strong> screen (SMTP, Mailgun, SendGrid, Sendiio)
+        point at: those are not connected with a key pasted on the card.</p>
 
       <!-- ==================== WEB-TO-LEAD SECTION ==================== -->
       <h2 id="web-to-lead">🌐 Web-to-Lead</h2>
