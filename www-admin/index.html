@@ -211,6 +211,16 @@ function $(id) { return document.getElementById(id); }
    vocabulary, the way IncentiveSwift's console already does. */
 function isSuperAdmin() { return !!(USER && (USER.role === 'super_admin' || USER.role === 'admin' || USER.is_admin === true)); }
 function canManageAffiliates() { return isSuperAdmin(); }
+/* The Profile → Role line used to paint a bare "User" for every non-admin — the binary
+   isSuperAdmin() word, not the account's real role (kanban: the same defect the sibling consoles
+   fixed with roleLabel). Show the stored role, written out; the stored value as-is when it has no
+   label (honest, never an invented role), and an em-dash when the server sent nothing. The Plan
+   badge beside it carries the REAL plan name from GET /auth/me. */
+const ROLE_LABELS = { super_admin:'Super admin', admin:'Admin', account_owner:'Account owner',
+  owner:'Owner', company_admin:'Company admin', agency_admin:'Agency admin',
+  client_admin:'Client admin', team_member:'Team member', member:'Member', user:'Member',
+  viewer:'Viewer' };
+function roleLabel(r) { const s = String(r == null ? '' : r).trim(); if (!s) return '—'; return ROLE_LABELS[s.toLowerCase()] || s; }
 function formatDate(d) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); }
 
@@ -411,7 +421,7 @@ function renderShell() {
       <div class="nav-footer">
         ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - tenants, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
         <div class="nav-user">
-          <div class="avatar">${initials}</div>
+          <div class="avatar"${u.avatar_url?` style="background-image:url('${x(u.avatar_url)}');background-size:cover;background-position:center"`:''}>${u.avatar_url?'':initials}</div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(u.email)}</div>
             <div class="role-badge">${x(planLabel)}</div>${isSuperAdmin() ? '<div class="role-badge admin">Admin</div>' : ''}
@@ -618,13 +628,45 @@ function bindDashboard() {}
 // ── MY ACCOUNT ──
 async function renderMyAccount() {
   const plan = USER.planObj || {};
+  const av = USER.avatar_url || '';
+  const initial = ((USER.name || USER.email || '?') + '?').charAt(0).toUpperCase();
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">My Account</h1>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🖼️ Profile picture</span></div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <img id="fsac-av" alt="Your profile picture" style="width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--bg-secondary);display:${av?'':'none'}"${av?` src="${x(av)}"`:''}>
+        <span id="fsac-avph" style="width:72px;height:72px;border-radius:50%;background:var(--primary);color:#fff;display:${av?'none':'flex'};align-items:center;justify-content:center;font-size:28px;font-weight:700">${x(initial)}</span>
+        <div>
+          <input type="file" id="fsac-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">
+          <p style="font-size:11px;color:var(--muted);margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>
+          <button class="btn btn-primary btn-sm" onclick="window._fsAvatarUpload()">Upload picture</button>
+          <span id="fsac-avmsg" style="font-size:12px;margin-left:8px"></span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">✏️ Your details</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="form-label">Name</div><input class="input" id="fsac-name" value="${x(USER.name||'')}" placeholder="Your name"></div>
+        <div><div class="form-label">Company</div><input class="input" id="fsac-co" value="${x(USER.company||'')}" placeholder="Your company"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsProfileSave()">Save</button><span id="fsac-pmsg" style="font-size:12px;margin-left:8px"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔒 Change Password</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="form-label">New password</div><input class="input" type="password" id="fsac-np" autocomplete="new-password" placeholder="At least 8 characters"></div>
+        <div><div class="form-label">Confirm new password</div><input class="input" type="password" id="fsac-np2" autocomplete="new-password"></div>
+        <div><div class="form-label">Current password (verifies it is you)</div><input class="input" type="password" id="fsac-cp" autocomplete="current-password"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsPasswordSave()">Save</button><span id="fsac-pwmsg" style="font-size:12px;margin-left:8px"></span></div>
+    </div>
     <div class="card">
       <div class="card-header"><span class="card-title">👤 Profile</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><div class="form-label">Email</div><div style="font-size:14px;font-weight:500">${x(USER.email)}</div></div>
-        <div><div class="form-label">Role</div><div class="badge ${isSuperAdmin()?'badge-purple':'badge-blue'}">${isSuperAdmin()?'Super Admin':'User'}</div></div>
+        <div><div class="form-label">Role</div><div class="badge ${isSuperAdmin()?'badge-purple':'badge-blue'}">${x(roleLabel(USER.role))}</div></div>
         <div><div class="form-label">Tenant ID</div><div style="font-size:12px;color:var(--muted)">${x(USER.tenant_id||'N/A')}</div></div>
         <div><div class="form-label">User ID</div><div style="font-size:12px;color:var(--muted)">${x(USER.id||'N/A')}</div></div>
       </div>
@@ -654,8 +696,90 @@ async function renderMyAccount() {
   </div>`;
 }
 // (kanban t_5a3c2d9c) bindMyAccount used to bind the "Generate New API Key" button; the card and
-// the mint route are gone, so this view has no controls of its own.
+// the mint route are gone. The My Account screen's own controls are bound through the console's
+// existing window._* entry-point pattern (see the note above window._setState): an inline on*
+// attribute is compiled in GLOBAL scope and can never see this module's bindings.
 function bindMyAccount() {}
+
+// The profile surface. The backend has carried all four calls since kanban t_ff948669
+// (PUT /auth/profile for name+company, POST /auth/avatar for the multipart picture, PUT
+// /auth/password for the credential) and the APP console exercises them, but THIS console had no
+// screen for any of them: the picture route, the company field and the password box had no way in.
+function fsMsg(id, text, ok) {
+  const m = document.getElementById(id);
+  if (!m) return;
+  m.style.color = ok === true ? '#16a34a' : (ok === false ? '#dc2626' : 'var(--muted)');
+  m.textContent = text || '';
+}
+window._fsAvatarUpload = async function () {
+  const f = document.getElementById('fsac-file');
+  const file = f && f.files ? f.files[0] : null;
+  if (!file) { fsMsg('fsac-avmsg', 'Choose an image first', false); return; }
+  if (file.size > 2 * 1024 * 1024) { fsMsg('fsac-avmsg', 'That image is too large \u2014 2 MB maximum', false); return; }
+  fsMsg('fsac-avmsg', 'Uploading\u2026', null);
+  // Multipart, so NOT through api(): that helper pins Content-Type: application/json, which would
+  // destroy the multipart boundary the browser generates for a FormData body.
+  const fd = new FormData();
+  fd.append('file', file, file.name || 'picture');
+  try {
+    const r = await fetch(API_BASE + '/auth/avatar', {
+      method: 'POST',
+      headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {},
+      body: fd
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    if (d.avatar_url) USER.avatar_url = d.avatar_url;
+    const im = document.getElementById('fsac-av'), ph = document.getElementById('fsac-avph');
+    if (im && USER.avatar_url) { im.src = USER.avatar_url; im.style.display = ''; }
+    if (ph) ph.style.display = 'none';
+    if (f) f.value = '';
+    // Repaint the sidebar chip in place too — a full renderApp() here would rebuild the screen and
+    // throw away the confirmation this very message is.
+    const chip = document.querySelector('.nav-user .avatar');
+    if (chip && USER.avatar_url) {
+      chip.textContent = '';
+      chip.style.backgroundImage = "url('" + USER.avatar_url + "')";
+      chip.style.backgroundSize = 'cover';
+      chip.style.backgroundPosition = 'center';
+    }
+    fsMsg('fsac-avmsg', 'Picture updated', true);
+  } catch (e) { fsMsg('fsac-avmsg', (e && e.message) || 'Upload failed', false); }
+};
+window._fsProfileSave = async function () {
+  const nEl = document.getElementById('fsac-name'), cEl = document.getElementById('fsac-co');
+  const n = nEl ? nEl.value : '', c = cEl ? cEl.value : '';
+  if (!n.trim()) { fsMsg('fsac-pmsg', 'Enter your name', false); return; }
+  fsMsg('fsac-pmsg', 'Saving\u2026', null);
+  try {
+    await api('/auth/profile', { method: 'PUT', body: JSON.stringify({ name: n.trim(), company: c.trim() }) });
+    USER.name = n.trim(); USER.company = c.trim();
+    fsMsg('fsac-pmsg', 'Saved', true);
+  } catch (e) { fsMsg('fsac-pmsg', (e && e.message) || 'Could not save', false); }
+};
+window._fsPasswordSave = async function () {
+  const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const np = g('fsac-np'), np2 = g('fsac-np2'), cp = g('fsac-cp');
+  if (np.length < 8) { fsMsg('fsac-pwmsg', 'The new password must be at least 8 characters', false); return; }
+  if (np !== np2) { fsMsg('fsac-pwmsg', 'The two new passwords do not match', false); return; }
+  if (!cp) { fsMsg('fsac-pwmsg', 'Enter your current password to confirm', false); return; }
+  fsMsg('fsac-pwmsg', 'Saving\u2026', null);
+  // A wrong CURRENT password is a FIELD-level answer (the API replies 401 "Current password is
+  // incorrect"), NOT an expired session. Posting through api() would hit that helper's 401 arm,
+  // which clears the token and bounces to /login, so a mistyped character logged the operator out
+  // with nothing explained. This posts directly (kanban t_fsprofile20261009, the app-console twin).
+  try {
+    const r = await fetch(API_BASE + '/auth/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...(TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}) },
+      body: JSON.stringify({ current_password: cp, new_password: np })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    ['fsac-np', 'fsac-np2', 'fsac-cp'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    fsMsg('fsac-pwmsg', 'Password changed', true);
+  } catch (e) { fsMsg('fsac-pwmsg', (e && e.message) || 'Could not change the password', false); }
+};
 /* kanban t_9ef0b460: an inline on* attribute is compiled in GLOBAL scope and can never see this
    module's bindings. Eight of them named STATE/renderApp directly (census:
    /opt/swift/audits/t_9ef0b460/10-census-before.txt), so the Total Cards card that opens the
@@ -3723,7 +3847,7 @@ async function renderCheckoutSessions() {
    which screen is open by renderView() and by the sync below. */
 window.appGuidePages = {
   "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data.", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Check My Account for your plan and profile"] },
-  "myAccount": { title: "My Account", desc: "Your own profile — name, company, email, password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Change your password", "See the plan you are on"] },
+  "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, email, password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your password", "See the plan you are on"] },
   "portfolio": { title: "Portfolio", desc: "The capture pages your account has published. Each card is a live page a visitor can open and claim.", actions: ["Open a card to edit its content and design", "Publish or unpublish a card", "Copy a card's public link"] },
   "plans": { title: "Upgrade", desc: "The plans available to this workspace and how to move to one. A plan is a bundle of limits and features (cards, templates, custom domains and more).", actions: ["Compare the plans", "Upgrade or change your plan"] },
   "planAdmin": { title: "Plans", desc: "Manage subscription plans, pricing and the feature toggles each plan grants. Every plan is a set of permissions that decides what a tenant can use.", actions: ["Create or edit a plan", "Turn features on or off per plan", "Set the monthly and yearly price"] },
