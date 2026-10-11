@@ -473,7 +473,11 @@ function buildNav() {
 
   // Tools
   sections.push(`<div class="sidebar-section-label">TOOLS</div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='emailTemplates'?'active':''}" data-view="emailTemplates"><span class="icon">✉️</span><span class="nav-text">Email Templates</span></div>`);
+  // Email Templates is an OPERATOR screen: it reads /api/v1/admin/email-templates and
+  // /api/v1/admin/email-config, both of which answer 403 to anything but the platform admin, so a
+  // non-admin was offered a screen that could never load. Same rule the ADASwift console adopted
+  // (7437e34): an admin-only screen is not shown to a non-admin.
+  if (isSuperAdmin()) sections.push(`<div class="nav-item ${STATE.view==='emailTemplates'?'active':''}" data-view="emailTemplates"><span class="icon">✉️</span><span class="nav-text">Email Templates</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='campaigns'?'active':''}" data-view="campaigns"><span class="icon">📢</span><span class="nav-text">Campaigns</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
@@ -1714,6 +1718,9 @@ window._membersCommissionGroup = function(id) {
 };
 
 async function renderEmailTemplates() {
+  // Defence in depth for the nav gate above: a deep link / stale STATE.view must not reach an
+  // operator-only screen either.
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div><div class="desc">Email Templates manage the platform's transactional mail and are available to the operator only.</div></div>`;
   let items = [];
   try { items = await api('/admin/email-templates'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.templates || [];
