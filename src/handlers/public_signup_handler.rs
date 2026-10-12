@@ -32,8 +32,11 @@ SELECT (SELECT t.id   FROM tenants t WHERE t.affiliate_code = $1 ORDER BY t.crea
                                   WHERE al.tracking_code = $1 LIMIT 1), $1)
          LIMIT 1) AS affiliate_name";
 
-/// POST /api/v1/auth/signup — Public signup (used by Kinetic Cards landing page).
-/// Creates tenant + user, assigns plan from request body (defaults to 'free').
+/// POST /api/v1/auth/signup — the PUBLIC signup, shared by BOTH products: the MAIN FunnelSwift page
+/// (`funnelswift.net/signup.html`, `source: 'homepage' | 'affiliate_referral'`) and the Kinetic
+/// Cards landing page (`funnelswift.net/kinetic`, `source: 'kinetic-landing'`). Creates tenant +
+/// user and seats the FREE tier of the side the request names (capture for the main product,
+/// kinetic for the landing page). A `plan` slug in the body is never trusted as the plan.
 /// A first password the user is expected to replace. 16 characters of UUID-derived entropy from the
 /// OS RNG — long enough that the emailed value is not the weak link, short enough to retype on a
 /// phone. Never logged.
@@ -203,10 +206,32 @@ pub async fn public_signup(
     // silently. `plans.price` and `plans.side` are both NOT NULL, so the resolver always finds
     // the install's free tier, and it reports which one: a WARN when this install has no free plan
     // for the kinetic side, an ERROR plus `plan_assignment.warning` when it has none at all.
+    // WHICH SIDE is derived from the REQUEST — never hardcoded (measured and fixed 2026-10-12).
+    //
+    // `POST /api/v1/auth/signup` is the public signup for BOTH products: the Kinetic Cards landing
+    // page (`funnelswift.net/kinetic`, which sends `source: 'kinetic-landing'` and `plan:
+    // 'kinetic-free'`) AND the MAIN FunnelSwift signup page (`funnelswift.net/signup.html`, which
+    // sends `source: 'homepage'` or `'affiliate_referral'` and `plan: 'free'`). Pinning the Kinetic
+    // side here seated every homepage and affiliate signup on `kinetic-free`, whose `max_forms` and
+    // `max_leads` are both 0 — so a customer who signed up for the funnel / lead-capture product
+    // landed on a plan with ZERO leads and ZERO forms (the web-to-lead builder answered 402; the
+    // affiliate-only carve-out in `web_to_lead_handler` hid the rest). The side now follows the
+    // `source` marker the two pages already send, defaulting to the MAIN product this route's own
+    // page serves.
+    let side = if source == "kinetic-landing"
+        || payload["plan"]
+            .as_str()
+            .map(|p| p.starts_with("kinetic"))
+            .unwrap_or(false)
+    {
+        crate::plan_resolver::ProductSide::Kinetic
+    } else {
+        crate::plan_resolver::ProductSide::Capture
+    };
     let plan = crate::plan_resolver::assign_free_plan(
         &state.pool,
         tenant_id,
-        crate::plan_resolver::ProductSide::Kinetic,
+        side,
         "POST /api/v1/auth/signup",
     )
     .await?;
@@ -350,6 +375,7 @@ pub async fn public_signup(
             // The flat slug this response always carried (null only when the install has no free
             // plan at all) plus the structured assignment that can never be silent.
             "plan": plan.slug(),
+            "plan_side": side.label(),
             "plan_assignment": plan.to_json(),
             "referral": referral,
             "user": {
