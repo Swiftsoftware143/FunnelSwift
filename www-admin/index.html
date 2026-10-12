@@ -271,7 +271,15 @@ async function loadTagGroupById(id) {
 const TAG_GROUPS = { list: [], names: {} };
 async function loadTagGroups() {
   let items = [];
-  try { items = await api('/admin/tag-groups'); }
+  // kanban t_968c2b09 follow-up: the admin read is the OPERATOR's vocabulary. GET
+  // /api/v1/admin/tag-groups is gated (`if !auth.is_admin -> Forbidden "Admin access required"`,
+  // src/handlers/tag_group_handler.rs), so a tenant session's attempt answered a GUARANTEED 403 --
+  // a red error in the console's own network log on every Tags load, for every customer. The
+  // fallback below already answers for a tenant (its own groups), so gating the admin attempt on
+  // the operator role changes NO data: the tenant path is exactly what today's 403 fell through
+  // to. renderTags() -> loadTagGroups() runs only from renderApp(), which renders only once TOKEN
+  // and USER are both present, so the role is always known here.
+  try { items = await api(isSuperAdmin() ? '/admin/tag-groups' : '/tag-groups'); }
   catch(e) { try { items = await api('/tag-groups'); } catch(e2) { items = []; } }
   if (!Array.isArray(items)) items = items.data || items.groups || [];
   TAG_GROUPS.list = items;
