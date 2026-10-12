@@ -480,6 +480,12 @@ function buildNav() {
   if (isSuperAdmin()) sections.push(`<div class="nav-item ${STATE.view==='emailTemplates'?'active':''}" data-view="emailTemplates"><span class="icon">✉️</span><span class="nav-text">Email Templates</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='campaigns'?'active':''}" data-view="campaigns"><span class="icon">📢</span><span class="nav-text">Campaigns</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
+  /* kanban: `renderCardLocations` has been in the view router since the frontend baseline and had
+     NO entry point anywhere in this console (the only other mentions are the map and the bind
+     switch) — an implemented screen nobody could open, the same "surface with no way in" defect the
+     Portfolio and Commission-Group cards fixed. Views-by-country is the report the screen renders
+     from GET /analytics/overview, so it belongs beside Card Analytics. */
+  sections.push(`<div class="nav-item ${STATE.view==='cardLocations'?'active':''}" data-view="cardLocations"><span class="icon">🌍</span><span class="nav-text">Locations</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></div>`);
   // Email Branding (kanban t_c06a32eb follow-up): the per-tenant email-branding backend shipped
@@ -3135,7 +3141,27 @@ function bindCardUtmBuilder() {
 // ── LOCATIONS ──
 async function renderCardLocations() {
   let overview = null;
-  try { overview = await api('/analytics/overview'); } catch(e) { overview = null; }
+  /* A 402 on GET /analytics/overview is the entitlement gate (has_analytics), NOT an empty report.
+     The sibling Card Analytics screen was fixed to name the plan limit; this screen still swallowed
+     every failure and then said "No location data yet. Share your cards to see where your audience
+     is." — a false cause on a workspace whose plan simply does not include analytics. Name the plan
+     limit here too (measured live 2026-10-12 on a free-plan workspace: the API answers 402). */
+  let planGate = false;
+  try { overview = await api('/analytics/overview'); }
+  catch(e) { overview = null; planGate = String((e && e.message) || '') === '402'; }
+
+  if (planGate) {
+    return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">🌍 Location Tracking</h1>
+    <div class="card" style="padding:36px 24px;text-align:center">
+      <div style="font-size:40px;line-height:1;margin-bottom:10px">🔒</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Location Tracking is not included in this workspace's plan</div>
+      <div style="color:var(--muted);font-size:13px;max-width:560px;margin:0 auto;line-height:1.6">
+        Views by country are a paid-plan feature. This is a plan limit, not an empty report — the map fills in once the workspace's plan includes analytics.
+      </div>
+    </div>
+  </div>`;
+  }
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">🌍 Location Tracking</h1>
