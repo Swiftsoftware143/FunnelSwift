@@ -85,6 +85,15 @@ pub async fn register(
     // header (kanban t_fc88ec2a). A real customer's signup carries no such header, so this is
     // NULL and the row is byte-identical to what it was before the column existed.
     let probe_harness = crate::probe_harness::from_headers(&headers);
+    // ONE transaction, begun before the first write and committed only once the account is
+    // complete (measured defect, 2026-10-12). Each INSERT used its own pooled connection, so a
+    // signup that failed after the tenant INSERT left the workspace behind while the caller got a
+    // 500: eight concurrent registers with one address produced seven 500s and SEVEN orphan
+    // tenants (zero users), which sit in the operator's tenant list as "My Workspace". A
+    // transaction rolls the loser's workspace back, so the failure is a clean 409 and nothing is
+    // written.
+    let mut tx = state.pool.begin().await?;
+
     sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
         .bind(
@@ -94,12 +103,16 @@ pub async fn register(
         )
         .bind(&tenant_slug)
         .bind(&probe_harness)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
 
     // Create user
+    // `users_email_key` is the real guard against a duplicate address; the SELECT above is only a
+    // fast path and cannot make the check atomic. Two racing signups for one address both pass it,
+    // so the loser must be told the truth — the 409 the pre-check already returns — instead of the
+    // 500 a raw `?` turned the unique violation into.
     let user_id = Uuid::new_v4();
-    sqlx::query(
+    let user_insert = sqlx::query(
         "INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(user_id)
@@ -108,8 +121,19 @@ pub async fn register(
     .bind(&password_hash)
     .bind(&req.name)
     .bind("user")
-    .execute(&state.pool)
-    .await?;
+    .execute(&mut *tx)
+    .await;
+    if let Err(e) = user_insert {
+        tx.rollback().await.ok();
+        if let sqlx::Error::Database(db) = &e {
+            if db.constraint() == Some("users_email_key") {
+                return Err(AppError::Conflict(
+                    "A user with this email already exists. Try signing in.".into(),
+                ));
+            }
+        }
+        return Err(AppError::Database(e));
+    }
 
     // API-key auto-mint was RETIRED here (kanban t_5a3c2d9c, decision t_538505de ARM b).
     // Signup used to hash a random `fs_…` value with Argon2id and INSERT it into `api_keys` as
@@ -126,8 +150,12 @@ pub async fn register(
     .bind(Uuid::new_v4())
     .bind(tenant_id)
     .bind(serde_json::json!(["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"]))
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
+
+    // The workspace, its owner and its settings now exist as ONE unit. Commit before the plan
+    // assignment, whose own failure path is already published in the response.
+    tx.commit().await?;
 
     // Auto-assign the free tier of THIS product (kanban t_3641f326).
     //

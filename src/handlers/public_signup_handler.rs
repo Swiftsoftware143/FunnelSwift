@@ -138,17 +138,27 @@ pub async fn public_signup(
     // which is client-controlled data: a body field would let a customer mark their own tenant.
     // No header (a real customer) => NULL, and the row is byte-identical to before.
     let probe_harness = crate::probe_harness::from_headers(&headers);
+    // ONE transaction (measured defect, 2026-10-12 — the same class the `register` handler carried).
+    // The workspace, its owner row and its default settings used to be three separate INSERTs on
+    // three pooled connections: a signup that failed after the tenant INSERT left the workspace
+    // behind while the caller got a 500, and repeated attempts filled the operator's tenant list
+    // with empty "…'s Workspace" rows. Committing only once the account is complete means a failed
+    // signup writes nothing at all.
+    let mut tx = state.pool.begin().await?;
     sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
         .bind(format!("{}'s Workspace", name))
         .bind(&tenant_slug)
         .bind(&probe_harness)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
 
     // Create user
+    // `users_email_key` is the real guard: the duplicate SELECT above is only a fast path, so two
+    // racing signups for one address both pass it. The loser must get the same 409 the pre-check
+    // returns, not the 500 a raw `?` turned the unique violation into.
     let user_id = Uuid::new_v4();
-    sqlx::query(
+    let user_insert = sqlx::query(
         "INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(user_id)
@@ -157,8 +167,19 @@ pub async fn public_signup(
     .bind(&password_hash)
     .bind(&name)
     .bind("user")
-    .execute(&state.pool)
-    .await?;
+    .execute(&mut *tx)
+    .await;
+    if let Err(e) = user_insert {
+        tx.rollback().await.ok();
+        if let sqlx::Error::Database(db) = &e {
+            if db.constraint() == Some("users_email_key") {
+                return Err(AppError::Conflict(
+                    "An account with this email already exists".into(),
+                ));
+            }
+        }
+        return Err(AppError::Database(e));
+    }
 
     // Create default lead stages
     sqlx::query(
@@ -167,8 +188,12 @@ pub async fn public_signup(
     .bind(Uuid::new_v4())
     .bind(tenant_id)
     .bind(json!(["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"]))
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
+
+    // The workspace, its owner and its settings now exist as ONE unit. Commit BEFORE the plan
+    // assignment and the credentials mail — both are published outcomes, not account rows.
+    tx.commit().await?;
 
     // Assign the free tier of THIS product (kanban t_3641f326).
     //
