@@ -1898,6 +1898,43 @@ function openEmailTemplateModal(id) {
         if (box) box.checked = !rows.some(r => r.template_type === (sel && sel.value) && r.is_default);
       }
     };
+    /* FS-10: the inline guide promises "Preview a template", and the recipient's own renderer is the
+       only honest oracle — FunnelSwift's `render()` substitutes DOUBLE braces only, so this does the
+       same and then NAMES any `{single}` or unknown placeholder that would reach the recipient
+       literally (the defect the hint above warns about). */
+    window._etPreview = function() {
+      const form = document.getElementById('email-form');
+      const pane = document.getElementById('et-preview');
+      if (!form || !pane) return;
+      const sel = form.querySelector('[name=template_type]');
+      const hit = types.filter(v => v.type === (sel && sel.value))[0] || {};
+      const samples = {
+        name: 'Alex Rivera', email: 'alex@example.com', password: 'Temp-Pass-1234',
+        login_url: 'https://app.funnelswift.net/login', app_url: 'https://app.funnelswift.net',
+        app_name: 'FunnelSwift', brand_name: 'Your Brand', logo_url: '(your uploaded logo)',
+        token: 'reset-token-a1b2c3', plan_name: 'Capture Pro', company: 'Acme Co'
+      };
+      const fields = (hit.merge_fields && hit.merge_fields.length) ? hit.merge_fields.slice() : Object.keys(samples);
+      const sub = function(s) {
+        let out = String(s || '');
+        fields.forEach(function(k) { out = out.split('{{' + k + '}}').join(samples[k] != null ? samples[k] : ('[' + k + ']')); });
+        return out;
+      };
+      const subj = sub(form.querySelector('[name=subject]').value);
+      const txt = sub(form.querySelector('[name=body]').value);
+      const html = sub(form.querySelector('[name=html_body]').value);
+      const shown = html.trim() ? html.replace(/<script[\s\S]*?<\/script>/gi, '') : '';
+      const left = ((txt + '\n' + html).match(/\{\{[a-zA-Z0-9_]+\}\}|\{[a-zA-Z0-9_]+\}/g) || []);
+      pane.style.display = 'block';
+      pane.innerHTML =
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">What the recipient sees - sample values filled in for: ' + x(fields.join(', ')) + '</div>' +
+        '<div style="font-weight:600;margin-bottom:8px">' + x(subj || '(no subject)') + '</div>' +
+        (shown
+          ? '<div style="border:1px solid var(--border);border-radius:6px;padding:10px;background:#fff">' + shown + '</div>'
+          : '<pre style="white-space:pre-wrap;font-size:12px;margin:0">' + x(txt || '(no body)') + '</pre>') +
+        (shown && txt.trim() ? '<details style="margin-top:8px"><summary style="font-size:12px;cursor:pointer">Plain-text version</summary><pre style="white-space:pre-wrap;font-size:12px">' + x(txt) + '</pre></details>' : '') +
+        (left.length ? '<div style="margin-top:8px;font-size:12px;color:#b45309">&#9888; These placeholders would be sent LITERALLY: ' + x(Array.from(new Set(left)).join(', ')) + ' - use the double-brace form.</div>' : '');
+    };
     body.innerHTML = `<form id="email-form">
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
       <div class="form-group"><label class="form-label">Subject</label><input class="input" name="subject" value="${x(t.subject||'')}"></div>
@@ -1907,9 +1944,11 @@ function openEmailTemplateModal(id) {
       <div class="form-group"><label class="form-label">HTML body (optional — when non-empty this is what the recipient sees)</label><textarea class="input" name="html_body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.html_body||'')}</textarea></div>
       <div class="form-group" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="is_default" id="et-default" ${defOn ? 'checked' : ''}><label class="form-label" for="et-default" style="margin:0">Default for this type — one default per type, ticking it replaces the current one</label></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._etPreview()">Preview</button>
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
       </div>
+      <div id="et-preview" data-ops="email-template-preview" style="display:none;margin-top:12px;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--bg-secondary)"></div>
     </form>`;
     window._etMergeHint();
     document.getElementById('email-form')?.addEventListener('submit', async (e) => {
