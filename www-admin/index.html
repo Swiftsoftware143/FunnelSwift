@@ -3390,7 +3390,7 @@ function planRegistryHTML(d) {
     }).join('');
     return '<tr><td style="text-align:left"><strong>' + x(f.label) + '</strong>' +
       '<div style="font-size:11px;color:var(--muted)"><code>' + x(f.key) + '</code> · ' + x(f.kind) +
-      (f.unit ? ' (' + x(f.unit) + ')' : '') + ' · ' + x(f.enforced_by) + '</div></td>' + cells + '</tr>';
+      (f.unit ? ' (' + x(f.unit) + ')' : '') + '</div></td>' + cells + '</tr>';
   }).join('');
   const viol = (d && d.superset_violations) || [];
   const inert = (d && d.inert_on_top) || [];
