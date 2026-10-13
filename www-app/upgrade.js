@@ -12,13 +12,21 @@ async function LPU(){
 }
 
 function renderUpgrade(plans){
-  var currentPlan = (window.U && (window.U.plan_name||window.U.plan)) ? (window.U.plan_name||window.U.plan) : 'Free';
+  // Which plan is this workspace ACTUALLY on? `/auth/me` carries the plans row the account is
+  // subscribed to (`current_plan`, with its real `slug`), and `plan_name` is the human label.
+  // FunnelSwift sells TWO products (Capture and Kinetic) and BOTH have a free plan, so deciding by
+  // "is it free" marked Capture Free AND Kinetic Free as "Current Plan" for a Capture account at the
+  // same time — and hid the way up from the other one. Match the SLUG when the server gave us one,
+  // the NAME otherwise; if neither resolves, leave every row actionable rather than mark a wrong one.
+  var cp = (window.U && window.U.current_plan) || null;
+  var curSlug = (cp && cp.slug) ? String(cp.slug) : '';
+  var currentPlan = (cp && cp.name) || (window.U && (window.U.plan_name||window.U.plan)) || 'Free';
   var html = '<div style="max-width:900px;margin:0 auto"><h2 style="font-size:22px;font-weight:700">Upgrade Your Plan</h2>';
   html += '<p style="color:#64748b;margin-bottom:20px">Current: <strong>'+currentPlan+'</strong></p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
   
   plans.forEach(function(p){
-    var isCurrent = p.name === currentPlan || (currentPlan.toLowerCase().indexOf('free')>=0 && p.price===0);
+    var isCurrent = curSlug ? (p.slug === curSlug) : (p.name === currentPlan);
     var bg = isCurrent ? '#eef2ff' : '#fff';
     var border = isCurrent ? '2px solid #6366f1' : '1px solid #e2e8f0';
     html += '<div style="background:'+bg+';border:'+border+';border-radius:12px;padding:20px;display:flex;flex-direction:column">';
