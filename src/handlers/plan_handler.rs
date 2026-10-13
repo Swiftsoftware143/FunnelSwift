@@ -506,6 +506,7 @@ pub async fn admin_list_all_plans(
             "price": row.try_get::<f64, _>("price").unwrap_or(0.0),
             "max_leads": row.try_get::<Option<i32>, _>("max_leads").unwrap_or(None),
             "max_tags": row.try_get::<Option<i32>, _>("max_tags").unwrap_or(None),
+            "max_cards": row.try_get::<Option<i32>, _>("max_cards").unwrap_or(None),
             "payment_provider": row.try_get::<Option<String>, _>("payment_provider").unwrap_or(None),
             "has_dual_routing": row.try_get::<bool, _>("has_dual_routing").unwrap_or(false),
             "has_multi_tenant": row.try_get::<bool, _>("has_multi_tenant").unwrap_or(false),
