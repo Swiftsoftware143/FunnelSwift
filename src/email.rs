@@ -350,9 +350,13 @@ fn get_inline(
         }
         "password_reset" => {
             let subject = "Password Reset Request".to_string();
+            // The customer must be TOLD where to enter the code. The reset mail used to hand over a
+            // 36-character UUID with no destination at all, so a person who had forgotten their
+            // password had to guess that the reset form hides behind the login screen's
+            // "Forgot password?" link (fixed 2026-10-13, cron `default`).
             let text = format!(
-                "Hi {0},\n\nWe received a request to reset your password for FunnelSwift.\n\nYour reset code is: {1}\n\nThis code expires in 1 hour.\n\nIf you did not request this, please ignore this email.\n\n- FunnelSwift Team",
-                name, token
+                "Hi {0},\n\nWe received a request to reset your password for FunnelSwift.\n\nYour reset code is: {1}\n\nOpen {2}/login and click \"Forgot password?\", then enter the code above to choose a new password.\n\nThis code expires in 1 hour.\n\nIf you did not request this, please ignore this email.\n\n- FunnelSwift Team",
+                name, token, app_url
             );
             (subject, Some(text), None)
         }
