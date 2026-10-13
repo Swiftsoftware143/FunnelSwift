@@ -341,7 +341,13 @@
                             </div>
                         `;
                     } else {
-                        const numVal = typeof val === 'number' ? val : parseInt(val) || 0;
+                        // kanban t_ac9bc1e5: "Max Kinetic Cards" is the plans.max_cards COLUMN, not a
+                        // features key — it is the limit features::limit_column enforces. Read it from
+                        // the column (the API returns it now) and leave the box EMPTY when the column
+                        // is NULL (= unlimited), so a save can never rewrite "unlimited" as 0.
+                        const isCol = feat.key === "max_kinetic_cards";
+                        const raw = isCol ? plan.max_cards : val;
+                        const numVal = (raw === null || raw === undefined || raw === "") ? "" : (parseInt(raw) || 0);
                         html += `
                             <div class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition">
                                 <label for="${inputId}" class="text-sm text-slate-700 cursor-pointer select-none flex-1">${feat.label}</label>
@@ -378,6 +384,10 @@
                 const inputId = `feat-${planId}-${feat.key}`;
                 const el = document.getElementById(inputId);
                 if (!el) return;
+                // max_kinetic_cards is NOT a features key — nothing reads it, and writing it back
+                // was the inert control this card fixes. It goes to the plans.max_cards COLUMN
+                // via savePlanFeatures below (kanban t_ac9bc1e5).
+                if (feat.key === "max_kinetic_cards") return;
                 if (feat.type === "checkbox") {
                     features[feat.key] = el.checked;
                 } else {
@@ -402,6 +412,15 @@
                     body: JSON.stringify({ features })
                 });
                 if (data === null) return;
+                // kanban t_ac9bc1e5: the card limit is a plan COLUMN — write it through the plan
+                // route. An EMPTY box means "leave it alone" (NULL stays unlimited).
+                const cardEl = document.getElementById(`feat-${planId}-max_kinetic_cards`);
+                if (cardEl && String(cardEl.value).trim() !== "") {
+                    const mc = parseInt(cardEl.value);
+                    if (!isNaN(mc)) {
+                        await apiFetch("/api/v1/plans/" + planId, { method: "PUT", body: JSON.stringify({ max_cards: mc }) });
+                    }
+                }
                 showToast("✅ Features saved for " + (plans.find(p => p.id === planId)?.name || "plan"));
                 btn.classList.remove("bg-amber-500", "hover:bg-amber-600");
                 btn.classList.add("bg-indigo-500");

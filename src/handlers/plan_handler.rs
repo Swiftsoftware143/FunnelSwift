@@ -494,7 +494,7 @@ pub async fn admin_list_all_plans(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features, allowed_template_ids, created_at, updated_at FROM plans ORDER BY price")
+    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, max_cards, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features, allowed_template_ids, created_at, updated_at FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
 
