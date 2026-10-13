@@ -656,11 +656,53 @@ pub async fn delete_button(
     Ok(Json(json!({"message": "Deleted"})))
 }
 
-pub async fn get_metrics(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
-) -> AppResult<Json<Value>> {
-    Ok(Json(json!({"views":0,"clicks":0,"leads":0})))
+/// `GET /api/v1/kinetic/metrics` — this workspace's own card activity: total views, total clicks,
+/// and the leads its cards captured.
+///
+/// This answered a HARD-CODED `{"views":0,"clicks":0,"leads":0}` for every caller while README.md
+/// advertised the route as "Card metrics", so an API consumer read fabricated zeros for ever — the
+/// same "a 200 is not an effect" class as the retired `/track/click` stub (kanban t_65849ce9).
+/// Measured live 2026-10-13: a probe workspace with 2 tracked views, 1 tracked click and 1 card lead
+/// in the database still received `{"views":0,"clicks":0,"leads":0}`.
+///
+/// The numbers come from the same tables the paid analytics pane reads, so the two can never
+/// disagree: `kinetic_card_daily_stats` (the rollup the public tracker `POST /card/:id/track`
+/// upserts) and the `leads` rows a card captured (`source='kinetic_card'`, written by
+/// `submit_lead`). No new plan gate is added: the route carried none before, and inventing one here
+/// would be a pricing decision, not a bug fix.
+pub async fn get_metrics(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let views: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(views), 0) FROM kinetic_card_daily_stats WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let clicks: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(clicks), 0) FROM kinetic_card_daily_stats WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let leads: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 AND source = 'kinetic_card'",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(
+        json!({"views": views, "clicks": clicks, "leads": leads}),
+    ))
 }
 
 pub async fn get_subdomain(
