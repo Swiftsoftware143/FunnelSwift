@@ -383,10 +383,23 @@ pub async fn update_plan(
         .commission_rate
         .or(existing.commission_rate)
         .unwrap_or(20.0);
+    // t_plan_fwd (2026-10-13): the console's plan editor sends EVERY numeric/flag field
+    // (`max_cards`, `max_forms`, `max_qr_codes`, `max_action_buttons`, `max_team_members`,
+    // `max_ocr_scans`, `max_custom_domains`, `annual_price`, …), but this UPDATE wrote only a
+    // handful of them, so a save that changed Max Cards (or Max Forms / Max QR Codes / …) reported
+    // "Plan updated" and silently kept the OLD value. Measured live on a throwaway plan: create with
+    // max_cards=7, PUT {max_cards:99, max_leads:99} -> 200, read back max_cards=7 while max_leads=99.
+    // Every field the request accepts is now written, an omitted one keeping the stored value
+    // (the same "read the plan, never invent a default" rule the rate comment above records).
     sqlx::query(
         r#"UPDATE plans SET name=$1, slug=$2, price=$3, purchase_url=$4, max_leads=$5, max_tags=$6,
-           has_dual_routing=$7, has_multi_tenant=$8, has_white_label=$9, payment_provider=$10, features=$11, commission_rate=$12, updated_at=NOW()
-           WHERE id=$13"#,
+           has_dual_routing=$7, has_multi_tenant=$8, has_white_label=$9, payment_provider=$10, features=$11, commission_rate=$12,
+           annual_price=$13, side=$14, billing_cycle=$15,
+           max_custom_domains=$16, max_cards=$17, max_qr_codes=$18, max_action_buttons=$19, max_forms=$20,
+           max_team_members=$21, max_ocr_scans=$22,
+           has_webhooks=$23, has_api=$24, has_mini_funnels=$25, has_card_gating=$26, has_remove_branding=$27,
+           has_analytics=$28, has_import_export=$29, updated_at=NOW()
+           WHERE id=$30"#,
     )
     .bind(&sync_name)
     .bind(&sync_slug)
@@ -400,6 +413,23 @@ pub async fn update_plan(
     .bind(req.payment_provider.or(existing.payment_provider))
     .bind(req.features.or(existing.features))
     .bind(sync_rate)
+    .bind(req.annual_price.or(existing.annual_price))
+    .bind(req.side.clone().unwrap_or_else(|| existing.side.clone()))
+    .bind(req.billing_cycle.clone().unwrap_or_else(|| existing.billing_cycle.clone()))
+    .bind(req.max_custom_domains.or(existing.max_custom_domains))
+    .bind(req.max_cards.or(existing.max_cards))
+    .bind(req.max_qr_codes.or(existing.max_qr_codes))
+    .bind(req.max_action_buttons.or(existing.max_action_buttons))
+    .bind(req.max_forms.or(existing.max_forms))
+    .bind(req.max_team_members.or(existing.max_team_members))
+    .bind(req.max_ocr_scans.or(existing.max_ocr_scans))
+    .bind(req.has_webhooks.unwrap_or(existing.has_webhooks))
+    .bind(req.has_api.unwrap_or(existing.has_api))
+    .bind(req.has_mini_funnels.unwrap_or(existing.has_mini_funnels))
+    .bind(req.has_card_gating.unwrap_or(existing.has_card_gating))
+    .bind(req.has_remove_branding.unwrap_or(existing.has_remove_branding))
+    .bind(req.has_analytics.unwrap_or(existing.has_analytics))
+    .bind(req.has_import_export.unwrap_or(existing.has_import_export))
     .bind(id)
     .execute(&state.pool)
     .await?;
