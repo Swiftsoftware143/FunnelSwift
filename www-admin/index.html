@@ -685,8 +685,12 @@ async function renderMyAccount() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><div class="form-label">Email</div><div style="font-size:14px;font-weight:500">${x(USER.email)}</div></div>
         <div><div class="form-label">Role</div><div class="badge ${isSuperAdmin()?'badge-purple':'badge-blue'}">${x(roleLabel(USER.role))}</div></div>
-        <div><div class="form-label">Tenant ID</div><div style="font-size:12px;color:var(--muted)">${x(USER.tenant_id||'N/A')}</div></div>
-        <div><div class="form-label">User ID</div><div style="font-size:12px;color:var(--muted)">${x(USER.id||'N/A')}</div></div>
+        <!-- kanban (2026-10-13): the raw "Tenant ID" and "User ID" rows are RETIRED from this
+             panel. This card is customer-visible (My Account, both roles) and the two rows
+             printed internal UUIDs in a place no guide explains — the other four apps surface no
+             such identifier in the customer's own account panel, and support can read the ids in
+             the Operator Console instead. The ids themselves are still used by the console's own
+             logic (see MINE below). -->
       </div>
     </div>
     <div class="card">
