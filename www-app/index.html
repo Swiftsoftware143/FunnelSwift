@@ -2863,8 +2863,10 @@ function LPLL(){
       topFields.appendChild(PFF("Name",p.id,"name",p.name));
       topFields.appendChild(PFF("Slug",p.id,"slug",p.slug));
       topFields.appendChild(PFF("Price ($)",p.id,"price",String(p.price||0),"number"));
-      topFields.appendChild(PFF("Max Leads",p.id,"max_leads",String(p.max_leads||"0"),"number"));
-      topFields.appendChild(PFF("Max Tags",p.id,"max_tags",String(p.max_tags||"0"),"number"));
+      // A NULL limit column means UNLIMITED, so the box is left EMPTY (cron 2026-10-13):
+      // `String(p.max_leads||"0")` rendered NULL as 0, and this form sends every field it renders.
+      topFields.appendChild(PFF("Max Leads",p.id,"max_leads",p.max_leads==null?"":String(p.max_leads),"number"));
+      topFields.appendChild(PFF("Max Tags",p.id,"max_tags",p.max_tags==null?"":String(p.max_tags),"number"));
       topFields.appendChild(PFF("Max Users",p.id,"max_users",String(f.max_users||"0"),"number"));
       topFields.appendChild(PFF("Max Cards",p.id,"max_kinetic_cards",String(f.max_kinetic_cards||"0"),"number"));
       topFields.appendChild(PFF("CTA Buttons",p.id,"kinetic_cta_buttons_max",String(f.kinetic_cta_buttons_max||"0"),"number"));
@@ -2965,7 +2967,15 @@ function SP(pid){
       if(pf==="features"){feats[k]=v;return;}
     }else{
       var nt=el.type;
-      if(nt==="number"){v=parseFloat(el.value)||0;if(v===-1)v=-1;}
+      if(nt==="number"){
+        /* An EMPTY limit box means "not set", not zero. `parseFloat(el.value)||0` wrote 0 for a
+           blank box, and this form sends EVERY field it renders - so pressing Save on a plan whose
+           max_leads/max_tags column is NULL (unlimited) rewrote it as 0 ("None", which the gate
+           REFUSES). Omit the key instead: update_plan keeps the stored value when a field is absent
+           (`.or(existing)`), which is what the admin console's own plan editor already relies on. */
+        if(String(el.value).trim()===""){return;}
+        v=parseFloat(el.value); if(isNaN(v))v=0; if(v===-1)v=-1;
+      }
       else v=el.value;
     }
     // Map features.* fields
