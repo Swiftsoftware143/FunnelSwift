@@ -3231,7 +3231,8 @@ async function renderPlanAdmin() {
       <button class="btn btn-secondary btn-sm" id="planadmin-reload">↻ Reload</button>
     </div>
     <div class="card">
-      <div class="card-header"><div><div class="card-title">Plan catalogue</div><div class="card-subtitle">GET /api/v1/admin/plans</div></div></div>
+      <!-- route: GET /api/v1/admin/plans -->
+      <div class="card-header"><div><div class="card-title">Plan catalogue</div><div class="card-subtitle">Every plan this app offers, with its price, lead and tag caps, and its feature flags.</div></div></div>
       <div class="table-wrap"><table class="table" id="planadmin-plans-table">
         <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
         <tbody>${plans.length ? plans.map(p => `<tr>
@@ -3249,14 +3250,16 @@ async function renderPlanAdmin() {
     <div class="card">
       <div class="card-header">
         <div><div class="card-title">Feature registry — every gated key × every plan</div>
-        <div class="card-subtitle">GET /api/v1/admin/plans/registry · click a cell to change it (PUT /api/v1/admin/plans/entitlement)</div></div>
+        <!-- routes: GET /api/v1/admin/plans/registry · PUT /api/v1/admin/plans/entitlement -->
+        <div class="card-subtitle">Every gated feature against every plan — click a cell to turn it on or off.</div></div>
         <button class="btn btn-primary btn-sm" id="planadmin-grant-top">Grant everything to the top tier</button>
       </div>
       <div id="planadmin-registry"><div class="empty" style="padding:14px"><div class="desc">Loading the registry…</div></div></div>
     </div>
     <div class="card">
       <div class="card-title">Assign plan to tenant</div>
-      <div class="card-subtitle">POST /api/v1/admin/plans/assign</div>
+      <!-- route: POST /api/v1/admin/plans/assign -->
+      <div class="card-subtitle">Move a tenant onto a plan.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <select id="planadmin-assign-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
         <select id="planadmin-assign-plan" class="input" style="min-width:200px"><option value="">— select plan —</option>${plans.map(p => `<option value="${x(p.id)}">${x(p.name)} — ${formatCurrency(p.price)}</option>`).join('')}</select>
@@ -3266,7 +3269,8 @@ async function renderPlanAdmin() {
     </div>
     <div class="card">
       <div class="card-title">Tenant feature override</div>
-      <div class="card-subtitle">GET/POST /api/v1/admin/tenants/:id/feature-override(s)</div>
+      <!-- routes: GET|POST /api/v1/admin/tenants/:id/feature-override(s) -->
+      <div class="card-subtitle">Override one feature for a single tenant.</div>
       <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Override <strong>one</strong> feature for a single tenant. This is the highest-precedence lever: it wins over the plan's own number for this tenant only (tenant override &gt; plan row &gt; plan column). For a limit key use <code>-1</code> unlimited, <code>0</code> disabled, <code>&gt;0</code> capped. For a boolean key use <code>1</code> on, <code>0</code> off. Leave the value blank to <strong>clear</strong> the override so the plan decides again. The key must be one the gates read — a retired or unknown name is refused (400), like the matrix above.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <select id="planadmin-ov-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
@@ -3460,7 +3464,7 @@ const PFS = { id: null, features: '{}', templates: '', msg: '', busy: false };
 window._planFeaturesInput = function (v) { PFS.features = v; };
 window._planTemplatesInput = function (v) { PFS.templates = v; };
 window._planFeaturesHTML = function () {
-  return `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">PUT /api/v1/admin/plans/${x(PFS.id)}/features — the JSON object is merged into the plan's existing <code>features</code>.</div>
+  return `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">The JSON object below is merged into the plan's existing <code>features</code>.</div>
       <textarea id="planadmin-features-json" class="input" style="width:100%;height:170px;font-family:ui-monospace,monospace;font-size:12px" oninput="window._planFeaturesInput(this.value)">${x(PFS.features)}</textarea>
       <div style="font-size:12px;color:var(--muted);margin:10px 0 4px">allowed_template_ids (optional JSON array, leave blank to keep unchanged)</div>
       <input id="planadmin-templates-json" class="input" style="width:100%" placeholder='["tpl_1","tpl_2"]' value="${x(PFS.templates)}" oninput="window._planTemplatesInput(this.value)">
@@ -3730,13 +3734,15 @@ async function renderSiteSettings() {
   try { inject = await api('/seo/inject'); } catch (e) { }
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Site Settings</h1>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/PUT /api/v1/admin/sites(/:key) — global site settings, including the <code>seo_*</code> keys that are injected into every card, funnel and public page.</div>
+    <!-- routes: GET|PUT /api/v1/admin/sites(/:key) -->
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Settings that apply to the whole site, including the <code>seo_*</code> values injected into every card, funnel and public page.</div>
     <div class="card">
       <div class="card-header"><span class="card-title">Configured settings</span></div>
       ${wiredTable(['Key', 'Value', ''], rows.map(r => `<tr><td><code>${x(r.key)}</code></td><td style="font-size:12px;color:var(--muted);max-width:420px;overflow:hidden;text-overflow:ellipsis">${x(typeof r.value === 'string' ? r.value : JSON.stringify(r.value))}</td><td><button class="btn" data-site-key="${x(r.key)}">Edit</button></td></tr>`), 'No site settings yet — add the first one below')}
     </div>
     <div class="card">
-      <div class="card-header"><div><div class="card-title">Add or update a setting</div><div class="card-subtitle">PUT /api/v1/admin/sites/:key</div></div></div>
+      <!-- route: PUT /api/v1/admin/sites/:key -->
+      <div class="card-header"><div><div class="card-title">Add or update a setting</div><div class="card-subtitle">Create a setting, or change the value of one that already exists.</div></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         ${wiredInput('wired-ss-key', 'seo_site_name')}
         <button class="btn" id="wired-ss-load">Load</button>
@@ -3745,7 +3751,8 @@ async function renderSiteSettings() {
       <div style="margin-top:8px"><button class="btn btn-primary" id="wired-ss-save">Save setting</button><span id="wired-ss-msg" style="font-size:12px;margin-left:10px"></span></div>
     </div>
     <div class="card">
-      <div class="card-header"><div><div class="card-title">SEO injection preview</div><div class="card-subtitle">GET /api/v1/seo/inject — exactly what public pages get</div></div></div>
+      <!-- route: GET /api/v1/seo/inject -->
+      <div class="card-header"><div><div class="card-title">SEO injection preview</div><div class="card-subtitle">Exactly what a public page receives — the meta and script tags below.</div></div></div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px">meta tags</div>
       <pre style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;font-size:11px;overflow:auto">${x((inject && inject.meta_tags) || '(none)')}</pre>
       <div style="font-size:12px;color:var(--muted);margin:8px 0 6px">script tags</div>
@@ -3809,7 +3816,8 @@ async function renderTagRules() {
   const tagOpts = id => '<option value="">—</option>' + tags.map(t => `<option value="${x(t.id)}">${x(t.name || t.id)}</option>`).join('');
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Tag Rules</h1>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET/POST /api/v1/tag-rules · PUT/DELETE /api/v1/tag-rules/:id — when the trigger tag is applied, run the action.</div>
+    <!-- routes: GET|POST /api/v1/tag-rules · PUT|DELETE /api/v1/tag-rules/:id -->
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">When the trigger tag is applied to a lead, the chosen action runs automatically.</div>
     <div class="card">
       <div class="card-header"><span class="card-title">Rules</span></div>
       <div id="wired-tr-list">${wiredTable(['Name', 'Created', ''], rules.map(r => `<tr><td>${x(r.name)}</td><td>${formatDate(r.created_at)}</td><td><button class="btn" data-rule-toggle="${x(r.id)}">Deactivate</button> <button class="btn" data-rule-del="${x(r.id)}">Delete</button></td></tr>`), 'No tag rules')}</div>
@@ -3871,7 +3879,8 @@ async function renderCheckoutSessions() {
   const list = Array.isArray(sessions) ? sessions : (sessions.sessions || []);
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Checkout Sessions</h1>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">GET /api/v1/checkout/sessions — every payment session this tenant has started.</div>
+    <!-- route: GET /api/v1/checkout/sessions -->
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Every payment session this workspace has started, with its provider, amount and status.</div>
     <div class="card">
       ${wiredTable(['Session', 'Provider', 'Amount', 'Status', 'Created'],
         list.map(s => `<tr><td style="font-size:12px">${x(s.id)}</td><td>${x(s.provider_type)}</td><td>${formatCurrency(s.amount || 0)} ${x(s.currency || '')}</td><td><span class="badge badge-blue">${x(s.status)}</span></td><td>${formatDate(s.created_at)}</td></tr>`),
