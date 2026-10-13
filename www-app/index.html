@@ -2785,7 +2785,7 @@ function LSEO(){
       {k:"site_verification",l:"Google Site Verification",ph:"verification-token-from-google",dc:"Content value from Google Search Console."}
     ];
     var h='<div class="cc"><h3>SEO Settings</h3>';
-    h+='<p style="color:#64748b;font-size:12px;margin-bottom:12px">Global <code>site_settings</code> keys prefixed <code>seo_</code> — injected into every public card, funnel and page. Admin only.</p>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:12px">Injected into every public card, funnel and page. Admin only.</p>';
     h+='<div id="seo-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
     fields.forEach(function(f){
       h+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px"><label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">'+f.l+'</label>';
@@ -2797,7 +2797,7 @@ function LSEO(){
     var schemaTypes=["Organization","LocalBusiness","SoftwareApplication"];
     var cur=schema["@type"]||"SoftwareApplication";
     h+='<div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:14px"><label style="font-size:12px;font-weight:600;color:#475569">Schema Markup Type</label>';
-    h+='<p style="font-size:10px;color:#94a3b8;margin-bottom:6px">JSON-LD written to seo_schema_type and injected as structured data.</p>';
+    h+='<p style="font-size:10px;color:#94a3b8;margin-bottom:6px">Structured data injected into every public page.</p>';
     h+='<select id="seo-schema_type" style="width:240px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">';
     schemaTypes.forEach(function(t){ h+='<option value="'+t+'"'+(cur===t?" selected":"")+'>'+t+'</option>'; });
     h+='</select>';
@@ -2807,9 +2807,9 @@ function LSEO(){
     });
     h+='</div></div>';
     h+='<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn" onclick="SEOSave()">Save All</button><span id="seo-msg" class="msg"></span></div>';
-    h+='<hr style="margin:20px 0;border-color:#e2e8f0"><h3 style="font-size:14px;margin-bottom:8px">Public Endpoints</h3>';
-    h+='<p style="font-size:12px;color:#64748b"><a href="/api/v1/seo/sitemap.xml" target="_blank" style="color:#6366f1">/api/v1/seo/sitemap.xml</a> — dynamic sitemap (cards + funnels)</p>';
-    h+='<p style="font-size:12px;color:#64748b"><a href="/robots.txt" target="_blank" style="color:#6366f1">/robots.txt</a> — dynamic crawl rules</p></div>';
+    h+='<hr style="margin:20px 0;border-color:#e2e8f0"><h3 style="font-size:14px;margin-bottom:8px">Public pages</h3>';
+    h+='<p style="font-size:12px;color:#64748b"><a href="/api/v1/seo/sitemap.xml" target="_blank" style="color:#6366f1">View your sitemap</a> — generated from your cards and funnels</p>';
+    h+='<p style="font-size:12px;color:#64748b"><a href="/robots.txt" target="_blank" style="color:#6366f1">View crawl rules</a> — tells search engines what to index</p></div>';
     $("ct").innerHTML=h;
   }).catch(function(e){ $("ct").innerHTML='<div class="cc"><h3>SEO Settings</h3><p class="msg me">Failed to load SEO settings: '+X(e.message||e)+'</p></div>'; });
 }
@@ -3658,12 +3658,12 @@ function LM(){
     
     // Subdomain
     var sdDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
-    sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><code style="font-size:10px;color:#94a3b8">subdomain</code><br><span style="font-size:12px;color:#6366f1">'+X(sd.value)+'.kntcrd.com</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value)+'" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="var v=document.getElementById(\'lmsd\').value.trim();if(!v)return;api(\'/api/v1/settings\',{method:\'PUT\',body:JSON.stringify({key:\'subdomain\',value:v})}).then(function(){showMsg(\'Saved\',\'mk\');setTimeout(function(){$(\'mm\').className=\'msg\'},1500)})">Save</button></div></div>';
+    sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><span style="font-size:12px;color:#6366f1">'+X(sd.value)+'.kntcrd.com</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value)+'" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="var v=document.getElementById(\'lmsd\').value.trim();if(!v)return;api(\'/api/v1/settings\',{method:\'PUT\',body:JSON.stringify({key:\'subdomain\',value:v})}).then(function(){showMsg(\'Saved\',\'mk\');setTimeout(function(){$(\'mm\').className=\'msg\'},1500)})">Save</button></div></div>';
     list.appendChild(sdDiv);
     
     // Custom domain
     var cdDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
-    cdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Default Custom Domain</strong><br><code style="font-size:10px;color:#94a3b8">custom_domain</code></div><div style="display:flex;gap:6px;align-items:center"><input id="lmcd" value="'+X(cd.value||"")+'" placeholder="optional" style="width:180px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="var v=document.getElementById(\'lmcd\').value.trim();api(\'/api/v1/settings\',{method:\'PUT\',body:JSON.stringify({key:\'custom_domain\',value:v})}).then(function(){showMsg(\'Saved\',\'mk\');setTimeout(function(){$(\'mm\').className=\'msg\'},1500)})">Save</button></div></div>';
+    cdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Default Custom Domain</strong><br><span style="font-size:11px;color:#94a3b8">Used when a card has no custom domain of its own</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmcd" value="'+X(cd.value||"")+'" placeholder="optional" style="width:180px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="var v=document.getElementById(\'lmcd\').value.trim();api(\'/api/v1/settings\',{method:\'PUT\',body:JSON.stringify({key:\'custom_domain\',value:v})}).then(function(){showMsg(\'Saved\',\'mk\');setTimeout(function(){$(\'mm\').className=\'msg\'},1500)})">Save</button></div></div>';
     list.appendChild(cdDiv);
     
     // Lead stages
