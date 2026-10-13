@@ -2868,7 +2868,12 @@ function LPLL(){
       topFields.appendChild(PFF("Max Leads",p.id,"max_leads",p.max_leads==null?"":String(p.max_leads),"number"));
       topFields.appendChild(PFF("Max Tags",p.id,"max_tags",p.max_tags==null?"":String(p.max_tags),"number"));
       topFields.appendChild(PFF("Max Users",p.id,"max_users",String(f.max_users||"0"),"number"));
-      topFields.appendChild(PFF("Max Cards",p.id,"max_kinetic_cards",String(f.max_kinetic_cards||"0"),"number"));
+      // kanban t_ac9bc1e5: this box wrote features.max_kinetic_cards, a key NOTHING reads — the
+      // enforced card limit is the plan COLUMN max_cards (features::limit_column -> "max_cards";
+      // feature_registry key max_cards; gate POST /api/v1/kinetic/cards). It is now sent as the
+      // top-level column field. Same NULL rule as Max Leads above: NULL column = UNLIMITED, so the
+      // box is left EMPTY and a blank box omits the key (update_plan keeps the stored value).
+      topFields.appendChild(PFF("Max Cards",p.id,"max_cards",p.max_cards==null?"":String(p.max_cards),"number"));
       topFields.appendChild(PFF("CTA Buttons",p.id,"kinetic_cta_buttons_max",String(f.kinetic_cta_buttons_max||"0"),"number"));
       card.appendChild(topFields);
 
@@ -2979,7 +2984,7 @@ function SP(pid){
       else v=el.value;
     }
     // Map features.* fields
-    if(k.startsWith("kinetic_")||k==="max_kinetic_cards"||k==="max_users"||k==="analytics"||k==="import_export"||k==="dedicated_support"||k==="white_label"){
+    if(k.startsWith("kinetic_")||k==="max_users"||k==="analytics"||k==="import_export"||k==="dedicated_support"||k==="white_label"){
       if(!isCB&&k!=="kinetic_cta_text") feats[k]=v;
       else if(k==="kinetic_cta_text") feats[k]=v;
     }else{
