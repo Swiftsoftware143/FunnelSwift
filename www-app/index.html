@@ -2867,14 +2867,22 @@ function LPLL(){
       // `String(p.max_leads||"0")` rendered NULL as 0, and this form sends every field it renders.
       topFields.appendChild(PFF("Max Leads",p.id,"max_leads",p.max_leads==null?"":String(p.max_leads),"number"));
       topFields.appendChild(PFF("Max Tags",p.id,"max_tags",p.max_tags==null?"":String(p.max_tags),"number"));
-      topFields.appendChild(PFF("Max Users",p.id,"max_users",String(f.max_users||"0"),"number"));
+      // REMOVED (kanban t_ac9bc1e5): a "Max Users" box. `features.max_users` is read by NOTHING in
+      // src/ (grep 2026-10-13: 0 files), has no `plans` column and is not a feature_registry::SPECS
+      // key — an operator's number landed in the plan's features jsonb and changed nothing anywhere.
+      // The seat limit this service DOES enforce is the canonical key `max_team_members` (its own
+      // plan column); a panel control for it is a separate change, and this box was not it.
       // kanban t_ac9bc1e5: this box wrote features.max_kinetic_cards, a key NOTHING reads — the
       // enforced card limit is the plan COLUMN max_cards (features::limit_column -> "max_cards";
       // feature_registry key max_cards; gate POST /api/v1/kinetic/cards). It is now sent as the
       // top-level column field. Same NULL rule as Max Leads above: NULL column = UNLIMITED, so the
       // box is left EMPTY and a blank box omits the key (update_plan keeps the stored value).
       topFields.appendChild(PFF("Max Cards",p.id,"max_cards",p.max_cards==null?"":String(p.max_cards),"number"));
-      topFields.appendChild(PFF("CTA Buttons",p.id,"kinetic_cta_buttons_max",String(f.kinetic_cta_buttons_max||"0"),"number"));
+      // REMOVED (kanban t_ac9bc1e5): a "CTA Buttons" box (`features.kinetic_cta_buttons_max`).
+      // Same measurement as the Max Users box above: 0 readers in src/, no `plans` column, and the
+      // app's own served admin guide lists it among the RETIRED pre-registry feature keys (its live
+      // feature table carries max_cards / max_leads / max_tags, not this). What the panel offers now
+      // is exactly the set of limits this service resolves and enforces.
       card.appendChild(topFields);
 
       // Booleans
@@ -2984,7 +2992,10 @@ function SP(pid){
       else v=el.value;
     }
     // Map features.* fields
-    if(k.startsWith("kinetic_")||k==="max_users"||k==="analytics"||k==="import_export"||k==="dedicated_support"||k==="white_label"){
+    // `max_users` is gone from this list with its box (kanban t_ac9bc1e5): no element carries that
+    // data-key any more, and the key resolved to nothing, so routing it into `features` only ever
+    // wrote dead data.
+    if(k.startsWith("kinetic_")||k==="analytics"||k==="import_export"||k==="dedicated_support"||k==="white_label"){
       if(!isCB&&k!=="kinetic_cta_text") feats[k]=v;
       else if(k==="kinetic_cta_text") feats[k]=v;
     }else{
