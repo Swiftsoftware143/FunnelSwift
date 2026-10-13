@@ -2741,6 +2741,23 @@ async function renderEmailBranding() {
         </div>
       </div>
     </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">How it looks in a mail</span>
+        <span class="badge">live preview</span>
+      </div>
+      <div style="padding:16px">
+        <div id="brand-preview" data-ops="email-brand-preview" style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;max-width:520px">
+          <div style="padding:18px;text-align:center">
+            <div id="bp-logo" style="display:none;margin-bottom:8px"><img id="bp-logo-img" alt="" style="max-height:56px;max-width:240px"></div>
+            <div id="bp-name" style="font-weight:700;font-size:16px;color:#4f46e5"></div>
+          </div>
+          <div id="bp-rule" style="height:3px;background:#4f46e5"></div>
+          <div style="padding:16px;color:#64748b;font-size:13px">Hello Alex,<br><br>Your account is ready. This is the header every transactional email for your account opens with.</div>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:8px">Shown with sample content. Leave the branding empty to send with the app's own identity.</div>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -2752,11 +2769,42 @@ function bindEmailBranding() {
     hex.addEventListener('input', () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value.trim())) picker.value = hex.value.trim(); });
   }
   document.getElementById('brand-save')?.addEventListener('click', saveEmailBranding);
+  /* FS-10: the inline guide promises "Preview how a mail will look" — re-render the mock header on
+     every edit (name, colour, logo) so the operator sees the real header before saving. */
+  const bpName = document.getElementById('brand-name');
+  if (bpName) bpName.addEventListener('input', window._brandPreview);
+  if (picker) picker.addEventListener('input', window._brandPreview);
+  if (hex) hex.addEventListener('input', window._brandPreview);
+  window._brandPreview();
   const file = document.getElementById('brand-logo-file');
   document.getElementById('brand-logo-pick')?.addEventListener('click', () => { if (file) file.click(); });
   if (file) file.addEventListener('change', uploadBrandLogo);
   document.getElementById('brand-logo-remove')?.addEventListener('click', removeBrandLogo);
 }
+
+window._brandPreview = function() {
+  const box = document.getElementById('brand-preview');
+  if (!box) return;
+  const nameEl = document.getElementById('bp-name');
+  const rule = document.getElementById('bp-rule');
+  const logoWrap = document.getElementById('bp-logo');
+  const logoImg = document.getElementById('brand-logo-img');
+  const nameInput = document.getElementById('brand-name');
+  const hexInput = document.getElementById('brand-color');
+  const picked = document.getElementById('brand-color-picker');
+  const name = ((nameInput && nameInput.value) || '').trim();
+  let color = ((hexInput && hexInput.value) || '').trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = (picked && picked.value) || '#4f46e5';
+  const logo = (logoImg && logoImg.getAttribute) ? (logoImg.getAttribute('src') || '') : '';
+  if (nameEl) { nameEl.textContent = name || 'FunnelSwift'; nameEl.style.color = color; }
+  if (rule) rule.style.background = color;
+  const wrap = document.getElementById('bp-logo');
+  const img = document.getElementById('bp-logo-img');
+  if (wrap && img) {
+    if (logo) { img.setAttribute('src', logo); wrap.style.display = 'block'; }
+    else { wrap.style.display = 'none'; }
+  }
+};
 
 async function saveEmailBranding() {
   const name = ((document.getElementById('brand-name') || {}).value || '').trim();
