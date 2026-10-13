@@ -471,10 +471,16 @@ pub async fn top_plan_id(state: &AppState) -> AppResult<Option<Uuid>> {
 }
 
 /// Every plan as its own JSON row (`to_jsonb`), so a resolver can read any column by name
-/// without building SQL from it. Ordered top tier first.
+/// without building SQL from it. Ordered as a PRICE LADDER, cheapest-first (kanban t_1fcaacb2):
+/// this feeds the operator's "Feature registry — every gated key × every plan" matrix, one COLUMN
+/// per plan, and price-DESC put the FREE tiers ($0) BELOW every paid tier — the same class the
+/// parent card (t_b73c597e) fixed on missedcallrespondr's `plan_registry`, which now also reads
+/// cheapest-first. The plan that IS the top tier is NOT read off this order: see `top_plan_id`
+/// (`ORDER BY price DESC NULLS LAST, name LIMIT 1`), which the matrix marks with ★ and
+/// "Grant everything to the top tier" uses — so a display order can never decide the top tier.
 pub async fn plan_rows(state: &AppState) -> AppResult<Vec<Value>> {
     Ok(sqlx::query_scalar::<_, Value>(
-        "SELECT to_jsonb(p) FROM plans p ORDER BY p.price DESC NULLS LAST, p.name",
+        "SELECT to_jsonb(p) FROM plans p ORDER BY p.price ASC NULLS LAST, p.name",
     )
     .fetch_all(&state.pool)
     .await?)
