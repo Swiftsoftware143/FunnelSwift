@@ -103,9 +103,11 @@ pub async fn list_tenants(
             Option<String>,
             Option<String>,
             String,
+            i64,
         ),
     >(
-        r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status
+        r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status,
+                  (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count
            FROM tenants t
            LEFT JOIN LATERAL (
                SELECT plan_id FROM tenant_plan_subscriptions s
@@ -123,7 +125,7 @@ pub async fn list_tenants(
             json!({
                 "id": r.0, "name": r.1, "slug": r.2, "created_at": r.3,
                 "plan_name": r.4, "plan_slug": r.5, "plan": r.4, "status": r.7,
-                "email": r.6
+                "email": r.6, "user_count": r.8
             })
         })
         .collect();

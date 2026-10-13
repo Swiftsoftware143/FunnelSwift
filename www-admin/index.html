@@ -2611,7 +2611,7 @@ async function renderTenants() {
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
-        <td><span class="badge badge-blue">${x(t.plan_slug||'free')}</span></td>
+        <td><span class="badge badge-blue">${x(t.plan_name||t.plan_slug||'Free')}</span></td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
         <td>${t.user_count||0}</td>
         <td>${formatDate(t.created_at)}</td>
