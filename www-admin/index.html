@@ -221,7 +221,16 @@ const ROLE_LABELS = { super_admin:'Super admin', admin:'Admin', account_owner:'A
   client_admin:'Client admin', team_member:'Team member', member:'Member', user:'Member',
   viewer:'Viewer' };
 function roleLabel(r) { const s = String(r == null ? '' : r).trim(); if (!s) return '—'; return ROLE_LABELS[s.toLowerCase()] || s; }
-function formatDate(d) { if(!d) return '-'; return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+// Timestamps arrive as naive-UTC strings (the columns are `timestamp without time zone` and the
+// Rust models serialise `NaiveDateTime`, so the JSON carries no zone suffix) and the analytics
+// buckets arrive as date-only `YYYY-MM-DD`. A bare `new Date(v)` reads a naive value as LOCAL and
+// a date-only value as UTC midnight, so the reader's offset shifted both: 4 hours on a timestamp,
+// and a whole day on a bucket for every reader west of UTC. `asUtc` pins a naive timestamp to UTC
+// (and is a no-op for the tz-suffixed ones, e.g. leads.updated_at / affiliates.rate_updated_at);
+// `fmtDayLabel` reads a day bucket as a day and never routes it through Date.
+const asUtc = (v) => { const s = String(v == null ? '' : v); return /[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z'; };
+const fmtDayLabel = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v == null ? '' : v)); if (!m) return '-'; return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1] + ' ' + (+m[3]); };
+function formatDate(d) { if(!d) return '-'; return new Date(asUtc(d)).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); }
 
 /* ── kanban t_02f8fd6d: prefill sources for the Edit modals ──────────────────────────────────
@@ -2974,7 +2983,7 @@ function bindCardAnalytics() {
     const canvas = document.getElementById('dailyTrendChart');
     if (!canvas || !overview?.daily_trend?.length) return;
     destroyAnalyticsCharts();
-    const dates = overview.daily_trend.map(d => new Date(d.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+    const dates = overview.daily_trend.map(d => fmtDayLabel(d.date));
     const views = overview.daily_trend.map(d => d.views||0);
     const clicks = overview.daily_trend.map(d => d.clicks||0);
     _analyticsChartInstances.dailyTrend = new Chart(canvas, {
@@ -3097,7 +3106,7 @@ function bindCardDetail() {
       _analyticsChartInstances.cardDaily = new Chart(dailyCanvas, {
         type: 'line',
         data: {
-          labels: data.daily_stats.map(d => new Date(d.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})),
+          labels: data.daily_stats.map(d => fmtDayLabel(d.date)),
           datasets: [
             { label: 'Views', data: data.daily_stats.map(d=>d.views||0), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.3, pointRadius: 1 },
             { label: 'Clicks', data: data.daily_stats.map(d=>d.clicks||0), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3, pointRadius: 1 }
