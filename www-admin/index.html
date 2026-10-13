@@ -903,6 +903,12 @@ async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
   if (!Array.isArray(plans)) plans = plans.data || plans.plans || [];
+  // Fleet limit convention (src/features.rs::check_numeric_limit / resolved_limit): -1 = unlimited,
+  // 0 = NOT included on this plan (the gate refuses it), N>0 = a cap of N, and an unset (null) plan
+  // column is unlimited too (resolved_limit answers Ok on None). The old `${p.max_cards||'∞'}`
+  // rendered a 0 as "∞" — it advertised UNLIMITED for a feature the gate refuses (measured live:
+  // Capture Free / Capture Starter showed ∞ cards, Kinetic Free / Pro showed ∞ leads).
+  const fmtPlanLimit = (v) => (v === null || v === undefined || Number(v) < 0) ? '∞' : (Number(v) === 0 ? 'None' : v);
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -915,8 +921,8 @@ async function renderPlans() {
         <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div></td>
         <td>${p.price>0?formatCurrency(p.price):'Free'}</td>
         <td><span class="badge badge-blue">${x(p.billing_cycle||'month')}</span></td>
-        <td>${p.max_cards||'∞'}</td>
-        <td>${p.max_leads||'∞'}</td>
+        <td>${fmtPlanLimit(p.max_cards)}</td>
+        <td>${fmtPlanLimit(p.max_leads)}</td>
         <td>
           ${p.has_webhooks?'<span class="badge badge-green">Webhooks</span> ':''}
           ${p.has_analytics?'<span class="badge badge-blue">Analytics</span> ':''}
