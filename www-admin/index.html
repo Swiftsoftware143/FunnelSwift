@@ -232,6 +232,12 @@ const asUtc = (v) => { const s = String(v == null ? '' : v); return /[zZ]|[+-]\d
 const fmtDayLabel = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v == null ? '' : v)); if (!m) return '-'; return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1] + ' ' + (+m[3]); };
 function formatDate(d) { if(!d) return '-'; return new Date(asUtc(d)).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); }
+// Fleet plan-limit convention (src/features.rs::check_numeric_limit / resolved_limit): -1 = unlimited,
+// 0 = NOT included on this plan (the gate refuses it), N>0 = a cap of N, and an unset (null) column is
+// unlimited too (resolved_limit answers Ok on None). NEVER render a limit as `v || '∞'`: 0 is falsy,
+// so that prints "unlimited" for a feature the gate REFUSES (measured live: Capture Free / Starter
+// showed ∞ cards, Kinetic Free / Pro showed ∞ leads).
+const fmtPlanLimit = (v) => (v === null || v === undefined || Number(v) < 0) ? '∞' : (Number(v) === 0 ? 'None' : v);
 
 /* ── kanban t_02f8fd6d: prefill sources for the Edit modals ──────────────────────────────────
    The rows each list screen last rendered, keyed by id. These lists are `SELECT *`, so the row an
@@ -710,8 +716,8 @@ async function renderMyAccount() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><div class="form-label">Plan Name</div><div style="font-size:15px;font-weight:600">${x(plan.name||'Free')}</div></div>
         <div><div class="form-label">Price</div><div style="font-size:15px;font-weight:600">${plan.price?formatCurrency(plan.price)+'/'+(plan.billing_cycle||'month'):'Free'}</div></div>
-        <div><div class="form-label">Cards Limit</div><div>${plan.max_cards||'Unlimited'}</div></div>
-        <div><div class="form-label">Leads Limit</div><div>${plan.max_leads||'Unlimited'}</div></div>
+        <div><div class="form-label">Cards Limit</div><div>${fmtPlanLimit(plan.max_cards)}</div></div>
+        <div><div class="form-label">Leads Limit</div><div>${fmtPlanLimit(plan.max_leads)}</div></div>
         <div><div class="form-label">Webhooks</div><div>${plan.has_webhooks?'✅':'❌'}</div></div>
         <!-- (kanban t_726416be) "API Access" was RETIRED here with the api-key surface: POST
              /api/v1/api-keys answers 404, and the key left the plan feature registry, so a plan
@@ -903,12 +909,6 @@ async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
   if (!Array.isArray(plans)) plans = plans.data || plans.plans || [];
-  // Fleet limit convention (src/features.rs::check_numeric_limit / resolved_limit): -1 = unlimited,
-  // 0 = NOT included on this plan (the gate refuses it), N>0 = a cap of N, and an unset (null) plan
-  // column is unlimited too (resolved_limit answers Ok on None). The old `${p.max_cards||'∞'}`
-  // rendered a 0 as "∞" — it advertised UNLIMITED for a feature the gate refuses (measured live:
-  // Capture Free / Capture Starter showed ∞ cards, Kinetic Free / Pro showed ∞ leads).
-  const fmtPlanLimit = (v) => (v === null || v === undefined || Number(v) < 0) ? '∞' : (Number(v) === 0 ? 'None' : v);
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
