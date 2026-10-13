@@ -3523,12 +3523,12 @@ window._savePlanFeatures = async function () {
 // endpoint can never blank a working view.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function wiredPanel(view, title, endpoint) {
+function wiredPanel(view, title, subtitle) {
   const c = document.getElementById('view-container');
   if (!c) return null;
   const host = document.createElement('div');
   host.innerHTML = '<div class="card"><div class="card-header"><div><div class="card-title">' + x(title) +
-    '</div><div class="card-subtitle">' + x(endpoint) + '</div></div></div><div class="wbody"></div></div>';
+    '</div><div class="card-subtitle">' + x(subtitle) + '</div></div></div><div class="wbody"></div></div>';
   c.appendChild(host);
   return host.querySelector('.wbody');
 }
@@ -3562,7 +3562,7 @@ function mountWiredPanels(view) {
 
 // ── GET /api/v1/insights ─────────────────────────────────────────────────────
 async function wiredInsights() {
-  const body = wiredPanel('dashboard', '📈 Tenant insights', 'GET /api/v1/insights');
+  const body = wiredPanel('dashboard', '📈 Tenant insights', 'How many leads this workspace has captured.');
   if (!body) return;
   try {
     const d = await api('/insights');
@@ -3573,7 +3573,7 @@ async function wiredInsights() {
 
 // ── POST /api/v1/admin/affiliate-products/sync ───────────────────────────────
 async function wiredAffiliateProductSync() {
-  const body = wiredPanel('affiliateProducts', '📦 Sync affiliate products', 'POST /api/v1/admin/affiliate-products/sync');
+  const body = wiredPanel('affiliateProducts', '📦 Sync affiliate products', 'Give every plan an affiliate product to hand out — paid plans are left alone.');
   if (!body) return;
   body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates one affiliate product row per plan that does not have one yet. Paid plans are left alone — an affiliate may only hand out a FREE plan (migration 070).</div>' +
     '<button class="btn btn-primary" id="wired-ap-sync">Sync from plans</button><span id="wired-ap-msg" style="font-size:12px;margin-left:10px"></span>';
@@ -3601,7 +3601,7 @@ async function wiredAffiliateProductSync() {
 
 // ── POST /api/v1/admin/portfolio-sync ────────────────────────────────────────
 async function wiredPortfolioSync() {
-  const body = wiredPanel('portfolio', '🏢 Sync a portfolio company', 'POST /api/v1/admin/portfolio-sync');
+  const body = wiredPanel('portfolio', '🏢 Sync a portfolio company', 'Create or re-use the login for a CoreSwift portfolio company.');
   if (!body) return;
   body.innerHTML = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Creates (or re-uses) the user account for a CoreSwift portfolio company.</div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
@@ -3631,7 +3631,7 @@ async function wiredPortfolioSync() {
 
 // ── GET /api/v1/admin/email-templates/types ──────────────────────────────────
 async function wiredTemplateTypes() {
-  const body = wiredPanel('emailTemplates', '🧩 Template types the sender knows', 'GET /api/v1/admin/email-templates/types');
+  const body = wiredPanel('emailTemplates', '🧩 Template types the sender knows', 'Which email templates the sender will use, and the fields each one fills.');
   if (!body) return;
   try {
     const types = await api('/admin/email-templates/types') || [];
@@ -3643,7 +3643,7 @@ async function wiredTemplateTypes() {
 
 // ── DELETE /api/v1/settings/:key ─────────────────────────────────────────────
 async function wiredSettingDelete() {
-  const body = wiredPanel('settings', '🗑️ Remove a setting', 'DELETE /api/v1/settings/:key');
+  const body = wiredPanel('settings', '🗑️ Remove a setting', 'Delete a saved setting. SEO settings and lead stages are protected.');
   if (!body) return;
   let rows = [];
   try { rows = await api('/settings') || []; } catch (e) { wiredErr(body, e); return; }
@@ -3674,7 +3674,7 @@ async function wiredSettingDelete() {
 // `rate_band_id` / `rate_updated_at`, migration 094), so the admin can see WHY an
 // affiliate is at a rate, not just what it is.
 async function wiredAffiliateDetail() {
-  const body = wiredPanel('affiliates', '💵 Affiliate commissions & rate', 'GET /api/v1/affiliates/:id · GET /api/v1/affiliates/:id/commissions');
+  const body = wiredPanel('affiliates', '💵 Affiliate commissions & rate', 'One affiliate\'s current rate, why it is that rate, and the commissions they have earned.');
   if (!body) return;
   let affs = [];
   try { affs = await api('/affiliates') || []; } catch (e) { }
