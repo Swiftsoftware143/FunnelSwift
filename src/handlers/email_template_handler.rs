@@ -386,11 +386,22 @@ pub async fn get_email_config(
         }
     }
 
+    // The LAST transactional send this installation attempted, as recorded by the one send funnel
+    // (`src/email.rs::record_last_send`). Read here so the operator's own panel reports whether the
+    // most recent real customer mail — a signup's credentials mail, a password reset — was accepted
+    // by the provider or refused, instead of that fact living only in the tracing log.
+    let last_send: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT value FROM admin_settings WHERE key = 'email_last_send'")
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
     Ok(Json(serde_json::json!({
         "config": out,
         "configured": cfg.as_ref().map(|c| c.is_configured()).unwrap_or(false),
         "provider": cfg.as_ref().map(|c| c.provider.clone()).unwrap_or_default(),
         "providers": crate::email_provider::available(),
+        "last_send": last_send,
     })))
 }
 

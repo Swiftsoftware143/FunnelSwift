@@ -115,12 +115,43 @@ async fn dispatch_for_tenant(
         );
     };
 
-    crate::email_provider::deliver(&cfg, to, subject, body.unwrap_or(""), html)
-        .await
-        .map_err(|e| {
+    let outcome = crate::email_provider::deliver(&cfg, to, subject, body.unwrap_or(""), html).await;
+    match &outcome {
+        Ok(()) => record_last_send(pool, to, subject, true, "").await,
+        Err(e) => {
             tracing::warn!(provider = %cfg.provider, to = %to, "email send failed: {e}");
-            e
-        })
+            record_last_send(pool, to, subject, false, e).await;
+        }
+    }
+    outcome
+}
+
+/// The operator's view of the LAST transactional send this installation attempted.
+///
+/// The send funnel already LOGS a failure, but a log is not a panel: this records the outcome under
+/// `admin_settings.email_last_send`, which `GET /api/v1/admin/email-config` returns, so an operator
+/// can see that the credentials mail of a real signup was REFUSED without grepping the logs. Five of
+/// the six apps already report their last send (ADASwift `email_send_state`, MissedCall
+/// `email_last_send`, WorkflowSwift `last_send_ok`); FunnelSwift recorded nothing at all.
+///
+/// Writing the record NEVER fails a send: an error here is logged and dropped.
+async fn record_last_send(pool: &PgPool, to: &str, subject: &str, ok: bool, detail: &str) {
+    let payload = json!({
+        "at": chrono::Utc::now().to_rfc3339(),
+        "ok": ok,
+        "to": to,
+        "subject": subject,
+        "detail": detail.chars().take(240).collect::<String>(),
+    });
+    if let Err(e) = sqlx::query(
+        "INSERT INTO admin_settings (key, value, description, updated_at) VALUES ('email_last_send', $1, 'The last transactional email this installation attempted to send (written by the send funnel)', NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+    )
+    .bind(payload)
+    .execute(pool)
+    .await
+    {
+        tracing::warn!("could not record email_last_send: {e}");
+    }
 }
 
 /// The app's OWN support address. David (2026-10-08): the reply-to/support address in
