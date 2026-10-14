@@ -3914,15 +3914,35 @@ function bindSiteSettings() {
 
 // ═══ SIDEBAR VIEW: Tag Rules ═════════════════════════════════════════════════
 async function renderTagRules() {
-  let rules = [], tags = [];
+  let rules = [], tags = [], log = [];
   try { rules = await api('/tag-rules') || []; } catch (e) { }
   try { tags = await api('/tags?system=true') || []; } catch (e) { }
+  // GET /api/v1/tag-change-log (card t_1982e9d5): every tag the app added to or took off a lead in
+  // this workspace, newest first. The route existed but answered a constant [] with no screen.
+  try { log = await api('/tag-change-log') || []; } catch (e) { }
   if (!Array.isArray(rules)) rules = rules.data || [];
   if (!Array.isArray(tags)) tags = tags.data || [];
+  if (!Array.isArray(log)) log = log.data || [];
   const tagOpts = id => '<option value="">—</option>' + tags.map(t => `<option value="${x(t.id)}">${x(t.name || t.id)}</option>`).join('');
+  const tagChips = (arr, dir) => {
+    const list = Array.isArray(arr) ? arr : [];
+    if (!list.length) return '<span style="color:var(--muted)">—</span>';
+    const bg = dir === 'add' ? 'rgba(16,185,129,.15)' : 'rgba(239,68,68,.15)';
+    const fg = dir === 'add' ? '#10b981' : '#ef4444';
+    const sign = dir === 'add' ? '+' : '−';
+    return list.map(t => `<span style="display:inline-block;padding:1px 7px;border-radius:10px;background:${bg};color:${fg};font-size:11px;margin:1px 3px 1px 0;white-space:nowrap">${sign}${x(t)}</span>`).join('');
+  };
+  const logWhen = d => { if (!d) return '—'; try { return new Date(asUtc(d)).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch (e) { return '—'; } };
+  const logRows = log.map(e => `<tr>
+      <td style="white-space:nowrap">${x(logWhen(e.created_at))}</td>
+      <td>${x(e.lead_name || e.lead_email || 'Lead removed')}${e.lead_name && e.lead_email ? `<div style="font-size:11px;color:var(--muted)">${x(e.lead_email)}</div>` : ''}</td>
+      <td>${tagChips(e.added_tags, 'add')}</td>
+      <td>${tagChips(e.removed_tags, 'remove')}</td>
+      <td>${x(e.triggered_by || '—')}</td>
+    </tr>`);
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Tag Rules</h1>
-    <!-- routes: GET|POST /api/v1/tag-rules · PUT|DELETE /api/v1/tag-rules/:id -->
+    <!-- routes: GET|POST /api/v1/tag-rules · PUT|DELETE /api/v1/tag-rules/:id · GET /api/v1/tag-change-log -->
     <div style="font-size:12px;color:var(--muted);margin-bottom:18px">When the trigger tag is applied to a lead, the chosen action runs automatically.</div>
     <div class="card">
       <div class="card-header"><span class="card-title">Rules</span></div>
@@ -3937,6 +3957,11 @@ async function renderTagRules() {
         <select class="input" id="wired-tr-app" style="max-width:200px"><option value="funnelswift">funnelswift</option><option value="coreswift">coreswift</option><option value="incentiveswift">incentiveswift</option></select>
         <button class="btn btn-primary" id="wired-tr-add">Create rule</button><span id="wired-tr-msg" style="font-size:12px"></span>
       </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><span class="card-title">Tag change log</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Every tag this workspace added to or took off a lead, newest first (200 most recent). Recorded automatically by the app — leads, tag rules and system-tag deletes all write here.</div>
+      <div id="wired-tr-log">${wiredTable(['When', 'Lead', 'Added', 'Removed', 'Triggered by'], logRows, 'No tag changes recorded yet')}</div>
     </div>
   </div>`;
 }
@@ -4021,7 +4046,7 @@ window.appGuidePages = {
   "providerKeys": { title: "Provider Keys", desc: "Your own API keys for the third-party services this app uses. Keys are stored encrypted and are never shown again in full.", actions: ["Save a provider key", "See which providers are connected", "Replace or remove a key"] },
   "emailBranding": { title: "Email Branding", desc: "Put your own name, colour and logo on the transactional email sent for your account, instead of the default FunnelSwift header.", actions: ["Upload your logo", "Set your brand name and colour", "Preview how a mail will look"] },
   "siteSettings": { title: "Site Settings", desc: "Settings that apply to this workspace as a whole, including the door that lets a tag in another SwiftSoftware product provision a free account here.", actions: ["Turn tag-driven provisioning on or off", "Choose the free plan a provisioned account starts on"] },
-  "tagRules": { title: "Tag Rules", desc: "Automation: when a lead gets a tag, do something. Used to chain FunnelSwift into the rest of the fleet without manual work.", actions: ["Create a rule", "Choose the trigger tag and the action", "Enable or disable a rule"] },
+  "tagRules": { title: "Tag Rules", desc: "Automation: when a lead gets a tag, do something. Used to chain FunnelSwift into the rest of the fleet without manual work. The Tag change log underneath lists every tag the app itself added to or removed from a lead, so you can see what ran and when.", actions: ["Create a rule", "Choose the trigger tag and the action", "Enable or disable a rule", "Review the tag change log to see what actually ran"] },
   "systemTags": { title: "System Tags", desc: "The tags owned by the platform and the other SwiftSoftware apps — the ones that drive cross-app provisioning. These are shared, not per-tenant.", actions: ["See which system tags exist", "See the product and plan each points at"] },
   "tagGroups": { title: "Tag Groups", desc: "Group related tags so a rule or an audience can target several at once.", actions: ["Create a group", "Add tags to it", "Use the group in a rule or campaign"] },
   "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts"] },

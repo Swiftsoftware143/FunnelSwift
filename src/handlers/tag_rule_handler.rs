@@ -7,6 +7,7 @@ use axum::{
     Json,
 };
 use serde_json::{json, Value};
+use sqlx::Row;
 use uuid::Uuid;
 
 /// tag_rules has real columns (name, trigger_tag_id, action_type, action_tag_id, target_app,
@@ -135,9 +136,47 @@ pub async fn delete_tag_rule(
     Ok(Json(json!({"message": "Tag rule deleted"})))
 }
 
+/// `GET /api/v1/tag-change-log` — the workspace's own audit trail of tag changes, newest first.
+///
+/// The table has three real writers (`tag_logic::log_tag_change` from `POST|PUT /api/v1/leads/:id/tags`
+/// and the rule engine, plus the set-based insert a system-tag delete runs) and until now it had no
+/// reader at all: this handler answered a constant `[]` with `_auth`/`_state` unused, so every change
+/// the app recorded was invisible to the operator who made it. It now reads the caller's OWN tenant
+/// (never another's), newest first, with the lead the change landed on, and caps the answer at 200
+/// rows so a busy workspace cannot be asked to render an unbounded table.
 pub async fn list_tag_change_log(
-    _auth: AuthUser,
-    State(_state): State<AppState>,
+    auth: AuthUser,
+    State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
-    Ok(Json(json!([])))
+    let tenant_id = tenant_of(&auth);
+    let rows = sqlx::query(
+        "SELECT cl.id, cl.lead_id, l.name AS lead_name, l.email AS lead_email, \
+                cl.added_tags, cl.removed_tags, cl.triggered_by, cl.created_at \
+           FROM tag_change_log cl \
+           LEFT JOIN leads l ON l.id = cl.lead_id AND l.tenant_id = cl.tenant_id \
+          WHERE cl.tenant_id = $1 \
+          ORDER BY cl.created_at DESC \
+          LIMIT 200",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let items: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").ok(),
+                "lead_id": r.try_get::<Uuid, _>("lead_id").ok(),
+                "lead_name": r.try_get::<Option<String>, _>("lead_name").unwrap_or(None),
+                "lead_email": r.try_get::<Option<String>, _>("lead_email").unwrap_or(None),
+                "added_tags": r.try_get::<Option<Value>, _>("added_tags").unwrap_or(None),
+                "removed_tags": r.try_get::<Option<Value>, _>("removed_tags").unwrap_or(None),
+                "triggered_by": r.try_get::<Option<String>, _>("triggered_by").unwrap_or(None),
+                "created_at": r.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at").ok(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!(items)))
 }
