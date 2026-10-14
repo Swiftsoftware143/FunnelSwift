@@ -1773,6 +1773,7 @@ async function renderEmailTemplates() {
           Provider + credentials are stored in this installation's database. Nothing is read from the server environment.
           Choose smtp, mailgun, sendgrid or sendiio and paste that provider's key — the dropdown is served by the API.
         </div>
+        <div id="ep-last-send" style="font-size:12px;margin:-4px 0 12px"></div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
           <div class="form-group"><label class="form-label">Provider</label><select class="input" id="ep-provider"></select></div>
           <div class="form-group"><label class="form-label">From name</label><input class="input" id="ep-from-name" placeholder="FunnelSwift"></div>
@@ -1830,6 +1831,24 @@ async function bindEmailProvider() {
     if (badge) {
       badge.textContent = d.configured ? ('configured · ' + (d.provider || '')) : 'not configured';
       badge.className = 'badge ' + (d.configured ? 'badge-green' : 'badge-yellow');
+    }
+    /* The LAST transactional send this installation attempted (the send funnel records it under
+       admin_settings.email_last_send). "configured" only says the provider is set up; it says nothing
+       about whether the credentials mail of the last real signup actually left. A REFUSAL is shown in
+       red with the provider's own reason, so an operator sees that a customer got no password. */
+    const ls = document.getElementById('ep-last-send');
+    if (ls) {
+      const last = d.last_send || null;
+      if (!last || typeof last !== 'object') {
+        ls.innerHTML = '<span style="color:#64748b">No transactional email attempted yet on this installation.</span>';
+      } else {
+        const when = last.at ? new Date(last.at).toLocaleString() : 'time not recorded';
+        ls.innerHTML = (last.ok
+          ? '<span style="color:#15803d">✅ Last email accepted by the provider</span>'
+          : '<span style="color:#b91c1c">❌ Last email was REFUSED — the customer received nothing</span>')
+          + ' <span style="color:#64748b">· ' + x(when) + ' · &quot;' + x(last.subject || '') + '&quot; to ' + x(last.to || '') + '</span>'
+          + (last.ok ? '' : '<div style="color:#b91c1c;margin-top:4px">' + x(String(last.detail || 'no reason recorded')) + '</div>');
+      }
     }
   } catch (e) {
     showToast('Could not load email provider: ' + e.message, 'error');
