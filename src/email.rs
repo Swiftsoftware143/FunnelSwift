@@ -116,9 +116,23 @@ async fn dispatch_for_tenant(
     };
 
     let outcome = crate::email_provider::deliver(&cfg, to, subject, body.unwrap_or(""), html).await;
-    match &outcome {
-        Ok(()) => record_last_send(pool, to, subject, true, "").await,
-        Err(e) => {
+    // `deliver` answers Ok(()) for a reserved/harness recipient — it deliberately attempts nothing —
+    // so Ok alone is not a delivery. Recording that as accepted is the misreport this line exists to
+    // prevent; the withheld case is recorded as the non-send it is (2026-10-14, same class fixed on
+    // ADASwift and MissedCall the same day).
+    match (&outcome, crate::security::probe_addr::harness_domain(to)) {
+        (Ok(()), Some(domain)) => {
+            tracing::info!(to = %to, domain = %domain, "send withheld — recording a non-send");
+            record_withheld(
+                pool,
+                "transactional email",
+                to,
+                &format!("'{domain}' is a fleet-harness / reserved address"),
+            )
+            .await;
+        }
+        (Ok(()), None) => record_last_send(pool, to, subject, true, "").await,
+        (Err(e), _) => {
             tracing::warn!(provider = %cfg.provider, to = %to, "email send failed: {e}");
             record_last_send(pool, to, subject, false, e).await;
         }
@@ -135,7 +149,13 @@ async fn dispatch_for_tenant(
 /// `email_last_send`, WorkflowSwift `last_send_ok`); FunnelSwift recorded nothing at all.
 ///
 /// Writing the record NEVER fails a send: an error here is logged and dropped.
-async fn record_last_send(pool: &PgPool, to: &str, subject: &str, ok: bool, detail: &str) {
+pub(crate) async fn record_last_send(
+    pool: &PgPool,
+    to: &str,
+    subject: &str,
+    ok: bool,
+    detail: &str,
+) {
     let payload = json!({
         "at": chrono::Utc::now().to_rfc3339(),
         "ok": ok,
@@ -152,6 +172,17 @@ async fn record_last_send(pool: &PgPool, to: &str, subject: &str, ok: bool, deta
     {
         tracing::warn!("could not record email_last_send: {e}");
     }
+}
+
+/// Record a message the transport REFUSED to attempt, so the operator's "last email" line reflects
+/// it instead of a stale, earlier send.
+///
+/// `kind` names what the message was ("signup credentials email", "password reset email",
+/// "transactional email"), because at a handler-level suppression the template has not been rendered
+/// yet and there is no subject to record.
+pub(crate) async fn record_withheld(pool: &PgPool, kind: &str, to: &str, reason: &str) {
+    let detail = format!("withheld: {reason}, so nothing was sent (no provider request)");
+    record_last_send(pool, to, &format!("{kind} (withheld)"), false, &detail).await;
 }
 
 /// The app's OWN support address. David (2026-10-08): the reply-to/support address in

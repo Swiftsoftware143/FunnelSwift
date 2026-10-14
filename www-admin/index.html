@@ -1843,8 +1843,11 @@ async function bindEmailProvider() {
         ls.innerHTML = '<span style="color:#64748b">No transactional email attempted yet on this installation.</span>';
       } else {
         const when = last.at ? new Date(last.at).toLocaleString() : 'time not recorded';
+        const withheld = /withheld/i.test(String(last.detail || ''));
         ls.innerHTML = (last.ok
           ? '<span style="color:#15803d">✅ Last email accepted by the provider</span>'
+          : withheld
+          ? '<span style="color:#b45309">⛔ Last email was NOT SENT — the recipient is a reserved/test address, so no customer mail was affected</span>'
           : '<span style="color:#b91c1c">❌ Last email was REFUSED — the customer received nothing</span>')
           + ' <span style="color:#64748b">· ' + x(when) + ' · &quot;' + x(last.subject || '') + '&quot; to ' + x(last.to || '') + '</span>'
           + (last.ok ? '' : '<div style="color:#b91c1c;margin-top:4px">' + x(String(last.detail || 'no reason recorded')) + '</div>');
@@ -1887,7 +1890,9 @@ async function testEmailProvider() {
   try {
     const r = await api('/admin/email-config/test', { method: 'POST', body: '{}' });
     if (r.success) showToast('Test email sent via ' + r.provider + ' to ' + r.to, 'success');
-    else showToast('Provider refused the message: ' + (r.detail || 'unknown error'), 'error');
+    else showToast(r.withheld ? 'Nothing was sent — the recipient is a reserved/test address' : 'Provider refused the message: ' + (r.detail || 'unknown error'), 'error');
+    // Re-read the panel so the "Last email" line shows the attempt that was just made.
+    await bindEmailProvider();
   } catch (e) { showToast('Test failed: ' + e.message, 'error'); }
 }
 

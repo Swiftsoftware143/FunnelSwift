@@ -592,11 +592,22 @@ pub async fn forgot_password(
         // withholds — the reset row is still written, only the mail that cannot arrive is skipped. A
         // real customer's address is unaffected.
         match crate::security::probe_addr::harness_domain(&user.email) {
-            Some(domain) => tracing::info!(
-                email = %user.email,
-                domain = %domain,
-                "forgot-password: reset email SUPPRESSED — reserved/harness address; a send could only bounce"
-            ),
+            Some(domain) => {
+                tracing::info!(
+                    email = %user.email,
+                    domain = %domain,
+                    "forgot-password: reset email SUPPRESSED — reserved/harness address; a send could only bounce"
+                );
+                // Record the withheld attempt: without it the operator's "last email" line kept
+                // showing an earlier, unrelated send, which reads as "the reset went out".
+                crate::email::record_withheld(
+                    &state.pool,
+                    "password reset email",
+                    &user.email,
+                    &format!("'{domain}' is a fleet-harness / reserved address"),
+                )
+                .await;
+            }
             None => {
                 match send_reset_email(&state.pool, user.tenant_id, &user.email, &token, &user.name)
                     .await

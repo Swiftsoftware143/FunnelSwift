@@ -522,9 +522,17 @@ pub async fn test_email_config(
         })));
     };
 
+    // A test press must NEVER guess a recipient (test-mail-hygiene). This arm used to fall back to a
+    // hardcoded owner address, so a press from a session carrying no email mailed the owner directly.
+    // Refuse and name the two ways to give it one.
     let to = match q.to.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(explicit) => explicit.to_string(),
-        None if user.email.trim().is_empty() => "swiftsoftware143@yahoo.com".to_string(),
+        None if user.email.trim().is_empty() => {
+            return Ok(Json(serde_json::json!({
+                "success": false,
+                "detail": "No recipient: this session carries no email address. Pass ?to=<address> (a test inbox), or sign in with an account that has one — this route will not guess an address."
+            })));
+        }
         None => user.email.clone(),
     };
 
@@ -538,15 +546,61 @@ pub async fn test_email_config(
         None,
     );
 
-    match crate::email_provider::deliver(
+    let outcome = crate::email_provider::deliver(
         &cfg,
         &to,
         "FunnelSwift System Email Test",
         body.as_deref().unwrap_or_default(),
         None,
     )
-    .await
-    {
+    .await;
+
+    // Record the press on the SAME panel-visible line a real customer mail writes, and record a
+    // withheld recipient as the non-send it is: `deliver` answers Ok(()) for a reserved/harness
+    // address because it deliberately attempts nothing, and answering "accepted the message" for it
+    // was the misreport (2026-10-14, same class fixed on ADASwift and MissedCall the same day).
+    match (&outcome, crate::security::probe_addr::harness_domain(&to)) {
+        (Ok(()), Some(domain)) => {
+            crate::email::record_withheld(
+                &state.pool,
+                "system email test",
+                &to,
+                &format!("'{domain}' is a fleet-harness / reserved address"),
+            )
+            .await;
+        }
+        (Ok(()), None) => {
+            crate::email::record_last_send(
+                &state.pool,
+                &to,
+                "FunnelSwift System Email Test",
+                true,
+                "",
+            )
+            .await;
+        }
+        (Err(e), _) => {
+            crate::email::record_last_send(
+                &state.pool,
+                &to,
+                "FunnelSwift System Email Test",
+                false,
+                e,
+            )
+            .await;
+        }
+    }
+
+    match outcome {
+        Ok(()) if crate::security::probe_addr::harness_domain(&to).is_some() => {
+            Ok(Json(serde_json::json!({
+                "success": false,
+                "withheld": true,
+                "provider": cfg.provider,
+                "to": to,
+                "detail": "withheld: the recipient is a reserved/fleet-harness address, so nothing was sent (no provider request)"
+            })))
+        }
         Ok(()) => Ok(Json(serde_json::json!({
             "success": true,
             "provider": cfg.provider,

@@ -263,12 +263,18 @@ pub async fn public_signup(
                 .map(|domain| format!("fleet harness domain {domain}"))
         });
     match probe_send_reason {
-        Some(reason) => tracing::info!(
-            email = %email,
-            reason = %reason,
-            "signup: credentials email SUPPRESSED — probe/harness account. The account is real and \
-             the generated password was returned to the caller; no mail was sent."
-        ),
+        Some(reason) => {
+            tracing::info!(
+                email = %email,
+                reason = %reason,
+                "signup: credentials email SUPPRESSED — probe/harness account. The account is real and \
+                 the generated password was returned to the caller; no mail was sent."
+            );
+            // The credentials mail is the one a new customer needs first, so a withheld one must be
+            // visible on the operator's line instead of leaving an older "accepted" send standing.
+            crate::email::record_withheld(&state.pool, "signup credentials email", &email, &reason)
+                .await;
+        }
         None => match crate::email::send_credentials_email(
             &state.pool,
             tenant_id,
