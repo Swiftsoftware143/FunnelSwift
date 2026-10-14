@@ -3324,7 +3324,7 @@ function LLS(){
     var stages=["New","Contacted","Qualified","Proposal","Negotiation","Closed Won","Closed Lost"];
     d.forEach(function(s){if(s.key==="lead_stages"&&Array.isArray(s.value)) stages=s.value;});
     
-    $("ct").innerHTML='<div class="cc"><h3>Lead Pipeline Stages</h3><p style="color:#64748b;font-size:12px;margin-bottom:8px">Click a stage to edit it. Add/remove stages below.</p><div id="lls-list"></div><div id="lls-add" style="margin-top:12px;display:flex;gap:8px"></div></div>';
+    $("ct").innerHTML='<div class="cc"><h3>Lead Pipeline Stages</h3><p style="color:#64748b;font-size:12px;margin-bottom:8px">Click a stage to rename it, use the arrows to reorder, then Save Order. Add or remove stages below.</p><div id="lls-list"></div><div id="lls-dirty" style="font-size:12px;color:#64748b;margin:6px 0"></div><div id="lls-add" style="margin-top:12px;display:flex;gap:8px"></div></div>';
     
     var list=$("lls-list");
     LLSR(stages);
@@ -3337,21 +3337,17 @@ function LLS(){
       curs.push(n);
       api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"lead_stages",value:curs})}).then(function(){S("lead-stages")}).catch(function(e){showMsg(e.message,"me")});
     }},"Add Stage"));
-    $("lls-add").appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){
-      var curs=LLSR(null);
-      showMsg("Click Save to save reordering (drag handles coming)","mi");
-    }},"Save Order"));
+    $("lls-add").appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:saveStageOrder},"Save Order"));
   });
 }
 function LLSR(stages){
-  if(stages){window._lls_stages=stages;}
+  if(stages){window._lls_stages=stages.slice();window._lls_dirty=false;}
   var stages=window._lls_stages||[];
   var list=$("lls-list");
   if(!list) return stages;
   list.innerHTML="";
   stages.forEach(function(s,i){
     var row=El("div",{style:"display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:4px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px"});
-    row.appendChild(El("span",{style:"font-size:16px;color:#94a3b8;cursor:grab"},"≡"));
     row.appendChild(El("span",{style:"width:22px;text-align:center;font-weight:700;color:#6366f1;font-size:12px"},String(i+1)));
     var inp=El("input",{value:s,style:"flex:1;padding:4px 8px;border:1px solid transparent;border-radius:4px;font-size:13px;background:transparent"});
     inp.onchange=function(){
@@ -3360,15 +3356,58 @@ function LLSR(stages){
       api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"lead_stages",value:s2})}).then(function(){showMsg("Saved","mk");setTimeout(function(){$("mm").className="msg"},1500)});
     };
     row.appendChild(inp);
-    row.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){
+    var up=El("button",{"class":"btn btn-sm",title:"Move this stage up"},String.fromCharCode(8593));
+    var dn=El("button",{"class":"btn btn-sm",title:"Move this stage down"},String.fromCharCode(8595));
+    up.onclick=function(){syncStageNames();moveStage(i,-1);};
+    dn.onclick=function(){syncStageNames();moveStage(i,1);};
+    if(i===0){up.disabled=true;up.style.opacity=".35";}
+    if(i===stages.length-1){dn.disabled=true;dn.style.opacity=".35";}
+    row.appendChild(up); row.appendChild(dn);
+    var del=El("button",{"class":"btn btn-sm btn-r"},String.fromCharCode(215));
+    del.onclick=function(){
+      syncStageNames();
       window._lls_stages.splice(i,1);
       var ns=LLSR(null);
       api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"lead_stages",value:ns})}).then(function(){S("lead-stages")}).catch(function(e){showMsg(e.message,"me")});
-    }},"×"));
+    };
+    row.appendChild(del);
     list.appendChild(row);
   });
+  markStageDirty();
   return stages.slice();
 }
+/* Reordering did not work before this. The row showed a "\u2261" handle styled cursor:grab with no
+   drag implementation behind it, and the Save Order button only printed "Click Save to save
+   reordering (drag handles coming)" - naming a Save button this screen does not have - while sending
+   no request. The arrows move a stage and Save Order persists the order the list is showing. */
+function syncStageNames(){
+  var list=$("lls-list"); if(!list) return;
+  var ins=[].slice.call(list.querySelectorAll("input"));
+  ins.forEach(function(inp,idx){ if(window._lls_stages[idx]!==undefined) window._lls_stages[idx]=inp.value; });
+}
+function moveStage(i,dir){
+  var a=window._lls_stages||[];
+  var j=i+dir;
+  if(j<0||j>=a.length) return;
+  var t=a[i]; a[i]=a[j]; a[j]=t;
+  window._lls_dirty=true;
+  LLSR(null);
+}
+function markStageDirty(){
+  var el=$("lls-dirty"); if(!el) return;
+  if(window._lls_dirty){ el.textContent="Stage order changed \u2014 click Save Order to apply it."; el.style.color="#b45309"; }
+  else { el.textContent=""; el.style.color="#64748b"; }
+}
+function saveStageOrder(){
+  syncStageNames();
+  var cur=(window._lls_stages||[]).slice();
+  api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"lead_stages",value:cur})}).then(function(){
+    window._lls_dirty=false;
+    S("lead-stages");
+    showMsg("Stage order saved","mi");
+  }).catch(function(e){showMsg(e.message||"Save failed","me")});
+}
+
 
 /* === SETTINGS (tenant: the caller's own tenant_settings) === */
 /* === PROFILE (kanban t_ff948669) ==============================================================
