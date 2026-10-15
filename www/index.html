@@ -384,7 +384,12 @@ document.querySelectorAll('.animate-in').forEach(function(el) {
 });
 </script>
 
-<div id="cookie-consent" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1e293b;color:#e2e8f0;padding:10px 18px;z-index:99999;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 -4px 12px rgba(0,0,0,.3);font-family:system-ui,sans-serif">
+<!-- kanban t_1762f2c4-b - this bar ignored the stored choice: its inline style said
+     display:none and then display:flex later in the SAME attribute, so the last one won and a visitor
+     who had already accepted still got the bar on every page load (measured: Accept All -> reload ->
+     back, 119px). The page's own script sets display:flex when there is no stored choice, so the
+     trailing declaration is simply dropped. -->
+<div id="cookie-consent" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1e293b;color:#e2e8f0;padding:10px 18px;z-index:99999;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 -4px 12px rgba(0,0,0,.3);font-family:system-ui,sans-serif">
   <div style="flex:1;min-width:250px">
     <p style="margin:0;font-size:12px;line-height:1.4">
       🍪 This site uses essential cookies for functionality and analytics. By continuing, you accept our <a href="/privacy" style="color:#818cf8;text-decoration:underline">Privacy Policy</a> and <a href="/cookies" style="color:#818cf8;text-decoration:underline">Cookie Policy</a>.
@@ -399,5 +404,29 @@ document.querySelectorAll('.animate-in').forEach(function(el) {
 (function(){const c=localStorage.getItem('cookie_consent');if(!c)document.getElementById('cookie-consent').style.display='flex';})();
 </script>
 
+<!-- kanban t_1762f2c4 - the fixed consent bar (z-index 99999) sat over the footer's legal row, so a
+     real click on Terms/Privacy/Refunds landed on the bar and the link never navigated (measured in
+     Chromium at the bottom of the page: elementFromPoint returned the bar). While the bar is on
+     screen the footer reserves exactly its measured height - so the 139-162px wrap at 390 wide is
+     covered too - and the reservation is dropped the moment the bar is accepted, declined or
+     removed, leaving the footer unchanged for a visitor who answers. Raising the links' z-index
+     above the bar stays forbidden. -->
+<script>
+(function(){
+  var bar=function(){return document.getElementById('cookie-banner')||document.getElementById('cookie-consent');};
+  var fit=function(){
+    var b=bar(), f=document.querySelector('footer');
+    if(!f) return;
+    var h=b?b.getBoundingClientRect().height:0;
+    f.style.paddingBottom=h>0?(Math.ceil(h)+24)+'px':'';
+  };
+  var b=bar();
+  try{ if(b) new MutationObserver(fit).observe(b,{attributes:true,attributeFilter:['style']});
+       new MutationObserver(fit).observe(document.body,{childList:true}); }catch(e){}
+  window.addEventListener('resize',fit);
+  window.addEventListener('load',fit);
+  fit();
+})();
+</script>
 </body>
 </html>
