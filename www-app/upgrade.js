@@ -72,10 +72,37 @@ function upgradeTo(slug){
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
       body:JSON.stringify({plan_slug:slug})
-    }).then(function(r){ return r.json(); }).then(function(data){
-      if(data.url) window.location.href = data.url;
-      else if(data.message) alert(data.message);
-      else alert('Upgrade request submitted. We will contact you.');
+    }).then(function(r){
+      // The reply is NOT always JSON. A failed purchase can come back as a 5xx whose body the CDN
+      // in front of this host has REPLACED (measured: the origin answered 502 application/json with
+      // Stripe's own reason, while app.funnelswift.net answered 502 text/plain `error code: 502`), or
+      // as a proxy/network error with no body at all. Reading it as TEXT and parsing defensively is
+      // what stops a failed upgrade from showing the customer NOTHING at all.
+      return r.text().then(function(t){
+        var d = {};
+        try { d = JSON.parse(t); } catch(e) { d = { _raw: String(t || '').slice(0, 200) }; }
+        d._status = r.status;
+        d._ok = r.ok;
+        return d;
+      });
+    }).then(function(data){
+      if(data && data.url) { window.location.href = data.url; return; }
+      // A refusal that NAMES its cause (the provider's own words, e.g. Stripe's "Invalid API Key
+      // provided") is the most useful thing we can show — but a buyer mid-purchase also needs to be
+      // told the one thing they care about, and a refused /checkout/create never creates a session,
+      // so no charge can have occurred on ANY of its failure arms.
+      if(data && data.message) { alert(data.message + '\n\nNothing was charged.'); return; }
+      if(!data || !data._ok){
+        alert('The upgrade could not be started (the server answered ' +
+          ((data && data._status) || 'no reply') + '). Nothing was charged.\n\n' +
+          'Please try again in a moment. If it keeps happening, open a support ticket and quote ' +
+          'that number.' + ((data && data._raw) ? '\n\nServer said: ' + data._raw : ''));
+        return;
+      }
+      alert('Upgrade request submitted. We will contact you.');
+    }).catch(function(e){
+      alert('The upgrade could not be started (' + ((e && e.message) ? e.message : e) +
+        '). Nothing was charged — please check your connection and try again.');
     });
   } catch(e) { alert('Error: '+e.message); }
 }

@@ -138,11 +138,20 @@ pub async fn delete_payment_provider(
 }
 /// POST /api/v1/checkout/create
 ///
-/// Fails LOUDLY. There is no payment provider integration in FunnelSwift yet
-/// (which provider is canonical — Stripe / Mintbird / Groovesell — is a product
-/// decision). This used to return a fake `cs_test_placeholder` session id, so a
-/// broken checkout looked successful. It now refuses with an explicit reason and
-/// never creates a session or a charge.
+/// A REAL Stripe checkout, or an explicit refusal. This doc comment used to say "there is no payment
+/// provider integration in FunnelSwift yet (which provider is canonical — Stripe / Mintbird /
+/// Groovesell — is a product decision)"; that stopped being true when [`create_stripe_session`] was
+/// written, and a comment that contradicts the code is how the next reader mis-plans. The arms now:
+///
+/// * no active `payment_providers` row -> 503 `payment_provider_not_configured`, naming the fix
+/// * a provider row that is not Stripe -> 501 `checkout_not_implemented`, naming the provider
+/// * a Stripe row whose key cannot be read -> 503 `payment_provider_not_configured`
+/// * Stripe ACCEPTED the session -> 201 `{url, session_id, plan}` + a `checkout_sessions` row
+/// * Stripe REFUSED / unreachable -> **424** `checkout_session_failed` carrying Stripe's own message
+///   (never 502 — the CDN replaces such a body; see the arm's comment below)
+///
+/// It still never fabricates a URL and never charges: the only session row written is one Stripe
+/// itself returned.
 pub async fn create_checkout_session(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -265,8 +274,19 @@ pub async fn create_checkout_session(
                 }
                 Err(e) => {
                     tracing::error!(tenant = %tenant_id, plan = %plan_slug, error = %e, "stripe checkout session FAILED — no charge can occur");
+                    // 424 FAILED DEPENDENCY, never 502 (kanban work 2026-10-15). Cloudflare —
+                    // which fronts app.funnelswift.net — REPLACES the body of an origin 502 (and
+                    // 504) with its own page: measured live, this arm answered the origin
+                    // `502 application/json {"message":"Stripe refused the session: Invalid API
+                    // Key provided: sk_test_…3219"}` while the EDGE answered the same POST
+                    // `502 text/plain` with the body `error code: 502`. The Upgrade pane's fetch
+                    // parses the reply as JSON, so it threw and the customer saw NOTHING at all
+                    // when a payment attempt failed. 424 is the exact meaning here (the action
+                    // depended on another action and that action failed) and, being a 4xx, the CDN
+                    // passes the body through verbatim. Same decision MissedCall Respondr's SMS
+                    // path and this app's CoreSwift integration already carry.
                     Ok((
-                        StatusCode::BAD_GATEWAY,
+                        StatusCode::FAILED_DEPENDENCY,
                         Json(
                             json!({"error": "checkout_session_failed", "message": e, "configured": true}),
                         ),
