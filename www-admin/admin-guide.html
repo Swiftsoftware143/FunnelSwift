@@ -272,7 +272,7 @@
       <div class="card">
         <h3>How It Works</h3>
         <ul>
-          <li><strong>NULL</strong> — Plan sees ALL 54 templates (Pro, Enterprise default)</li>
+          <li><strong>NULL</strong> — no per-plan allowlist: the plan sees all 54 templates (the value on every plan on this install)</li>
           <li><strong>Empty array []</strong> — Plan sees ZERO templates (effectively locked)</li>
           <li><strong>List of IDs</strong> — Plan sees ONLY those specific templates</li>
         </ul>
@@ -283,7 +283,7 @@
         <pre>GET  /api/v1/admin/plans/:id/templates   — View allowed templates for a plan
 PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
 
-        <h4>Example: Give Free plan 8 templates</h4>
+        <h4>Example: restrict a plan to a specific set of templates</h4>
         <pre>curl -X PUT https://funnelswift.net/api/v1/admin/plans/{plan_id}/templates \
   -H "Content-Type: application/json" \
   -d '{"allowed_template_ids":[
@@ -303,13 +303,13 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <h3>Template Categories</h3>
         <table>
           <tr><th>Category</th><th>Count</th><th>IDs</th><th>Who Gets Them</th></tr>
-          <tr><td><strong>Free Starters</strong></td><td>4</td><td>starter_biz_card, starter_bio_link, starter_mini_page, starter_mini_funnel</td><td>Free tier</td></tr>
-          <tr><td><strong>Blank Canvases</strong></td><td>4</td><td>blank_biz_card, blank_bio_link, blank_mini_page, blank_mini_funnel</td><td>Free tier</td></tr>
-          <tr><td><strong>Bio Links</strong></td><td>6</td><td>link_social_agency, link_podcaster, starter_bio_link, ...</td><td>Paid</td></tr>
-          <tr><td><strong>Business Cards</strong></td><td>19</td><td>biz_executive, biz_realestate, biz_gym_fitness, biz_cleaning_*, ...</td><td>Paid</td></tr>
-          <tr><td><strong>Mini Pages</strong></td><td>11</td><td>page_saas, page_marketing_agency, page_vc_firm, ...</td><td>Paid</td></tr>
-          <tr><td><strong>Mini Funnels</strong></td><td>5</td><td>funnel_course, funnel_product, funnel_lead_magnet, ...</td><td>Paid</td></tr>
-          <tr><td><strong>Hero Pages</strong></td><td>5</td><td>hero_brand, hero_podcast, hero_launch, ...</td><td>Paid</td></tr>
+          <tr><td><strong>Free-plan starters</strong></td><td>4</td><td>starter_biz_card, starter_bio_link, starter_mini_page, starter_mini_funnel</td><td>Premium — Kinetic Pro and up</td></tr>
+          <tr><td><strong>Blank Canvases</strong></td><td>4</td><td>blank_biz_card, blank_bio_link, blank_mini_page, blank_mini_funnel</td><td>Premium — Kinetic Pro and up</td></tr>
+          <tr><td><strong>Bio Links (the free set)</strong></td><td>6</td><td>bio_author, bio_coach, bio_creator, bio_musician, bio_podcaster, bio_shop</td><td>Free plans</td></tr>
+          <tr><td><strong>Business Cards</strong></td><td>19</td><td>biz_executive, biz_realestate, biz_gym_fitness, biz_cleaning_*, ...</td><td>Premium</td></tr>
+          <tr><td><strong>Mini Pages</strong></td><td>11</td><td>page_saas, page_marketing_agency, page_vc_firm, ...</td><td>Premium</td></tr>
+          <tr><td><strong>Mini Funnels</strong></td><td>5</td><td>funnel_course, funnel_product, funnel_lead_magnet, ...</td><td>Premium</td></tr>
+          <tr><td><strong>Hero Pages</strong></td><td>5</td><td>hero_brand, hero_podcast, hero_launch, ...</td><td>Premium</td></tr>
         </table>
       </div>
 
@@ -321,14 +321,14 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <h3>Rules</h3>
         <ul>
           <li><strong>Free plan:</strong> Branding badge is always shown — cannot be hidden</li>
-          <li><strong>Paid plans (Pro, Enterprise):</strong> Tenant can toggle branding badge OFF in their settings</li>
+          <li><strong>Kinetic Pro, Suite and Agency / Scale:</strong> Tenant can toggle branding badge OFF in their settings</li>
           <li><strong>Affiliate link:</strong> If tenant has an <code>affiliate_code</code>, the badge URL includes <code>?ref={code}</code> — tracking clicks through their affiliate account</li>
           <li><strong>Card type aware:</strong> Badge text changes automatically: "Digital Business Card", "Bio Link", "Mini Page", "Mini Funnel"</li>
         </ul>
       </div>
 
       <div class="card">
-        <h3>Tenant Toggle (for paid plans)</h3>
+        <h3>Tenant Toggle (Kinetic Pro and above)</h3>
         <p>Tenants can hide branding by setting a flag in their workspace settings:</p>
         <pre>// Tenant Settings JSON
 {
