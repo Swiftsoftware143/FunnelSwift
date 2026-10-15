@@ -374,20 +374,20 @@
       <h3>Build from Scratch</h3>
       <p>Prefer to start from a blank canvas? Each archetype has a <strong>Build from Scratch</strong> option — four blank canvases (one per archetype: Bio Link, Business Card, Mini Page, Mini Funnel) that let you assemble layout blocks from the ground up.</p>
       <div class="alert alert-info">
-        <strong>Blank canvases:</strong> Build from Scratch cards start with zero pre-populated content. Add only the layout blocks you need — hero, bio, buttons, lead form, socials, QR code, mini funnel block — in any order. Every blank canvas is available on all plans (free, pro, and enterprise).
+        <strong>Blank canvases:</strong> Build from Scratch cards start with zero pre-populated content. Add only the layout blocks you need — hero, bio, buttons, lead form, socials, QR code, mini funnel block — in any order. Blank canvases belong to the premium catalogue — Kinetic Pro and the tiers above it can use a blank canvas for every archetype.
       </div>
 
       <h3>Template Gating by Plan</h3>
       <table>
         <thead><tr><th>Plan</th><th>Templates Available</th><th>Details</th></tr></thead>
         <tbody>
-          <tr><td><strong>Free</strong></td><td><span class="badge badge-orange">8</span></td><td>4 industry starter templates + 4 blank canvases (Build from Scratch)</td></tr>
-          <tr><td><strong>Pro</strong></td><td><span class="badge badge-green">54</span></td><td>Full template library — all 5 archetypes, all industry variants, all 8 themes</td></tr>
-          <tr><td><strong>Enterprise</strong></td><td><span class="badge badge-indigo">54 + White Label</span></td><td>Full library plus white label toggle — hide FunnelSwift branding entirely</td></tr>
+          <tr><td><strong>Free plans</strong> (Kinetic Free, Capture Free)</td><td><span class="badge badge-orange">6</span></td><td>The six Bio Link templates — every other gallery tile shows a lock</td></tr>
+          <tr><td><strong>Kinetic Pro</strong> ($9/mo)</td><td><span class="badge badge-green">54</span></td><td>Full template library — all 5 archetypes, all industry variants, all 8 themes</td></tr>
+          <tr><td><strong>Agency / Scale</strong> ($79/mo)</td><td><span class="badge badge-indigo">54 + White Label</span></td><td>Full library plus white label controls — remove all FunnelSwift branding</td></tr>
         </tbody>
       </table>
       <div class="alert alert-warning">
-        <strong>Free plan starter templates:</strong> Free users get one curated starter template per archetype (the most popular industry design — e.g. Bio Link for creators, Digital Business Card for consultants, Mini Page for coaches, Mini Funnel for affiliate promotions) plus all 4 blank canvases. Upgrade to Pro or Enterprise to unlock the full 54-template library.
+        <strong>Free plan templates:</strong> a free workspace gets the six Bio Link templates. Every other tile in the gallery — the four starter designs, the four blank canvases and every industry variant — is premium. Upgrade to <strong>Kinetic Pro</strong> to unlock the full 54-template library; Agency / Scale ($79/mo) adds white label on top.
       </div>
 
       <h2 id="kinetic-minifunnel">🎯 Mini Funnel Template</h2>
@@ -448,7 +448,7 @@
       </ol>
 
       <div class="alert alert-info">
-        <strong>Plan limits:</strong> QR code generation limits depend on your plan. Free plans have a monthly limit. Enterprise plans include unlimited QR code generation.
+        <strong>Plan limits:</strong> how many QR codes a workspace can generate is set per plan — the free and $9 Kinetic tiers are capped, and Suite and Agency / Scale are unlimited.
       </div>
 
       <h3>QR Code API</h3>
@@ -463,8 +463,8 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
       <h3>How the Badge Works</h3>
       <ul>
         <li><strong>Free plan</strong> — All card pages display a branding badge at the bottom: <em>"Claim your free [Card Type] →"</em> where the card type is auto-detected.</li>
-        <li><strong>Paid plans (Pro &amp; Enterprise)</strong> — You can toggle the branding badge <strong>on or off</strong> from card settings. When off, your card pages are clean with no FunnelSwift footer.</li>
-        <li><strong>Enterprise with White Label</strong> — The badge toggle is available, plus additional white label controls to remove all FunnelSwift references (favicon, meta tags, etc.).</li>
+        <li><strong>Kinetic Pro, Suite and Agency / Scale</strong> — You can toggle the branding badge <strong>on or off</strong> from card settings. When off, your card pages are clean with no FunnelSwift footer.</li>
+        <li><strong>Agency / Scale with White Label</strong> — The badge toggle is available, plus additional white label controls to remove all FunnelSwift references (favicon, meta tags, etc.).</li>
       </ul>
 
       <h3>Auto-Detected Card Types</h3>
@@ -637,21 +637,21 @@ window.FunnelSwiftConfig = {
       <ul>
         <li><strong>Lead Capacity</strong> — Maximum leads per workspace</li>
         <li><strong>Kinetic Cards</strong> — Number of active cards allowed</li>
-        <li><strong>Template Access</strong> — Number of templates available (Free: 8, Pro: 54, Enterprise: 54 + white label)</li>
+        <li><strong>Template Access</strong> — Number of templates available (free plans: the six Bio Link templates; Kinetic Pro and above: all 54)</li>
         <li><strong>QR Generation</strong> — Monthly QR code generation limit</li>
         <li><strong>Web-to-Lead</strong> — Hourly submission rate limit</li>
         <li><strong>Analytics</strong> — Data retention and export options</li>
-        <li><strong>Branding Badge</strong> — Toggle FunnelSwift badge on/off (paid plans only)</li>
-        <li><strong>White Label</strong> — Remove all FunnelSwift branding (Enterprise only)</li>
+        <li><strong>Branding Badge</strong> — Toggle FunnelSwift badge on/off (Kinetic Pro, Suite and Agency / Scale)</li>
+        <li><strong>White Label</strong> — Remove all FunnelSwift branding (Agency / Scale only)</li>
         <li><strong>Mobile App</strong> — Business card scan and import limits</li>
         <li><strong>Cross-App Sync</strong> — CoreSwift CRM integration access</li>
       </ul>
 
       <h3>Template Gating by Plan</h3>
       <div class="alert alert-info">
-        <strong>Free Plan (8 templates):</strong> 4 industry starter templates (one per archetype) + 4 blank canvases (Build from Scratch for each archetype, except Hero which requires Pro).<br>
-        <strong>Pro Plan (54 templates):</strong> Full template library — all 5 archetypes with all industry variants styled across all 8 visual themes.<br>
-        <strong>Enterprise Plan (54 + White Label):</strong> Same full library as Pro, plus white label toggle to remove all FunnelSwift branding from card pages.
+        <strong>Free plans (6 templates):</strong> the six Bio Link templates. The four starter designs, the four blank canvases and every industry variant are premium.<br>
+        <strong>Kinetic Pro ($9/mo, 54 templates):</strong> Full template library — all 5 archetypes with all industry variants styled across all 8 visual themes. Suite ($29/mo) includes the same library.<br>
+        <strong>Agency / Scale ($79/mo, 54 + White Label):</strong> The same full library, plus white label controls that remove all FunnelSwift branding from card pages.
       </div>
 
       <h2 id="settings">⚙️ Settings</h2>
@@ -695,11 +695,11 @@ window.FunnelSwiftConfig = {
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">How does template gating work? What templates do I get on the free plan?</button>
-        <div class="faq-a">The free plan includes <strong>8 templates</strong>: 4 industry starter templates (one curated template per archetype — Bio Link, Digital Business Card, Mini Page, Mini Funnel) plus 4 blank canvases (Build from Scratch for all four free-eligible archetypes). The Hero archetype is available on Pro/Enterprise only. Upgrading to Pro unlocks the full <strong>54-template library</strong> with all industry-specific variants. Enterprise adds white label controls on top of the full library.</div>
+        <div class="faq-a">A free plan includes the <strong>six Bio Link templates</strong>. Every other gallery template is premium — the four starter designs, the four blank canvases, every industry variant and the Hero archetype included. Upgrading to <strong>Kinetic Pro</strong> ($9/mo) unlocks the full <strong>54-template library</strong>; Suite ($29/mo) includes the same library, and Agency / Scale ($79/mo) adds white label controls on top of it.</div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Can I build a card from scratch without using a template?</button>
-        <div class="faq-a">Yes! Every archetype has a <strong>Build from Scratch</strong> blank canvas option. You start with zero pre-populated content and add only the layout blocks you need — hero, bio, buttons, lead form, social icons, QR code, mini funnel — in any order you want. Blank canvases count toward your template limit and are available on all plans (free: 4 blank canvases, Pro/Enterprise: blank canvases for every archetype).</div>
+        <div class="faq-a">Yes! Every archetype has a <strong>Build from Scratch</strong> blank canvas option. You start with zero pre-populated content and add only the layout blocks you need — hero, bio, buttons, lead form, social icons, QR code, mini funnel — in any order you want. Blank canvases count toward your template limit. They are part of the premium catalogue, so Kinetic Pro and the tiers above it can use a blank canvas for every archetype.</div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Does FunnelSwift sync with CoreSwift CRM?</button>
