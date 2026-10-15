@@ -6,6 +6,12 @@
 !function(){
   var p = window.location.pathname;
   if (p === '/login' || p === '/login.html' || p.startsWith('/api/') || p.startsWith('/ref/')) return;
+  /* kanban t_2d410c1f — the payment provider sends a buyer back to /checkout/success (or
+     /checkout/cancelled) with no console session at all on a fresh device or a shared browser.
+     Those two paths are a PUBLIC landing: their content comes from the public, id-scoped
+     `GET /api/v1/checkout/session/:id`, so bouncing them to /login (as this guard did) hid the
+     only confirmation that a payment had been taken. Every other path still requires a session. */
+  if (p === '/checkout/success' || p === '/checkout/cancelled' || p === '/checkout/canceled') return;
   // A signup on a marketing page holds a fresh session for an origin that is NOT this one,
   // so it hands the session over in the URL FRAGMENT: "https://app.funnelswift.net/#token=…"
   // (kanban t_a724790f). A fragment is never sent to the server, so it cannot reach an
@@ -208,6 +214,12 @@ tr:hover{background:#f8fafc}
 <div class="help-panel" id="helpPanel"><div class="help-header"><strong id="helpTitle">Quick Help</strong><button onclick="toggleHelp()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div><div class="help-body" id="helpBody">Select a section for help tips.</div></div>
 <button class="help-fab" id="helpFab" onclick="toggleHelp()" title="Help">💡</button>
 <div class="mo" id="mod"><div class="modal"><h3 id="mt"></h3><div id="mb"></div><div id="mm" class="msg"></div><div class="mf" id="mf"></div></div></div>
+<!-- kanban t_2d410c1f — the post-payment landing. `POST /api/v1/checkout/create` returns the buyer to
+     {origin}/checkout/success?session_id=… (and /checkout/cancelled), which nginx answered with this
+     SPA shell and nothing else, so the confirmation the public `GET /api/v1/checkout/session/:id`
+     exists for had no caller. Loaded BEFORE the console boot below, which hands these two paths to
+     `renderCheckoutReturn()` instead of the dashboard. -->
+<script src="/checkout-return.js?v=20261015c"></script>
 <script>
 
 /* FunnelSwift Dashboard — All functions with DOM-based event handling */
@@ -615,7 +627,37 @@ function El(tag, props, children){
 }
 
 /* === AUTH === */
-if(T){
+/* kanban t_2d410c1f — a post-payment landing (/checkout/success, /checkout/cancelled) is NOT the
+   console: it is the confirmation the public `GET /api/v1/checkout/session/:id` exists for. It
+   boots first, before the session check, because it must render for a buyer who has no session on
+   this browser at all (a fresh device, a shared browser, a receipt link). */
+if(window.FSReturnPath && window.FSReturnPath()){
+  window.renderCheckoutReturn(window.FSReturnPath());
+  /* With a session still present, fill in the account panel so the console chrome around the
+     confirmation is not stuck on "Loading...". Plain fetch, NOT api(): api() hard-redirects to
+     /login on a 401, which would yank a buyer off their own thank-you page over a stale token. */
+  if(T){
+    fetch("/api/v1/auth/me",{headers:{Authorization:"Bearer "+T}})
+      .then(function(r){return r.ok?r.json():null})
+      .then(function(u){
+        if(!u||u.error) return;
+        U=u; $("ue").textContent=u.name||u.email;
+        $("rb").innerHTML='<span class="badge bb">'+X(u.plan_name||"Free")+'</span>'
+          +(u.is_admin?' <span class="badge bg">Admin</span>':'');
+        renderAvatar();
+        if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}
+        /* The status note (from the public lookup) and this tier line (from /auth/me) come from two
+           async sources that can land in either order; checkout-return.js keeps a slot per line so
+           neither can erase the other. */
+        if(typeof window.fsCheckoutTier==="function" && u.plan_name){
+          window.fsCheckoutTier('Your workspace currently reads <strong>'+X(u.plan_name)+'</strong>. '+
+            'That number comes from the server, and it updates on its own when the payment provider\'s confirmation arrives.');
+        }
+      })
+      .catch(function(){});
+  }
+}
+else if(T){
   api("/api/v1/auth/me").then(function(u){
     if(u.error){window.location.href="/login"}
     else{
