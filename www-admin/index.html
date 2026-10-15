@@ -374,10 +374,17 @@ async function loadUser() {
 
 function doLogout() { TOKEN = ''; USER = null; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; }
 
+const IMP_ORIGINAL_KEY = 'ws_fs_original_token';
+
 // ── Init ──
 (async function init() {
   if (TOKEN) await loadUser();
   renderApp();
+  // A reload mid-impersonation must not silently swallow the banner: the operator needs to see
+  // which account this session belongs to and the control that hands their own session back.
+  if (localStorage.getItem(IMP_ORIGINAL_KEY)) {
+    showImpBanner(USER && (USER.name || USER.company || USER.email));
+  }
 })();
 
 // ── Render ──
@@ -890,6 +897,37 @@ function bindPortfolio() {
   document.getElementById('add-portfolio-btn')?.addEventListener('click', () => openPortfolioModal());
 }
 window._editPortfolio = function(id) { openPortfolioModal(id); };
+// ── Impersonation: the way in, and the way back out ──
+// POST /api/v1/admin/impersonate swaps this console into a tenant's session; POST
+// /api/v1/admin/stop-impersonation ends it server-side. The way IN shipped without the way OUT:
+// no control called stop-impersonation, nothing on screen said whose session this was, and the
+// operator's OWN token was overwritten with no copy kept — so an operator who impersonated from
+// this console was stranded in the tenant's account. Both halves live here now: the original
+// token is kept, a banner names the account, and Stop restores the operator's own session.
+
+function showImpBanner(name) {
+  let b = document.getElementById('imp-banner');
+  if (!b) { b = document.createElement('div'); b.id = 'imp-banner'; document.body.appendChild(b); }
+  b.setAttribute('style', 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#e11d48;' +
+    'color:#fff;padding:8px 24px;font-size:13px;font-weight:600;display:flex;justify-content:center;' +
+    'align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)');
+  b.innerHTML = '<span>\u26A0\uFE0F Viewing as <span id="imp-name"></span> — you are impersonating this account</span>' +
+    '<button id="imp-stop" style="background:#fff;color:#e11d48;border:none;border-radius:4px;' +
+    'padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer">Stop impersonating</button>';
+  document.getElementById('imp-name').textContent = name || 'this account';
+  document.getElementById('imp-stop').onclick = stopImpersonation;
+}
+
+async function stopImpersonation() {
+  // Tell the server first, so the session it minted is actually ended rather than merely dropped
+  // by the browser. A failure here must not strand the operator in the tenant either.
+  try { await api('/admin/stop-impersonation', { method: 'POST' }); } catch (e) { /* fall through */ }
+  const orig = localStorage.getItem(IMP_ORIGINAL_KEY);
+  localStorage.removeItem(IMP_ORIGINAL_KEY);
+  if (orig) { TOKEN = orig; localStorage.setItem('ws_fs_token', orig); }
+  window.location.reload();
+}
+
 window._impersonate = async function(tenantId) {
   try {
     // POST /api/v1/admin/impersonate (handlers::admin_handler::impersonate) — body {account_id:<tenant>}.
@@ -897,12 +935,17 @@ window._impersonate = async function(tenantId) {
     // NOWHERE (measured live 404), and a portfolio-company id is not a tenant. Impersonation targets a
     // TENANT, so the control lives on the Tenants list (renderTenants), not on Portfolio Companies.
     const res = await api('/admin/impersonate', { method: 'POST', body: JSON.stringify({ account_id: tenantId }) });
-    TOKEN = res.token || res.access_token;
+    const token = res.token || res.access_token;
+    if (!token) { showToast('No impersonation token was returned', 'error'); return; }
+    // Keep the operator's OWN session before it is replaced, so Stop puts them back exactly here.
+    localStorage.setItem(IMP_ORIGINAL_KEY, TOKEN);
+    TOKEN = token;
     localStorage.setItem('ws_fs_token', TOKEN);
     await loadUser();
     STATE.view = 'dashboard';
     showToast('Impersonating company...', 'info');
     renderApp();
+    showImpBanner(USER && (USER.name || USER.company || USER.email));
   } catch(e) { showToast(e.message, 'error'); }
 };
 
