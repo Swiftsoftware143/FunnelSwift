@@ -641,7 +641,31 @@ if(T){
 
 /* === DASHBOARD === */
 function D(){
-  $("ct").innerHTML='<div id="sr"></div><div id="da"></div>';
+  $("ct").innerHTML='<div id="pl"></div><div id="sr"></div><div id="da"></div>';
+  /* kanban cron-1015 — this console's own help text promises "Your current plan is shown on the
+     dashboard", and the dashboard showed only lead/card counts (the "Plans" tile is the tenant's
+     own funnel-plan count, `d.plans_total`). The subscription plan is already in this page: the
+     shell holds the /api/v1/auth/me payload in `U` (`plan_name` + `current_plan`, the row the
+     account is actually subscribed to). So this strip quotes the server, and if no plan was read it
+     renders NOTHING rather than inventing one. `U` may not have resolved when this tab paints, so an
+     absent `U` re-reads /auth/me and paints when it lands. */
+  var pl=$("pl");
+  var paintPlan=function(u){
+    if(!pl||!pl.parentNode) return;
+    var cp=(u&&u.current_plan)||null;
+    var pn=(u&&u.plan_name)||(cp&&cp.name)||'';
+    if(!pn) return;
+    var q=function(v){return (v===null||v===undefined)?"\u221e":v;};
+    var h='<div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
+    h+='<div><h3 style="margin:0 0 2px">Your Plan</h3>';
+    h+='<div style="font-size:20px;font-weight:800">'+X(pn)+'</div>';
+    if(cp){
+      h+='<div style="color:#64748b;font-size:12px;margin-top:4px">Leads '+q(cp.max_leads)+' \u00b7 Cards '+q(cp.max_cards)+' \u00b7 Forms '+q(cp.max_forms)+' \u00b7 QR codes '+q(cp.max_qr_codes)+' \u00b7 Tags '+q(cp.max_tags)+' \u00b7 Domains '+q(cp.max_custom_domains)+'</div>';
+    }
+    h+='</div><button class="btn" onclick="S(\'upgrade\')" style="padding:10px 16px">View plans &amp; upgrade</button></div>';
+    pl.innerHTML=h;
+  };
+  if(U) paintPlan(U); else api("/api/v1/auth/me").then(function(u){ if(u&&!u.error){U=u; paintPlan(u);} });
   // kanban t_a493e3f2: this loader paints two of its OWN panels from async callbacks, and S(<tab>)
   // replaces #ct wholesale — a tab switch between the request and its callback detaches #sr/#da, so a
   // late response ran $("sr").innerHTML=h on null and threw an UNCAUGHT TypeError inside the page.
