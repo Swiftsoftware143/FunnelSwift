@@ -455,9 +455,18 @@ pub async fn impersonate(
     })))
 }
 
-/// Stop impersonation
+/// Stop impersonation — called BY THE IMPERSONATION SESSION ITSELF, not by the admin.
+///
+/// The session that needs this route is the one carrying the impersonated account's token, and
+/// [`impersonate`] mints that token with the TARGET USER'S role (`role` above), so `is_admin` is
+/// the tenant's role there and gating on it made this route unreachable from its only caller: the
+/// console's Stop answered `403 Admin access required` (measured live on admin.funnelswift.net).
+/// The honest test for "this is an impersonation session" is the `impersonating` claim the
+/// impersonate handler sets. A plain admin token may call it too — for an admin it is a
+/// no-op acknowledgement, which is what the route always was (the tokens are stateless, so
+/// ending the session is the caller dropping the impersonation token).
 pub async fn stop_impersonation(auth: AuthUser) -> AppResult<impl IntoResponse> {
-    if !auth.is_admin {
+    if !auth.is_admin && auth.impersonating.is_none() {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     Ok(Json(json!({

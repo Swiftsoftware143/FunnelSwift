@@ -72,6 +72,8 @@ pub fn is_platform_admin(role: &str) -> bool {
 
 const ADMIN_PREFIX: &str = "/api/v1/admin";
 const ADMIN_PREFIX_NESTED: &str = "/api/v1/admin/";
+/// The ONE admin path an impersonation session is allowed to reach: the one that ends it.
+const ADMIN_STOP_IMPERSONATION: &str = "/api/v1/admin/stop-impersonation";
 
 /// True when `path` is inside the admin surface. Matches on the path SEGMENT, never on a bare
 /// string prefix, so a future `/api/v1/administrators` is not silently swept in.
@@ -89,6 +91,29 @@ pub fn is_admin_surface(path: &str) -> bool {
 /// (`require_auth`), so the class stays closed for routes added later too.
 pub fn admin_surface_denied(path: &str, role: &str) -> bool {
     is_admin_surface(path) && !is_platform_admin(role)
+}
+
+/// True when `path` is the one admin route an impersonation session must be able to call.
+pub fn is_stop_impersonation(path: &str) -> bool {
+    path == ADMIN_STOP_IMPERSONATION
+}
+
+/// The full admin-surface authz decision, including the single carve-out an impersonation session
+/// needs: `true` means answer 403.
+///
+/// [`admin_surface_denied`] stays a pure role test. This adds the one exception that has to exist:
+/// `admin_handler::impersonate` mints the impersonation session with the IMPERSONATED account's
+/// role, so every `/api/v1/admin/*` path is denied to it — including
+/// `POST /api/v1/admin/stop-impersonation`, whose entire purpose is to end that session. Measured
+/// live on admin.funnelswift.net: the console's Stop answered `403 Platform admin role required`,
+/// so an operator could only abandon the impersonated session by logging out and back in. The
+/// carve-out is exactly one path and it requires the `impersonating` claim that only the
+/// impersonate handler sets, so a tenant token can never reach it.
+pub fn admin_surface_denied_for(path: &str, role: &str, impersonating: bool) -> bool {
+    if impersonating && is_stop_impersonation(path) {
+        return false;
+    }
+    admin_surface_denied(path, role)
 }
 
 /// Global fail-closed auth: every `/api/v1/*` route not on the committed public allowlist requires a
@@ -134,7 +159,9 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     // transactional email — any customer could read or repoint it. Same class as kanban
     // t_d2df1ae1 in ADASwift. Decided BEFORE the tenant-status lookup so a non-admin never pays a
     // DB round trip to be told its role is wrong.
-    if admin_surface_denied(&path, &claims.role) {
+    // `claims.impersonating` carries the ONE documented exception: the impersonation session
+    // itself calling the route that ends it (see `admin_surface_denied_for`).
+    if admin_surface_denied_for(&path, &claims.role, claims.impersonating.is_some()) {
         return reject(StatusCode::FORBIDDEN, "Platform admin role required");
     }
 
@@ -259,6 +286,50 @@ mod tests {
             assert!(!is_admin_surface(path), "{path} is not the admin surface");
             assert!(!admin_surface_denied(path, "user"));
         }
+    }
+
+    /// The live defect: an impersonation session could START but not STOP — every /api/v1/admin
+    /// path was denied to the token the impersonate handler minted, stop-impersonation included.
+    #[test]
+    fn an_impersonation_session_may_end_itself_and_nothing_else_on_the_admin_surface() {
+        let stop = "/api/v1/admin/stop-impersonation";
+        // The one carve-out: an impersonation token reaches the route that ends it...
+        assert!(!admin_surface_denied_for(stop, "owner", true));
+        assert!(!admin_surface_denied_for(stop, "user", true));
+        // ...and still reaches NOTHING else on the admin surface.
+        for path in [
+            "/api/v1/admin/email-config",
+            "/api/v1/admin/plans",
+            "/api/v1/admin/impersonate",
+            "/api/v1/admin/tenants",
+        ] {
+            assert!(
+                admin_surface_denied_for(path, "owner", true),
+                "an impersonation token must not reach {path}"
+            );
+        }
+        // A NON-impersonation tenant token gains nothing from the carve-out — that is the whole
+        // point of keying on the `impersonating` claim rather than on the path alone.
+        assert!(admin_surface_denied_for(stop, "owner", false));
+        assert!(admin_surface_denied_for(stop, "user", false));
+        // The platform admin is unaffected in every combination.
+        assert!(!admin_surface_denied_for(stop, "admin", false));
+        assert!(!admin_surface_denied_for(
+            "/api/v1/admin/plans",
+            "admin",
+            false
+        ));
+        // The carve-out is one exact path, not a prefix: no sibling rides in on it.
+        assert!(admin_surface_denied_for(
+            "/api/v1/admin/stop-impersonation/anything",
+            "owner",
+            true
+        ));
+        assert!(admin_surface_denied_for(
+            "/api/v1/admin/stop-impersonate",
+            "owner",
+            true
+        ));
     }
 
     #[test]
