@@ -101,7 +101,24 @@ function upgradeTo(slug){
       // provided") is the most useful thing we can show — but a buyer mid-purchase also needs to be
       // told the one thing they care about, and a refused /checkout/create never creates a session,
       // so no charge can have occurred on ANY of its failure arms.
-      if(data && data.message) { alert(data.message + '\n\nNothing was charged.'); return; }
+      //
+      // 2026-10-15 (this arm used to open the alert with the server's sentence): on an install with
+      // no payment provider configured the server answers the OPERATOR's instructions — measured
+      // live in Chromium on app.funnelswift.net/dashboard (real mouse click on "Upgrade" -> 503
+      // POST /api/v1/checkout/create -> the alert read "No payment provider is configured, so
+      // checkout cannot work. The platform operator adds Stripe's keys in the admin panel …"). The
+      // buyer is not the person who adds keys, and that sentence reads like something they broke.
+      // Fleet convention (the sentence IncentiveSwift's Plan & Billing already ships): lead with
+      // the customer's own line and the fact that nothing was charged, then the detail unchanged.
+      // The operator keeps the whole reason — it is still printed above, in the same alert.
+      if(data && data.message) {
+        var operatorMsg = /provider|not configured/i.test(data.message);
+        var lead = operatorMsg
+          ? 'Upgrades are not open on this workspace yet \u2014 nothing was charged.'
+          : 'The upgrade could not be started \u2014 nothing was charged.';
+        alert(lead + '\n\n' + data.message);
+        return;
+      }
       if(!data || !data._ok){
         alert('The upgrade could not be started (the server answered ' +
           ((data && data._status) || 'no reply') + '). Nothing was charged.\n\n' +
