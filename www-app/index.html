@@ -2133,8 +2133,16 @@ function LIC(){
       +'<p>'+X(p.description||"")+'</p>'
       +'<div id="li-cs-status" style="font-size:12px;color:#6366f1;margin:4px 0"></div>';
     if(p.key==="coreswift"){
+      // kanban t_ff1f0d6b (2026-10-15). This cross-sell pointed at https://coreswiftcrm.com/pricing,
+      // which answers **404** through the edge with a browser UA (measured: 404 Not Found, 564 B —
+      // the nginx 404 body). No `/pricing` (nor /plans, /signup, /upgrade) surface exists on that
+      // origin at all: its landing page is `/` (200) and it carries no pricing anchor, so the link
+      // could not resolve by construction. Repointed to the product home that DOES answer, the same
+      // decision IncentiveSwift's Integration Center already carries for this exact cross-sell
+      // (`www-app/incentiveswift/integrations.html`, CROSS_SELL_URL = 'https://coreswiftcrm.com').
+      // The label says what the destination is — a product page, not a checkout.
       it.innerHTML+='<p style="font-size:12px;color:#4338ca;margin:6px 0">One CRM for every tool you just connected — every funnel opt-in lands in CoreSwift. '
-        +'<a href="https://coreswiftcrm.com/pricing" target="_blank" style="color:#4338ca;font-weight:700;text-decoration:underline">Upgrade to CoreSwift CRM →</a></p>';
+        +'<a href="https://coreswiftcrm.com" target="_blank" style="color:#4338ca;font-weight:700;text-decoration:underline">See CoreSwift CRM →</a></p>';
     }
     var kw=El("div");
     kw.innerHTML='<input id="ick-'+X(p.key)+'" type="password" autocomplete="new-password" placeholder="'+(connected?X(rec.api_key_masked||"key stored"):"Provider key")+'" style="width:100%;padding:8px;margin:4px 0;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">';
@@ -3927,7 +3935,7 @@ function SG(id,returnTab,isSystem){
 
 
 </script>
-<script src="/upgrade.js?v=d00b6e53"></script>
+<script src="/upgrade.js?v=c9701642"></script>
 <!-- Cookie Consent Banner -->
 <div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#0f172a;color:#e2e8f0;z-index:99999;padding:16px 24px;font-family:system-ui,sans-serif;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.4);display:none">
   <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">

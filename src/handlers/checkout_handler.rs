@@ -136,6 +136,56 @@ pub async fn delete_payment_provider(
     }
     Ok(Json(json!({"message": "Provider deleted"})))
 }
+/// WHICH payment provider funds a PLAN purchase (kanban t_ff1f0d6b, measured 2026-10-15).
+///
+/// A plan is sold BY the platform TO a workspace, so the merchant account is the platform's. This
+/// used to read the CALLER's own row only, while the only shipped writer of the table is the
+/// operator's own admin-panel entry (`www-admin` → Provider Keys / Payment providers, which binds
+/// the signed-in account's tenant id). The consequence was measured live on the whole install:
+/// `payment_providers` held **0 rows**, `POST /api/v1/checkout/create` answered 503
+/// `payment_provider_not_configured` for the ladder on a real workspace token, and putting the
+/// operator's Stripe key in the admin panel could NOT have changed that — every plan purchase would
+/// still have looked for a row owned by the BUYING workspace. A ladder that cannot be bought is the
+/// defect this function closes.
+///
+/// Resolution order, lowest-surprise first:
+///   1. the buying workspace's OWN active row — unchanged behaviour, so a workspace that brings its
+///      own merchant account (BYOK) keeps paying through it, and nothing existing moves;
+///   2. otherwise the OLDEST active row owned by a tenant that has an `admin`-role user — the app's
+///      own definition of the platform operator (`auth/middleware.rs`, `is_admin = role == "admin"`),
+///      i.e. the key the operator entered in the admin panel;
+///   3. otherwise `None` -> the caller answers 503 naming exactly where the key belongs.
+///
+/// The admin-role guard on arm 2 is load-bearing: without it ANY workspace could register, save its
+/// own Stripe key and have every customer's plan purchase on the install charged to that workspace's
+/// account. Registration mints `role = 'user'`, so an ordinary tenant cannot reach arm 2 by itself.
+/// The money always lands on the resolved owner; the PLAN always changes on the BUYER, because the
+/// webhook grants to `metadata[tenant_id]` (written by `create_stripe_session` from the caller, never
+/// from the provider) — see `stripe_webhook`.
+async fn resolve_plan_provider(
+    state: &AppState,
+    tenant_id: Uuid,
+) -> Result<Option<(Uuid, String)>, sqlx::Error> {
+    let own: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT tenant_id, provider_type FROM payment_providers \
+         WHERE tenant_id = $1 AND is_active = true ORDER BY created_at LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    if own.is_some() {
+        return Ok(own);
+    }
+    sqlx::query_as(
+        "SELECT pp.tenant_id, pp.provider_type FROM payment_providers pp \
+         WHERE pp.is_active = true \
+           AND EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = pp.tenant_id AND u.role = 'admin') \
+         ORDER BY pp.created_at LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await
+}
+
 /// POST /api/v1/checkout/create
 ///
 /// A REAL Stripe checkout, or an explicit refusal. This doc comment used to say "there is no payment
@@ -143,7 +193,10 @@ pub async fn delete_payment_provider(
 /// Groovesell — is a product decision)"; that stopped being true when [`create_stripe_session`] was
 /// written, and a comment that contradicts the code is how the next reader mis-plans. The arms now:
 ///
-/// * no active `payment_providers` row -> 503 `payment_provider_not_configured`, naming the fix
+/// * no active `payment_providers` row for the CALLER and none owned by a platform-operator account
+///   -> 503 `payment_provider_not_configured`, naming where the key belongs
+///   ([`resolve_plan_provider`] documents the two-arm resolution: the buyer's own merchant account
+///   first, then the operator's — a plan is sold by the platform TO a workspace)
 /// * a provider row that is not Stripe -> 501 `checkout_not_implemented`, naming the provider
 /// * a Stripe row whose key cannot be read -> 503 `payment_provider_not_configured`
 /// * Stripe ACCEPTED the session -> 201 `{url, session_id, plan}` + a `checkout_sessions` row
@@ -159,28 +212,24 @@ pub async fn create_checkout_session(
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
 
-    let configured: Option<(String,)> = sqlx::query_as(
-        "SELECT provider_type FROM payment_providers WHERE tenant_id = $1 AND is_active = true ORDER BY created_at LIMIT 1",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let configured = resolve_plan_provider(&state, tenant_id).await?;
 
     match configured {
         None => {
             tracing::error!(
-                "checkout/create REFUSED: no active payment provider for tenant {tenant_id}"
+                "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
+                 no active provider owned by a platform-operator account either"
             );
             Ok((
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(json!({
                     "error": "payment_provider_not_configured",
-                    "message": "No payment provider is configured for this account, so checkout cannot work. An admin must add the provider's keys in the admin panel (Provider Keys / Payment providers). No session was created and no charge can occur.",
+                    "message": "No payment provider is configured, so checkout cannot work. The platform operator adds Stripe's keys in the admin panel (Provider Keys / Payment providers) on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own. No session was created and no charge can occur.",
                     "configured": false
                 })),
             ))
         }
-        Some((provider_type,)) => {
+        Some((provider_tenant, provider_type)) => {
             // David, 2026-10-01: *"i will use stripe for now"*. This used to answer 501
             // "checkout_not_implemented" — i.e. a customer who had been sold an upgrade could not buy
             // it, so nothing downstream (the affiliate credit, the dated movement) could ever fire.
@@ -217,10 +266,20 @@ pub async fn create_checkout_session(
                     "That plan costs nothing — there is nothing to check out.".into(),
                 ));
             }
+            // The key comes from the RESOLVED owner's row (see `resolve_plan_provider`): a workspace
+            // that brought its own merchant account pays through it, everyone else through the
+            // platform operator's. Logged when the two differ, so "which account was charged" is
+            // answerable from the log line rather than by re-deriving the resolution.
+            if provider_tenant != tenant_id {
+                tracing::info!(
+                    buyer = %tenant_id, provider_owner = %provider_tenant,
+                    "checkout/create: charging through the platform account (buyer has no provider of its own)"
+                );
+            }
             let key: Option<String> = sqlx::query_scalar(
                 "SELECT api_key FROM payment_providers WHERE tenant_id = $1 AND provider_type = 'stripe' AND is_active = true LIMIT 1",
             )
-            .bind(tenant_id)
+            .bind(provider_tenant)
             .fetch_optional(&state.pool)
             .await?
             .flatten();

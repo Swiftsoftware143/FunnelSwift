@@ -52,10 +52,20 @@ function renderUpgrade(plans){
     html += '</div>';
     
     html += '<div style="margin-top:auto;padding-top:12px">';
+    // A $0 plan is not purchasable. `POST /api/v1/checkout/create` refuses one 400 "That plan costs
+    // nothing — there is nothing to check out." (measured live 2026-10-15 on a real workspace token),
+    // so on this install — which sells TWO products (Capture, Kinetic) and each has a free tier —
+    // every non-current FREE tier rendered an "Upgrade" button whose only possible outcome was that
+    // error. The button is replaced by a chip that says what is true, and each branch carries a
+    // data- attribute so the rendered state can be asserted without reading button labels.
+    // kanban t_ff1f0d6b.
+    var price = Number(p.price === null || p.price === undefined ? 0 : p.price);
     if(isCurrent){
       html += '<div style="text-align:center;padding:10px;background:#6366f1;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Current Plan</div>';
+    } else if(price <= 0){
+      html += '<div data-free-plan="'+p.slug+'" style="text-align:center;padding:10px;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:13px;font-weight:600">Free plan — nothing to pay</div>';
     } else {
-      html += '<button onclick="upgradeTo(\''+p.slug+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
+      html += '<button data-upgrade-plan="'+p.slug+'" onclick="upgradeTo(\''+p.slug+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
     }
     html += '</div></div>';
   });
