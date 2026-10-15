@@ -361,42 +361,49 @@ pub async fn create_checkout_session(
 /// Public, id-scoped lookup used by the thank-you pages after the payment
 /// provider redirects the buyer back. Exposes only presentation-safe fields —
 /// never tenant_id, user_id, provider_session_id or metadata.
+///
+/// `:id` accepts BOTH references for the SAME checkout, because the two ends of this journey speak
+/// different languages (kanban t_2d410c1f): our own `checkout_sessions.id` (a uuid — the form this
+/// endpoint was written against) AND the payment provider's session id, which is what Stripe
+/// substitutes into the `{CHECKOUT_SESSION_ID}` placeholder of the `success_url` THIS repo builds
+/// (`create_stripe_session`) — so the buyer's real return URL carries `cs_live_…`, never a uuid.
+/// Resolving only the uuid meant the thank-you page could only ever answer "we could not find that
+/// checkout", even for a payment that had genuinely gone through. Both values are unguessable 20+
+/// character tokens and the reply still carries no tenant/user/provider field, so the lookup stays
+/// exactly as id-scoped as it was.
 pub async fn get_checkout_session_public(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let Ok(id) = Uuid::parse_str(&session_id) else {
-        return Ok((
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "found": false,
-                "error": "checkout_session_not_found",
-                "note": "That checkout id is not a valid session id."
-            })),
-        ));
-    };
+    let as_uuid = Uuid::parse_str(&session_id).ok();
 
     let row = sqlx::query(
-        r#"SELECT cs.id, cs.purchasable_type, cs.amount::text AS amount,
+        r#"-- A non-uuid reference is bound as NULL on the first arm, which matches nothing, so the
+           -- provider-session-id arm carries those lookups on its own.
+           SELECT cs.id, cs.purchasable_type, cs.amount::text AS amount,
                   cs.currency, cs.status, cs.created_at,
                   p.name AS plan_name
            FROM checkout_sessions cs
            LEFT JOIN plans p
                   ON cs.purchasable_type = 'plan' AND p.id = cs.purchasable_id
-           WHERE cs.id = $1"#,
+           WHERE cs.id = $1
+              OR (cs.provider_session_id <> '' AND cs.provider_session_id = $2)
+           ORDER BY (cs.id = $1) DESC NULLS LAST, cs.created_at DESC
+           LIMIT 1"#,
     )
-    .bind(id)
+    .bind(as_uuid)
+    .bind(&session_id)
     .fetch_optional(&state.pool)
     .await?;
 
     let Some(row) = row else {
-        tracing::warn!("checkout session lookup miss: {id}");
+        tracing::warn!("checkout session lookup miss: {session_id}");
         return Ok((
             StatusCode::NOT_FOUND,
             Json(json!({
                 "found": false,
                 "error": "checkout_session_not_found",
-                "note": "No checkout session with that id. If you just paid, your provider receipt is authoritative — contact support if your plan is not active."
+                "note": "No checkout session matches that reference — we look it up by our own checkout id and by the payment provider's session id. If you just paid, your provider receipt is authoritative; contact support if your plan is not active."
             })),
         ));
     };
