@@ -735,10 +735,14 @@ pub fn create_router(
             "/api/v1/checkout/session/:id",
             get(checkout_handler::get_checkout_session_public),
         )
-        // No payment webhook receivers are registered: FunnelSwift has no live checkout
-        // (checkout_handler::create_checkout_session refuses with 501) and no write path to
-        // checkout_sessions, so a receiver could only ever answer a false "received". They are
-        // re-added together with a real checkout flow, signature-verified (kanban t_6e746b75).
+        // Payment webhooks ARE registered: `/api/v1/webhooks/stripe` sits at the top of this
+        // router with its own signature verification (kanban t_6e746b75 shipped it together with the
+        // checkout flow), and the create arm above writes the `pending` checkout_sessions row the
+        // completion arm keys off. Measured live on the deployed binary 2026-10-15 (t_9522f289):
+        // no provider row -> 503 `payment_provider_not_configured`; a row whose key the provider
+        // refuses -> 424 `checkout_session_failed` carrying the provider's own sentence; a valid key
+        // -> 201 plus the session row. It never answers 501. The routes below are tenancy, not
+        // payments.
         // Tenant management
         .route(
             "/api/v1/tenants",
