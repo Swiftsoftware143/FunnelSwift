@@ -2008,14 +2008,36 @@ function LG(){
    Cards come from the LIVE available_providers catalogue — never a hardcoded provider array.
    CoreSwift is pinned first, carries the cross-sell CTA, and its card reflects the real
    /api/v1/integrations/coreswift/status state (inbound: FunnelSwift opt-ins -> CoreSwift). */
+var _icLastMsg=null;
+// The Integration Center's OWN message surface. Every outcome below used to be reported through
+// KCUP(), which this console defines as the "Upgrade Required" modal — so connecting a key, testing
+// one, pushing a lead or failing any of those opened an upsell box aimed at the customer (measured
+// live 2026-10-15: "Upgrade Required — coreswift key saved, but the connection test failed … View
+// Plans & Upgrade"). An integration result is not a plan gate: it belongs inline, above the cards.
+// KCUP stays exactly as it is for the genuine gates (402, premium templates, plan limits).
+function ICMSG(text, ok){
+  _icLastMsg={text:text, ok:!!ok};
+  var m=$("li-ic-msg"); if(!m)return;
+  m.style.display="block";
+  m.style.cssText="display:block;font-size:13px;margin:0 0 12px;padding:9px 11px;border-radius:6px;border-left:4px solid "+(ok?"#059669":"#dc2626")+";background:"+(ok?"#ecfdf5":"#fef2f2")+";color:"+(ok?"#065f46":"#991b1b");
+  m.textContent=text;
+}
 function ICC(p){ /* Connect = store the tenant BYOK key */
   var el=$("ick-"+p), k=el?(el.value||"").trim():"";
-  if(!k){KCUP("Enter a provider key first");return;}
+  if(!k){ICMSG("Enter a provider key first",false);return;}
   var body={provider:p,api_key:k};
   var u=$("icu-"+p); if(u&&u.value.trim()) body.base_url=u.value.trim();
   api("/api/v1/provider-keys",{method:"POST",body:JSON.stringify(body)}).then(function(){
-    KCUP(p+" connected"); LI();
-  }).catch(function(e){KCUP("Could not connect "+p+": "+e.message)});
+    // A STORED key is not a WORKING key. This said "<provider> connected" and nothing else, so a
+    // credential the far side rejects read as a live integration until a later push 401'd. Run the
+    // same probe the "Test connection" control uses and report its verdict (for a provider with no
+    // provider-side probe the API says so in `detail` — that is not dressed up as success).
+    LI();
+    return api("/api/v1/provider-keys/"+encodeURIComponent(p)+"/test",{method:"POST",body:"{}"}).then(function(r){
+      if(r&&r.valid)ICMSG(p+" key saved — "+(r.detail||"the provider accepted it"),true);
+      else ICMSG(p+" key saved, but the connection test failed: "+((r&&r.detail)||"no detail provided"),false);
+    }).catch(function(e){ICMSG(p+" key saved, but the live test could not be run: "+e.message,false)});
+  }).catch(function(e){ICMSG("Could not connect "+p+": "+e.message,false)});
 }
 function ICT(p){ /* Test connection — live provider probe */
   api("/api/v1/provider-keys/"+encodeURIComponent(p)+"/test",{method:"POST",body:"{}"}).then(function(r){
@@ -2024,13 +2046,13 @@ function ICT(p){ /* Test connection — live provider probe */
       $("mb").innerHTML='<p style="font-size:13px">'+X(msg)+'</p>';
       $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
     });
-  }).catch(function(e){KCUP("Test failed: "+e.message)});
+  }).catch(function(e){ICMSG("Test failed: "+e.message,false)});
 }
 function ICD(p){ /* Disconnect = delete the tenant BYOK key */
   if(!confirm("Disconnect "+p+" for this workspace?"))return;
   api("/api/v1/provider-keys/"+encodeURIComponent(p),{method:"DELETE"}).then(function(){
-    KCUP(p+" disconnected"); LI();
-  }).catch(function(e){KCUP("Disconnect failed: "+e.message)});
+    ICMSG(p+" disconnected",true); LI();
+  }).catch(function(e){ICMSG("Disconnect failed: "+e.message,false)});
 }
 function ICLS(){ /* CoreSwift lists proxy (the standard's picker endpoint) */
   api("/api/v1/integrations/coreswift/lists").then(function(r){
@@ -2039,13 +2061,13 @@ function ICLS(){ /* CoreSwift lists proxy (the standard's picker endpoint) */
       $("mb").innerHTML='<p style="font-size:13px">'+l.length+' list(s) visible to your key.</p><pre style="font-size:11px;white-space:pre-wrap;max-height:240px;overflow:auto">'+X(JSON.stringify(l,null,1).slice(0,1500))+'</pre>';
       $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
     });
-  }).catch(function(e){KCUP("Lists failed: "+e.message)});
+  }).catch(function(e){ICMSG("Lists failed: "+e.message,false)});
 }
 function ICPUSH(){ /* manual fallback for the automatic capture push */
   var em=prompt("Push a lead to CoreSwift — email:"); if(!em)return;
   api("/api/v1/integrations/coreswift/push",{method:"POST",body:JSON.stringify({email:em,name:"Manual push"})}).then(function(r){
-    KCUP(r.status==="pushed"?"Lead pushed to CoreSwift CRM":"Nothing pushed: "+(r.message||""));
-  }).catch(function(e){KCUP("Push failed: "+e.message)});
+    ICMSG(r.status==="pushed"?"Lead pushed to CoreSwift CRM":"Nothing pushed: "+(r.message||""), r.status==="pushed");
+  }).catch(function(e){ICMSG("Push failed: "+e.message,false)});
 }
 function LIC(){
   var grd=$("li-ic-grd"); if(!grd)return;
@@ -2131,9 +2153,12 @@ function LI(){
     var root=$("li-section");
 
     // Integration Center — the LIVE available_providers catalogue (CoreSwift pinned first)
-    var ic_div=El("div",{"class":"cc"},'<h3>Integration Center</h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Connect FunnelSwift to the tools you already use. When CoreSwift CRM is connected, every captured funnel opt-in lands there as a contact.</p><div class="grd" id="li-ic-grd"></div>');
+    var ic_div=El("div",{"class":"cc"},'<h3>Integration Center</h3><p style="color:#64748b;font-size:13px;margin-bottom:10px">Connect FunnelSwift to the tools you already use. When CoreSwift CRM is connected, every captured funnel opt-in lands there as a contact.</p><div id="li-ic-msg" style="display:none"></div><div class="grd" id="li-ic-grd"></div>');
     root.appendChild(ic_div);
     LIC();
+    // Re-apply the last integration outcome: LI() rebuilds this whole section, so a message written
+    // just before the reload would otherwise be erased with the old markup.
+    if(_icLastMsg)ICMSG(_icLastMsg.text,_icLastMsg.ok);
 
     // Affiliate Products
     var ap_div=El("div",{"class":"cc"},'<h3>Affiliate Products</h3><div class="grd" id="li-ap-grd"></div>');
