@@ -2691,6 +2691,20 @@ function openTagGroupModal(id) {
   }, 100);
 }
 
+// A workspace owner address that NO customer can hold — the fleet's probe badge. Two arms:
+//  * the reserved TLDs (RFC 2606/6761: .invalid/.example/.test/.local, plus example.com/.net/.org);
+//  * the fleet's OWN machine-minted probe domains, which are not reserved TLDs and so were invisible
+//    to the first cut of this badge. The nightly tenancy canary keys its fixtures at
+//    `probe-canary-a@swiftsoftware.dev` (reverse-tested by `fleet/canary-identity-restore.py`), so
+//    the two `Tenancy Canary A/B` workspaces sat in the operator's Tenants list looking like
+//    unrecognised signups — the exact question kanban t_a055baf8 asks.
+// `swiftsoftware.com` is deliberately NOT here: it is a real, routable domain and the operator's own.
+const RESERVED_ADDR_RE = /@(?:[^@]*\.)?(?:invalid|example|test|local)$|@(?:[^@]*\.)?example\.(?:com|net|org)$/i;
+const FLEET_PROBE_ADDR_RE = /@(?:[^@]*\.)?(?:swiftsoftware\.(?:dev|local)|sw\.dev)$|@local\.(?:funnelswift|coreswift|adaswift|incentiveswift|workflowswift|missedcallrespondr|multidirectory)$/i;
+function isProbeAddress(addr) {
+  const a = String(addr || '');
+  return RESERVED_ADDR_RE.test(a) || FLEET_PROBE_ADDR_RE.test(a);
+}
 // ── TENANTS (Super Admin only) ──
 async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
@@ -2709,7 +2723,7 @@ async function renderTenants() {
       <tbody>${items.map(t=>`<tr>
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014';const dom=oe.split('@')[1]||'';const probe=/(^|\.)(invalid|example|test|local)$/i.test(dom);return x(oe)+(probe?' <span class="badge badge-yellow" title="a reserved address - a fleet probe, not a customer">probe</span>':'');})()}</td>
+        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014';return x(oe)+(isProbeAddress(oe)?' <span class="badge badge-yellow" title="a reserved address - a fleet probe, not a customer">probe</span>':'');})()}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td><span class="badge badge-blue">${x(t.plan_name||t.plan_slug||'Free')}</span></td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
