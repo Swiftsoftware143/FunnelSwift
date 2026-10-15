@@ -2081,6 +2081,18 @@ var _icLastMsg=null;
 // live 2026-10-15: "Upgrade Required — coreswift key saved, but the connection test failed … View
 // Plans & Upgrade"). An integration result is not a plan gate: it belongs inline, above the cards.
 // KCUP stays exactly as it is for the genuine gates (402, premium templates, plan limits).
+/* A hub URL that resolves to the app's OWN server — loopback, a container name, or RFC1918 —
+   is the fleet's internal push target (it comes from the app's CORESWIFT_URL env, whose default
+   is http://localhost:8084). Printing one at a customer names an address their browser can never
+   reach and that they do not own: measured live 2026-10-15, the Integration Center read
+   "Inbound: funnel opt-ins → http://localhost:8084 — no key stored". Mask it and name the
+   destination in words; an address the customer typed themselves (their own CoreSwift host in the
+   Base URL box) is not loopback and still prints, so nothing they configured is hidden. */
+function ICAddr(u){
+  u=String(u==null?"":u).trim();
+  if(!u)return "";
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|host\.docker\.internal|[A-Za-z0-9_-]+\.internal|10\.[0-9]|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/i.test(u)?"":u;
+}
 function ICMSG(text, ok){
   _icLastMsg={text:text, ok:!!ok};
   var m=$("li-ic-msg"); if(!m)return;
@@ -2107,7 +2119,7 @@ function ICC(p){ /* Connect = store the tenant BYOK key */
 }
 function ICT(p){ /* Test connection — live provider probe */
   api("/api/v1/provider-keys/"+encodeURIComponent(p)+"/test",{method:"POST",body:"{}"}).then(function(r){
-    var msg=(r.valid?"PASS — ":"FAIL — ")+(r.detail||"")+(r.base_url?"  ("+r.base_url+")":"");
+    var msg=(r.valid?"PASS — ":"FAIL — ")+(r.detail||"")+(ICAddr(r.base_url)?"  ("+r.base_url+")":"");
     O("Test connection — "+p,function(){
       $("mb").innerHTML='<p style="font-size:13px">'+X(msg)+'</p>';
       $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
@@ -2207,7 +2219,7 @@ function LIC(){
   });
   api("/api/v1/integrations/coreswift/status").then(function(s){
     var el=$("li-cs-status");
-    if(el) el.innerHTML="Inbound: funnel opt-ins → "+X(s.base_url||"")+" — "+(s.connected?"key stored":"no key stored");
+    if(el) el.innerHTML="Inbound: funnel opt-ins → "+(ICAddr(s.base_url)?X(s.base_url):"your CoreSwift CRM")+" — "+(s.connected?"key stored":"no key stored");
   }).catch(function(e){
     var el=$("li-cs-status"); if(el) el.innerHTML="CoreSwift status unavailable: "+X(e.message||"");
   });
