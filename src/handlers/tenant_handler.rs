@@ -92,6 +92,11 @@ pub async fn list_tenants(
     // `.unwrap_or_default()` — every caller silently received `[]` (126 rows in the DB, empty
     // list in the UI). `email` exists since migration 052 and `status` since 053 (both written by
     // the served admin screen), and the plan comes from the newest active subscription row.
+    // `owner_email` (added 2026-10-15) is the WORKSPACE'S OWNER as the list has to show it: the
+    // `tenants.email` column above is NULL for every workspace a signup created (measured live:
+    // 11 of 13 rows), so the operator's Tenants list could not tell one "My Workspace" from
+    // another — the identity lives in `users`, not in `tenants`. It is read here, per row, and
+    // falls back to NULL only when the workspace has no user row at all.
     let rows = sqlx::query_as::<
         _,
         (
@@ -104,10 +109,15 @@ pub async fn list_tenants(
             Option<String>,
             String,
             i64,
+            Option<String>,
         ),
     >(
         r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status,
-                  (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count
+                  (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count,
+                  (SELECT u.email FROM users u WHERE u.tenant_id = t.id
+                   ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
+                            u.created_at ASC
+                   LIMIT 1) AS owner_email
            FROM tenants t
            LEFT JOIN LATERAL (
                SELECT plan_id FROM tenant_plan_subscriptions s
@@ -125,7 +135,7 @@ pub async fn list_tenants(
             json!({
                 "id": r.0, "name": r.1, "slug": r.2, "created_at": r.3,
                 "plan_name": r.4, "plan_slug": r.5, "plan": r.4, "status": r.7,
-                "email": r.6, "user_count": r.8
+                "email": r.6, "user_count": r.8, "owner_email": r.9
             })
         })
         .collect();
