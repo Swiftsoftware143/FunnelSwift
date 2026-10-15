@@ -51,6 +51,17 @@ pub enum AppError {
     Unauthorized(String),
     #[error("Upgrade required: {0}")]
     UpgradeRequired(String),
+
+    /// 424 — the PROVIDER was reached and refused (or could not be reached).
+    ///
+    /// WHY 424 AND NOT 500: `GET /api/v1/integrations/coreswift/lists` mapped a rejected stored key
+    /// onto [`AppError::Internal`], whose arm LOGS the reason and answers the caller a bare
+    /// "Internal server error" — so a tenant could not tell a rejected key from a wrong base URL from
+    /// a CoreSwift outage, and a 5xx says OUR server broke. 424 Failed Dependency carries the
+    /// provider's own words, and being a 4xx it passes through Cloudflare verbatim (CF REPLACES an
+    /// origin 502/504 body with its own page — measured 2026-10-02 on this fleet, MissedCall).
+    #[error("Upstream refused: {0}")]
+    UpstreamRefused(String),
     /// Received and understood, but nothing could be done with it (no side effect happened).
     #[error("Unprocessable: {0}")]
     UnprocessableEntity(String),
@@ -107,6 +118,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::UpgradeRequired(msg) => (StatusCode::PAYMENT_REQUIRED, msg),
             AppError::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
+            AppError::UpstreamRefused(msg) => (StatusCode::FAILED_DEPENDENCY, msg),
         };
 
         let body = Json(json!({

@@ -64,9 +64,12 @@ pub async fn coreswift_lists(
         .map_err(AppError::Internal)?
         .ok_or_else(|| AppError::BadRequest("CoreSwift is not connected".into()))?;
 
+    // 424, not 500: CoreSwift was reached and refused (or could not be reached). This used to be
+    // `Internal`, whose arm discards the reason — so the tenant's Integration Center showed a 5xx
+    // with no cause. The reason now reaches the caller in CoreSwift's own words.
     let lists = coreswift::hub_lists(&conn)
         .await
-        .map_err(AppError::Internal)?;
+        .map_err(AppError::UpstreamRefused)?;
     Ok(Json(json!({
         "provider": "coreswift",
         "base_url": conn.base_url,
@@ -137,9 +140,11 @@ pub async fn coreswift_push(
         fields,
     };
 
+    // Same class as `coreswift_lists`: the hub was reached and refused, so the push reports the
+    // provider's own reason behind a 424 rather than a bare 500.
     let pushed = coreswift::push_lead_to_coreswift(&state.pool, tenant_id, lead)
         .await
-        .map_err(AppError::Internal)?;
+        .map_err(AppError::UpstreamRefused)?;
 
     Ok(Json(json!({
         "provider": "coreswift",
