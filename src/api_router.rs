@@ -8,8 +8,8 @@ use tower_http::trace::TraceLayer;
 use askama::Template;
 
 use crate::auth::handlers::{
-    change_password, forgot_password, get_avatar, get_usage, login, me, register, reset_password,
-    update_profile, upload_avatar,
+    change_password, delete_avatar, forgot_password, get_avatar, get_usage, login, me, register,
+    reset_password, update_profile, upload_avatar,
 };
 use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
@@ -177,9 +177,13 @@ pub fn create_router(
         // Profile picture (kanban t_ff948669). The upload is bounded a little above the handler's own
         // 2 MB ceiling so an oversized body is refused before it is buffered; the GET is public by
         // design — an `<img src>` cannot carry a bearer token (see auth::route_policy::PUBLIC_ROUTES).
+        // The DELETE twin (added with the picture-removal gap) acts on the caller's OWN row, so it
+        // stays authenticated — the same split the email-branding logo pair uses.
         .route(
             "/api/v1/auth/avatar",
-            post(upload_avatar).layer(axum::extract::DefaultBodyLimit::max(IMAGE_BODY_LIMIT_BYTES)),
+            post(upload_avatar)
+                .delete(delete_avatar)
+                .layer(axum::extract::DefaultBodyLimit::max(IMAGE_BODY_LIMIT_BYTES)),
         )
         .route("/api/v1/auth/avatar/:user_id", get(get_avatar))
         // Tenant email branding (kanban t_c06a32eb): the logo the account puts on its transactional

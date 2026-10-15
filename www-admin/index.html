@@ -674,6 +674,7 @@ async function renderMyAccount() {
           <input type="file" id="fsac-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">
           <p style="font-size:11px;color:var(--muted);margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>
           <button class="btn btn-primary btn-sm" onclick="window._fsAvatarUpload()">Upload picture</button>
+          <button class="btn btn-sm" id="fsac-avdel" style="${av?'':'display:none'};margin-left:6px" onclick="window._fsAvatarRemove()">Remove picture</button>
           <span id="fsac-avmsg" style="font-size:12px;margin-left:8px"></span>
         </div>
       </div>
@@ -768,8 +769,13 @@ window._fsAvatarUpload = async function () {
     if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
     if (d.avatar_url) USER.avatar_url = d.avatar_url;
     const im = document.getElementById('fsac-av'), ph = document.getElementById('fsac-avph');
+    const del = document.getElementById('fsac-avdel');
     if (im && USER.avatar_url) { im.src = USER.avatar_url; im.style.display = ''; }
     if (ph) ph.style.display = 'none';
+    // The screen was painted when there was NO picture, so the Remove control came out hidden.
+    // Without this the operator had to leave the tab and come back before it appeared (measured in
+    // the browser: image visible, Remove still not offered right after an upload).
+    if (del) del.style.display = '';
     if (f) f.value = '';
     // Repaint the sidebar chip in place too — a full renderApp() here would rebuild the screen and
     // throw away the confirmation this very message is.
@@ -782,6 +788,26 @@ window._fsAvatarUpload = async function () {
     }
     fsMsg('fsac-avmsg', 'Picture updated', true);
   } catch (e) { fsMsg('fsac-avmsg', (e && e.message) || 'Upload failed', false); }
+};
+// The REMOVAL twin. The email-branding logo has had its own DELETE since it shipped, but the
+// profile picture could only ever be REPLACED: an operator who wanted their initials back had no
+// way to ask, because the upload upserts and no route deleted the row. An authenticated DELETE on
+// the caller's OWN picture (no path id to spoof). The button is shown only while a picture exists.
+window._fsAvatarRemove = async function () {
+  if (!USER.avatar_url) { fsMsg('fsac-avmsg', 'There is no picture to remove', false); return; }
+  if (!window.confirm('Remove your profile picture?')) return;
+  fsMsg('fsac-avmsg', 'Removing\u2026', null);
+  try {
+    const r = await fetch(API_BASE + '/auth/avatar', {
+      method: 'DELETE',
+      headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    USER.avatar_url = '';
+    showToast('Profile picture removed', 'success');
+    renderApp();
+  } catch (e) { fsMsg('fsac-avmsg', (e && e.message) || 'Remove failed', false); }
 };
 window._fsProfileSave = async function () {
   const nEl = document.getElementById('fsac-name'), cEl = document.getElementById('fsac-co');

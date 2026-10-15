@@ -3477,6 +3477,7 @@ function LPROF(){
     h+='<div><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
     h+='<p style="font-size:11px;color:#94a3b8;margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>';
     h+='<button class="btn btn-sm" onclick="UPF()">Upload picture</button>';
+    h+='<button class="btn btn-sm" id="pf-avdel" style="'+(av?"":"display:none;")+'margin-left:6px" onclick="RPF()">Remove picture</button>';
     h+='<span id="pf-avmsg" class="msg" style="margin:6px 0 0"></span></div></div></div>';
     /* details */
     h+='<div class="card" style="margin-bottom:14px"><h3>Your details</h3>';
@@ -3548,14 +3549,44 @@ function UPF(){
     })
     .then(function(d){
       if(d.avatar_url) U.avatar_url=d.avatar_url;
-      var im=$("pf-av"), ph=$("pf-avph");
+      var im=$("pf-av"), ph=$("pf-avph"), del=$("pf-avdel");
       if(im){ im.src=U.avatar_url; im.style.display="block"; }
       if(ph) ph.style.display="none";
+      // The Remove control is painted hidden when the screen loads with no picture; an upload makes
+      // one exist, so reveal it here rather than making the operator reopen the tab.
+      if(del) del.style.display="";
       if($("pf-file")) $("pf-file").value="";
       renderAvatar();
       pfMsg("pf-avmsg","Picture updated","ms");
     })
     .catch(function(e){ pfMsg("pf-avmsg",(e&&e.message)||"Upload failed","me"); });
+}
+/* The REMOVAL twin of UPF. Until this existed the picture could only ever be REPLACED (the upload
+   upserts), so an operator who wanted their initials back had no way to ask. The route is an
+   authenticated DELETE on the caller's OWN row, so nothing but the session decides whose picture
+   goes; the button is rendered only while a picture exists. */
+function RPF(){
+  if(!(U&&U.avatar_url)){ pfMsg("pf-avmsg","There is no picture to remove","me"); return; }
+  if(!window.confirm("Remove your profile picture?")) return;
+  pfMsg("pf-avmsg","Removing...","mi");
+  fetch("/api/v1/auth/avatar",{method:"DELETE",headers:{"Authorization":"Bearer "+T}})
+    .then(function(r){
+      return r.text().then(function(t){
+        var d=null; try{ d=JSON.parse(t); }catch(err){}
+        if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
+        return d||{};
+      });
+    })
+    .then(function(){
+      U.avatar_url="";
+      var im=$("pf-av"), ph=$("pf-avph"), del=$("pf-avdel");
+      if(im){ im.removeAttribute("src"); im.style.display="none"; }
+      if(ph){ ph.style.display="flex"; }
+      if(del) del.style.display="none";
+      renderAvatar();
+      pfMsg("pf-avmsg","Picture removed","ms");
+    })
+    .catch(function(e){ pfMsg("pf-avmsg",(e&&e.message)||"Remove failed","me"); });
 }
 
 /* === Email branding (kanban t_c06a32eb) =====================================================
