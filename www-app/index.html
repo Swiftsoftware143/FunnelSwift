@@ -226,6 +226,10 @@ tr:hover{background:#f8fafc}
 /* No inline onclick escaping — zero-bug approach */
 
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
+/* kanban cron-1016 — the workspace's own counts from GET /api/v1/me/usage, beside the plan
+   allowances the dashboard already renders. Declared with the shell so the dashboard's
+   paintPlan can repaint when either read lands. */
+var USG=null;
 /* The most bytes an image the two pickers accept may carry — the server's
    `image_store::MAX_IMAGE_BYTES` (2 MB minus a 64 KB multipart-framing reserve). Checking the SAME
    number is what makes the friendly message the one a customer sees: over it the handler refuses
@@ -702,12 +706,28 @@ function D(){
     h+='<div><h3 style="margin:0 0 2px">Your Plan</h3>';
     h+='<div style="font-size:20px;font-weight:800">'+X(pn)+'</div>';
     if(cp){
-      h+='<div style="color:#64748b;font-size:12px;margin-top:4px">Leads '+q(cp.max_leads)+' \u00b7 Cards '+q(cp.max_cards)+' \u00b7 Forms '+q(cp.max_forms)+' \u00b7 QR codes '+q(cp.max_qr_codes)+' \u00b7 Tags '+q(cp.max_tags)+' \u00b7 Domains '+q(cp.max_custom_domains)+'</div>';
+      /* kanban cron-1016 — GET /api/v1/me/usage answered this workspace's own live counts and had
+         NO caller on any served page (measured 2026-10-16, grep over every served root), while this
+         card already named the allowances. Each figure is now the server's own count beside the
+         allowance THIS plan row carries (`current_plan`), so what a tenant reads here and what the
+         gate compares come from one pair of reads. A counter with no usage endpoint (QR codes) keeps
+         its allowance alone, and an unread usage payload renders the allowance exactly as before. */
+      var pairs=[["Leads","max_leads","leads"],["Cards","max_cards","cards"],["Forms","max_forms","forms"],["QR codes","max_qr_codes",null],["Tags","max_tags","tags"],["Domains","max_custom_domains","domains"],["Team","max_team_members","team"]];
+      var bits=[];
+      for(var pi=0;pi<pairs.length;pi++){var lim=cp[pairs[pi][1]],uk=pairs[pi][2],uu=(uk&&USG&&USG[uk]!==undefined)?USG[uk]:null;
+        // A zero allowance is words, not "0/0": the plan does not grant the thing at all.
+        var limTxt=(lim===null||lim===undefined)?"\u221e":(lim===0?"not on this plan":String(lim));
+        var over=(uu!==null&&typeof lim==="number"&&lim>0&&uu>lim)?" \u26a0":"";
+        bits.push(X(pairs[pi][0])+" "+((uu===null)?limTxt:(uu+" / "+limTxt))+over);}
+      h+='<div style="color:#64748b;font-size:12px;margin-top:4px">'+bits.join(" \u00b7 ")+'</div>';
     }
     h+='</div><button class="btn" onclick="S(\'upgrade\')" style="padding:10px 16px">View plans &amp; upgrade</button></div>';
     pl.innerHTML=h;
   };
   if(U) paintPlan(U); else api("/api/v1/auth/me").then(function(u){ if(u&&!u.error){U=u; paintPlan(u);} });
+  // The usage half of the same strip: fetched on every dashboard load, and the card repaints when
+  // it lands (paintPlan guards on the node still being attached, so a tab switch is safe).
+  api("/api/v1/me/usage").then(function(d){ if(d&&!d.error){USG=d; paintPlan(U);} });
   // kanban t_a493e3f2: this loader paints two of its OWN panels from async callbacks, and S(<tab>)
   // replaces #ct wholesale — a tab switch between the request and its callback detaches #sr/#da, so a
   // late response ran $("sr").innerHTML=h on null and threw an UNCAUGHT TypeError inside the page.
