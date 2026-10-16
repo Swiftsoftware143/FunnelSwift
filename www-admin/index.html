@@ -372,7 +372,24 @@ async function loadUser() {
   } catch(e) { USER = null; TOKEN = ''; localStorage.removeItem('ws_fs_token'); }
 }
 
-function doLogout() { TOKEN = ''; USER = null; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; }
+// A logout ends EVERY session this console holds. _impersonate() parks the operator's OWN token
+// under `ws_fs_original_token` so their session can be restored, and the sign-in screen renders a
+// banner button that does exactly that — so logging out WHILE impersonating used to leave the
+// operator signed in one click away: measured in real Chromium on admin.funnelswift.net (kanban
+// t_559c9a48), the logout landed on the sign-in screen, the banner was still there, its "Stop
+// impersonating" button answered /api/v1/auth/me 200 role=admin, and the operator's live token was
+// still in browser storage after signing out. Drop the parked token and the banner with the active
+// one. No server call is owed: the impersonation session is a stateless JWT, so ending it IS
+// discarding it (see admin_handler::stop_impersonation) — and that token is `ws_fs_token`.
+function doLogout() {
+  TOKEN = '';
+  USER = null;
+  localStorage.removeItem('ws_fs_token');
+  localStorage.removeItem(IMP_ORIGINAL_KEY);
+  const b = document.getElementById('imp-banner');
+  if (b) b.remove();
+  window.location.href = '/login';
+}
 
 const IMP_ORIGINAL_KEY = 'ws_fs_original_token';
 
