@@ -1,3 +1,9 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Signing out…</title><meta http-equiv="refresh" content="1;url=/login"></head>
-<body><script>localStorage.removeItem('ws_fs_token');</script>Signing out...</body></html>
+<body><script>/* A sign-out ends EVERY session this console holds. The tenant console's "Login As" control
+   (impersonateTenant() in index.html) parks the OPERATOR's own token under localStorage
+   ws_fs_original_token and swaps ws_fs_token for the tenant's, so clearing only ws_fs_token left a
+   live operator credential in the browser after the tenant signed out — measured live on
+   app.funnelswift.net (kanban t_559c9a48: after /logout.html, ws_fs_original_token length 27). */
+localStorage.removeItem('ws_fs_token');
+localStorage.removeItem('ws_fs_original_token');</script>Signing out...</body></html>
