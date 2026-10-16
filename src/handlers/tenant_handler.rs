@@ -38,6 +38,36 @@ fn parse_status(raw: &str) -> AppResult<&'static str> {
 /// `role == "admin"`, and the Tenants screen that writes `status` is admin-gated.
 pub const PLATFORM_ADMIN_ROLE: &str = "admin";
 
+/// The ONE user-visible sentence for "the session's workspace row is gone". Byte-identical to the
+/// refusal `crate::auth::global_auth` answers a non-admin session with, so a client (and the SPA)
+/// matches on one string wherever it reads one.
+pub const WORKSPACE_GONE: &str = "Workspace no longer exists";
+
+/// Refuse a WRITE whose row would reference a workspace that no longer exists, BEFORE the INSERT.
+///
+/// The PLATFORM ADMIN role is deliberately EXEMPT from `global_auth`'s workspace-existence gate (so a
+/// mis-ticked workspace can always be switched back — that gate's own comment). An admin session can
+/// therefore reach a handler whose INSERT carries a `tenant_id` that no longer resolves, and Postgres
+/// answers the foreign-key violation as `500 {"error":"Database error"}` while nothing is written —
+/// measured live 2026-10-15 on `payment_providers` and on `funnels`, both FK'd to `tenants(id)`; the
+/// same request on a `user` token answered `403 {"error":"Workspace no longer exists"}`.
+///
+/// Every writer whose row carries the session's workspace id calls this first, so the caller learns
+/// the write was refused (and why) instead of reading a server error over a silent no-op. It is also
+/// where an UNPARSEABLE `tenant_id` claim stops: `unwrap_or_default()` used to turn it into the nil
+/// UUID and let the write reach Postgres.
+pub async fn require_existing_workspace(
+    pool: &sqlx::PgPool,
+    claimed_tenant_id: &str,
+) -> AppResult<Uuid> {
+    let tenant_id = Uuid::parse_str(claimed_tenant_id.trim())
+        .map_err(|_| AppError::Forbidden(WORKSPACE_GONE.to_string()))?;
+    if tenant_status_for(pool, tenant_id).await?.is_none() {
+        return Err(AppError::Forbidden(WORKSPACE_GONE.to_string()));
+    }
+    Ok(tenant_id)
+}
+
 /// The ONE enforcement reader of `tenants.status` (t_af890bbf). Every gate in the app reads the
 /// flag through this function so the "what does inactive mean" answer has a single home.
 ///

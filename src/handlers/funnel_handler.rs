@@ -34,7 +34,15 @@ pub async fn create_funnel(
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let id = Uuid::new_v4();
     let name = payload["name"].as_str().unwrap_or("New Funnel");
-    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // `funnels.tenant_id` REFERENCES `tenants(id)`. The reads above may take the nil-UUID fallback
+    // (they return no rows), but a CREATE must not: an admin session whose workspace row is gone is
+    // exempt from `global_auth`'s existence gate, so the INSERT used to answer the foreign-key
+    // violation as `500 {"error":"Database error"}` and write nothing — measured live 2026-10-15
+    // (`POST /api/v1/funnels` on an admin token for a deleted workspace: 500; the same request on a
+    // `user` token: 403 "Workspace no longer exists"). Refuse before the write.
+    let tenant_id =
+        crate::handlers::tenant_handler::require_existing_workspace(&state.pool, &auth.tenant_id)
+            .await?;
     sqlx::query("INSERT INTO funnels (id, tenant_id, name, slug) VALUES ($1, $2, $3, $4)")
         .bind(id)
         .bind(tenant_id)

@@ -13,12 +13,6 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
-/// The ONE user-visible sentence for "the session's workspace row is gone", kept byte-identical to
-/// `crate::auth::global_auth`'s non-admin refusal so the SPA, the login page and every gate match on
-/// one string. An unparseable `tenant_id` claim and a deleted workspace both answer this, before any
-/// write can hit the `payment_providers_tenant_id_fkey` constraint.
-pub const WORKSPACE_GONE: &str = "Workspace no longer exists";
-
 pub async fn list_payment_providers(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -85,24 +79,14 @@ pub async fn upsert_payment_provider(
         .unwrap_or("")
         .trim()
         .to_string();
-    let tenant_id = Uuid::parse_str(&auth.tenant_id)
-        .map_err(|_| AppError::Forbidden(WORKSPACE_GONE.to_string()))?;
-    // `payment_providers.tenant_id` REFERENCES `tenants(id)`, and the PLATFORM ADMIN role is
-    // deliberately exempt from `global_auth`'s workspace-existence gate (so a mis-ticked workspace
-    // can always be switched back — that gate's own comment). This upsert is the only writer the
-    // operator's Provider Keys screen drives, so an admin session whose workspace id no longer
-    // resolves used to reach the INSERT and answer the raw foreign-key violation as a bare
-    // `500 {"error":"Database error"}` WHILE WRITING NOTHING — measured live 2026-10-15: an admin
-    // token for a deleted workspace and one carrying the nil UUID both answered exactly that, against
-    // `403 {"error":"Workspace no longer exists"}` from the same tenant on a `user` token. Refuse
-    // BEFORE the write, in the auth gate's own words, so the operator learns the key was not saved
-    // instead of reading a server error.
-    if crate::handlers::tenant_handler::tenant_status_for(&state.pool, tenant_id)
-        .await?
-        .is_none()
-    {
-        return Err(AppError::Forbidden(WORKSPACE_GONE.to_string()));
-    }
+    // `payment_providers.tenant_id` REFERENCES `tenants(id)`. This upsert is the only writer the
+    // operator's Provider Keys screen drives, and that screen runs on the PLATFORM ADMIN role, which
+    // is exempt from `global_auth`'s workspace-existence gate — so the workspace has to be checked
+    // HERE, before the INSERT can reach the constraint (`tenant_handler::require_existing_workspace`
+    // carries the measurement and the wording).
+    let tenant_id =
+        crate::handlers::tenant_handler::require_existing_workspace(&state.pool, &auth.tenant_id)
+            .await?;
     let stored_api_key = if api_key.is_empty() {
         String::new()
     } else {
