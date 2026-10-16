@@ -143,7 +143,7 @@ async function api(path, opts={}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers||{}) };
   if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
   const res = await fetch(API_BASE + path, { ...opts, headers });
-  if (res.status === 401) { TOKEN = ''; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; throw new Error('auth'); }
+  if (res.status === 401) { clearSession(); window.location.href = '/login'; throw new Error('auth'); }
   if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error', false); throw new Error('402'); }
   if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); throw new Error(e.error||e.message||'Error '+res.status); }
   const text = await res.text();
@@ -369,29 +369,39 @@ async function loadUser() {
     // it carries no plan id and no slug, so bind the plan from the field the endpoint really returns
     // instead of re-fetching a row that cannot be addressed (kanban t_c284c098).
     USER = { ...me, planObj: me.current_plan || null };
-  } catch(e) { USER = null; TOKEN = ''; localStorage.removeItem('ws_fs_token'); }
+  } catch(e) { clearSession(); }
 }
 
-// A logout ends EVERY session this console holds. _impersonate() parks the operator's OWN token
+const IMP_ORIGINAL_KEY = 'ws_fs_original_token';
+
+// ONE place that ends a session in this console. A session that leaves without the parked
+// impersonation token is how the sign-in screen's banner button put the operator straight back in
+// (kanban t_559c9a48), so EVERY path that drops the session — the Logout control, a request
+// answered 401, and a failed /auth/me — drops both together.
+function clearSession() {
+  TOKEN = '';
+  USER = null;
+  try {
+    localStorage.removeItem('ws_fs_token');
+    localStorage.removeItem(IMP_ORIGINAL_KEY);
+  } catch (e) {}
+  const b = document.getElementById('imp-banner');
+  if (b) b.remove();
+}
+
+// Logging out ends EVERY session this console holds. _impersonate() parks the operator's OWN token
 // under `ws_fs_original_token` so their session can be restored, and the sign-in screen renders a
 // banner button that does exactly that — so logging out WHILE impersonating used to leave the
 // operator signed in one click away: measured in real Chromium on admin.funnelswift.net (kanban
 // t_559c9a48), the logout landed on the sign-in screen, the banner was still there, its "Stop
 // impersonating" button answered /api/v1/auth/me 200 role=admin, and the operator's live token was
-// still in browser storage after signing out. Drop the parked token and the banner with the active
-// one. No server call is owed: the impersonation session is a stateless JWT, so ending it IS
-// discarding it (see admin_handler::stop_impersonation) — and that token is `ws_fs_token`.
+// still in browser storage after signing out. No server call is owed: the impersonation session is
+// a stateless JWT, so ending it IS discarding it (see admin_handler::stop_impersonation) — and that
+// token is `ws_fs_token`, the active one this console already drops.
 function doLogout() {
-  TOKEN = '';
-  USER = null;
-  localStorage.removeItem('ws_fs_token');
-  localStorage.removeItem(IMP_ORIGINAL_KEY);
-  const b = document.getElementById('imp-banner');
-  if (b) b.remove();
+  clearSession();
   window.location.href = '/login';
 }
-
-const IMP_ORIGINAL_KEY = 'ws_fs_original_token';
 
 // ── Init ──
 (async function init() {
@@ -3043,7 +3053,7 @@ async function uploadBrandLogo() {
       headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {},
       body: fd
     });
-    if (res.status === 401) { TOKEN = ''; localStorage.removeItem('ws_fs_token'); window.location.href = '/login'; return; }
+    if (res.status === 401) { clearSession(); window.location.href = '/login'; return; }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
     showToast('Logo uploaded', 'success');
