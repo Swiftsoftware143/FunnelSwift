@@ -412,12 +412,14 @@ fn get_inline(
         }
         "password_reset" => {
             let subject = "Password Reset Request".to_string();
-            // The customer must be TOLD where to enter the code. The reset mail used to hand over a
-            // 36-character UUID with no destination at all, so a person who had forgotten their
-            // password had to guess that the reset form hides behind the login screen's
-            // "Forgot password?" link (fixed 2026-10-13, cron `default`).
+            // The customer must be TOLD where to enter the code — and in this app the ONLY route to
+            // the code field is the login page's "Forgot password?" -> "Send reset code" button,
+            // which marks the code in the mail as `used` (src/auth/handlers.rs, forgot_password).
+            // The link therefore carries the code to the view that accepts it, so no second code is
+            // ever needed (fixed 2026-10-13, cron `default`; link made into a one-click deep link
+            // 2026-10-16, cron `default`, mirroring IncentiveSwift/WorkflowSwift).
             let text = format!(
-                "Hi {0},\n\nWe received a request to reset your password for FunnelSwift.\n\nYour reset code is: {1}\n\nOpen {2}/login and click \"Forgot password?\", then enter the code above to choose a new password.\n\nThis code expires in 1 hour.\n\nIf you did not request this, please ignore this email.\n\n- FunnelSwift Team",
+                "Hi {0},\n\nWe received a request to reset the password on your FunnelSwift account.\n\nYour reset code is:\n\n{1}\n\nOpen {2}/login?token={1} to choose a new password - the code is filled in for you. If that link does not open the form, open {2}/login and paste the code above.\n\nThis code expires in 1 hour, so use it soon.\n\nIf you didn't ask for a password reset, you don't need to do anything - your password stays the same and no changes have been made to your account.\n\n- The FunnelSwift Team",
                 name, token, app_url
             );
             (subject, Some(text), None)

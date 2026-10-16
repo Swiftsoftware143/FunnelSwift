@@ -130,6 +130,23 @@ document.getElementById("e").focus();
 })
 .catch(function(err){m.className="msg e";m.textContent=err.message;b.disabled=false});
 }
+/* A reset link from the password_reset email arrives as /login?token=<code> (kanban cron `default`,
+   2026-10-16). Open the code view directly with the code filled in: without this the customer's only
+   route to the code field is "Send reset code", which mints a NEW token and marks the one in the mail
+   they were reading as used -- so the code they had stopped working. No query param -> nothing
+   changes on the ordinary sign-in path. */
+(function(){
+var q=new URLSearchParams(window.location.search);
+var t=q.get("token")||"";
+if(!t&&q.get("reset")!=="1"){return;}
+document.getElementById("v-li").style.display="none";
+document.getElementById("v-fp").style.display="none";
+document.getElementById("v-rs").style.display="block";
+if(t){document.getElementById("rc").value=t;}
+var m=document.getElementById("rm");
+if(m){m.className="msg i";m.textContent="Choose a new password to finish resetting your account.";}
+document.getElementById("rpw").focus();
+})();
 </script>
 </body>
 </html>
