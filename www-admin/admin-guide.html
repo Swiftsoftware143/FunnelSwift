@@ -549,6 +549,12 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <strong>Missing</strong> rather than looking complete. Payments are only ever believed when they
         arrive signed; a forged or replayed notification changes nothing. Leaving either field blank when
         you save keeps the value already stored, so you can correct one without re-pasting the other.</p>
+        <p>Before you rely on a key, press <strong>Test key</strong> beside the Save button: it asks
+        Stripe directly whether the key in the box works and answers in Stripe's own words, and it saves
+        nothing. Every saved provider row also carries a <strong>Test stored key</strong> button. The
+        answer says whether the key is a <em>live</em> key or a <em>test-mode</em> key as well, because a
+        test-mode key is accepted by Stripe and will still never charge anybody — that is the mistake
+        this button exists to catch before a customer finds it for you.</p>
         <p>What happens on a real payment: the customer's plan changes, <strong>the day is recorded</strong>,
         and the affiliate who referred them is credited on that same date &mdash; visible on both this
         console's Affiliate Leads screen and the affiliate's own dashboard. If the subscription later ends,
