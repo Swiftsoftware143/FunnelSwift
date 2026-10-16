@@ -18,10 +18,10 @@ use crate::handlers::{
     affiliate_tracking_handler, branding_handler, bulk_handler, campaigns_handler,
     checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
     dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
-    insight_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler, ocr,
-    plan_handler, portfolio_handler, product_category_handler, provider_keys_handler,
-    public_signup_handler, qr_handler, seo_handler, settings_handler, site_handler,
-    site_settings_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    insight_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
+    mobile_notify_handler, ocr, plan_handler, portfolio_handler, product_category_handler,
+    provider_keys_handler, public_signup_handler, qr_handler, seo_handler, settings_handler,
+    site_handler, site_settings_handler, tag_group_handler, tag_handler, tag_rule_handler,
     template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
     workflowswift_push,
 };
@@ -987,6 +987,13 @@ pub fn create_router(
         .route(
             "/api/v1/web-to-lead",
             post(web_to_lead_handler::handle_web_to_lead),
+        )
+        // The /download-app page's iOS "Notify me" form. Anonymous by design (the visitor has no
+        // account), so the path is on `auth::route_policy::PUBLIC_ROUTES`; the write has no tenant
+        // column and the handler caps every field it accepts.
+        .route(
+            "/api/v1/mobile-notify",
+            post(mobile_notify_handler::notify_mobile_interest),
         )
         // Cross-app push routes
         // NOTE: the CoreSwift LEAD push below is the canonical BYOK handler in

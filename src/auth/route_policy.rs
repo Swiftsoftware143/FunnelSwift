@@ -12,14 +12,14 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-11, from `api_router.rs` source)
+//! # The census (re-measured 2026-10-16, from `api_router.rs` source)
 //!
-//! 195 `.route(..)` mounts / 194 unique paths, classified three ways:
+//! 196 `.route(..)` mounts / 195 unique paths, classified three ways:
 //!
 //! ```text
-//!   170 mounts  /api/**            169 unique after the duplicate `/api/v1/linkedin/auth`
+//!   171 mounts  /api/**            170 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     16        public            -> PUBLIC_ROUTES below (14 unique + the health pair)
+//!     17        public            -> PUBLIC_ROUTES below (15 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
 //!    151        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
@@ -184,6 +184,13 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // (`/api/v1/settings/branding/logo`) are deliberately NOT here: writing a logo is an
     // authenticated action against the caller's own tenant.
     "/api/v1/branding/logo/:tenant_id",
+    // --- mobile-app interest capture --------------------------------------------
+    // The marketing site's /download-app page asks an anonymous visitor for their email so they can
+    // be told when the iOS app ships. There is no account and no credential at that point: the ask
+    // IS the anonymous case, so the route is here by definition. Its write has no tenant column
+    // (the interest is in the product's own mobile app, not in a workspace) and the handler caps
+    // every field, which is what keeps an anonymous door from storing arbitrary text.
+    "/api/v1/mobile-notify",
 ];
 
 /// Internal (service-to-service) routes: reachable with the app's own shared key and nothing else.
@@ -297,15 +304,15 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 195 mounts, 170 of them on the API surface. If a route is
+    /// The census the module docs quote: 196 mounts, 171 of them on the API surface. If a route is
     /// added or removed the documented numbers move, so the doc gets re-read.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 195, "mounted route count moved");
+        assert_eq!(mounted.len(), 196, "mounted route count moved");
         assert_eq!(
-            api, 170,
+            api, 171,
             "/api/ mount count moved — update the census in the module docs"
         );
     }

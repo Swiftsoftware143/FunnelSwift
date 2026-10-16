@@ -32,6 +32,9 @@ pub mod kinetic_handler;
 pub mod lead_handler;
 pub mod linkedin;
 pub mod linkedin_auth_handler;
+// The mobile app's "notify me" capture (kanban: the /download-app page's dead iOS CTA). PUBLIC by
+// design — see its module docs and `auth::route_policy::PUBLIC_ROUTES`.
+pub mod mobile_notify_handler;
 pub mod ocr;
 pub mod plan_handler;
 // RETIRED (kanban t_dc418458): `pub mod plan_tag_handler;` — the only reader of

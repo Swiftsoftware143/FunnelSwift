@@ -47,6 +47,16 @@ h1{font-size:24px;font-weight:700;margin-bottom:6px}
 .dl-btn.gray{background:#374151;cursor:default}
 .dl-btn.gray:hover{background:#374151}
 .version{color:#64748B;font-size:12px;margin-top:10px}
+
+/* iOS "notify me" capture — the form the page used to promise and not provide */
+#ios-notify{display:flex;gap:8px;margin-top:12px}
+#ios-email{flex:1;min-width:0;background:#0f1117;border:1px solid #3b4761;color:#F1F5F9;border-radius:10px;padding:13px 14px;font-size:15px;font-family:inherit}
+#ios-email::placeholder{color:#64748B}
+#ios-email:focus{outline:none;border-color:#2563eb}
+#ios-notify button{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:13px 20px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;transition:background .2s}
+#ios-notify button:hover:not([disabled]){background:#1d4ed8}
+#ios-notify button[disabled]{opacity:.6;cursor:default}
+
 .features{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:24px;padding-top:24px;border-top:1px solid #2d3748}
 .feature{text-align:center}
 .feature .icon{font-size:24px;margin-bottom:4px}
@@ -98,9 +108,12 @@ h1{font-size:24px;font-weight:700;margin-bottom:6px}
 <div class="platform-box ios">
 <div class="platform-icon">🍎</div>
 <h3>iOS (iPhone / iPad)</h3>
-<p>We&rsquo;re building the native iOS app. Leave your email to get notified when it launches.</p>
-<a class="dl-btn gray">Coming Soon &mdash; Notify Me</a>
-<p class="version">TestFlight beta coming Q3 2026</p>
+<p>We&rsquo;re building the native iOS app. Leave your email and we&rsquo;ll let you know the moment it&rsquo;s ready.</p>
+<form id="ios-notify" novalidate>
+<input id="ios-email" type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Your email address" required>
+<button type="submit">Notify Me</button>
+</form>
+<p class="version" id="ios-note">TestFlight beta coming Q3 2026</p>
 </div>
 
 </div>
@@ -116,5 +129,59 @@ h1{font-size:24px;font-weight:700;margin-bottom:6px}
 <a class="back-link" href="https://funnelswift.net">&larr; Back to FunnelSwift</a>
 </div>
 </div>
+<script>
+// The iOS "Notify Me" capture. This page USED to promise "Leave your email to get notified" and then
+// render an anchor with no href, no field and no backend — a real click did nothing (measured
+// 2026-10-16). It now posts to the app's own public route POST /api/v1/mobile-notify, reached on the
+// SAME origin (`location /api/` on this vhost proxies to the backend), so no CORS dance is needed.
+(function () {
+  var form = document.getElementById('ios-notify');
+  if (!form) { return; }
+  var input = document.getElementById('ios-email');
+  var note = document.getElementById('ios-note');
+  var button = form.querySelector('button');
+  var base = note.textContent;
+
+  function say(text, colour) {
+    note.textContent = text;
+    note.style.color = colour;
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var email = (input.value || '').trim();
+    // Same shallow shape the server enforces, so the obvious typo is caught without a round trip.
+    if (email.indexOf('@') < 1 || email.indexOf('.', email.indexOf('@')) < 0) {
+      say('Please enter your email address.', '#f87171');
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Sending…';
+    say('Saving your email…', '#94A3B8');
+    fetch('/api/v1/mobile-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, platform: 'ios', source: 'download-app' })
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (body) {
+        return { ok: response.ok, body: body };
+      });
+    }).then(function (result) {
+      if (result.ok && result.body && result.body.ok) {
+        form.style.display = 'none';
+        say(result.body.message || 'Thanks — we will let you know when it is ready.', '#4ade80');
+        return;
+      }
+      button.disabled = false;
+      button.textContent = 'Notify Me';
+      say((result.body && result.body.error) || 'We could not save that — please try again.', '#f87171');
+    }).catch(function () {
+      button.disabled = false;
+      button.textContent = 'Notify Me';
+      say('We could not reach the server — please try again.', '#f87171');
+    });
+  });
+})();
+</script>
 </body>
 </html>
