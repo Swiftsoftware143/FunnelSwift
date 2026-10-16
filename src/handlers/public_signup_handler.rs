@@ -102,6 +102,17 @@ pub async fn public_signup(
     // the normalised value. A non-address is a 422 `{"error":"email: …"}` and nothing is written.
     let email =
         crate::security::email_addr::normalize(&email).map_err(AppError::UnprocessableEntity)?;
+    // ── VALIDATE THE WRITE ─────────────────────────────────────────────────────────────────────
+    // `tenants.name` is derived as `"<name>'s Workspace"` and `tenants.slug` as `"<name>-<8 hex>"`,
+    // and both columns are `varchar(255)` — so a 254-character name made the FIRST statement of the
+    // signup transaction the one the database refused. Measured live 2026-10-16: 200 characters
+    // created the account, 254 answered `500 {"error":"Database error"}` with no account and no hint
+    // that the name was the cause (the form carries no `maxlength`, so a pasted paragraph is an
+    // ordinary way to hit it). `name` is rebound here, so every later use — the workspace row, its
+    // slug, `users.name`, the credentials mail and the response — carries the validated value. Too
+    // long is a 422 and nothing is written.
+    let name =
+        crate::security::display_name::normalize(&name).map_err(AppError::UnprocessableEntity)?;
 
     // Check for duplicate email
     // `lower(email)` so a row stored before normalisation existed still counts as the same address.

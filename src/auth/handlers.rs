@@ -47,6 +47,22 @@ pub async fn register(
     // `{"error":"email: …"}` and nothing is written.
     let email = crate::security::email_addr::normalize(&req.email)
         .map_err(AppError::UnprocessableEntity)?;
+    // ── VALIDATE THE WRITE: name lengths ────────────────────────────────────────────────────────
+    // `users.name` and `tenants.name`/`tenants.slug` are `varchar(255)` and this writer had no
+    // length check, so a long name reached the INSERT and came back as a raw
+    // `500 {"error":"Database error"}` inside the signup transaction: the account was rolled back
+    // and the caller was told nothing useful. Measured live 2026-10-16 on the sibling public door
+    // (254 characters = 500, 200 = created); the same class applies here. Refused BEFORE the first
+    // write, as a 422 the console can read.
+    crate::security::display_name::normalize(&req.name).map_err(AppError::UnprocessableEntity)?;
+    if let Some(tenant_name) = req.tenant_name.as_deref() {
+        crate::security::display_name::check_len(
+            tenant_name,
+            crate::security::display_name::MAX_NAME_CHARS,
+            "tenant_name",
+        )
+        .map_err(AppError::UnprocessableEntity)?;
+    }
 
     // Check if email already exists. `lower(email)` so a row stored before normalisation existed
     // (mixed case) still counts as the same address.
@@ -398,6 +414,23 @@ pub async fn update_profile(
         if name.trim().is_empty() {
             return Err(AppError::BadRequest("Name cannot be empty".into()));
         }
+    }
+
+    // …and the storage limits (measured defect, 2026-10-16): `users.name`, `users.username` and
+    // `users.company` are all `varchar(255)`, so a long value reached the UPDATE and answered
+    // `500 {"error":"Internal server error"}` — the profile screen's own save failing after the user
+    // typed. Refused before the write, as a 422 naming the field. Empty stays legal for
+    // `username`/`company` (both are clearable), so only the length is checked for those.
+    if let Some(name) = req.name.as_deref() {
+        crate::security::display_name::normalize(name).map_err(AppError::UnprocessableEntity)?;
+    }
+    if let Some(username) = req.username.as_deref() {
+        crate::security::display_name::check_len(username, 255, "username")
+            .map_err(AppError::UnprocessableEntity)?;
+    }
+    if let Some(company) = req.company.as_deref() {
+        crate::security::display_name::check_len(company, 255, "company")
+            .map_err(AppError::UnprocessableEntity)?;
     }
 
     sqlx::query("UPDATE users SET name = COALESCE($1, name), username = COALESCE($2, username), company = COALESCE($3, company), updated_at = NOW() WHERE id::text = $4")

@@ -3606,8 +3606,8 @@ function LPROF(){
     h+='<span id="pf-avmsg" class="msg" style="margin:6px 0 0"></span></div></div></div>';
     /* details */
     h+='<div class="card" style="margin-bottom:14px"><h3>Your details</h3>';
-    h+='<div class="fld"><label>Name</label><input id="pf-name" value="'+X(nm)+'" placeholder="Your name"></div>';
-    h+='<div class="fld"><label>Company</label><input id="pf-co" value="'+X(co)+'" placeholder="Your company"></div>';
+    h+='<div class="fld"><label>Name</label><input id="pf-name" maxlength="243" value="'+X(nm)+'" placeholder="Your name"></div>';
+    h+='<div class="fld"><label>Company</label><input id="pf-co" maxlength="255" value="'+X(co)+'" placeholder="Your company"></div>';
     h+='<div class="fld"><label>Email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">Your sign-in address cannot be changed here.</p></div>';
     h+='<button class="btn" onclick="SPF()">Save</button><span id="pf-msg" class="msg" style="margin-left:8px"></span></div>';
     /* password: the new password, its confirmation, and the CURRENT password LAST as the check */

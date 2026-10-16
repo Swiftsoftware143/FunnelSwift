@@ -720,8 +720,8 @@ async function renderMyAccount() {
     <div class="card">
       <div class="card-header"><span class="card-title">✏️ Your details</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div class="form-label">Name</div><input class="input" id="fsac-name" value="${x(USER.name||'')}" placeholder="Your name"></div>
-        <div><div class="form-label">Company</div><input class="input" id="fsac-co" value="${x(USER.company||'')}" placeholder="Your company"></div>
+        <div><div class="form-label">Name</div><input class="input" id="fsac-name" maxlength="243" value="${x(USER.name||'')}" placeholder="Your name"></div>
+        <div><div class="form-label">Company</div><input class="input" id="fsac-co" maxlength="255" value="${x(USER.company||'')}" placeholder="Your company"></div>
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsProfileSave()">Save</button><span id="fsac-pmsg" style="font-size:12px;margin-left:8px"></span></div>
     </div>
