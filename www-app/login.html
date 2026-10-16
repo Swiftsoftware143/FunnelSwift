@@ -123,6 +123,11 @@ fetch("/api/v1/auth/reset-password",{method:"POST",headers:{"Content-Type":"appl
 .then(function(r){return r.json().catch(function(){return {}}).then(function(x){if(!r.ok)throw new Error(x.error||"Could not reset the password");return x})})
 .then(function(d){
 showLogin();
+/* Drop ?token=<code> from the address bar once it has been redeemed (2026-10-16, cron `default`).
+   The reset view stays open on a reload otherwise, holding a code the server has already marked
+   `used` - the customer pastes a new password into a form that can only answer "Invalid or expired
+   reset token". /login is the canonical path, so replaceState keeps a refresh on the sign-in screen. */
+try{if(window.location.search||window.location.hash){history.replaceState(null,"","/login");}}catch(ex){}
 var m2=document.getElementById("m");m2.className="msg i";
 m2.textContent=(d&&d.message)||"Password has been reset. You can sign in now.";
 document.getElementById("p").value="";
