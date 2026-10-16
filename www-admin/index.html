@@ -2698,9 +2698,12 @@ function openTagGroupModal(id) {
 //    `probe-canary-a@swiftsoftware.dev` (reverse-tested by `fleet/canary-identity-restore.py`), so
 //    the two `Tenancy Canary A/B` workspaces sat in the operator's Tenants list looking like
 //    unrecognised signups — the exact question kanban t_a055baf8 asks.
+//    `maxxspace.com` is the fleet's mail.tm probe inbox: the tag-provision probe mints its owner
+//    address there (`probe-arm…@maxxspace.com`, measured live in ADASwift 2026-10-16), and a probe
+//    row landing in THIS app reads as a customer until this arm is present (kanban t_8fa22773).
 // `swiftsoftware.com` is deliberately NOT here: it is a real, routable domain and the operator's own.
 const RESERVED_ADDR_RE = /@(?:[^@]*\.)?(?:invalid|example|test|local)$|@(?:[^@]*\.)?example\.(?:com|net|org)$/i;
-const FLEET_PROBE_ADDR_RE = /@(?:[^@]*\.)?(?:swiftsoftware\.(?:dev|local)|sw\.dev)$|@local\.(?:funnelswift|coreswift|adaswift|incentiveswift|workflowswift|missedcallrespondr|multidirectory)$/i;
+const FLEET_PROBE_ADDR_RE = /@(?:[^@]*\.)?(?:swiftsoftware\.(?:dev|local)|sw\.dev|maxxspace\.com)$|@local\.(?:funnelswift|coreswift|adaswift|incentiveswift|workflowswift|missedcallrespondr|multidirectory)$/i;
 function isProbeAddress(addr) {
   const a = String(addr || '');
   return RESERVED_ADDR_RE.test(a) || FLEET_PROBE_ADDR_RE.test(a);
