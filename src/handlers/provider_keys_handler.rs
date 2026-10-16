@@ -54,6 +54,11 @@ pub async fn list_provider_keys(
         out.push(json!({
             "provider": provider,
             "api_key_masked": mask(&plain),
+            // At-rest posture of the SAVED key (kanban t_d1fcda7e family). The mask above comes
+            // from the decrypted value and cannot tell a sealed row from a legacy plaintext one,
+            // so the panel needs these two measured off the ciphertext COLUMN itself.
+            "api_key_set": !api_key.trim().is_empty(),
+            "api_key_sealed": crate::security::provider_key_crypto::is_encrypted(api_key.trim()),
             "base_url": base_url,
             "is_active": is_active,
             "created_at": created_at,

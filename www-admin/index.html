@@ -2293,6 +2293,17 @@ function _rowField(row, name, idx) {
   return Array.isArray(row) ? row[idx] : undefined;
 }
 
+// At-rest posture of a SAVED credential (the rule CoreSwift's panel set, kanban t_d1fcda7e).
+// The API measures it off the ciphertext COLUMN through the same `is_encrypted` predicate the write
+// path seals with; this page prints it and never asserts it. Tri-state on purpose — a row the API did
+// not report prints "unknown", never "in the clear", because those are different claims.
+function _postureCell(set, sealed) {
+  if (!set) return '<span style="color:var(--muted)">\u2014</span>';
+  if (sealed === true) return '<span class="badge badge-green" data-posture="sealed" title="A copy of the database cannot yield the saved credential.">encrypted</span>';
+  if (sealed === false) return '<span class="badge badge-red" data-posture="plain" title="The saved credential is readable in the database as it stands \u2014 it arrived from a restored dump, a manual write or a rotation tool. Save it again from the form below and it is encrypted at rest.">in the clear</span>';
+  return '<span style="color:var(--muted)" data-posture="unknown" title="The API did not report the at-rest state of this row.">unknown</span>';
+}
+
 async function renderProviderKeys() {
   let keys = [], payments = [], catalog = [];
   try { keys = await api('/provider-keys'); } catch(e) { keys = []; }
@@ -2318,13 +2329,13 @@ async function renderProviderKeys() {
     <div class="card-header" style="padding:0;margin-bottom:8px">
       <h1 style="font-size:22px;font-weight:700">🔑 Provider Keys</h1>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Credentials for third-party providers (AI, email, SMS, payments) are stored per tenant in the database and read at call time — no provider is hardwired. Keys are shown masked.</p>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Credentials for third-party providers (AI, email, SMS, payments) are stored per tenant in the database and read at call time — no provider is hardwired. Keys are shown masked. The <strong>Encrypted</strong> column states the <strong>measured</strong> at-rest state of the saved copy: <strong>encrypted</strong> means a copy of the database cannot yield it, <strong>in the clear</strong> means it is readable as it stands (it arrived from a restored dump, a manual write or a rotation tool) — saving it again from the form below encrypts it.</p>
 
     <div class="card" style="margin-bottom:20px">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Provider credentials</h2>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>Provider</th><th>Base URL</th><th>Key</th><th>Added</th><th>Actions</th></tr></thead>
-        <tbody>${keys.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">No provider keys configured</td></tr>`
+        <thead><tr><th>Provider</th><th>Base URL</th><th>Key</th><th>Encrypted</th><th>Added</th><th>Actions</th></tr></thead>
+        <tbody>${keys.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No provider keys configured</td></tr>`
           : keys.map(k => {
             const prov = _rowField(k, 'provider', 0);
             const base = _rowField(k, 'base_url', 2);
@@ -2334,6 +2345,7 @@ async function renderProviderKeys() {
               <td><span class="badge badge-blue">${x(prov)}</span></td>
               <td><code style="font-size:11px">${x(base || '—')}</code></td>
               <td><code style="font-size:11px">${x(key || '—')}</code></td>
+              <td>${_postureCell(_rowField(k, 'api_key_set'), _rowField(k, 'api_key_sealed'))}</td>
               <td style="font-size:12px;color:var(--muted)">${x(created || '—')}</td>
               <td><button class="btn btn-danger btn-xs" onclick="window._deleteProviderKey('${x(prov)}')">Delete</button></td>
             </tr>`;
@@ -2365,9 +2377,10 @@ async function renderProviderKeys() {
 
     <div class="card">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:12px">Payment providers</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">The secret key and the webhook signing secret are never shown back in full, and the <strong>Encrypted</strong> column states whether the saved copy is encrypted at rest.</p>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>Provider</th><th>Key</th><th>Signing secret</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody>${payments.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px">No payment provider configured</td></tr>`
+        <thead><tr><th>Provider</th><th>Key</th><th>Signing secret</th><th>Encrypted</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${payments.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No payment provider configured</td></tr>`
           : payments.map(p => {
             const ptype = _rowField(p, 'provider_type', 2);
             const key = _rowField(p, 'api_key_masked', 3);
@@ -2379,6 +2392,7 @@ async function renderProviderKeys() {
               <td><span class="badge badge-blue">${x(ptype)}</span></td>
               <td><code style="font-size:11px">${x(key || '—')}</code></td>
               <td>${wh ? '<span class="badge badge-green">Set</span>' : '<span class="badge badge-red">Missing</span>'}</td>
+              <td style="font-size:11px;white-space:nowrap" data-pp-posture>key ${_postureCell(p && p.api_key_set, p && p.api_key_sealed)} webhook ${_postureCell(p && p.webhook_secret_set, p && p.webhook_secret_sealed)}</td>
               <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Inactive'}</span></td>
               <td><button class="btn btn-secondary btn-xs" onclick="window._testPaymentProvider('${x(ptype)}','')">Test stored key</button> <button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
             </tr>`;
@@ -4209,7 +4223,7 @@ window.appGuidePages = {
   "cardLocations": { title: "Location Tracking", desc: "Where your visitors are: unique visitors, how many countries the cards reached and a views-by-country breakdown, all from your own card traffic. Views by country are a paid-plan feature, so a workspace whose plan does not include analytics sees a plan-limit notice here instead of an empty report.", actions: ["See unique visitors and countries reached", "Read the views-by-country breakdown", "Upgrade the plan if this workspace does not include analytics"] },
   "cardUtmBuilder": { title: "UTM Builder", desc: "Put tracking parameters on a card's link so you can tell which channel brought each visitor. Pick a card, set its UTM source, medium, campaign, content and term, save them, then generate the tracked URL to share instead of the plain card link. Views of the tracked URL are what the Location and Analytics screens count.", actions: ["Pick the card to track", "Set the UTM parameters and save them", "Generate and copy the tracked URL"] },
   "webhooks": { title: "Webhooks", desc: "Outgoing notifications: when something happens here, we POST it to a URL you control. Useful for wiring FunnelSwift into another system.", actions: ["Add a webhook URL", "Choose the events it receives", "Review recent deliveries"] },
-  "providerKeys": { title: "Provider Keys", desc: "Your own API keys for the third-party services this app uses. Keys are stored encrypted and are never shown again in full.", actions: ["Save a provider key", "See which providers are connected", "Replace or remove a key"] },
+  "providerKeys": { title: "Provider Keys", desc: "Your own API keys for the third-party services this app uses. Keys are never shown again in full, and the Encrypted column states whether the saved copy is encrypted at rest \u2014 it is measured from the stored row, so the screen cannot claim encryption a database copy would contradict.", actions: ["Save a provider key", "See which providers are connected", "Replace or remove a key"] },
   "emailBranding": { title: "Email Branding", desc: "Put your own name, colour and logo on the transactional email sent for your account, instead of the default FunnelSwift header.", actions: ["Upload your logo", "Set your brand name and colour", "Preview how a mail will look"] },
   "siteSettings": { title: "Site Settings", desc: "Settings that apply to this workspace as a whole, including the door that lets a tag in another SwiftSoftware product provision a free account here.", actions: ["Turn tag-driven provisioning on or off", "Choose the free plan a provisioned account starts on"] },
   "tagRules": { title: "Tag Rules", desc: "Automation: when a lead gets a tag, do something. Used to chain FunnelSwift into the rest of the fleet without manual work. The Tag change log underneath lists every tag the app itself added to or removed from a lead, so you can see what ran and when.", actions: ["Create a rule", "Choose the trigger tag and the action", "Enable or disable a rule", "Review the tag change log to see what actually ran"] },

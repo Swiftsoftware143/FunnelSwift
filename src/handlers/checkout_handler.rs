@@ -30,9 +30,11 @@ pub async fn list_payment_providers(
         bool,
         chrono::DateTime<chrono::Utc>,
         bool,
+        String,
     )> = sqlx::query_as(
         "SELECT id, tenant_id, provider_type, COALESCE(api_key,''), is_active, created_at,
-                (webhook_secret IS NOT NULL AND webhook_secret <> '') AS has_webhook_secret
+                (webhook_secret IS NOT NULL AND webhook_secret <> '') AS has_webhook_secret,
+                COALESCE(webhook_secret,'')
            FROM payment_providers WHERE tenant_id = $1 ORDER BY created_at",
     )
     .bind(tenant_id)
@@ -42,7 +44,17 @@ pub async fn list_payment_providers(
     // the read-back is decrypted HERE and only a mask of the DECRYPTED value is returned. Before
     // kanban t_63840ff2 this endpoint put the raw secret key in the response body.
     let mut out: Vec<Value> = Vec::with_capacity(rows.len());
-    for (id, tenant_id, provider_type, stored, is_active, created_at, has_webhook_secret) in rows {
+    for (
+        id,
+        tenant_id,
+        provider_type,
+        stored,
+        is_active,
+        created_at,
+        has_webhook_secret,
+        stored_secret,
+    ) in rows
+    {
         let plain =
             crate::security::provider_key_crypto::decrypt_from_storage(&state.pool, stored.trim())
                 .await?;
@@ -51,10 +63,20 @@ pub async fn list_payment_providers(
             "tenant_id": tenant_id,
             "provider_type": provider_type,
             "api_key_masked": crate::security::provider_key_crypto::mask(&plain),
+            // At-rest posture of the SAVED credential (kanban t_d1fcda7e family). The mask above is
+            // computed from the DECRYPTED value, so it cannot tell a sealed row from a legacy
+            // plaintext one; this is measured off the ciphertext COLUMN through the SAME
+            // `is_encrypted` predicate the write path seals with. Every sibling app's Payment
+            // providers panel already reports it and this one did not.
+            "api_key_set": !stored.trim().is_empty(),
+            "api_key_sealed": crate::security::provider_key_crypto::is_encrypted(stored.trim()),
             // Whether a webhook signing secret is stored — never the secret itself. The receiver
             // cannot verify a single delivery without one, so a provider row missing it must SAY so
             // here rather than look complete.
             "webhook_secret_set": has_webhook_secret,
+            "webhook_secret_sealed": crate::security::provider_key_crypto::is_encrypted(
+                stored_secret.trim(),
+            ),
             "is_active": is_active,
             "created_at": created_at,
         }));
