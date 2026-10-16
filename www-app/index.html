@@ -1058,11 +1058,16 @@ function LC(){
     api("/api/v1/kinetic/cards"),
     api("/api/v1/kinetic/templates"),
     api("/api/v1/kinetic/themes"),
-    api("/api/v1/settings")
+    api("/api/v1/settings"),
+    /* Card activity: the SAME rollup the public card tracker writes (POST /card/:id/track). Its own
+       catch keeps a metrics hiccup from blanking the card list; the strip below renders whatever it
+       answers, so the number is read from the database and never asserted. */
+    api("/api/v1/kinetic/metrics").catch(function(){return {};})
   ]).then(function(r){
     KCB.cards=(r[0]&&r[0].cards)?r[0].cards:(Array.isArray(r[0])?r[0]:[]);
     KCB.templates=(r[1]&&r[1].templates)?r[1].templates:(Array.isArray(r[1])?r[1]:[]);
     KCB.themes=Array.isArray(r[2])?r[2]:[];
+    KCB.metrics=(r[4]&&typeof r[4]==="object")?r[4]:{};
     var s={}; r[3].forEach(function(x){s[x.key]=x.value;});
     KCB.subdomain=s.subdomain||""; KCB.custom_domain=s.custom_domain||"";
     LCR();
@@ -1074,7 +1079,21 @@ function LC(){
 
 function LCR(){
   var t=KCB.tab; // "my" or "tpl"
-  var h='<div class="cc"><div id="lc-tabs" style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #e2e8f0">';
+  /* Card activity for THIS workspace (GET /api/v1/kinetic/metrics): views and clicks summed from
+     kinetic_card_daily_stats, leads captured by a card. The route had no caller anywhere in the
+     console, so the activity the public tracker recorded was invisible to the operator. The strip
+     renders only what the API answered. */
+  var M=KCB.metrics||{};
+  var mh='';
+  if(typeof M.views==="number"||typeof M.clicks==="number"||typeof M.leads==="number"){
+    mh='<div id="lc-metrics" style="display:flex;gap:22px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">'
+      +'<span style="font-size:12px;font-weight:600;color:#64748b">Card activity</span>'
+      +'<span style="font-size:13px;color:#334155"><strong>'+X(String(M.views||0))+'</strong> views</span>'
+      +'<span style="font-size:13px;color:#334155"><strong>'+X(String(M.clicks||0))+'</strong> clicks</span>'
+      +'<span style="font-size:13px;color:#334155"><strong>'+X(String(M.leads||0))+'</strong> leads captured</span>'
+      +'</div>';
+  }
+  var h='<div class="cc">'+mh+'<div id="lc-tabs" style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #e2e8f0">';
   h+='<a id="lc-tab-my" class="lc-tab '+(t==="my"?"lc-tab-a":"")+'" href="#">My Cards ('+KCB.cards.length+')</a>';
   h+='<a id="lc-tab-tpl" class="lc-tab '+(t==="tpl"?"lc-tab-a":"")+'" href="#">Template Library ('+KCB.templates.length+')</a>';
   h+='</div><div id="lc-body"></div></div>';
