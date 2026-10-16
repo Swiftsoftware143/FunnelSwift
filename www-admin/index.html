@@ -2298,7 +2298,7 @@ function _rowField(row, name, idx) {
 // path seals with; this page prints it and never asserts it. Tri-state on purpose — a row the API did
 // not report prints "unknown", never "in the clear", because those are different claims.
 function _postureCell(set, sealed) {
-  if (!set) return '<span style="color:var(--muted)">\u2014</span>';
+  if (!set) return '<span style="color:var(--muted)" data-posture="none" title="Nothing is saved for this half yet.">\u2014</span>';
   if (sealed === true) return '<span class="badge badge-green" data-posture="sealed" title="A copy of the database cannot yield the saved credential.">encrypted</span>';
   if (sealed === false) return '<span class="badge badge-red" data-posture="plain" title="The saved credential is readable in the database as it stands \u2014 it arrived from a restored dump, a manual write or a rotation tool. Save it again from the form below and it is encrypted at rest.">in the clear</span>';
   return '<span style="color:var(--muted)" data-posture="unknown" title="The API did not report the at-rest state of this row.">unknown</span>';

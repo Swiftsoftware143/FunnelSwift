@@ -563,6 +563,27 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
+        <h3>Provider credentials &mdash; what the <strong>Encrypted</strong> column means</h3>
+        <p>The <strong>Provider Keys</strong> screen holds your own credentials for the third-party
+        services this app calls (today: CoreSwift CRM and IncentiveSwift), and the
+        <strong>Payment providers</strong> panel on the same screen holds your Stripe keys. Neither
+        panel ever shows a saved credential back in full &mdash; you get a mask, and the
+        <strong>Encrypted</strong> column beside it.</p>
+        <p>That column is <strong>measured, not claimed</strong>: it reports what the stored row
+        actually holds, read from the database. <strong>encrypted</strong> means a copy of the
+        database cannot yield a working key. <strong>in the clear</strong> means the row is readable
+        as it stands &mdash; it arrived from a restored backup, a hand-written query or a key-rotation
+        tool rather than from this panel &mdash; and saving that key again from the form below
+        encrypts it. A dash means nothing is saved for that half yet, and <strong>unknown</strong>
+        means the API did not report the row's state; it never means &ldquo;in the clear&rdquo;.</p>
+        <p>On this installation a plaintext credential cannot be saved at all: the database itself
+        refuses a row whose key is not enveloped &mdash; for the provider keys, and for both the
+        Stripe secret key and its webhook signing secret. The column is on the screen so you can see
+        that guarantee rather than take it on faith, and so a database restored without those rules
+        shows up as readable instead of looking fine.</p>
+      </div>
+
+      <div class="card">
         <h3>System email &mdash; what the saved key's badge means</h3>
         <p>The <strong>Email Provider (System Email)</strong> card is the one transport every transactional
         message this installation sends uses &mdash; the welcome mail with a new account's password, password
