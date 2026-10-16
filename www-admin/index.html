@@ -1836,6 +1836,7 @@ async function renderEmailTemplates() {
       <div class="card-header" style="padding:16px 16px 0;display:flex;align-items:center;gap:10px">
         <h2 style="font-size:16px;font-weight:700;margin:0">Email Provider (System Email)</h2>
         <span class="badge badge-yellow" id="ep-status-badge">loading…</span>
+        <span class="badge" id="ep-atrest-badge" style="display:none"></span>
       </div>
       <div style="padding:16px">
         <div style="font-size:12px;color:#64748b;margin-bottom:12px">
@@ -1900,6 +1901,23 @@ async function bindEmailProvider() {
     if (badge) {
       badge.textContent = d.configured ? ('configured · ' + (d.provider || '')) : 'not configured';
       badge.className = 'badge ' + (d.configured ? 'badge-green' : 'badge-yellow');
+    }
+    /* The at-rest posture of the SAVED credential (the rule CoreSwift's panel set, kanban
+       t_d1fcda7e). "configured" says the send path has a key; this says whether the DATABASE holds
+       it encrypted. A row that arrived from a restored dump, a manual write or a rotation tool
+       reads "stored in the clear" until the app's next start seals it, so the panel states the
+       measured fact instead of implying that "saved" means "encrypted". */
+    const at = document.getElementById('ep-atrest-badge');
+    if (at) {
+      if (!d.credential_present) { at.style.display = 'none'; at.textContent = ''; }
+      else {
+        at.style.display = '';
+        at.textContent = d.sealed ? '🔒 credential encrypted at rest' : '⚠ credential stored in the clear';
+        at.className = 'badge ' + (d.sealed ? 'badge-green' : 'badge-red');
+        at.title = d.sealed
+          ? 'A copy of the database cannot yield the saved key.'
+          : 'The saved key is readable in the database as it stands — restart the app (or save the key again) and it is encrypted at rest.';
+      }
     }
     /* The LAST transactional send this installation attempted (the send funnel records it under
        admin_settings.email_last_send). "configured" only says the provider is set up; it says nothing

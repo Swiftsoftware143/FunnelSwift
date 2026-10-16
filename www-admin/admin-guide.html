@@ -563,6 +563,24 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
+        <h3>System email &mdash; what the saved key's badge means</h3>
+        <p>The <strong>Email Provider (System Email)</strong> card is the one transport every transactional
+        message this installation sends uses &mdash; the welcome mail with a new account's password, password
+        resets, invoice notices. Beside the <strong>configured</strong> badge, a second badge reports the
+        <strong>measured</strong> state of the key stored in the database:</p>
+        <ul>
+          <li><strong>🔒 credential encrypted at rest</strong> &mdash; the saved key is encrypted in the
+          database, so a copy of a database backup cannot yield a working key.</li>
+          <li><strong>⚠ credential stored in the clear</strong> &mdash; the saved key is readable as it
+          stands. That happens when the row arrived from a restored backup, a manual database write, or a
+          key-rotation tool rather than from this panel. Saving the key again from this card, or restarting
+          the app, encrypts it; nothing else about sending changes.</li>
+        </ul>
+        <p>No badge at all means nothing is saved here yet. The badge is not decoration: it is the answer the
+        API gives (<code>sealed</code>), so the screen cannot claim a key is encrypted when it is not.</p>
+      </div>
+
+      <div class="card">
         <h3>Affiliate Portal</h3>
         <p>Affiliates log in at <code>/affiliate</code> to see their dashboard, leads/conversions, earnings and referral links. In the main app, the sidebar's <strong>My Affiliate</strong> tab is where they tick the products they want to promote.</p>
       </div>

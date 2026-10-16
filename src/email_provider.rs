@@ -179,6 +179,36 @@ pub async fn open_config_secrets(
     Ok(())
 }
 
+/// Does this stored `admin_settings.email` / tenant `email_config` document carry a credential at
+/// all? A field that is absent or empty is not a credential, so a surface can say "nothing saved"
+/// instead of inferring one from the document's existence (a document can hold only routing fields).
+pub fn stored_credential_present(row: &Value) -> bool {
+    CONFIG_SECRET_FIELDS.iter().any(|f| !s(row, f).is_empty())
+}
+
+/// Is the credential in this stored document ENCRYPTED AT REST?
+///
+/// `true` only when a credential field is non-empty AND every non-empty one carries the `enc:v1:`
+/// envelope — the same `provider_key_crypto::is_encrypted` the seal/open halves use, so a surface
+/// that prints this cannot disagree with the storage layer. A value without the envelope is a legacy
+/// plaintext row (a restored dump, a manual write, a direct rotation) which the boot backfill
+/// (`seal_legacy_config_secrets`) has not converged yet; before this, the operator panel asserted
+/// sealing without measuring it, so a plaintext row looked exactly like a sealed one.
+pub fn stored_credential_sealed(row: &Value) -> bool {
+    let mut any = false;
+    for field in CONFIG_SECRET_FIELDS {
+        let v = s(row, field);
+        if v.is_empty() {
+            continue;
+        }
+        any = true;
+        if !provider_key_crypto::is_encrypted(&v) {
+            return false;
+        }
+    }
+    any
+}
+
 /// Seal every credential still sitting in the clear in the `admin_settings.email` row.
 ///
 /// Both write paths seal before they store, but this row can also arrive plaintext from a
@@ -856,6 +886,41 @@ mod tests {
         m.insert("smtp_host".to_string(), json!("smtp.probe.invalid"));
         m.insert(key.to_string(), json!(value));
         Value::Object(m)
+    }
+
+    /// The at-rest posture the operator panel prints (the rule CoreSwift's panel set, kanban
+    /// t_d1fcda7e): nothing saved is not "sealed", a plaintext credential is a FINDING, and only an
+    /// enveloped value reads as encrypted. Asserted per ALIAS, because any of the four names can be
+    /// the one carrying a live credential.
+    #[test]
+    fn at_rest_posture_reads_the_storage_envelope() {
+        assert!(!stored_credential_present(&json!({})));
+        assert!(!stored_credential_sealed(&json!({})));
+        // A document holding only routing fields carries no credential.
+        assert!(!stored_credential_present(&json!({
+            "provider": "smtp",
+            "smtp_host": "smtp.probe.invalid",
+            "smtp_password": ""
+        })));
+        // A legacy plaintext credential is present and NOT sealed.
+        assert!(stored_credential_present(&cfg_with(
+            "smtp_password",
+            "hunter2"
+        )));
+        assert!(!stored_credential_sealed(&cfg_with(
+            "smtp_password",
+            "hunter2"
+        )));
+        // The envelope decides, not the field name.
+        let env = format!("{}{}", provider_key_crypto::ENC_PREFIX, "Y2lwaGVy");
+        assert!(stored_credential_sealed(&cfg_with("api_key", &env)));
+        assert!(stored_credential_sealed(&cfg_with("pass", &env)));
+        // ONE plaintext field beside a sealed one still means "stored in the clear".
+        let mut mixed = serde_json::Map::new();
+        mixed.insert("api_key".to_string(), json!(env));
+        mixed.insert("password".to_string(), json!("hunter2"));
+        assert!(stored_credential_present(&Value::Object(mixed.clone())));
+        assert!(!stored_credential_sealed(&Value::Object(mixed)));
     }
 
     /// kanban t_b040a78e item 1 — the SEAL vocabulary has to be the vocabulary `from_json` READS.

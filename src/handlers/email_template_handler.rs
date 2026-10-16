@@ -356,6 +356,20 @@ pub async fn get_email_config(
         .as_ref()
         .map(|v| crate::email_provider::EmailConfig::from_json(v, "smtp"));
 
+    // At-rest posture of the stored credential (the rule CoreSwift's panel set, kanban t_d1fcda7e):
+    // read from the STORED row before it is masked below, because the masked document can no longer
+    // answer it. `configured` says the send path has a credential; this says whether the DATABASE
+    // holds it encrypted. They differ only between a write made outside the panel (a restored dump, a
+    // manual write, a rotation tool) and the next start, whose boot backfill seals the row.
+    let credential_present = value
+        .as_ref()
+        .map(crate::email_provider::stored_credential_present)
+        .unwrap_or(false);
+    let sealed = value
+        .as_ref()
+        .map(crate::email_provider::stored_credential_sealed)
+        .unwrap_or(false);
+
     let mut out = value.unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = out.as_object_mut() {
         // Mask EVERY credential field the crypto vocabulary seals (kanban t_b040a78e item 1). The
@@ -399,6 +413,8 @@ pub async fn get_email_config(
     Ok(Json(serde_json::json!({
         "config": out,
         "configured": cfg.as_ref().map(|c| c.is_configured()).unwrap_or(false),
+        "credential_present": credential_present,
+        "sealed": sealed,
         "provider": cfg.as_ref().map(|c| c.provider.clone()).unwrap_or_default(),
         "providers": crate::email_provider::available(),
         "last_send": last_send,
