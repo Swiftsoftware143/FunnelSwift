@@ -723,6 +723,12 @@ pub fn create_router(
             "/api/v1/payment-providers/:provider_type",
             delete(checkout_handler::delete_payment_provider),
         )
+        // kanban t_6a192c06 — the operator's own key check. A read-only Stripe call that answers
+        // whether a key works BEFORE a customer finds out for them.
+        .route(
+            "/api/v1/payment-providers/:provider_type/test",
+            post(checkout_handler::test_payment_provider),
+        )
         .route(
             "/api/v1/checkout/create",
             post(checkout_handler::create_checkout_session),

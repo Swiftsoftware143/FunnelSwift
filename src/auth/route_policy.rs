@@ -14,14 +14,14 @@
 //!
 //! # The census (re-measured 2026-10-11, from `api_router.rs` source)
 //!
-//! 194 `.route(..)` mounts / 193 unique paths, classified three ways:
+//! 195 `.route(..)` mounts / 194 unique paths, classified three ways:
 //!
 //! ```text
-//!   169 mounts  /api/**            168 unique after the duplicate `/api/v1/linkedin/auth`
+//!   170 mounts  /api/**            169 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     16        public            -> PUBLIC_ROUTES below (14 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    150        private           -> require_auth: app JWT, tenant-status checked
+//!    151        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (30 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -297,15 +297,15 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 192 mounts, 167 of them on the API surface. If a route is
+    /// The census the module docs quote: 195 mounts, 170 of them on the API surface. If a route is
     /// added or removed the documented numbers move, so the doc gets re-read.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 194, "mounted route count moved");
+        assert_eq!(mounted.len(), 195, "mounted route count moved");
         assert_eq!(
-            api, 169,
+            api, 170,
             "/api/ mount count moved — update the census in the module docs"
         );
     }

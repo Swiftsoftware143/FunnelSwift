@@ -2362,7 +2362,7 @@ async function renderProviderKeys() {
               <td><code style="font-size:11px">${x(key || '—')}</code></td>
               <td>${wh ? '<span class="badge badge-green">Set</span>' : '<span class="badge badge-red">Missing</span>'}</td>
               <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Inactive'}</span></td>
-              <td><button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
+              <td><button class="btn btn-secondary btn-xs" onclick="window._testPaymentProvider('${x(ptype)}','')">Test stored key</button> <button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
             </tr>`;
           }).join('')}</tbody>
       </table></div>
@@ -2381,6 +2381,7 @@ async function renderProviderKeys() {
           <input class="input" name="webhook_secret" type="password" placeholder="whsec_… — required, or no payment can be verified" autocomplete="off">
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Save Provider</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="payment-test-btn" title="Asks Stripe whether the key in the box works, without saving it.">Test key</button>
         <p style="width:100%;margin:6px 0 0;font-size:12px;color:#64748b">Leave either field blank to keep the value already stored. Stripe's signing secret is on the webhook endpoint page in the Stripe dashboard, and the exact endpoint to register there is written out in the Admin Guide under "Taking payments (Stripe)". Payments are refused, with the reason recorded, until the signing secret is saved.</p>
       </form>
     </div>
@@ -2405,6 +2406,30 @@ window._deletePaymentProvider = async function(ptype) {
   if (!confirm('Delete the ' + ptype + ' payment provider?')) return;
   try { await api('/payment-providers/' + encodeURIComponent(ptype), { method: 'DELETE' }); showToast('Payment provider deleted', 'success'); renderView(); }
   catch(e) { showToast(e.message, 'error'); }
+};
+
+// kanban t_6a192c06 — find out whether a payment key works BEFORE it matters. A raw fetch, NOT api():
+// a refusal is a 424 whose BODY carries the provider's own sentence, while api() throws on !res.ok
+// and would show the operator a short code instead of the reason Stripe gave.
+// The key itself is never echoed back — only the mask, and only when a key was actually used.
+window._testPaymentProvider = async function(ptype, apiKey) {
+  const p = String(ptype || '').trim();
+  if (!p) { showToast('Choose a provider type first', 'error', false); return; }
+  const usingBox = !!(apiKey && String(apiKey).trim());
+  showToast('Testing the ' + p + ' key with ' + (usingBox ? 'the key in the box' : 'the stored key') + '\u2026', 'info', false);
+  try {
+    const res = await fetch(API_BASE + '/payment-providers/' + encodeURIComponent(p) + '/test', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}),
+      body: JSON.stringify({ api_key: usingBox ? String(apiKey).trim() : '' })
+    });
+    let j = {};
+    try { j = await res.json(); } catch (e) { j = {}; }
+    const tail = j.api_key_masked ? ' (key ' + j.api_key_masked + ')' : '';
+    showToast((j.message || (res.ok ? 'Key accepted' : 'The test could not run')) + tail, res.ok ? 'success' : 'error', false);
+  } catch (err) {
+    showToast('Could not run the key test: ' + ((err && err.message) ? err.message : err), 'error', false);
+  }
 };
 
 function bindProviderKeys() {
@@ -2440,6 +2465,16 @@ function bindProviderKeys() {
       showToast('Payment provider saved', 'success');
       renderView();
     } catch(err) { showToast(err.message, 'error'); }
+  });
+
+  // kanban t_6a192c06 — the box's own "Test key": the key in the field is tested as typed and is
+  // never stored, so an operator can check a key before committing it (and a bad key can no longer
+  // be discovered only by a customer).
+  const pt = document.getElementById('payment-test-btn');
+  if (pt && pf) pt.addEventListener('click', () => {
+    const sel = pf.querySelector('input[name="provider_type"]');
+    const box = pf.querySelector('input[name="api_key"]');
+    window._testPaymentProvider(sel ? sel.value : '', box ? box.value : '');
   });
 }
 

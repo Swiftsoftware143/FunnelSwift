@@ -1028,3 +1028,208 @@ pub async fn stripe_webhook(
         }
     }
 }
+
+// ═════════════════════ Verifying the operator's payment key ═════════════════════
+//
+// kanban t_6a192c06. Until this route existed, the fleet's ONLY way to learn that a payment key was
+// wrong, truncated or from another account was for a CUSTOMER to press Upgrade and receive the 424
+// that carries Stripe's refusal. `payment_providers` is empty in every app (measured 2026-10-15), so
+// every purchase refuses `payment_provider_not_configured` — and an operator pasting a key had no way
+// to check it before it mattered. This route makes the key verifiable at the moment it is pasted.
+//
+// The check is a READ: Stripe's `GET /v1/balance`. It moves no money and creates no Stripe object.
+//
+// One body shape, `{ "api_key": "<key>" }`, and both arms are useful:
+//   * `api_key` non-empty -> test THAT key. It is never stored, never logged and never echoed (only
+//     [`crate::security::provider_key_crypto::mask`]-ed), so a typo cannot overwrite a working
+//     credential the way a Save would. This is the button beside the Save form.
+//   * `api_key` empty/absent -> test the key STORED for this workspace, resolved exactly as a purchase
+//     resolves it ([`resolve_plan_provider`]: the workspace's own active row first, then the platform
+//     operator's). This is the per-row button.
+//
+// Every refusal is a 4xx class JSON body, never a 502: a CDN replaces a 502 body and the operator
+// would lose the reason, which is the same rule [`create_checkout_session`] follows.
+pub async fn test_payment_provider(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(provider_type): Path<String>,
+    payload: Option<Json<Value>>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    let provider = provider_type.trim().to_ascii_lowercase();
+    let supplied = payload
+        .as_ref()
+        .and_then(|j| j.0.get("api_key"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    let (key, source) = if !supplied.is_empty() {
+        (supplied, "supplied")
+    } else {
+        let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+        let resolved = resolve_plan_provider(&state, tenant_id).await?;
+        let Some((row_tenant, row_provider)) = resolved else {
+            return Ok((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "ok": false,
+                    "error": "payment_provider_not_configured",
+                    "reason": "payment_provider_not_configured",
+                    "message": "No payment provider is stored for this workspace or for the platform, so there is no stored key to test. Paste a key and press Test key, or save one first.",
+                })),
+            ));
+        };
+        if provider != row_provider.to_ascii_lowercase() {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "ok": false,
+                    "error": "payment_provider_not_stored",
+                    "reason": "payment_provider_not_stored",
+                    "message": format!(
+                        "The stored provider for this workspace is '{row_provider}', not '{provider}', so there is no '{provider}' key to test."
+                    ),
+                })),
+            ));
+        }
+        let stored: Option<String> = sqlx::query_scalar(
+            "SELECT api_key FROM payment_providers \
+             WHERE tenant_id = $1 AND provider_type = $2 AND is_active = true \
+             ORDER BY created_at LIMIT 1",
+        )
+        .bind(row_tenant)
+        .bind(&row_provider)
+        .fetch_optional(&state.pool)
+        .await?;
+        match stored
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            Some(s) => {
+                let plain =
+                    crate::security::provider_key_crypto::decrypt_from_storage(&state.pool, &s)
+                        .await?;
+                (plain, "stored")
+            }
+            None => {
+                return Ok((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({
+                        "ok": false,
+                        "error": "payment_provider_not_configured",
+                        "reason": "payment_provider_not_configured",
+                        "message": format!(
+                            "The stored '{row_provider}' provider row carries no key, so there is nothing to test. Paste the key and press Save first."
+                        ),
+                    })),
+                ));
+            }
+        }
+    };
+
+    // Stay in step with `create_checkout_session`: whatever that arm will not sell through, this one
+    // must not claim to have verified.
+    if provider != "stripe" {
+        return Ok((
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({
+                "ok": false,
+                "error": "checkout_not_implemented",
+                "provider": provider,
+                "reason": "checkout_not_implemented",
+                "message": format!(
+                    "'{provider}' cannot be verified: only Stripe is implemented for checkout in this app, so a key for any other provider would be accepted here and then fail at the buy button."
+                ),
+            })),
+        ));
+    }
+
+    let api_base = std::env::var("STRIPE_API_BASE")
+        .unwrap_or_else(|_| "https://api.stripe.com".to_string())
+        .trim_end_matches('/')
+        .to_string();
+    let masked = crate::security::provider_key_crypto::mask(&key);
+
+    let sent = reqwest::Client::new()
+        .get(format!("{api_base}/v1/balance"))
+        .bearer_auth(&key)
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await;
+    let resp = match sent {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(provider = %provider, key_source = source, error = %e, "payment key test could not reach the provider");
+            return Ok((
+                StatusCode::FAILED_DEPENDENCY,
+                Json(json!({
+                    "ok": false,
+                    "error": "provider_unreachable",
+                    "provider": provider,
+                    "key_source": source,
+                    "api_key_masked": masked,
+                    "reason": "provider_unreachable",
+                    "message": format!("Could not reach Stripe at all: {e}"),
+                })),
+            ));
+        }
+    };
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+
+    if status.is_success() {
+        // Stripe's /v1/balance answers `{ "object": "balance", "livemode": <bool>, ... }`. Only
+        // `livemode` is read, and reporting it is most of the value: a TEST-mode key is a working key
+        // that will never charge anybody, and mistaking one for the other is the exact mistake this
+        // route exists to prevent.
+        let live = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| v.get("livemode").and_then(|b| b.as_bool()));
+        let message = match live {
+            Some(true) => {
+                "Stripe accepted the key and it is a LIVE key — a real customer can be charged."
+                    .to_string()
+            }
+            Some(false) => {
+                "Stripe accepted the key but it is a TEST-mode key — no customer will ever be charged. Replace it with the live key before selling.".to_string()
+            }
+            None => "Stripe accepted the key.".to_string(),
+        };
+        return Ok((
+            StatusCode::OK,
+            Json(json!({
+                "ok": true,
+                "provider": provider,
+                "key_source": source,
+                "livemode": live,
+                "api_key_masked": masked,
+                "message": message,
+            })),
+        ));
+    }
+
+    // Never echo the key. Stripe's own sentence is safe and is the whole point of the route.
+    let msg = serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| {
+            v.get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| format!("Stripe returned {status}"));
+    tracing::warn!(provider = %provider, key_source = source, http = %status, "payment key was REFUSED by the provider");
+    Ok((
+        StatusCode::FAILED_DEPENDENCY,
+        Json(json!({
+            "ok": false,
+            "error": "provider_refused",
+            "provider": provider,
+            "key_source": source,
+            "api_key_masked": masked,
+            "reason": "provider_refused",
+            "message": format!("Stripe refused the key: {msg}"),
+        })),
+    ))
+}
