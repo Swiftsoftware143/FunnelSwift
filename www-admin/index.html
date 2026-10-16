@@ -556,6 +556,7 @@ function buildNav() {
     sections.push(`<div class="nav-item ${STATE.view==='superAdmin'?'active':''}" data-view="superAdmin"><span class="icon">⚙️</span><span class="nav-text">Super Admin</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='systemTags'?'active':''}" data-view="systemTags" style="padding-left:28px"><span class="icon">🔖</span><span class="nav-text">System Tags</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tagGroups'?'active':''}" data-view="tagGroups" style="padding-left:28px"><span class="icon">📁</span><span class="nav-text">Tag Groups</span></div>`);
+    sections.push(`<div class="nav-item ${STATE.view==='mobileInterest'?'active':''}" data-view="mobileInterest" style="padding-left:28px"><span class="icon">📱</span><span class="nav-text">Mobile App Interest</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='siteSettings'?'active':''}" data-view="siteSettings"><span class="icon">🌐</span><span class="nav-text">Site Settings</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></div>`);
@@ -593,6 +594,9 @@ const viewRenderers = {
   providerKeys: renderProviderKeys,
   superAdmin: renderSuperAdmin,
   systemTags: renderSystemTags,
+  // The reader for the emails the public /download-app "Notify me" form captures (Super Admin: the
+  // rows belong to no tenant).
+  mobileInterest: renderMobileInterest,
   tagGroups: renderTagGroups,
   tenants: renderTenants,
   emailBranding: renderEmailBranding,
@@ -2563,6 +2567,42 @@ async function renderSuperAdmin() {
   </div>`;
 }
 function bindSuperAdmin() {}
+
+// ── MOBILE APP INTEREST (Super Admin only) ──
+// The reader for the emails the public /download-app page's iOS "Notify me" form captures. It was
+// built in the same commit as the writer on purpose — this console already records the opposite
+// complaint about the provisioning log ("a writer and NO reader in the console"). Super Admin,
+// because the rows belong to no tenant: they are the PRODUCT's waitlist.
+async function renderMobileInterest() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+
+  let data = { count: 0, items: [] };
+  try { data = (await api('/admin/mobile-interest?limit=200')) || data; } catch(e) { data = { count: 0, items: [] }; }
+  const items = Array.isArray(data.items) ? data.items : [];
+  const allEmails = items.map(i => i.email || '').filter(Boolean).join('\n');
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <div><h1 style="font-size:22px;font-weight:700">📱 Mobile App Interest</h1>
+      <p style="font-size:13px;color:var(--muted)">Everyone who asked to be told when the mobile app ships, newest first. Captured by the "Notify Me" form on the public download page &mdash; no account, no tenant.</p></div>
+      <div style="text-align:right"><div style="font-size:24px;font-weight:700">${data.count || 0}</div><div style="font-size:12px;color:var(--muted)">on the list</div></div>
+    </div>
+    ${items.length === 0
+      ? `<div class="empty"><div class="icon">📭</div><div class="title">Nobody has asked yet</div><p style="font-size:12px;color:var(--muted);margin-top:6px">An address appears here the moment somebody uses the "Notify Me" button on funnelswift.net/download-app.</p></div>`
+      : `<div class="card"><div class="table-wrap"><table class="table">
+          <thead><tr><th>When</th><th>Email</th><th>Platform</th><th>Where</th></tr></thead>
+          <tbody>${items.map(i => `<tr>
+            <td style="white-space:nowrap;font-size:12px;color:var(--muted)">${x(i.created_at ? new Date(i.created_at).toLocaleString() : '-')}</td>
+            <td>${x(i.email || '-')}</td>
+            <td><span class="badge badge-yellow">${x(i.platform || '-')}</span></td>
+            <td style="font-size:12px;color:var(--muted)">${x(i.source || '-')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <div style="margin-top:12px"><button class="btn btn-sm" id="copy-mobile-emails" onclick="var t=document.getElementById('mobile-emails');t.select();t.setSelectionRange(0,t.value.length);var b=this;navigator.clipboard.writeText(t.value).then(function(){b.textContent='Copied';}).catch(function(){b.textContent='Press Ctrl+C to copy the selected text';});">Copy all emails</button></div>
+        <textarea id="mobile-emails" readonly style="position:absolute;left:-9999px;top:0">${x(allEmails)}</textarea>
+      </div>`}
+  </div>`;
+}
 
 // ── SYSTEM TAGS (Super Admin only) ──
 async function renderSystemTags() {

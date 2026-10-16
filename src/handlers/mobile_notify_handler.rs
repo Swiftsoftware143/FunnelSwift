@@ -30,10 +30,16 @@
 //! provider, and the promise is a future notification, not an immediate one — the visitor sees the
 //! confirmation on the page they are already looking at.
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{
+    auth::{global_auth::is_platform_admin, middleware::AuthUser},
     error::{AppError, AppResult},
     state::AppState,
 };
@@ -135,6 +141,61 @@ pub async fn notify_mobile_interest(
             "message": "Thanks \u{2014} we will let you know the moment the mobile app is ready."
         })),
     ))
+}
+
+/// Query for the operator's read of the interest list.
+#[derive(Debug, Deserialize)]
+pub struct MobileInterestQuery {
+    limit: Option<i64>,
+}
+
+/// `GET /api/v1/admin/mobile-interest` — the operator's door onto the list this module writes.
+///
+/// Written with the reader in the same commit on purpose: a table that only ever gets written is a
+/// dead end, which is exactly the complaint this app's own console already records about the
+/// provisioning log ("a writer and NO reader in the console"). Platform-admin only — the rows carry
+/// no tenant column, so a tenant admin has no business seeing another workspace's ... nothing: they
+/// would see the PRODUCT's waitlist, which is not theirs. `is_platform_admin` is the same predicate
+/// the runtime uses for the operator console.
+pub async fn list_mobile_interest(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Query(params): Query<MobileInterestQuery>,
+) -> AppResult<Json<Value>> {
+    if !is_platform_admin(&auth.role) {
+        return Err(AppError::Forbidden(
+            "Platform admin access required".to_string(),
+        ));
+    }
+    let limit = params.limit.unwrap_or(100).clamp(1, 500);
+
+    let rows: Vec<(String, String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        "SELECT email, platform, source, created_at FROM mobile_platform_interest \
+         ORDER BY created_at DESC LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let items: Vec<Value> = rows
+        .iter()
+        .map(|(email, platform, source, created_at)| {
+            json!({
+                "email": email,
+                "platform": platform,
+                "source": source,
+                "created_at": created_at,
+            })
+        })
+        .collect();
+
+    // The TOTAL beside the page: the console shows the newest slice, and a count that only reflected
+    // the slice would make a growing list look static.
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mobile_platform_interest")
+        .fetch_one(&state.pool)
+        .await?;
+
+    Ok(Json(json!({ "count": count, "items": items })))
 }
 
 #[cfg(test)]

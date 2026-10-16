@@ -322,6 +322,12 @@ pub fn create_router(
             "/api/v1/admin/provisioning-log",
             get(admin_handler::list_provisioning_log),
         )
+        // The operator's door onto `mobile_platform_interest` — the emails the /download-app page's
+        // iOS "Notify me" form captures. Platform-admin only (the rows belong to no tenant).
+        .route(
+            "/api/v1/admin/mobile-interest",
+            get(mobile_notify_handler::list_mobile_interest),
+        )
         .route(
             "/api/v1/admin/tag-groups",
             get(tag_group_handler::list_tag_groups_admin),

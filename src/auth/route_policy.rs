@@ -14,15 +14,15 @@
 //!
 //! # The census (re-measured 2026-10-16, from `api_router.rs` source)
 //!
-//! 196 `.route(..)` mounts / 195 unique paths, classified three ways:
+//! 197 `.route(..)` mounts / 196 unique paths, classified three ways:
 //!
 //! ```text
-//!   171 mounts  /api/**            170 unique after the duplicate `/api/v1/linkedin/auth`
+//!   172 mounts  /api/**            171 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     17        public            -> PUBLIC_ROUTES below (15 unique + the health pair)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    151        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (30 of them `/api/v1/admin/**` = the operator surface,
+//!    152        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (31 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -304,15 +304,15 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 196 mounts, 171 of them on the API surface. If a route is
+    /// The census the module docs quote: 197 mounts, 172 of them on the API surface. If a route is
     /// added or removed the documented numbers move, so the doc gets re-read.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 196, "mounted route count moved");
+        assert_eq!(mounted.len(), 197, "mounted route count moved");
         assert_eq!(
-            api, 171,
+            api, 172,
             "/api/ mount count moved — update the census in the module docs"
         );
     }
