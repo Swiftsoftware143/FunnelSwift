@@ -1,5 +1,6 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::security::display_name::slugify;
 use crate::state::AppState;
 use crate::templates::html_escape;
 use axum::{
@@ -25,7 +26,24 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
     .await
     .map_err(|e| tracing::error!("list_funnels query failed: {:?}", e))
     .unwrap_or_default();
-    Ok(Json(json!(rows)))
+    // NAMED fields, not the tuple's positional order. The console that renders this list is the app
+    // host's Funnels screen, and a JSON array of arrays forces it to index by position — one added
+    // column in the SELECT and every row silently shows the wrong cell. (`rows` was a tuple until
+    // 2026-10-17; nothing consumed it, so this is a shape fix, not a breaking change.)
+    let funnels: Vec<Value> = rows
+        .into_iter()
+        .map(|(id, name, slug, created_at)| {
+            json!({
+                "id": id.to_string(),
+                "name": name,
+                "slug": slug,
+                "created_at": created_at,
+                // The page a customer shares: slug-only, no tenant in the path (see render_funnel).
+                "public_path": format!("/funnel/{slug}"),
+            })
+        })
+        .collect();
+    Ok(Json(json!(funnels)))
 }
 pub async fn create_funnel(
     auth: AuthUser,
@@ -33,7 +51,14 @@ pub async fn create_funnel(
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let id = Uuid::new_v4();
-    let name = payload["name"].as_str().unwrap_or("New Funnel");
+    // The name is customer text that reaches an HTML <title> and a public URL, so it is normalised
+    // (trimmed, non-empty, no control characters) BEFORE the slug is derived from it.
+    let name = crate::security::display_name::normalize_capped(
+        payload["name"].as_str().unwrap_or("New Funnel"),
+        255,
+        "funnel name",
+    )
+    .map_err(AppError::BadRequest)?;
     // `funnels.tenant_id` REFERENCES `tenants(id)`. The reads above may take the nil-UUID fallback
     // (they return no rows), but a CREATE must not: an admin session whose workspace row is gone is
     // exempt from `global_auth`'s existence gate, so the INSERT used to answer the foreign-key
@@ -43,16 +68,55 @@ pub async fn create_funnel(
     let tenant_id =
         crate::handlers::tenant_handler::require_existing_workspace(&state.pool, &auth.tenant_id)
             .await?;
-    sqlx::query("INSERT INTO funnels (id, tenant_id, name, slug) VALUES ($1, $2, $3, $4)")
+    // The public page is addressed by SLUG ALONE (`/funnel/<slug>`, no tenant in the path), so the
+    // slug must be (a) URL-safe and (b) unique across the fleet: the old transform was
+    // `name.to_lowercase().replace(' ', "-")`, which put an apostrophe ("Sam's Funnel"),
+    // or a SLASH ("Q3 / Q4 Promo" -> `q3-/-q4-promo`, a path that splits and does not route) into a
+    // live URL, and let two workspaces that both called a funnel "My Funnel" share one page — one
+    // workspace's name answered the other's link. `slugify` is the app's ONE slug transform; a name
+    // of only punctuation slugifies to "", so that falls back to a stable word. A collision gets
+    // `-2`, `-3`, … and `uq_funnels_slug` (migration 108) is what makes the insert refuse a race.
+    let base = {
+        let s = slugify(&name);
+        if s.is_empty() {
+            "funnel".to_string()
+        } else {
+            s
+        }
+    };
+    let mut slug = base.clone();
+    let mut attempt = 1u32;
+    loop {
+        let res = sqlx::query(
+            "INSERT INTO funnels (id, tenant_id, name, slug) VALUES ($1, $2, $3, $4)
+             ON CONFLICT (slug) DO NOTHING",
+        )
         .bind(id)
         .bind(tenant_id)
-        .bind(name)
-        .bind(name.to_lowercase().replace(' ', "-"))
+        .bind(&name)
+        .bind(&slug)
         .execute(&state.pool)
         .await?;
+        if res.rows_affected() == 1 {
+            break;
+        }
+        attempt += 1;
+        if attempt > 50 {
+            return Err(AppError::BadRequest(
+                "Could not allocate a public link for that name: try a different name".into(),
+            ));
+        }
+        slug = format!("{base}-{attempt}");
+    }
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id": id.to_string(), "message": "Funnel created"})),
+        Json(json!({
+            "id": id.to_string(),
+            "name": name,
+            "slug": slug,
+            "public_path": format!("/funnel/{slug}"),
+            "message": "Funnel created"
+        })),
     ))
 }
 pub async fn get_funnel(
@@ -88,8 +152,13 @@ pub async fn update_funnel(
             "No writable field: 'name' (string) is required".into(),
         ));
     };
+    // The NAME is all this route writes: the slug is the funnel's public address and a customer may
+    // have shared (or printed) it, so a rename deliberately does NOT move the link. `name` is still
+    // normalised, because an empty or control-character name would render an empty <title>.
+    let name = crate::security::display_name::normalize_capped(name, 255, "funnel name")
+        .map_err(AppError::BadRequest)?;
     let result = sqlx::query("UPDATE funnels SET name=$1 WHERE id=$2 AND tenant_id=$3")
-        .bind(name)
+        .bind(&name)
         .bind(id)
         .bind(tenant_id)
         .execute(&state.pool)
@@ -167,19 +236,20 @@ pub async fn render_funnel(
     // 410 is deliberately not used: a funnel slug can be created again, so "gone for good" would
     // be a lie. The BODY is unchanged either way — it fell back to the slug before this change
     // and still does — so nothing user-visible moves except the status.
-    let (funnel_name, status) =
-        match sqlx::query_scalar::<_, String>("SELECT name FROM funnels WHERE slug = $1")
-            .bind(&slug)
-            .fetch_optional(&state.pool)
-            .await
-        {
-            Ok(Some(name)) => (name, StatusCode::OK),
-            Ok(None) => (slug.clone(), StatusCode::NOT_FOUND),
-            Err(e) => {
-                tracing::error!("render_funnel lookup failed for slug '{}': {:?}", slug, e);
-                (slug.clone(), StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        };
+    let (funnel_name, status) = match sqlx::query_scalar::<_, String>(
+        "SELECT name FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(Some(name)) => (name, StatusCode::OK),
+        Ok(None) => (slug.clone(), StatusCode::NOT_FOUND),
+        Err(e) => {
+            tracing::error!("render_funnel lookup failed for slug '{}': {:?}", slug, e);
+            (slug.clone(), StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    };
     let funnel_name = html_escape(&funnel_name);
 
     (

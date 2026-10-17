@@ -150,6 +150,7 @@ tr:hover{background:#f8fafc}
   <!-- kanban t_ff948669: the account's own screen — name, company, password, picture. -->
   <a data-tab="profile" onclick="S('profile')">Profile</a>
   <a data-tab="leads" onclick="S('leads')">Leads</a>
+  <a data-tab="funnels" onclick="S('funnels')">Funnels</a>
   <a data-tab="upgrade" onclick="S('upgrade')" style="color:#fbbf24;font-weight:600">⭐ Upgrade</a>
   <a data-tab="cards" onclick="S('cards')">Kinetic Cards</a>
   <!-- the workspace's OWN card performance: GET /api/v1/analytics/overview
@@ -352,6 +353,9 @@ var ADMIN_ONLY={allcards:1,stags:1,sgroups:1,ap:1,tenants:1,payouts:1,plans:1,se
    on Settings. A NON-platform-only retirement MUST go here (never in ADMIN_ONLY): the refusal copy
    there says "part of the platform operator console", which would be a lie for a tenant screen. */
 var MOVED={domains:"settings"};
+/* The tab-title map above is one long literal; a new screen's title is added here instead of
+   rewriting that line (and every later screen keeps appending the same way). */
+TI.funnels="Funnels";
 function S(t){
   if(ADMIN_ONLY[t]&&!(U&&U.is_admin)){
     $("pt").textContent=(TI[t]||t);
@@ -369,7 +373,7 @@ function S(t){
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
   var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
-  if(t==="upgrade") LPU();else if(L[t]) L[t]();
+  if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
 }
@@ -3179,6 +3183,93 @@ var WHK=[];
 /* Plan gate, mirroring features::enforce_feature_flag exactly: the plan's `features` jsonb key wins
    when it is present, else the has_webhooks column; a workspace with NO active plan is allowed.
    The server is the real gate (POST answers 402) - this only keeps the button honest. */
+/* === FUNNELS — the object the product is named after, now on a screen ========================
+   `GET|POST /api/v1/funnels` and `GET|PUT|DELETE /api/v1/funnels/:id` were live and tenant-scoped
+   while NO console called them (measured 2026-10-17: 0 hits in the app host, the admin console and
+   the marketing root), so the live table held ZERO rows — a workspace could not create the thing
+   the app is called after. A backend route with no UI is a defect; this is the screen.
+
+   The public page is `/funnel/<slug>` on the marketing host (slug ONLY, no tenant in the path), so
+   every row shows its own link to copy. Renaming deliberately does NOT move the link: it may
+   already be shared or printed. The SERVER derives the slug once, URL-safe and fleet-unique
+   (funnel_handler::create_funnel + migration 108), which is why this screen never builds a slug. */
+var FN=[];
+/* The banner a create/rename leaves behind. It is held here because the screen re-renders itself
+   from the API after a write, which would otherwise wipe the message the customer just earned
+   (measured 2026-10-17: the funnel WAS created, the row rendered, and the confirmation was blank). */
+var FNSAY=null;
+function fnSay(msg,bad){
+  FNSAY={msg:msg,bad:!!bad};
+  var m=$("fn-msg"); if(!m) return;
+  m.innerHTML='<p style="font-size:13px;color:'+(bad?"#dc2626":"#16a34a")+'">'+X(msg)+'</p>';
+}
+function fnCopy(url,btn){
+  function ok(){ var t=btn.textContent; btn.textContent="Copied"; setTimeout(function(){btn.textContent=t;},1400); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(ok,function(){window.prompt("Copy this link:",url);});
+  } else window.prompt("Copy this link:",url);
+}
+function fnRename(f){
+  var nm=window.prompt("Funnel name (the shared link does not change):",f.name);
+  if(nm===null) return;
+  nm=String(nm).trim(); if(!nm) return;
+  api("/api/v1/funnels/"+f.id,{method:"PUT",body:JSON.stringify({name:nm})})
+    .then(function(){LAFN();})
+    .catch(function(e){window.alert((e&&e.message)||"Could not rename the funnel.");});
+}
+function fnDelete(f){
+  if(!window.confirm('Delete "'+f.name+'"? Its public link stops working immediately.')) return;
+  api("/api/v1/funnels/"+f.id,{method:"DELETE"})
+    .then(function(){LAFN();})
+    .catch(function(e){window.alert((e&&e.message)||"Could not delete the funnel.");});
+}
+function LAFN(){
+  api("/api/v1/funnels").then(function(d){
+    FN=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
+    $("ct").innerHTML='<div class="cc"><h3>Funnels ('+FN.length+')</h3>'
+      +'<p style="color:#64748b;font-size:13px;margin-bottom:12px">A funnel is a public page you send people to. '
+      +'Create it here, then share its link — renaming keeps the same link, so anything already sent still works.</p>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+      +'<input id="fn-name" placeholder="New funnel name (e.g. Spring Webinar Signups)" maxlength="200" style="flex:1;min-width:220px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">'
+      +'<button class="btn btn-p" id="fn-add">+ Create funnel</button></div>'
+      +'<div id="fn-msg">'+(FNSAY?'<p style="font-size:13px;color:'+(FNSAY.bad?"#dc2626":"#16a34a")+'">'+X(FNSAY.msg)+'</p>':'')+'</div><div id="fn-list"></div></div>';
+    var nameEl=$("fn-name");
+    $("fn-add").onclick=function(){
+      var nm=(nameEl.value||"").trim();
+      if(!nm){fnSay("Give the funnel a name first.",true);nameEl.focus();return;}
+      var b=$("fn-add"); b.disabled=true; b.textContent="Creating...";
+      api("/api/v1/funnels",{method:"POST",body:JSON.stringify({name:nm})})
+        .then(function(r){fnSay("Funnel created"+(r&&r.slug?" — its link is /funnel/"+r.slug:"")+".",false);LAFN();})
+        .catch(function(e){b.disabled=false;b.textContent="+ Create funnel";fnSay((e&&e.message)||"Could not create the funnel.",true);});
+    };
+    nameEl.onkeydown=function(ev){if(ev.key==="Enter"){$("fn-add").click();}};
+    var list=$("fn-list");
+    if(!FN.length){
+      list.innerHTML='<p style="color:#64748b;padding:18px;text-align:center">No funnels yet — create one above.</p>';
+      return;
+    }
+    var tbl=El("table");
+    tbl.innerHTML='<tr><th>Funnel</th><th>Public link</th><th>Created</th><th></th></tr>';
+    FN.forEach(function(f){
+      var url="https://funnelswift.net"+String(f.public_path||("/funnel/"+f.slug));
+      var tr=El("tr");
+      tr.innerHTML='<td><strong>'+X(f.name)+'</strong></td>'
+        +'<td style="font-size:12px"><a href="'+X(url)+'" target="_blank" rel="noopener">'+X(url)+'</a></td>'
+        +'<td style="font-size:12px;color:#64748b">'+X(String(f.created_at||"").slice(0,10))+'</td><td></td>';
+      var td=tr.querySelectorAll("td")[3];
+      var cp=El("button",{"class":"btn btn-sm",onclick:function(){fnCopy(url,cp);}},"Copy link");
+      td.appendChild(cp); td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnRename(f);}},"Rename"));
+      td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){fnDelete(f);}},"Delete"));
+      tbl.appendChild(tr);
+    });
+    list.appendChild(tbl);
+  }).catch(function(e){
+    $("ct").innerHTML='<div class="cc"><h3>Funnels</h3><p style="color:#dc2626">Could not read your funnels: '
+      +X((e&&e.message)||"unknown error")+'</p></div>';
+  });
+}
 function LWGate(){
   var p=U&&U.current_plan;
   if(!p) return true;
@@ -4144,6 +4235,7 @@ window.appGuidePages = {
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
   profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you.", actions: ["Update your name and company", "Upload a profile picture", "Change your password"] },
   leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms.", actions: ["Filter and search", "Apply tags", "Export"] },
+  funnels:     { title: "Funnels", desc: "The public pages you send people to. Create one here and its link appears beside it \u2014 that link is the page's address, so renaming the funnel keeps the same link and anything you have already shared still works. Deleting it stops the link working immediately.", actions: ["Create a funnel", "Copy its public link", "Rename it without changing the link", "Delete one you no longer send people to"] },
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
   afleads:     { title: "Affiliate Leads", desc: "Every lead that came in through the affiliate programme, and which affiliate gets credited for it. Leads with nobody behind them show as system \u2014 nobody is paid for those. The last column tells you whether that lead later joined the programme themselves.", actions: ["See which affiliate a lead belongs to", "Spot leads that are not credited", "See which leads became affiliates"] },
   affiliates:  { title: "Affiliates", desc: "Your referral programme — your shareable referral link and every signup it has produced. A platform admin also manages the roster of affiliates here. One affiliate account per customer: there is no downline to manage.", actions: ["Copy your referral link", "See the signups your link produced", "Share the link everywhere"] },
