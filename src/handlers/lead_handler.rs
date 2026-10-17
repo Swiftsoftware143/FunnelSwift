@@ -1004,6 +1004,9 @@ pub async fn assign_lead_tags(
 #[derive(Deserialize)]
 pub struct ExportQuery {
     pub format: Option<String>,
+    /// The Leads screen's search box. Without it the operator searched the table, pressed Export,
+    /// and got every lead in the workspace — a file that does not match the rows in front of them.
+    pub q: Option<String>,
 }
 
 /// One RFC-4180 field: quote it when it carries a delimiter, a quote or a newline, and double any
@@ -1038,10 +1041,26 @@ pub async fn export_leads(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_flag(&state, tenant_id, "has_import_export", "Lead export").await?;
 
+    // The screen's search box narrows the table client-side; the FILE has to narrow the same way or
+    // the operator gets rows they had filtered out. An empty box means "everything", exactly as the
+    // table shows it.
+    let search = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("%{s}%"));
+
     let leads = sqlx::query_as::<_, Lead>(
-        "SELECT * FROM leads WHERE tenant_id = $1 ORDER BY created_at DESC",
+        "SELECT * FROM leads
+         WHERE tenant_id = $1
+           AND ($2::text IS NULL
+                OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
+                OR phone ILIKE $2 OR notes ILIKE $2)
+         ORDER BY created_at DESC",
     )
     .bind(tenant_id)
+    .bind(search)
     .fetch_all(&state.pool)
     .await?;
 
