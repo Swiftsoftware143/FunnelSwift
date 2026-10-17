@@ -549,6 +549,7 @@ function buildNav() {
   // Email Branding (kanban t_c06a32eb follow-up): the per-tenant email-branding backend shipped
   // with NO screen anywhere in this console. David's rule: "A backend route with no UI is a DEFECT".
   sections.push(`<div class="nav-item ${STATE.view==='emailBranding'?'active':''}" data-view="emailBranding"><span class="icon">🎨</span><span class="nav-text">Email Branding</span></div>`);
+  sections.push(`<div class="nav-item ${STATE.view==='leadCapture'?'active':''}" data-view="leadCapture"><span class="icon">🧲</span><span class="nav-text">Lead Capture</span></div>`);
 
   // Super Admin (divider + admin-only)
   if (isSuperAdmin()) {
@@ -601,6 +602,7 @@ const viewRenderers = {
   tagGroups: renderTagGroups,
   tenants: renderTenants,
   emailBranding: renderEmailBranding,
+  leadCapture: renderLeadCapture,
   settings: renderSettings,
   siteSettings: renderSiteSettings,
   tagRules: renderTagRules,
@@ -660,6 +662,7 @@ function bindView(view) {
     case 'tenants': bindTenants(); break;
     case 'settings': bindSettings(); break;
     case 'emailBranding': bindEmailBranding(); break;
+    case 'leadCapture': bindLeadCapture(); break;
     case 'siteSettings': bindSiteSettings(); break;
     case 'tagRules': bindTagRules(); break;
     case 'checkoutSessions': break;
@@ -3004,6 +3007,101 @@ function bindSettings() {}
 // BYTES live in `tenant_logos` (POST|DELETE /api/v1/settings/branding/logo, served by the public
 // GET /api/v1/branding/logo/:tenant_id). Every rendered mail opens with the header block, so a
 // tenant that sets nothing here simply sends with the app's own identity.
+// ── LEAD CAPTURE (web-to-lead forms) ──
+// The backend shipped complete — GET|POST /api/v1/web-to-lead/configs, PUT|DELETE /:id and
+// GET /:id/embed — with no screen anywhere in this console, so a customer could not create a
+// capture form or copy its snippet. David's rule: a backend route with no UI is a defect.
+async function renderLeadCapture() {
+  let rows = [];
+  try { const r = await api('/web-to-lead/configs'); rows = Array.isArray(r) ? r : ((r && r.data) || []); }
+  catch (e) { rows = []; }
+  let tags = [];
+  try { const t = await api('/tags'); tags = Array.isArray(t) ? t : ((t && t.data) || []); }
+  catch (e) { tags = []; }
+  const list = rows.length ? rows.map(f => `<tr>
+      <td><div style="font-weight:600">${x(f.name)}</div><div style="font-size:11px;color:#94a3b8">${x(f.form_title || '')}</div></td>
+      <td><span class="badge ${f.is_active?'badge-green':'badge-yellow'}">${f.is_active?'active':'paused'}</span></td>
+      <td style="font-size:11px;color:#64748b">${x((f.fields||[]).join(', ') || 'name, email')}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" data-embed="${x(f.id)}">Get code</button>
+        <button class="btn btn-secondary btn-sm" data-toggle="${x(f.id)}" data-on="${f.is_active?'1':'0'}">${f.is_active?'Pause':'Activate'}</button>
+        <button class="btn btn-secondary btn-sm" data-del="${x(f.id)}">Delete</button>
+      </td></tr>`).join('')
+    : `<tr><td colspan="4" style="padding:18px;color:#94a3b8;font-size:13px">No capture form yet. Create one above and its snippet will appear here.</td></tr>`;
+  const tagOpts = tags.map(t => `<option value="${x(t.id)}">${x(t.name)}</option>`).join('');
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">🧲 Lead Capture</h1>
+    <div style="font-size:13px;color:#64748b;margin-bottom:20px">Every form you make here gets a snippet you paste on any website. A visitor who fills it becomes a lead in this account, stamped with the tag you choose.</div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><span class="card-title">New capture form</span></div>
+      <div style="padding:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-group"><label class="form-label">Form name (internal)</label><input class="input" id="wtl-name" maxlength="80" placeholder="e.g. Website sidebar"></div>
+          <div class="form-group"><label class="form-label">Headline on the form</label><input class="input" id="wtl-title" maxlength="80" placeholder="Get Started"></div>
+        </div>
+        <div class="form-group" style="margin-top:6px"><label class="form-label">Fields shown</label>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px">
+            <label><input type="checkbox" id="wtl-f-name" checked> Name</label>
+            <label><input type="checkbox" id="wtl-f-email" checked> Email</label>
+            <label><input type="checkbox" id="wtl-f-phone"> Phone</label>
+            <label><input type="checkbox" id="wtl-f-company"> Company</label>
+          </div></div>
+        <div class="form-group"><label class="form-label">Tag every captured lead with</label>
+          <select class="input" id="wtl-tag"><option value="">— no tag —</option>${tagOpts}</select></div>
+        <button class="btn btn-primary btn-sm" id="wtl-create">Create form</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Your capture forms</span><span class="badge">${rows.length}</span></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th style="text-align:left">Form</th><th style="text-align:left">Status</th><th style="text-align:left">Fields</th><th></th></tr></thead><tbody>${list}</tbody></table></div>
+    </div>
+    <div id="wtl-embed-box" style="display:none;margin-top:20px" class="card">
+      <div class="card-header"><span class="card-title">Paste this on your site</span><button class="btn btn-secondary btn-sm" id="wtl-copy">Copy code</button></div>
+      <div style="padding:16px"><pre id="wtl-embed" style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;max-height:340px;overflow:auto"></pre>
+      <div style="font-size:11px;color:#94a3b8;margin-top:8px">The snippet carries your form's public key, so submissions land in this account without exposing anything in the page URL.</div></div>
+    </div>
+  </div>`;
+}
+
+function bindLeadCapture() {
+  document.getElementById('wtl-create')?.addEventListener('click', async () => {
+    const name = ((document.getElementById('wtl-name')||{}).value||'').trim();
+    const form_title = ((document.getElementById('wtl-title')||{}).value||'').trim();
+    if (!name) { showToast('Give the form a name first', 'error'); return; }
+    const fields = ['name','email','phone','company'].filter(f => { const el = document.getElementById('wtl-f-'+f); return el && el.checked; });
+    const tag = ((document.getElementById('wtl-tag')||{}).value||'').trim();
+    try {
+      await api('/web-to-lead/configs', { method: 'POST', body: JSON.stringify({ name: name, form_title: form_title || undefined, fields: fields, tag_ids: tag ? [tag] : [] }) });
+      showToast('Capture form created', 'success');
+    } catch (e) { showToast('Could not create the form: ' + e.message, 'error'); }
+  });
+  document.querySelectorAll('[data-toggle]').forEach(b => b.addEventListener('click', async () => {
+    try {
+      await api('/web-to-lead/configs/' + b.dataset.toggle, { method: 'PUT', body: JSON.stringify({ is_active: b.dataset.on !== '1' }) });
+      showToast(b.dataset.on === '1' ? 'Form paused' : 'Form activated', 'success');
+    } catch (e) { showToast('Could not update the form: ' + e.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete this capture form? Any site still showing its snippet will stop capturing leads.')) return;
+    try { await api('/web-to-lead/configs/' + b.dataset.del, { method: 'DELETE' }); showToast('Capture form deleted', 'success'); }
+    catch (e) { showToast('Could not delete the form: ' + e.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-embed]').forEach(b => b.addEventListener('click', async () => {
+    try {
+      const r = await api('/web-to-lead/configs/' + b.dataset.embed + '/embed');
+      const box = document.getElementById('wtl-embed-box');
+      const pre = document.getElementById('wtl-embed');
+      if (pre) pre.textContent = (r && r.embed_code) || '';
+      if (box) { box.style.display = ''; box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    } catch (e) { showToast('Could not load the snippet: ' + e.message, 'error'); }
+  }));
+  document.getElementById('wtl-copy')?.addEventListener('click', async () => {
+    const pre = document.getElementById('wtl-embed');
+    if (!pre) return;
+    try { await navigator.clipboard.writeText(pre.textContent || ''); showToast('Snippet copied', 'success'); }
+    catch (e) { showToast('Select the snippet and copy it manually', 'error'); }
+  });
+}
 async function renderEmailBranding() {
   let brand = {};
   try {
