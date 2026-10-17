@@ -1104,6 +1104,7 @@ async function renderLeads() {
       <h1 style="font-size:22px;font-weight:700">Leads</h1>
       <div class="btn-group">
         <div class="search-bar"><span class="search-icon">🔍</span><input class="input" id="lead-search" placeholder="Search leads..." style="width:200px"></div>
+        <button class="btn btn-secondary btn-sm" id="export-leads-btn">📥 Export CSV</button>
         <button class="btn btn-primary btn-sm" id="add-lead-btn">+ Add Lead</button>
       </div>
     </div>
@@ -1122,6 +1123,39 @@ async function renderLeads() {
 }
 function bindLeads() {
   document.getElementById('add-lead-btn')?.addEventListener('click', () => openLeadModal());
+  // The server has had GET /leads/export since it shipped, but nothing in this console ever
+  // called it — so an operator with a few hundred leads had no way to get them out, and the
+  // route answered JSON even when `format=csv` was asked for. This button is the missing caller:
+  // it asks for the CSV form and saves the response as a file, and it shows the PLAN REFUSAL when
+  // the workspace's tier has no import/export rather than a silent no-op.
+  document.getElementById('export-leads-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('export-leads-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+    try {
+      const term = (document.getElementById('lead-search')?.value || '').trim();
+      const r = await fetch(API_BASE + '/leads/export?format=csv' +
+        (term ? '&q=' + encodeURIComponent(term) : ''), {
+        headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        showToast((d && (d.error || d.message)) || ('Export failed (' + r.status + ')'), 'error');
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'leads-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('Leads exported', 'success');
+    } catch (e) {
+      showToast('Export failed: ' + ((e && e.message) || 'request failed'), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '📥 Export CSV'; }
+    }
+  });
   document.getElementById('lead-search')?.addEventListener('input', function() {
     const q = this.value.toLowerCase();
     document.querySelectorAll('#leads-tbody tr').forEach(tr => {
