@@ -12,7 +12,16 @@ use crate::error::{AppError, AppResult};
 use crate::features;
 use crate::handlers::workflowswift_push::{deliver_lead, LeadPush, PushOutcome};
 use crate::models::lead::*;
+use crate::security::lead_fields;
 use crate::state::AppState;
+
+/// Refuse a lead field the column cannot store, naming it, instead of letting the INSERT/UPDATE
+/// fail. Measured live 2026-10-17: `POST /api/v1/leads` with a 300-character `name` answered
+/// `500 {"error":"Database error"}`, and an 80-character `phone` did the same. The caps are the
+/// live column widths (see `security::lead_fields`).
+fn check_storable(field: &str, value: Option<&str>, cap: usize) -> AppResult<()> {
+    lead_fields::check(field, value, cap).map_err(AppError::UnprocessableEntity)
+}
 
 #[derive(Deserialize)]
 pub struct LeadQuery {
@@ -77,6 +86,23 @@ pub async fn create_lead(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // Before ANY write: a value the column cannot hold is refused with the field named.
+    check_storable("name", req.name.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_storable(
+        "first_name",
+        req.first_name.as_deref(),
+        lead_fields::TEXT_CHARS,
+    )?;
+    check_storable(
+        "last_name",
+        req.last_name.as_deref(),
+        lead_fields::TEXT_CHARS,
+    )?;
+    check_storable("email", req.email.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_storable("phone", req.phone.as_deref(), lead_fields::PHONE_CHARS)?;
+    check_storable("company", req.company.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_storable("source", req.source.as_deref(), lead_fields::SOURCE_CHARS)?;
+    check_storable("stage", req.stage.as_deref(), lead_fields::STAGE_CHARS)?;
     features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
 
     // Check for duplicate email within tenant
@@ -127,6 +153,13 @@ pub async fn create_lead(
             "A lead needs a name — supply `name`, or at least `first_name`".into(),
         ));
     };
+    // The composed name is what lands in `leads.name`; two individually-storable parts can still
+    // add up to more than the column holds, which used to be a 500 from the INSERT.
+    if display_name.chars().count() > lead_fields::TEXT_CHARS {
+        return Err(AppError::UnprocessableEntity(
+            "name: first_name and last_name together are longer than 255 characters".into(),
+        ));
+    }
 
     let lead_id = Uuid::new_v4();
     // The user account this lead flows through — the affiliate attribution anchor.
@@ -285,6 +318,26 @@ pub async fn update_lead(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // The update writes only the fields it was sent, so check exactly those (the stored value it
+    // falls back to already fits, or it would not be stored).
+    check_storable("name", req.name.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_storable(
+        "first_name",
+        req.first_name.as_deref(),
+        lead_fields::TEXT_CHARS,
+    )?;
+    check_storable(
+        "last_name",
+        req.last_name.as_deref(),
+        lead_fields::TEXT_CHARS,
+    )?;
+    check_storable("email", req.email.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_storable("phone", req.phone.as_deref(), lead_fields::PHONE_CHARS)?;
+    check_storable("company", req.company.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_storable("source", req.source.as_deref(), lead_fields::SOURCE_CHARS)?;
+    check_storable("stage", req.stage.as_deref(), lead_fields::STAGE_CHARS)?;
+    check_storable("status", req.status.as_deref(), lead_fields::STATUS_CHARS)?;
 
     let existing =
         sqlx::query_as::<_, Lead>("SELECT * FROM leads WHERE id = $1 AND tenant_id = $2")

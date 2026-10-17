@@ -99,9 +99,17 @@ pub async fn create_category(
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     let id = Uuid::new_v4();
+    // `product_categories.name` and `slug` are both `varchar(255)`, and the slug is DERIVED from
+    // the name — neither was checked, so a long category name answered the raw
+    // `500 {"error":"Database error"}` (measured live 2026-10-17). Check the name first, then the
+    // slug it produces, so the console names the field it can fix.
+    crate::security::display_name::check_len(&req.name, 255, "name")
+        .map_err(AppError::UnprocessableEntity)?;
     let slug = req
         .slug
         .unwrap_or_else(|| req.name.to_lowercase().replace(' ', "-"));
+    crate::security::display_name::check_len(&slug, 255, "slug")
+        .map_err(AppError::UnprocessableEntity)?;
 
     sqlx::query(
         "INSERT INTO product_categories (id, tenant_id, name, slug, description) VALUES ($1, $2, $3, $4, $5)"
@@ -145,6 +153,16 @@ pub async fn update_category(
     let name = req.name.or(ex.0);
     let slug = req.slug.or(ex.1);
     let desc = req.description.or(ex.2);
+
+    // The same two columns on the edit path (the stored value already fits; the new one may not).
+    if let Some(value) = name.as_deref() {
+        crate::security::display_name::check_len(value, 255, "name")
+            .map_err(AppError::UnprocessableEntity)?;
+    }
+    if let Some(value) = slug.as_deref() {
+        crate::security::display_name::check_len(value, 255, "slug")
+            .map_err(AppError::UnprocessableEntity)?;
+    }
 
     sqlx::query("UPDATE product_categories SET name=$1, slug=$2, description=$3 WHERE id=$4 AND tenant_id=$5")
         .bind(&name).bind(&slug).bind(&desc).bind(id).bind(tenant_id)

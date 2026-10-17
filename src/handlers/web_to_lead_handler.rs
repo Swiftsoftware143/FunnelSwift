@@ -63,6 +63,14 @@ pub async fn create_web_to_lead_config(
     let id = Uuid::new_v4();
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // `web_to_lead_configs.name` is `varchar(255)`; measured live 2026-10-17, a 300-character
+    // name answered a raw 500 from the INSERT. Refused here, naming the field.
+    crate::security::lead_fields::check(
+        "name",
+        Some(&payload.name),
+        crate::security::lead_fields::TEXT_CHARS,
+    )
+    .map_err(AppError::UnprocessableEntity)?;
     // An affiliate is never blocked by the plan's form limit.
     //
     // Measured 2026-10-01: public signup puts every new customer on `kinetic-free`, whose
@@ -122,6 +130,15 @@ pub async fn update_web_to_lead_config(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // The same two columns on the edit path (`name`, `default_source`, both `varchar(255)`).
+    for field in ["name", "default_source"] {
+        crate::security::lead_fields::check(
+            field,
+            payload.get(field).and_then(|v| v.as_str()),
+            crate::security::lead_fields::TEXT_CHARS,
+        )
+        .map_err(AppError::UnprocessableEntity)?;
+    }
     // This handler used to return {"message":"Config updated"} without touching the
     // database — an edit in the app looked saved and reverted on the next fetch.
     let mut mapping = json!({});
@@ -292,11 +309,27 @@ pub async fn handle_web_to_lead(
     )
     .bind(id)
     .bind(tenant_id)
-    .bind(payload["name"].as_str().unwrap_or(""))
-    .bind(payload["email"].as_str().unwrap_or(""))
+    // A stranger filled this form: an over-long company or a pasted phone must not lose the lead
+    // with a raw 500, so each value is cut to what its column holds instead of being refused
+    // (`security::lead_fields::fit`). Measured live 2026-10-17: the 255/50 columns were
+    // unguarded, so `POST /api/v1/leads` with a 300-character name answered 500.
+    .bind(crate::security::lead_fields::fit(
+        payload["name"].as_str().unwrap_or(""),
+        crate::security::lead_fields::TEXT_CHARS,
+    ))
+    .bind(crate::security::lead_fields::fit(
+        payload["email"].as_str().unwrap_or(""),
+        crate::security::lead_fields::TEXT_CHARS,
+    ))
     // phone and company were being dropped on the floor even when the form sent them.
-    .bind(payload["phone"].as_str())
-    .bind(payload["company"].as_str())
+    .bind(crate::security::lead_fields::fit_opt(
+        payload["phone"].as_str(),
+        crate::security::lead_fields::PHONE_CHARS,
+    ))
+    .bind(crate::security::lead_fields::fit_opt(
+        payload["company"].as_str(),
+        crate::security::lead_fields::TEXT_CHARS,
+    ))
     .bind(&source)
     .bind(affiliate_user)
     .bind(&tags_json)

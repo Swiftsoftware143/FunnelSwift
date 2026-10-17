@@ -25,6 +25,23 @@ use axum::Json;
 // the first-claim shape used in `set_custom_domain` below).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+/// `kinetic_cards.title` is `varchar(100)` and `slug` `varchar(50)`; both come straight from the
+/// editor, and neither create nor update checked them, so an over-long title answered the raw
+/// `500 {"error":"Database error"}` from the INSERT (measured live 2026-10-17). Refuse with the
+/// field named, before the write.
+const CARD_TITLE_CHARS: usize = 100;
+const CARD_SLUG_CHARS: usize = 50;
+
+fn check_card_text(body: &serde_json::Value) -> AppResult<()> {
+    for (key, cap) in [("title", CARD_TITLE_CHARS), ("slug", CARD_SLUG_CHARS)] {
+        if let Some(value) = body[key].as_str() {
+            crate::security::display_name::check_len(value, cap, key)
+                .map_err(AppError::UnprocessableEntity)?;
+        }
+    }
+    Ok(())
+}
+
 /// Resolve canonical URL from Host header
 /// kntcrd.com subdomain → https://{tenant}.kntcrd.com/k/{slug}
 /// funnelswift.net → 301 redirect to kntcrd.com (never canonical)
@@ -200,6 +217,7 @@ pub async fn create_card(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    check_card_text(&body)?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let id = Uuid::new_v4();
     let title = body["title"].as_str().unwrap_or("New Card");
@@ -290,6 +308,7 @@ pub async fn update_card(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    check_card_text(&body)?;
     // Plan gate: changing to a premium theme / premium catalogue template
     // requires the caller's plan to grant `premium_themes`.
     crate::features::enforce_theme_access(
@@ -1694,6 +1713,24 @@ pub async fn submit_lead(
     };
     let phone = card_lead_field(&body, "phone");
     let company = card_lead_field(&body, "company");
+    // A stranger filled this public form, so every text value is trimmed to the width its column
+    // holds instead of the capture dying on a raw 500 (`security::lead_fields::fit`).
+    // `leads.name`/`email`/`company` are `varchar(255)` and `phone` is `varchar(50)`; measured live
+    // 2026-10-17, an 80-character phone on the panel's create answered 500 with the same columns
+    // unguarded.
+    let name = crate::security::lead_fields::fit(&name, crate::security::lead_fields::TEXT_CHARS);
+    let email = crate::security::lead_fields::fit_opt(
+        email.as_deref(),
+        crate::security::lead_fields::TEXT_CHARS,
+    );
+    let phone = crate::security::lead_fields::fit_opt(
+        phone.as_deref(),
+        crate::security::lead_fields::PHONE_CHARS,
+    );
+    let company = crate::security::lead_fields::fit_opt(
+        company.as_deref(),
+        crate::security::lead_fields::TEXT_CHARS,
+    );
     let notes = card_lead_field(&body, "message").or_else(|| card_lead_field(&body, "notes"));
     let utm_source = card_lead_field(&body, "utm_source");
     let utm_medium = card_lead_field(&body, "utm_medium");
