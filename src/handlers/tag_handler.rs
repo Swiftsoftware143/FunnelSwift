@@ -20,6 +20,37 @@ fn clean_opt(v: Option<&str>) -> Option<String> {
     v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// `tags.name` is `varchar(255)` and `tags.color` `varchar(50)`. Neither writer checked either
+/// length, so an over-long value reached the INSERT/UPDATE and came back as the raw
+/// `500 {"error":"Database error"}` instead of a refusal the console can read. Measured live
+/// 2026-10-17: `POST /api/v1/tags {"name":"<300 chars>"}` -> 500 on a workspace that held a free tag
+/// slot, and the same 300-character value on a rename hit the UPDATE the same way. Same class the
+/// display-name module closed for people's names, applied at the last boundary that writes a
+/// `varchar(255)` the OPERATOR types (t_847f9d63 made these panel-editable, not seed-only).
+const TAG_NAME_CHARS: usize = 255;
+/// `tags.color` is `varchar(50)`.
+const TAG_COLOR_CHARS: usize = 50;
+
+/// Validate a tag name for STORAGE, or explain why it cannot be stored. Trims, requires a
+/// non-empty value, refuses one longer than the column, and refuses control characters (the name is
+/// rendered into HTML and into mail subjects). The caller binds the RETURNED value.
+fn clean_tag_name(raw: &str) -> AppResult<String> {
+    crate::security::display_name::normalize_capped(raw, TAG_NAME_CHARS, "name")
+        .map_err(AppError::UnprocessableEntity)
+}
+
+/// Refuse a colour the column cannot store. An absent key keeps whatever the row carries.
+fn check_tag_color(raw: Option<&str>) -> AppResult<()> {
+    if let Some(c) = raw {
+        if c.chars().count() > TAG_COLOR_CHARS {
+            return Err(AppError::UnprocessableEntity(format!(
+                "color: is longer than {TAG_COLOR_CHARS} characters"
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub async fn list_tags(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Vec<Tag>>> {
     let tenant_id: Uuid = auth
         .tenant_id
@@ -67,6 +98,10 @@ pub async fn create_tag(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // Refuse an unstorable name/colour BEFORE the write (see `clean_tag_name`), so the panel gets a
+    // 422 naming the field instead of a raw database error.
+    let name = clean_tag_name(&req.name)?;
+    check_tag_color(req.color.as_deref())?;
     features::enforce_feature_limit(&state, tenant_id, "max_tags", "Tags").await?;
     let tag_id = Uuid::new_v4();
 
@@ -83,7 +118,7 @@ pub async fn create_tag(
     )
     .bind(tag_id)
     .bind(tenant_id)
-    .bind(&req.name)
+    .bind(&name)
     .bind(&req.color)
     .bind(req.group_id)
     .bind(&req.metadata)
@@ -143,7 +178,13 @@ pub async fn update_tag(
     // event that makes the stored name wrong, so the rename is what rewrites it — in the same
     // transaction as the tag row, so a failure leaves neither half behind.
     let old_name = tag.name.clone();
-    let name = req.name.unwrap_or(tag.name);
+    // The RENAME path writes the same column, so it carries the same guard: a 300-character rename
+    // used to reach the UPDATE and answer a raw 500 (measured live 2026-10-17).
+    let name = match req.name.as_deref() {
+        Some(raw) => clean_tag_name(raw)?,
+        None => tag.name.clone(),
+    };
+    check_tag_color(req.color.as_deref())?;
     let color = req.color.or(tag.color);
     // kanban t_f94a8a00: `clear_group` is the ONLY way to ungroup a tag. Without it a group can be
     // SET and CHANGED but never CLEARED, because `req.group_id.or(tag.group_id)` reads both an absent
