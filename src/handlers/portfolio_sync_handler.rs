@@ -65,14 +65,17 @@ async fn mirror_tenant(
     tid: Uuid,
     name: &str,
     slug: &str,
+    email: &str,
 ) -> Result<(), AppError> {
     sqlx::query(
-        "INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        "INSERT INTO tenants (id, name, slug, email) \
+         VALUES ($1, $2, $3, NULLIF($4, '')) ON CONFLICT (id) DO NOTHING",
     )
     .bind(tid)
     .bind(name)
     .bind(slug)
-    .execute(tx)
+    .bind(email)
+    .execute(&mut *tx)
     .await
     .map_err(|e| match e {
         // The only unique guard this statement can trip which its arbiter does not absorb is
@@ -83,6 +86,35 @@ async fn mirror_tenant(
         ),
         other => other.into(),
     })?;
+
+    // A re-sync fills a blank address; it never rewrites one the operator already holds.
+    if !email.trim().is_empty() {
+        sqlx::query("UPDATE tenants SET email = $2 WHERE id = $1 AND email IS NULL")
+            .bind(tid)
+            .bind(email)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    // The fleet's standing rule: an owner/portfolio account sits on the TOP plan. This door is the
+    // one that creates portfolio tenants (SwiftImpact, ZaarHub, Giraudy — David's own businesses),
+    // and it used to leave them PLANLESS, so `resolved_limit` answered "not configured" (no cap)
+    // while every `has_*` flag resolved false — unlimited and crippled at once, and their own
+    // Analytics screen answered 402. The top plan is the highest-priced row (live: agency, 79),
+    // resolved by a column rather than a slug so a fresh install assigns its own top tier. Only
+    // when the tenant has NO active subscription, so a plan the operator assigned is never
+    // overwritten.
+    sqlx::query(
+        "INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
+         SELECT $1, $2, p.id, 'active', NOW() FROM plans p
+          WHERE NOT EXISTS (SELECT 1 FROM tenant_plan_subscriptions t
+                             WHERE t.tenant_id = $2 AND t.status = 'active')
+          ORDER BY p.price DESC, p.slug ASC LIMIT 1",
+    )
+    .bind(Uuid::new_v4())
+    .bind(tid)
+    .execute(&mut *tx)
+    .await?;
     Ok(())
 }
 
@@ -154,7 +186,7 @@ pub async fn portfolio_sync_internal(
                 // drift from itself).
                 let tenant_slug = resolve_tenant_slug(&name, &slug);
                 let mut tx = state.db.begin().await?;
-                mirror_tenant(&mut tx, tid, &name, &tenant_slug).await?;
+                mirror_tenant(&mut tx, tid, &name, &tenant_slug, &email).await?;
                 sqlx::query(SQL_COMPANY_UPSERT)
                     .bind(pid)
                     .bind(tid)
@@ -193,7 +225,7 @@ pub async fn portfolio_sync_internal(
                     // transaction covers the two rows that must land together (mirror parent +
                     // company), so a refusal leaves the DB untouched.
                     let mut tx = state.db.begin().await?;
-                    mirror_tenant(&mut tx, tid, &name, &tenant_slug).await?;
+                    mirror_tenant(&mut tx, tid, &name, &tenant_slug, &email).await?;
                     sqlx::query(SQL_COMPANY_UPSERT)
                         .bind(pid)
                         .bind(tid)
