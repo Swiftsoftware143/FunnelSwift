@@ -1711,6 +1711,11 @@ pub async fn submit_lead(
             "A card lead needs a name or an email".into(),
         ));
     };
+    // The plan's lead ceiling binds the CARD's capture door as well (`lead_handler` gates the panel's
+    // create, this public form was ungated). Measured live 2026-10-17 before this line: a tenant on
+    // `capture-free` (max_leads 100) holding 100 leads answered `POST /k/<slug>/lead` **201** and
+    // wrote a 101st row. Same helper, same key and same 402 sentence as the panel's create.
+    crate::features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
     let phone = card_lead_field(&body, "phone");
     let company = card_lead_field(&body, "company");
     // A stranger filled this public form, so every text value is trimmed to the width its column

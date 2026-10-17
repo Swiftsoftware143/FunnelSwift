@@ -260,6 +260,12 @@ pub async fn handle_web_to_lead(
         // An inactive form was still capturing leads.
         return Err(AppError::BadRequest("This form is switched off".into()));
     }
+    // The plan's lead ceiling binds THIS door too, not only the panel's create (`lead_handler`).
+    // Measured live 2026-10-17 before this line: a tenant on `capture-free` (max_leads 100) holding
+    // 100 leads answered `POST /api/v1/web-to-lead` **201** and wrote a 101st row — the public form
+    // is the door most leads actually arrive through, so leaving it ungated made the paid ceiling
+    // decorative. Same helper, same key and same 402 sentence the panel's create uses.
+    features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
     let tag_ids: Vec<Uuid> = tag_ids.unwrap_or_default();
 
     // The affiliate anchor. One affiliate per customer (migration 069 makes that unique), so a tenant
