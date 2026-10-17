@@ -220,6 +220,18 @@ pub async fn get_tenant(
     })))
 }
 
+/// `tenants.name`, `tenants.email` and `tenants.slug` are all `varchar(255)`, and the create path
+/// DERIVES the slug from the name when the caller sends none — neither was checked, so a long
+/// workspace name answered the raw `500 {"error":"Database error"}` from the INSERT (measured live
+/// 2026-10-17: `POST /api/v1/tenants {"name":"<300 chars>"}`). Refuse with the field named.
+fn check_tenant_text(value: Option<&str>, field: &str) -> crate::error::AppResult<()> {
+    match value {
+        Some(v) => crate::security::display_name::check_len(v, 255, field)
+            .map_err(crate::error::AppError::UnprocessableEntity),
+        None => Ok(()),
+    }
+}
+
 pub async fn create_tenant(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -230,11 +242,13 @@ pub async fn create_tenant(
     }
     let id = Uuid::new_v4();
     let name = req["name"].as_str().unwrap_or("New Tenant");
+    check_tenant_text(Some(name), "name")?;
     // The served admin screen (www/dashboard.js `STN`, www-app, www-admin) posts
     // {name, email, slug, status}. `email` is a real nullable column since migration 052
     // (the statement used to name a column that never existed -> ERROR 42703, so no tenant
     // could be created from that screen at all).
     let email = req.get("email").and_then(|v| v.as_str());
+    check_tenant_text(email, "email")?;
     // The same screen posts {name, email, slug, status} (`www/dashboard.js` STN). `status` is a
     // real column since migration 053; absent means the column default, i.e. the "active" the list
     // used to hard-code.
@@ -259,6 +273,7 @@ pub async fn create_tenant(
     } else {
         slug
     };
+    check_tenant_text(Some(&slug), "slug")?;
     let taken: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants WHERE slug = $1")
         .bind(&slug)
         .fetch_one(&state.pool)
@@ -298,6 +313,10 @@ pub async fn update_tenant(
         .and_then(|v| v.as_str())
         .filter(|s| !s.trim().is_empty());
     let email = req.get("email").and_then(|v| v.as_str());
+    // The same three columns on the edit path: a value the column cannot hold is refused with
+    // the field named rather than becoming a 500 from the UPDATE.
+    check_tenant_text(name, "name")?;
+    check_tenant_text(email, "email")?;
     // Absent status leaves the column alone (COALESCE below); a present one is validated first so a
     // bad value is a 400 and never a 23514 from `tenants_status_check`.
     let status = match req.get("status").and_then(|v| v.as_str()) {
@@ -309,6 +328,7 @@ pub async fn update_tenant(
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty());
+    check_tenant_text(slug, "slug")?;
     // slug is UNIQUE: check before writing, so a duplicate is a 409 and not a 500.
     if let Some(s) = slug {
         let taken: i64 =
