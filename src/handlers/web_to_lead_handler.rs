@@ -215,8 +215,21 @@ pub async fn get_web_to_lead_embed(
     // The public endpoint resolves the tenant from public_key, so a snippet without the key
     // (and pointing at a /embed.js that does not exist) could never capture a lead.
     let embed_code = format!(
-        "<form id=\"fsw-wtl-{id}\" onsubmit=\"event.preventDefault();fetch('https://funnelswift.net/api/v1/web-to-lead',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{public_key:'{public_key}',name:this.name.value,email:this.email.value}})}}).then(()=>this.reset());\">\n  <input name=\"name\" placeholder=\"Name\" required />\n  <input name=\"email\" type=\"email\" placeholder=\"Email\" required />\n  <button type=\"submit\">Send</button>\n</form>"
-    );
+        "<div id=\"fsw-wtl-{id}\">\n<form id=\"fsw-wtl-{id}-form\" onsubmit=\"return fswWtl(event,this,'{public_key}')\">\n  <input name=\"name\" placeholder=\"Name\" required />\n  <input name=\"email\" type=\"email\" placeholder=\"Email\" required />\n  <button type=\"submit\">Send</button>\n</form>\n<p class=\"fsw-wtl-msg\" style=\"font:14px/1.4 system-ui,sans-serif;margin:6px 0\"></p>\n</div>\n"
+    ) + r#"<script>
+function fswWtl(e,f,k){
+  e.preventDefault();
+  var m=f.parentNode.querySelector('.fsw-wtl-msg');
+  m.textContent='Sending...';m.style.color='#475569';
+  fetch('https://funnelswift.net/api/v1/web-to-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({public_key:k,name:f.name.value,email:f.email.value})})
+  .then(function(r){return r.json().catch(function(){return{};}).then(function(j){
+    if(!r.ok){throw new Error(j.error||('Error '+r.status));}
+    f.reset();m.style.color='#15803d';m.textContent='Thanks - we got your details.';
+  });})
+  .catch(function(err){m.style.color='#b91c1c';m.textContent='Sorry, that did not send: '+err.message;});
+  return false;
+}
+</script>"#;
     Ok(Json(json!({
         "embed_code": embed_code,
         "public_key": public_key.to_string(),
