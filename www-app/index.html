@@ -710,9 +710,10 @@ function D(){
          NO caller on any served page (measured 2026-10-16, grep over every served root), while this
          card already named the allowances. Each figure is now the server's own count beside the
          allowance THIS plan row carries (`current_plan`), so what a tenant reads here and what the
-         gate compares come from one pair of reads. A counter with no usage endpoint (QR codes) keeps
-         its allowance alone, and an unread usage payload renders the allowance exactly as before. */
-      var pairs=[["Leads","max_leads","leads"],["Cards","max_cards","cards"],["Forms","max_forms","forms"],["QR codes","max_qr_codes",null],["Tags","max_tags","tags"],["Domains","max_custom_domains","domains"],["Team","max_team_members","team"]];
+         gate compares come from one pair of reads. Every counter this card names now has a usage
+         key — QR codes joined last, once `/me/usage` grew the arm the gate already used — and an
+         unread usage payload still renders the allowance exactly as before. */
+      var pairs=[["Leads","max_leads","leads"],["Cards","max_cards","cards"],["Forms","max_forms","forms"],["QR codes","max_qr_codes","qr_codes"],["Tags","max_tags","tags"],["Domains","max_custom_domains","domains"],["Team","max_team_members","team"]];
       var bits=[];
       for(var pi=0;pi<pairs.length;pi++){var lim=cp[pairs[pi][1]],uk=pairs[pi][2],uu=(uk&&USG&&USG[uk]!==undefined)?USG[uk]:null;
         // `-1` is this app's storage convention for "unlimited" (kinetic-pro's max_leads / max_tags).

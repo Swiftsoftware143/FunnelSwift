@@ -451,6 +451,11 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
     let forms = get_usage_count(state, tenant_id, "max_forms").await;
     let domains = get_usage_count(state, tenant_id, "max_custom_domains").await;
     let team = get_usage_count(state, tenant_id, "max_team_members").await;
+    // `max_qr_codes` already had a counting arm (the plan GATE enforces it); it was simply not in
+    // this payload, so the dashboard's QR-codes counter had no figure to put beside its allowance
+    // and rendered the allowance alone ("QR codes 5") while every other counter read "used / limit".
+    // One more counter on the same read, so the dashboard and the gate still come from one source.
+    let qr_codes = get_usage_count(state, tenant_id, "max_qr_codes").await;
 
     serde_json::json!({
         "cards": cards,
@@ -458,7 +463,8 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
         "tags": tags,
         "forms": forms,
         "domains": domains,
-        "team": team
+        "team": team,
+        "qr_codes": qr_codes
     })
 }
 
