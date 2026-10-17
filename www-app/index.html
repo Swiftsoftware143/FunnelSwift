@@ -152,6 +152,9 @@ tr:hover{background:#f8fafc}
   <a data-tab="leads" onclick="S('leads')">Leads</a>
   <a data-tab="upgrade" onclick="S('upgrade')" style="color:#fbbf24;font-weight:600">⭐ Upgrade</a>
   <a data-tab="cards" onclick="S('cards')">Kinetic Cards</a>
+  <!-- the workspace's OWN card performance: GET /api/v1/analytics/overview
+       existed with no screen, so a tenant could not see its views or clicks at all. -->
+  <a data-tab="analytics" onclick="S('analytics')">Analytics</a>
   <a data-tab="tags" onclick="S('tags')">My Tags</a>
   <a data-tab="tg" onclick="S('tg')">My Tag Groups</a>
   <!-- "My Affiliate" is the TENANT's own programme screen (join the programme, pick what you promote,
@@ -258,6 +261,7 @@ initAccordions();
 
 /* ═══ INLINE HELP SYSTEM — slide-out panel with per-section tips ═══ */
 var helpContent={
+  "analytics":'<h4>Analytics</h4><p>Views, clicks and shares for every card in this workspace, plus the visitors counted once per session. The table ranks your cards by views, so you can see which one earns the traffic. A card with no traffic yet does not appear until it is viewed. <strong>Analytics is part of the paid plans</strong> — on the free plan this screen shows the plans instead.',
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
   "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — admin-managed system tags are shared with every account</li><li><strong>Status</strong> tracks progress (the leads list badge and the Edit modal both edit it): new → contacted → qualified → converted → lost. The tenant pipeline on the <strong>Lead Stages</strong> screen is a separate field (Stage).</li></ul>',
   "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Each card type has its own URL route:</p><ul><li><code>/k/slug</code> — Kinetic Card (original)</li><li><code>/b/slug</code> — Bio Link</li><li><code>/c/slug</code> — Digital Business Card</li><li><code>/m/slug</code> — Micro Page</li><li><code>/f/slug</code> — Mini Funnel</li><li><code>/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
@@ -331,7 +335,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+var TI={dashboard:"Dashboard",analytics:"Analytics",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -364,7 +368,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,profile:LPROF,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
   if(t==="upgrade") LPU();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -3181,6 +3185,58 @@ function LWGate(){
   var f=p.features,v=(f&&f.webhooks!==undefined&&f.webhooks!==null)?f.webhooks:p.has_webhooks;
   return v===true||v==="true"||v===1||v==="1";
 }
+/* === ANALYTICS — the workspace's OWN card performance =====================================
+   `GET /api/v1/analytics/overview` (card_analytics_handler::get_tenant_analytics) has existed
+   with NO screen: the operator console reads it, and a workspace could not see its own views,
+   clicks or shares anywhere. A backend route with no UI is a defect; this is the screen.
+   The route is plan-gated (`has_analytics`), so the plan is read FIRST and a workspace without
+   the feature gets an honest upgrade pane instead of a call the middleware refuses. */
+function HASAN(){
+  var p=U&&U.current_plan;
+  if(!p) return true;                       // unknown plan: let the API be the judge
+  var f=p.features,v=(f&&f.analytics!==undefined&&f.analytics!==null)?f.analytics:p.has_analytics;
+  return v===true||v==="true"||v===1||v==="1";
+}
+function LAAN(){
+  if(!HASAN()){
+    $("ct").innerHTML='<div class="cc"><h3>Analytics</h3>'
+      +'<p style="color:#64748b;font-size:13px;padding:4px 0">Views, clicks and the cards that earn them are part of the paid plans. This workspace is on <strong>'
+      +X((U&&U.current_plan&&U.current_plan.name)||"the free plan")+'</strong>.</p>'
+      +'<button class="btn btn-p" onclick="S(\'upgrade\')" style="margin-top:8px">See the plans</button></div>';
+    return;
+  }
+  function stat(label,val){
+    return '<div class="cc" style="flex:1;min-width:130px;margin:0">'
+      +'<p style="margin:0;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.04em">'+label+'</p>'
+      +'<p style="margin:6px 0 0;font-size:24px;font-weight:700">'+val+'</p></div>';
+  }
+  api("/api/v1/analytics/overview").then(function(d){
+    d=d||{};
+    function n(v){return (typeof v==="number")?v:(parseInt(v,10)||0);}
+    var cards=Array.isArray(d.top_cards)?d.top_cards:[];
+    var rows=cards.map(function(c){
+      return '<tr><td>'+X(c.card_title||"—")+'</td><td>'+(c.card_type?X(c.card_type):"—")+'</td>'
+        +'<td style="text-align:right">'+n(c.views)+'</td>'
+        +'<td style="text-align:right">'+n(c.clicks)+'</td>'
+        +'<td style="text-align:right">'+n(c.shares)+'</td></tr>';
+    }).join("");
+    $("ct").innerHTML='<div class="cc"><h3>Analytics</h3>'
+      +'<p style="color:#64748b;font-size:13px;margin-bottom:12px">How your cards performed — every view, click and share recorded against this workspace.</p>'
+      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">'
+      +stat("Cards",n(d.total_cards))+stat("Active cards",n(d.active_cards))
+      +stat("Views",n(d.total_views))+stat("Clicks",n(d.total_clicks))
+      +stat("Unique visitors",n(d.unique_visitors))
+      +'</div>'
+      +(rows?'<table><tr><th>Card</th><th>Type</th><th style="text-align:right">Views</th>'
+             +'<th style="text-align:right">Clicks</th><th style="text-align:right">Shares</th></tr>'+rows+'</table>'
+            :'<p style="color:#64748b;padding:18px;text-align:center">No card traffic recorded yet. Share a card and its views appear here.</p>')
+      +'</div>';
+  }).catch(function(e){
+    if(String((e&&e.message)||"")==="upgrade_required") return;   // api() already opened the upgrade modal
+    $("ct").innerHTML='<div class="cc"><h3>Analytics</h3><p style="color:#dc2626">Could not read your analytics: '
+      +X((e&&e.message)||"unknown error")+'</p></div>';
+  });
+}
 function LW(){
   api("/api/v1/webhooks").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
@@ -4084,6 +4140,7 @@ function SG(id,returnTab,isSystem){
 /* Inline guide content, one entry per screen. The widget shows the entry for the tab that is open;
    FunnelSwift's console switches tabs in JS, so it is told via window.inlineGuidePage(tab). */
 window.appGuidePages = {
+  analytics:   { title: "Analytics", desc: "How the cards in this workspace performed: views, clicks and shares, the visitors counted once per session, and your cards ranked by views. Analytics is part of the paid plans \u2014 on the free plan the screen says so and points at the plans.", actions: ["See which card earns the most views", "Check clicks and shares beside each card", "Upgrade if your plan does not include it"] },
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
   profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you.", actions: ["Update your name and company", "Upload a profile picture", "Change your password"] },
   leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms.", actions: ["Filter and search", "Apply tags", "Export"] },
