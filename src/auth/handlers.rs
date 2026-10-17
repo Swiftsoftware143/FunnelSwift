@@ -99,15 +99,25 @@ pub async fn register(
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
         .to_string();
 
-    // Create tenant
+    // Create tenant. ONE name drives BOTH columns (measured defect, 2026-10-17): this door defaulted
+    // the workspace NAME to "My Workspace" and the SLUG prefix to "default", so every account minted
+    // through it — the native app's fallback, an integration, a harness that does not send
+    // `tenant_name` — landed in the operator's tenant list as an identical "My Workspace" row under a
+    // `default-…` slug, indistinguishable from the next one. The PUBLIC signup
+    // (`handlers::public_signup_handler`) has always derived "<name>'s Workspace" from the person's
+    // own name; this door now does the same, and `display_name::normalize` above has already refused
+    // an empty name, so the fallback only covers a whitespace-only `tenant_name`.
     let tenant_id = Uuid::new_v4();
+    let workspace_name = req
+        .tenant_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{}'s Workspace", req.name.trim()));
     let tenant_slug = format!(
         "{}-{}",
-        req.tenant_name
-            .as_deref()
-            .unwrap_or("default")
-            .to_lowercase()
-            .replace(' ', "-"),
+        crate::security::display_name::slugify(&workspace_name),
         Uuid::new_v4().to_string().get(..8).unwrap_or("x")
     );
     // Mark the tenant as harness-created: the `X-Swift-Harness` header when the caller sent one,
@@ -126,11 +136,7 @@ pub async fn register(
 
     sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
-        .bind(
-            req.tenant_name
-                .clone()
-                .unwrap_or_else(|| "My Workspace".to_string()),
-        )
+        .bind(&workspace_name)
         .bind(&tenant_slug)
         .bind(&probe_harness)
         .execute(&mut *tx)

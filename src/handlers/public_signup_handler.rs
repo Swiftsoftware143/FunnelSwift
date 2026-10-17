@@ -140,7 +140,7 @@ pub async fn public_signup(
     let tenant_id = Uuid::new_v4();
     let tenant_slug = format!(
         "{}-{}",
-        name.to_lowercase().replace(' ', "-"),
+        crate::security::display_name::slugify(&name),
         Uuid::new_v4()
             .to_string()
             .chars()

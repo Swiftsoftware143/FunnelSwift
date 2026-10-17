@@ -117,7 +117,7 @@ pub async fn portfolio_sync(
 
     // Create tenant
     let tenant_id = Uuid::new_v4();
-    let tenant_slug = name.to_lowercase().replace(' ', "-");
+    let tenant_slug = crate::security::display_name::slugify(&name);
 
     sqlx::query("INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)")
         .bind(tenant_id)

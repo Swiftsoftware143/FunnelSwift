@@ -68,6 +68,36 @@ pub fn check_len(raw: &str, max_chars: usize, label: &str) -> Result<(), String>
     Ok(())
 }
 
+/// The ONE shape of `tenants.slug`, shared by every provisioning site.
+///
+/// Lowercase, spaces to dashes, and then ONLY `[a-z0-9_-]` survives. The last step is the one that
+/// matters: two writers (`auth::handlers::register` and `handlers::public_signup_handler`) built the
+/// slug by hand from a user-supplied name, so an apostrophe or an accented letter landed in the
+/// identifier — measured 2026-10-17, `"Zed Naming's Workspace"` produced the slug
+/// `zed-naming's-workspace-516ad5b6`, which is not a URL-safe identifier and no slug lookup can be
+/// written against it. `tenant_handler::slugify` already applied this filter; this is that function,
+/// moved where every writer can reach it.
+pub fn slugify(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut last_was_dash = false;
+    for c in name.trim().to_lowercase().chars() {
+        let c = if c == ' ' { '-' } else { c };
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+            last_was_dash = false;
+        } else if c == '-' && !last_was_dash && !out.is_empty() {
+            // Squeezed and never leading: dropping an accented first letter must not leave the
+            // identifier starting with a dash (`Ó Súilleabháin` -> `silleabhin`, not `-silleabhin`).
+            out.push('-');
+            last_was_dash = true;
+        }
+        // Anything else (an apostrophe, an accented letter) is DROPPED, not transliterated.
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +138,21 @@ mod tests {
         assert_eq!(normalize("   "), Err("name: is required".to_string()));
         assert_eq!(normalize(""), Err("name: is required".to_string()));
         assert!(normalize("Ada\nLovelace").is_err());
+    }
+
+    #[test]
+    fn a_slug_is_an_identifier_not_a_sentence() {
+        // Measured live 2026-10-17: the register door built the slug by hand and produced
+        // `zed-naming's-workspace-516ad5b6` — an apostrophe in a UNIQUE identifier that no slug
+        // lookup or URL can address. The shared helper drops everything outside `[a-z0-9_-]`.
+        assert_eq!(slugify("Zed Naming's Workspace"), "zed-namings-workspace");
+        assert_eq!(slugify("  Acme Roofing  "), "acme-roofing");
+        assert_eq!(slugify("Ó Súilleabháin Ltd"), "silleabhin-ltd");
+        // A name that is ALREADY a clean slug is unchanged, so existing shapes do not move.
+        assert_eq!(
+            slugify("swiftsoftware-admin-2026"),
+            "swiftsoftware-admin-2026"
+        );
     }
 
     #[test]

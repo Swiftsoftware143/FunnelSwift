@@ -1,6 +1,7 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::handlers::plan_handler::set_active_plan;
+use crate::security::display_name::slugify;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -10,15 +11,10 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-/// Tenant slug shape used by every other provisioning site in the app
-/// (`admin_handler.rs:70`, `auth/handlers.rs`, `public_signup_handler.rs`):
-/// lowercased, spaces to dashes. `tenants.slug` is NOT NULL + UNIQUE.
-fn slugify(name: &str) -> String {
-    let slug = name.trim().to_lowercase().replace(' ', "-");
-    slug.chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-        .collect()
-}
+// The tenant-slug shape lives in ONE place (`security::display_name::slugify`): lowercased, spaces
+// to dashes, then only `[a-z0-9_-]`. `tenants.slug` is NOT NULL + UNIQUE. This module used to carry
+// its own private copy while two signup writers hand-rolled the same transform WITHOUT the character
+// filter, which is how an apostrophe reached a live slug (measured 2026-10-17).
 
 /// `tenants.status` (migration 053, NOT NULL DEFAULT 'active') — the tenant/workspace lifecycle
 /// flag the admin screen's Status column reads and its edit modal writes. The screen offers exactly
