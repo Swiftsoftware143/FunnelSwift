@@ -99,6 +99,11 @@ document.getElementById("v-rs").style.display="none";
 var f=document.getElementById("fm");if(f){f.className="msg";f.textContent=""}
 var r=document.getElementById("rm");if(r){r.className="msg";r.textContent=""}
 }
+/* Arrive on the reset-request pane directly when the URL says so (`?forgot=1`, `#forgot`).
+   The admin console's "Forgot password?" link points here, so an operator who cannot sign in
+   gets the email box in one click instead of the sign-in box and a second hunt for the link.
+   No behaviour changes for a plain visit to /login.html. */
+(function(){ if(/[?&#](forgot|reset)\b/.test(location.search+location.hash) && typeof showForgot==="function") showForgot(); })();
 function R(){
 var e=document.getElementById("fe").value.trim(),m=document.getElementById("fm"),b=document.getElementById("fb");
 if(!e){m.className="msg e";m.textContent="Enter your email";return}
