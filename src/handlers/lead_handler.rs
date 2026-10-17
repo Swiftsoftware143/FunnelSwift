@@ -1,8 +1,10 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
@@ -1004,11 +1006,32 @@ pub struct ExportQuery {
     pub format: Option<String>,
 }
 
+/// One RFC-4180 field: quote it when it carries a delimiter, a quote or a newline, and double any
+/// embedded quote. A lead's `notes` is free text, so an unescaped comma there would shift every
+/// later column of that row by one — the classic broken export.
+fn csv_field(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// `GET /api/v1/leads/export?format=csv` — every lead of the caller's own workspace, as a file.
+///
+/// The route used to answer a JSON body for EVERY format, echoing `"format": "csv"` back when that
+/// was what the caller asked for: anyone who saved the response as `.csv` got a JSON document, so
+/// the export existed in name only — and the console had no control that called it at all. A
+/// feature flag (`has_import_export`) is enforced here, which is why the console has to surface the
+/// plan refusal rather than pretending the download worked.
+///
+/// `format=csv` now streams a real file with a download name; the JSON shape stays the default so
+/// an existing caller is untouched.
 pub async fn export_leads(
     auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ExportQuery>,
-) -> AppResult<Json<serde_json::Value>> {
+) -> AppResult<Response> {
     let tenant_id: Uuid = auth
         .tenant_id
         .parse()
@@ -1021,6 +1044,58 @@ pub async fn export_leads(
     .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
+
+    let wanted = query
+        .format
+        .as_deref()
+        .unwrap_or("json")
+        .trim()
+        .to_ascii_lowercase();
+
+    if wanted == "csv" {
+        let mut out = String::with_capacity(leads.len() * 128 + 64);
+        out.push_str("Name,Email,Phone,Company,Source,Stage,Status,Score,Notes,Created\n");
+        for l in &leads {
+            let name = l
+                .name
+                .clone()
+                .or_else(|| match (&l.first_name, &l.last_name) {
+                    (Some(f), Some(la)) => Some(format!("{f} {la}")),
+                    (Some(f), None) => Some(f.clone()),
+                    (None, Some(la)) => Some(la.clone()),
+                    (None, None) => None,
+                })
+                .unwrap_or_default();
+            let row = [
+                csv_field(&name),
+                csv_field(l.email.as_deref().unwrap_or("")),
+                csv_field(l.phone.as_deref().unwrap_or("")),
+                csv_field(l.company.as_deref().unwrap_or("")),
+                csv_field(l.source.as_deref().unwrap_or("")),
+                csv_field(l.stage.as_deref().unwrap_or("")),
+                csv_field(l.status.as_deref().unwrap_or("")),
+                l.score.map(|s| s.to_string()).unwrap_or_default(),
+                csv_field(l.notes.as_deref().unwrap_or("")),
+                l.created_at.to_rfc3339(),
+            ];
+            out.push_str(&row.join(","));
+            out.push('\n');
+        }
+
+        let filename = format!("leads-{}.csv", Utc::now().format("%Y-%m-%d"));
+        return Ok((
+            [
+                (header::CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{filename}\""),
+                ),
+                (header::CACHE_CONTROL, "no-store".to_string()),
+            ],
+            out,
+        )
+            .into_response());
+    }
 
     let csv_leads: Vec<serde_json::Value> = leads
         .iter()
@@ -1045,5 +1120,6 @@ pub async fn export_leads(
         "format": query.format.as_deref().unwrap_or("json"),
         "count": leads.len(),
         "data": csv_leads
-    })))
+    }))
+    .into_response())
 }
