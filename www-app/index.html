@@ -715,8 +715,11 @@ function D(){
       var pairs=[["Leads","max_leads","leads"],["Cards","max_cards","cards"],["Forms","max_forms","forms"],["QR codes","max_qr_codes",null],["Tags","max_tags","tags"],["Domains","max_custom_domains","domains"],["Team","max_team_members","team"]];
       var bits=[];
       for(var pi=0;pi<pairs.length;pi++){var lim=cp[pairs[pi][1]],uk=pairs[pi][2],uu=(uk&&USG&&USG[uk]!==undefined)?USG[uk]:null;
-        // A zero allowance is words, not "0/0": the plan does not grant the thing at all.
-        var limTxt=(lim===null||lim===undefined)?"\u221e":(lim===0?"not on this plan":String(lim));
+        // `-1` is this app's storage convention for "unlimited" (kinetic-pro's max_leads / max_tags).
+        // A zero allowance is words, not "0/0": the plan does not grant the thing at all. A negative
+        // one is the SAME thing the NULL case means, so it renders the same glyph instead of a
+        // literal "-1" on the customer's own dashboard (kanban t_8724c2bf).
+        var limTxt=(lim===null||lim===undefined)?"\u221e":(Number(lim)<0?"\u221e":(lim===0?"not on this plan":String(lim)));
         var over=(uu!==null&&typeof lim==="number"&&lim>0&&uu>lim)?" \u26a0":"";
         bits.push(X(pairs[pi][0])+" "+((uu===null)?limTxt:(uu+" / "+limTxt))+over);}
       h+='<div style="color:#64748b;font-size:12px;margin-top:4px">'+bits.join(" \u00b7 ")+'</div>';
@@ -4028,7 +4031,7 @@ function SG(id,returnTab,isSystem){
 
 
 </script>
-<script src="/upgrade.js?v=118d5089"></script>
+<script src="/upgrade.js?v=5366ae3b"></script>
 <!-- Cookie Consent Banner -->
 <div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#0f172a;color:#e2e8f0;z-index:99999;padding:16px 24px;font-family:system-ui,sans-serif;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.4);display:none">
   <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">

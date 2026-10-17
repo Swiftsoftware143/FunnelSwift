@@ -39,7 +39,10 @@ function renderUpgrade(plans){
       {l:'Forms',v:p.max_forms},{l:'Leads',v:p.max_leads},
       {l:'Tags',v:p.max_tags},{l:'Domains',v:p.max_custom_domains}
     ].forEach(function(x){
-      var v = (x.v !== null && x.v !== undefined) ? x.v : String.fromCharCode(8734);
+      // `-1` is this app's storage convention for "unlimited" (plans.max_leads / max_tags carry it
+      // on kinetic-pro). Only NULL used to render as the glyph, so a -1 printed as the literal text
+      // "-1" beside a price on a buying surface (measured 2026-10-17, kanban t_8724c2bf).
+      var v = (x.v === null || x.v === undefined || Number(x.v) < 0) ? String.fromCharCode(8734) : x.v;
       html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">'+x.l+'</span><span style="font-weight:600">'+v+'</span></div>';
     });
     

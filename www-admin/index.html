@@ -3590,8 +3590,8 @@ async function renderPlanAdmin() {
           <td><strong>${x(p.name)}</strong></td>
           <td><code>${x(p.slug)}</code></td>
           <td>${formatCurrency(p.price)}</td>
-          <td>${p.max_leads == null ? '∞' : x(p.max_leads)}</td>
-          <td>${p.max_tags == null ? '∞' : x(p.max_tags)}</td>
+          <td>${fmtPlanLimit(p.max_leads)}</td>
+          <td>${fmtPlanLimit(p.max_tags)}</td>
           <td>${p.payment_provider ? `<span class="badge badge-blue">${x(p.payment_provider)}</span>` : '-'}</td>
           <td><code style="font-size:11px">${x(JSON.stringify(p.features || {}).slice(0, 50))}</code></td>
           <td><button class="btn btn-secondary btn-xs" data-plan-edit="${x(p.id)}">Edit Features</button></td>
