@@ -12,6 +12,19 @@ use crate::features;
 use crate::models::tag_group::*;
 use crate::state::AppState;
 
+/// `tag_groups.name` is `varchar(255)` and neither writer checked it, so an over-long group name
+/// typed into the panel reached the INSERT/UPDATE and came back as the raw
+/// `500 {"error":"Database error"}`. Measured live 2026-10-17: `POST /api/v1/tag-groups` with a
+/// 300-character name answered 500, and the same value on a rename hit the UPDATE the same way.
+/// Call it BEFORE the write (same boundary the tag-name fix uses) so the console gets a 422 that
+/// names the field, and bind the RETURNED value.
+const GROUP_NAME_CHARS: usize = 255;
+
+fn clean_group_name(raw: &str) -> AppResult<String> {
+    crate::security::display_name::normalize_capped(raw, GROUP_NAME_CHARS, "name")
+        .map_err(AppError::UnprocessableEntity)
+}
+
 pub async fn list_tag_groups(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -87,6 +100,7 @@ pub async fn create_tag_group(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let name = clean_group_name(&req.name)?;
     features::enforce_feature_limit(&state, tenant_id, "max_tag_groups", "Tag groups").await?;
     let group_id = Uuid::new_v4();
 
@@ -95,7 +109,7 @@ pub async fn create_tag_group(
     )
     .bind(group_id)
     .bind(tenant_id)
-    .bind(&req.name)
+    .bind(&name)
     .bind(req.is_collapsible.unwrap_or(true))
     .bind(req.sort_order.unwrap_or(0))
     .execute(&state.pool)
@@ -126,7 +140,12 @@ pub async fn update_tag_group(
             .await?
             .ok_or_else(|| AppError::NotFound("Tag group not found".into()))?;
 
-    let name = req.name.unwrap_or(existing.name);
+    // A rename is validated before the UPDATE for the same reason the create is: the column
+    // cannot hold it, so it must be refused with a readable reason rather than a database error.
+    let name = match req.name {
+        Some(raw) => clean_group_name(&raw)?,
+        None => existing.name,
+    };
     let is_collapsible = req.is_collapsible.unwrap_or(existing.is_collapsible);
     let sort_order = req.sort_order.unwrap_or(existing.sort_order);
 

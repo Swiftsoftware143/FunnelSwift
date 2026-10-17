@@ -12,6 +12,21 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
+/// Column widths the campaign writers bind into, read from the live schema: `campaigns.name`
+/// `varchar(255)`, `campaign_type` `varchar(64)`, `status` `varchar(32)` (`description` is `text`).
+/// Neither writer checked any of them, so an over-long name posted from the panel reached the
+/// INSERT/UPDATE and came back as the raw `500 {"error":"Database error"}` — the same class the
+/// tag-name fix closed on `tags`.
+const CAMPAIGN_NAME_CHARS: usize = 255;
+const CAMPAIGN_TYPE_CHARS: usize = 64;
+const CAMPAIGN_STATUS_CHARS: usize = 32;
+
+/// Refuse a value the column cannot store, naming the field the way the panel labels it.
+fn check_storable(value: &str, max_chars: usize, label: &str) -> AppResult<()> {
+    crate::security::display_name::check_len(value, max_chars, label)
+        .map_err(AppError::UnprocessableEntity)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateCampaignRequest {
     pub name: String,
@@ -78,6 +93,15 @@ pub async fn create_campaign(
 
     let campaign_id = Uuid::new_v4().to_string();
 
+    // Refused before the write, so the console shows the field instead of a server error.
+    check_storable(&req.name, CAMPAIGN_NAME_CHARS, "name")?;
+    if let Some(t) = req.campaign_type.as_deref() {
+        check_storable(t, CAMPAIGN_TYPE_CHARS, "type")?;
+    }
+    if let Some(s) = req.status.as_deref() {
+        check_storable(s, CAMPAIGN_STATUS_CHARS, "status")?;
+    }
+
     sqlx::query(
         "INSERT INTO campaigns (id, tenant_id, name, campaign_type, description, status) VALUES ($1, $2, $3, $4, $5, $6)",
     )
@@ -133,6 +157,17 @@ pub async fn update_campaign(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // A rename or a status/type change carries the risk on the UPDATE exactly as the create does.
+    if let Some(n) = req.name.as_deref() {
+        check_storable(n, CAMPAIGN_NAME_CHARS, "name")?;
+    }
+    if let Some(t) = req.campaign_type.as_deref() {
+        check_storable(t, CAMPAIGN_TYPE_CHARS, "type")?;
+    }
+    if let Some(s) = req.status.as_deref() {
+        check_storable(s, CAMPAIGN_STATUS_CHARS, "status")?;
+    }
 
     let res = sqlx::query(
         "UPDATE campaigns SET \

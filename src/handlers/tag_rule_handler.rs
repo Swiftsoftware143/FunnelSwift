@@ -21,6 +21,31 @@ fn opt_uuid(payload: &Value, key: &str) -> Option<Uuid> {
     payload[key].as_str().and_then(|s| Uuid::parse_str(s).ok())
 }
 
+/// Column widths these writers bind into, straight from the live schema: `tag_rules.name`
+/// `varchar(255)`, `action_type` `varchar(50)`, `target_app` `varchar(100)` (`description` is
+/// `text`, so it needs no cap). None of them was checked, so an over-long value reached the
+/// INSERT/UPDATE and came back as the raw `500 {"error":"Database error"}` instead of a refusal the
+/// console can read — the same hole the tag-name fix closed on `tags`.
+const RULE_NAME_CHARS: usize = 255;
+const RULE_ACTION_TYPE_CHARS: usize = 50;
+const RULE_TARGET_APP_CHARS: usize = 100;
+
+/// Refuse a value the column cannot store, naming the field, so the panel can show the reason.
+fn check_storable(value: &str, max_chars: usize, label: &str) -> AppResult<()> {
+    crate::security::display_name::check_len(value, max_chars, label)
+        .map_err(AppError::UnprocessableEntity)
+}
+
+/// The update path only touches the keys it was sent, so check exactly those.
+fn check_storable_keys(payload: &Value, keys: &[(&str, usize)]) -> AppResult<()> {
+    for (key, max_chars) in keys {
+        if let Some(value) = payload[*key].as_str() {
+            check_storable(value, *max_chars, key)?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn list_tag_rules(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -56,11 +81,16 @@ pub async fn create_tag_rule(
     if action_type.is_empty() {
         return Err(AppError::BadRequest("action_type is required".into()));
     }
+    // Lengths are refused before the write (see `check_storable`): an over-long rule name or
+    // action type would otherwise surface as a raw database error from the INSERT.
+    check_storable(&name, RULE_NAME_CHARS, "name")?;
+    check_storable(&action_type, RULE_ACTION_TYPE_CHARS, "action_type")?;
     let id = Uuid::new_v4();
     let target_app = payload["target_app"]
         .as_str()
         .map(|s| s.to_string())
         .unwrap_or_else(|| "funnelswift".to_string());
+    check_storable(&target_app, RULE_TARGET_APP_CHARS, "target_app")?;
     let is_active = payload["is_active"].as_bool().unwrap_or(true);
     sqlx::query(
         "INSERT INTO tag_rules
@@ -91,6 +121,16 @@ pub async fn update_tag_rule(
     Json(payload): Json<Value>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
+    // An update writes only the keys it carries, so an over-long value on ANY of them must be
+    // refused here rather than becoming a 500 from the UPDATE.
+    check_storable_keys(
+        &payload,
+        &[
+            ("name", RULE_NAME_CHARS),
+            ("action_type", RULE_ACTION_TYPE_CHARS),
+            ("target_app", RULE_TARGET_APP_CHARS),
+        ],
+    )?;
     let updated: Option<(Uuid,)> = sqlx::query_as(
         "UPDATE tag_rules SET
            name = COALESCE($3, name),
