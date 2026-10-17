@@ -140,6 +140,7 @@ pub async fn list_tenants(
             String,
             i64,
             Option<String>,
+            String,
         ),
     >(
         r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status,
@@ -147,7 +148,8 @@ pub async fn list_tenants(
                   (SELECT u.email FROM users u WHERE u.tenant_id = t.id
                    ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
                             u.created_at ASC
-                   LIMIT 1) AS owner_email
+                   LIMIT 1) AS owner_email,
+                  COALESCE(t.probe_harness, '') AS probe_harness
            FROM tenants t
            LEFT JOIN LATERAL (
                SELECT plan_id FROM tenant_plan_subscriptions s
@@ -165,7 +167,13 @@ pub async fn list_tenants(
             json!({
                 "id": r.0, "name": r.1, "slug": r.2, "created_at": r.3,
                 "plan_name": r.4, "plan_slug": r.5, "plan": r.4, "status": r.7,
-                "email": r.6, "user_count": r.8, "owner_email": r.9
+                "email": r.6, "user_count": r.8, "owner_email": r.9,
+                // The AUTHORITATIVE harness attribution, written at signup by the door that minted
+                // the workspace (kanban t_fc88ec2a). Published so the operator's Tenants list can
+                // badge a harness row instead of GUESSING from the owner address: a harness that
+                // used an ordinary-looking address read as a customer. COALESCEd to '' above so a
+                // row minted before the column existed is empty, never null.
+                "probe_harness": r.10
             })
         })
         .collect();

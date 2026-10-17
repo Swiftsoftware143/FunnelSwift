@@ -2842,6 +2842,23 @@ function isProbeAddress(addr) {
   const a = String(addr || '');
   return RESERVED_ADDR_RE.test(a) || FLEET_PROBE_ADDR_RE.test(a);
 }
+// The AUTHORITATIVE arm (kanban t_fc88ec2a): `tenants.probe_harness` is written at signup by the
+// door that minted the workspace, so a non-empty value names a harness even when the owner address
+// looks ordinary. Before this the list could only GUESS from the address, so a harness that signed
+// up with an ordinary-looking address rendered as an ordinary customer and the only tell was a name
+// the operator had to recognise. The address arms stay as a FALLBACK for rows minted before the
+// column existed (and for rows a probe left behind at a door that does not write it) — the column
+// simply outranks them.
+const probeHarnessOf = (t) => String((t && t.probe_harness) || '').trim();
+function probeBadgeFor(t, ownerEmail) {
+  const harness = probeHarnessOf(t);
+  const probe = !!harness || isProbeAddress(ownerEmail);
+  if (!probe) return '';
+  const why = harness
+    ? `minted by the "${harness}" test harness - a probe, not a customer`
+    : 'a reserved address - a fleet probe, not a customer';
+  return ` <span class="badge badge-yellow" title="${x(why)}">probe</span>`;
+}
 // ── TENANTS (Super Admin only) ──
 async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
@@ -2860,7 +2877,7 @@ async function renderTenants() {
       <tbody>${items.map(t=>`<tr>
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014';return x(oe)+(isProbeAddress(oe)?' <span class="badge badge-yellow" title="a reserved address - a fleet probe, not a customer">probe</span>':'');})()}</td>
+        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td><span class="badge badge-blue">${x(t.plan_name||t.plan_slug||'Free')}</span></td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
