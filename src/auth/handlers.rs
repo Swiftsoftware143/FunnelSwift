@@ -55,6 +55,19 @@ pub async fn register(
     // (254 characters = 500, 200 = created); the same class applies here. Refused BEFORE the first
     // write, as a 422 the console can read.
     crate::security::display_name::normalize(&req.name).map_err(AppError::UnprocessableEntity)?;
+    // ── VALIDATE THE WRITE: password policy (measured live 2026-10-16) ─────────────────────────
+    // This door is in `PUBLIC_ROUTES` (auth/route_policy.rs), so the caller is anonymous and the
+    // `password` string is entirely theirs. With no policy it was hashed verbatim: measured live,
+    // `POST /api/v1/auth/register` with `"password": ""` answered 201, and `POST /api/v1/auth/login`
+    // with that same empty password on the account it had just minted answered 200 — a working
+    // account whose login is the empty string. The four sibling apps either mint a temporary
+    // password when the field is empty (and mail it) or refuse anything under 6 characters; this
+    // door did neither. Apply the fleet rule here, before anything is hashed and before any row.
+    if req.password.len() < 6 {
+        return Err(AppError::UnprocessableEntity(
+            "Password must be at least 6 characters".to_string(),
+        ));
+    }
     if let Some(tenant_name) = req.tenant_name.as_deref() {
         crate::security::display_name::check_len(
             tenant_name,
