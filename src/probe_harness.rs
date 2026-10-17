@@ -65,10 +65,66 @@ fn normalise(raw: &str) -> Option<String> {
     Some(marker)
 }
 
+/// The marker to store for the workspace a SIGNUP door is about to mint (measured 2026-10-17).
+///
+/// The `X-Swift-Harness` header names the harness when the caller sends one; otherwise the
+/// recipient's own domain decides, through [`crate::security::probe_addr::harness_domain`] — the
+/// same predicate the mail layer uses to suppress those sends. Every domain in that list is
+/// fleet-owned or RFC-reserved, so a workspace minted on one is fleet machinery by construction.
+///
+/// WHY: a sweep of all six app databases on 2026-10-17 found 35 probe workspaces minted inside the
+/// previous hour with `probe_harness` NULL on every one. The harnesses do not send the header, so
+/// the only detector left was guessing at the workspace NAME — and an innocuously-named probe
+/// ("Credit Note Probe's Workspace", "Len Probe") survived sweep after sweep. Attribution is
+/// supposed to be DATA.
+///
+/// A real customer is untouched: their domain is not on that list, so the answer is `None` and the
+/// row is written exactly as before. Neither arm reads the request body.
+pub fn for_signup(headers: &HeaderMap, email: &str) -> Option<String> {
+    if let Some(marker) = from_headers(headers) {
+        return Some(marker);
+    }
+    crate::security::probe_addr::harness_domain(email).map(|domain| format!("auto-{domain}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::http::{HeaderMap, HeaderValue};
+
+    #[test]
+    fn a_signup_on_a_fleet_harness_domain_is_attributed_without_a_header() {
+        let none = HeaderMap::new();
+        assert_eq!(
+            for_signup(&none, "probe-tagproof1792235151@example.invalid").as_deref(),
+            Some("auto-example.invalid")
+        );
+        assert_eq!(
+            for_signup(&none, "mcrsweep1791551633@swiftsoftware.dev").as_deref(),
+            Some("auto-swiftsoftware.dev")
+        );
+        assert_eq!(
+            for_signup(&none, "x@mail.swiftsoftware.net").as_deref(),
+            Some("auto-swiftsoftware.net")
+        );
+    }
+
+    #[test]
+    fn a_real_customer_address_is_still_null() {
+        let none = HeaderMap::new();
+        assert_eq!(for_signup(&none, "customer@gmail.com"), None);
+        assert_eq!(for_signup(&none, "owner@their-business.com"), None);
+        assert_eq!(for_signup(&none, "not an address"), None);
+        assert_eq!(for_signup(&none, "x@notswiftsoftware.dev"), None);
+    }
+
+    #[test]
+    fn the_header_wins_over_the_address_arm() {
+        assert_eq!(
+            for_signup(&headers_with("verify-x"), "probe@example.invalid").as_deref(),
+            Some("verify-x")
+        );
+    }
 
     fn headers_with(value: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();

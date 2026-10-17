@@ -110,10 +110,11 @@ pub async fn register(
             .replace(' ', "-"),
         Uuid::new_v4().to_string().get(..8).unwrap_or("x")
     );
-    // Mark the tenant as harness-created if the caller sent a well-formed `X-Swift-Harness`
-    // header (kanban t_fc88ec2a). A real customer's signup carries no such header, so this is
-    // NULL and the row is byte-identical to what it was before the column existed.
-    let probe_harness = crate::probe_harness::from_headers(&headers);
+    // Mark the tenant as harness-created: the `X-Swift-Harness` header when the caller sent one,
+    // otherwise the recipient's own harness/reserved domain (`probe_harness::for_signup`, measured
+    // 2026-10-17 — see that fn for why the address arm exists). A real customer's domain is on
+    // neither list, so this is NULL and the row is byte-identical to what it was before.
+    let probe_harness = crate::probe_harness::for_signup(&headers, &email);
     // ONE transaction, begun before the first write and committed only once the account is
     // complete (measured defect, 2026-10-12). Each INSERT used its own pooled connection, so a
     // signup that failed after the tenant INSERT left the workspace behind while the caller got a

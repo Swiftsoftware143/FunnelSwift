@@ -147,11 +147,11 @@ pub async fn public_signup(
             .take(8)
             .collect::<String>()
     );
-    // Mark the tenant as harness-created if the caller sent a well-formed `X-Swift-Harness`
-    // header (kanban t_fc88ec2a). The marker is read from the header ONLY — never from `payload`,
-    // which is client-controlled data: a body field would let a customer mark their own tenant.
-    // No header (a real customer) => NULL, and the row is byte-identical to before.
-    let probe_harness = crate::probe_harness::from_headers(&headers);
+    // Mark the tenant as harness-created: the `X-Swift-Harness` header when the caller sent one,
+    // otherwise the recipient's own harness/reserved domain (`probe_harness::for_signup`, measured
+    // 2026-10-17). The marker is NEVER read from `payload` — a body field would let a customer mark
+    // their own tenant. A real customer's domain is on neither list => NULL, byte-identical row.
+    let probe_harness = crate::probe_harness::for_signup(&headers, &email);
     // ONE transaction (measured defect, 2026-10-12 — the same class the `register` handler carried).
     // The workspace, its owner row and its default settings used to be three separate INSERTs on
     // three pooled connections: a signup that failed after the tenant INSERT left the workspace
