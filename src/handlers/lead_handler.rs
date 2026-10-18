@@ -1142,3 +1142,355 @@ pub async fn export_leads(
     }))
     .into_response())
 }
+
+// ---------------------------------------------------------------------------
+// CSV lead import (2026-10-18)
+// ---------------------------------------------------------------------------
+
+/// One import call accepts at most this many data rows. The file is validated in full and then
+/// written in ONE transaction, so the cap bounds a single request; a larger file is REFUSED by name
+/// rather than half-imported.
+const IMPORT_MAX_ROWS: usize = 2000;
+
+#[derive(Deserialize)]
+pub struct ImportLeadsRequest {
+    /// The CSV text exactly as the file holds it (the console reads the file and posts its text).
+    pub csv: String,
+    /// Applies to every imported row when given; otherwise the file's own `Source` column, else
+    /// `import`.
+    pub source: Option<String>,
+}
+
+/// One row of the file, already mapped and validated, waiting for its INSERT.
+struct ImportRow {
+    first_name: Option<String>,
+    last_name: Option<String>,
+    name: String,
+    email: Option<String>,
+    phone: Option<String>,
+    company: Option<String>,
+    source: Option<String>,
+    stage: Option<String>,
+    status: Option<String>,
+    score: Option<i32>,
+    tags: Option<serde_json::Value>,
+    notes: Option<String>,
+}
+
+/// Split RFC-4180 CSV text into records of fields. A quoted field may hold commas, newlines and
+/// doubled quotes — the export beside this writes exactly that shape (`csv_field`), so a file this
+/// app exported must re-import unchanged. Hand-written because this crate has no `csv` dependency
+/// and a new one is not worth 40 lines.
+fn parse_csv(text: &str) -> Vec<Vec<String>> {
+    let mut records: Vec<Vec<String>> = Vec::new();
+    let mut record: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    let mut chars = text.trim_start_matches('\u{feff}').chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if in_quotes => {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            }
+            '"' => in_quotes = true,
+            ',' if !in_quotes => record.push(std::mem::take(&mut field)),
+            '\r' if !in_quotes => {}
+            '\n' if !in_quotes => {
+                record.push(std::mem::take(&mut field));
+                records.push(std::mem::take(&mut record));
+            }
+            _ => field.push(c),
+        }
+    }
+    if !field.trim().is_empty() || !record.is_empty() {
+        record.push(field);
+        records.push(record);
+    }
+    records
+}
+
+/// Column lookup by any of several header spellings: the export's own names and the usual CRM
+/// imports. The match is case-insensitive and ignores spaces, `_` and `-`, so "First Name",
+/// "first_name" and "FirstName" are one column.
+fn column_of(headers: &[String], names: &[&str]) -> Option<usize> {
+    headers.iter().position(|h| {
+        let key: String = h
+            .trim()
+            .to_ascii_lowercase()
+            .chars()
+            .filter(|c| !matches!(c, ' ' | '_' | '-'))
+            .collect();
+        names.contains(&key.as_str())
+    })
+}
+
+/// `POST /api/v1/leads/import` — put a CSV file's leads into the caller's own workspace.
+///
+/// WHY THIS EXISTS: the Agency plan advertises `has_import_export`, and until today only the EXPORT
+/// half was mounted — `GET /api/v1/leads/export` had a route, a writer and (since the export button
+/// shipped) a caller, while nothing anywhere accepted a file. A customer who bought the plan for
+/// "import/export" could only get data OUT. This is the other direction, and it round-trips the
+/// export's own header (`Name,Email,Phone,Company,Source,Stage,Status,Score,Notes`).
+///
+/// CONTRACT: the file is read and validated in full FIRST, then written in one transaction. Rows
+/// that cannot be stored are reported by line number and skipped; a plan that cannot hold the whole
+/// file is refused BEFORE anything is written, with the numbers that decided it. An import never
+/// half-lands and never partially charges a limit.
+///
+/// Deliberate omission, matching `create_lead`'s validation but not its fan-out: no per-row
+/// `lead.created` webhook and no per-row WorkflowSwift push. Both are per-lead external calls and a
+/// 2000-row file would fan out 2000 of them; a bulk import is a data load, not 2000 new events.
+pub async fn import_leads(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(req): Json<ImportLeadsRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // The same entitlement `export_leads` enforces — this is the other half of the same feature, so
+    // one gate, one message.
+    features::enforce_feature_flag(&state, tenant_id, "has_import_export", "Lead import").await?;
+
+    let records = parse_csv(&req.csv);
+    if records.len() < 2 {
+        return Err(AppError::UnprocessableEntity(
+            "The file has no data rows. The first line must be a header row — Name, Email, Phone, \
+             Company, Source, Stage, Status, Score, Notes (any order) — and every following line one lead."
+                .into(),
+        ));
+    }
+
+    let headers: Vec<String> = records[0].clone();
+    let i_name = column_of(&headers, &["name", "fullname", "contactname", "contact"]);
+    let i_first = column_of(&headers, &["firstname", "givenname"]);
+    let i_last = column_of(&headers, &["lastname", "surname", "familyname"]);
+    let i_email = column_of(&headers, &["email", "emailaddress", "mail"]);
+    let i_phone = column_of(
+        &headers,
+        &["phone", "phonenumber", "mobile", "tel", "telephone", "cell"],
+    );
+    let i_company = column_of(
+        &headers,
+        &[
+            "company",
+            "companyname",
+            "organization",
+            "organisation",
+            "business",
+        ],
+    );
+    let i_source = column_of(&headers, &["source", "leadsource", "channel"]);
+    let i_stage = column_of(&headers, &["stage", "pipelinestage"]);
+    let i_status = column_of(&headers, &["status"]);
+    let i_score = column_of(&headers, &["score"]);
+    let i_notes = column_of(&headers, &["notes", "note", "comments", "comment", "memo"]);
+    let i_tags = column_of(&headers, &["tags", "tag", "labels", "label"]);
+
+    if i_name.is_none() && i_first.is_none() && i_email.is_none() {
+        return Err(AppError::UnprocessableEntity(format!(
+            "No name and no email column found, so no row could become a lead. The first row is the \
+             header — name the columns Name, Email, Phone, Company, Source, Stage, Status, Score, \
+             Notes. Headers seen: {}",
+            headers.join(", ")
+        )));
+    }
+
+    let data_rows = records.len() - 1;
+    if data_rows > IMPORT_MAX_ROWS {
+        return Err(AppError::UnprocessableEntity(format!(
+            "This file has {data_rows} data rows; one import accepts at most {IMPORT_MAX_ROWS}. \
+             Split the file and import the parts."
+        )));
+    }
+
+    // Every address already in this workspace, so re-importing the same file cannot duplicate it.
+    let mut seen: std::collections::HashSet<String> = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT lower(email) FROM leads WHERE tenant_id = $1 AND email IS NOT NULL",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .collect();
+
+    let source_override = req
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let mut prepared: Vec<ImportRow> = Vec::new();
+    let mut duplicates: i64 = 0;
+    let mut invalid: i64 = 0;
+    let mut errors: Vec<serde_json::Value> = Vec::new();
+
+    for (idx, row) in records.iter().skip(1).enumerate() {
+        let line = idx + 2; // the header is line 1, and the operator counts from 1
+        if row.iter().all(|f| f.trim().is_empty()) {
+            continue;
+        }
+        let cell = |i: Option<usize>| {
+            i.and_then(|i| row.get(i))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+
+        let first_name = cell(i_first);
+        let last_name = cell(i_last);
+        let email = cell(i_email);
+        let phone = cell(i_phone);
+        let company = cell(i_company);
+        let stage = cell(i_stage);
+        let status = cell(i_status);
+        let notes = cell(i_notes);
+        let row_source = source_override
+            .clone()
+            .or_else(|| cell(i_source))
+            .or_else(|| Some("import".to_string()));
+        let display_name = cell(i_name).or_else(|| {
+            let joined = format!(
+                "{} {}",
+                first_name.as_deref().unwrap_or(""),
+                last_name.as_deref().unwrap_or("")
+            )
+            .trim()
+            .to_string();
+            (!joined.is_empty()).then_some(joined)
+        });
+
+        let mut reason: Option<String> = None;
+        if display_name.is_none() && email.is_none() {
+            reason = Some("no name and no email on this row".to_string());
+        }
+        if reason.is_none() {
+            for (field, value, cap) in [
+                ("name", display_name.as_deref(), lead_fields::TEXT_CHARS),
+                ("email", email.as_deref(), lead_fields::TEXT_CHARS),
+                ("phone", phone.as_deref(), lead_fields::PHONE_CHARS),
+                ("company", company.as_deref(), lead_fields::TEXT_CHARS),
+                ("source", row_source.as_deref(), lead_fields::SOURCE_CHARS),
+                ("stage", stage.as_deref(), lead_fields::STAGE_CHARS),
+                ("status", status.as_deref(), lead_fields::STATUS_CHARS),
+            ] {
+                if let Err(e) = lead_fields::check(field, value, cap) {
+                    reason = Some(e);
+                    break;
+                }
+            }
+        }
+        if reason.is_none() {
+            if let Some(e) = &email {
+                if !e.contains('@') || e.chars().any(char::is_whitespace) {
+                    reason = Some(format!("'{e}' is not an email address"));
+                }
+            }
+        }
+        if let Some(msg) = reason {
+            invalid += 1;
+            if errors.len() < 10 {
+                errors.push(json!({ "line": line, "reason": msg }));
+            }
+            continue;
+        }
+
+        if let Some(e) = &email {
+            let key = e.to_ascii_lowercase();
+            if seen.contains(&key) {
+                duplicates += 1;
+                continue;
+            }
+            seen.insert(key);
+        }
+
+        let tags: Option<serde_json::Value> = cell(i_tags).map(|raw| {
+            let parts: Vec<serde_json::Value> = raw
+                .split([';', '|', ','])
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| serde_json::Value::String(s.to_string()))
+                .collect();
+            serde_json::Value::Array(parts)
+        });
+
+        prepared.push(ImportRow {
+            first_name,
+            last_name,
+            name: display_name.unwrap_or_default(),
+            email,
+            phone,
+            company,
+            source: row_source,
+            stage,
+            status,
+            score: cell(i_score).and_then(|s| s.parse::<i32>().ok()),
+            tags,
+            notes,
+        });
+    }
+
+    // The SAME numeric limit `create_lead` enforces, read through the ONE resolver and applied to the
+    // whole file BEFORE a single row is written: an import must not jump the plan, and must not leave
+    // half a file behind when it hits the ceiling.
+    if let Some(headroom) = features::remaining_headroom(&state, tenant_id, "max_leads").await? {
+        if prepared.len() as i64 > headroom {
+            return Err(AppError::UpgradeRequired(format!(
+                "Your plan has room for {headroom} more leads and this file would add {}. Nothing \
+                 was imported — upgrade the plan, or import {} rows or fewer.",
+                prepared.len(),
+                headroom
+            )));
+        }
+    }
+
+    let created_by = Uuid::parse_str(&auth.user_id).ok();
+    let mut tx = state.pool.begin().await?;
+    for r in &prepared {
+        sqlx::query(
+            r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company,
+                                  source, stage, status, score, tags, custom_fields, notes, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'New'),
+                       COALESCE($11, 'new'), $12, $13, NULL, $14, $15)"#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(tenant_id)
+        .bind(&r.first_name)
+        .bind(&r.last_name)
+        .bind(&r.name)
+        .bind(&r.email)
+        .bind(&r.phone)
+        .bind(&r.company)
+        .bind(&r.source)
+        .bind(&r.stage)
+        .bind(&r.status)
+        .bind(r.score)
+        .bind(&r.tags)
+        .bind(&r.notes)
+        .bind(created_by)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(Json(json!({
+        "imported": prepared.len(),
+        "duplicates": duplicates,
+        "invalid": invalid,
+        "data_rows": data_rows,
+        "errors": errors,
+        "message": format!(
+            "{} imported, {} already in the workspace, {} could not be read",
+            prepared.len(),
+            duplicates,
+            invalid
+        ),
+    })))
+}

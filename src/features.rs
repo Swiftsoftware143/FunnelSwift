@@ -163,6 +163,26 @@ pub async fn enforce_feature_limit(
     }
 }
 
+/// Remaining headroom under the tenant's effective numeric limit (`None` = unlimited).
+///
+/// The bulk IMPORT path needs the number, not a pass/fail: it has to refuse a whole file BEFORE
+/// writing any of it, and say how many rows would fit. Reading it through the ONE resolver keeps a
+/// number the owner sets (tenant override, `feature_limits` row, plan column) authoritative here
+/// exactly as it is in [`enforce_feature_limit`].
+pub async fn remaining_headroom(
+    state: &AppState,
+    tenant_id: Uuid,
+    feature_key: &str,
+) -> AppResult<Option<i64>> {
+    match resolved_limit(state, tenant_id, feature_key).await? {
+        None => Ok(None),
+        Some(limit) => {
+            let used = get_usage_count(state, tenant_id, feature_key).await;
+            Ok(Some((limit as i64 - used).max(0)))
+        }
+    }
+}
+
 /// The effective numeric limit for the tenant, in precedence order (see [`pick_limit`]): the
 /// tenant's own override FIRST, then a `feature_limits` row (the custom per-plan number the admin
 /// panel writes), then the plan's own column through [`plan_limit`]. `None` = the key is

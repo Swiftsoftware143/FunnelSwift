@@ -14,14 +14,14 @@
 //!
 //! # The census (re-measured 2026-10-18 by the test's own counter over `api_router.rs`)
 //!
-//! 201 `.route(..)` mounts / 200 unique paths, classified three ways:
+//! 203 `.route(..)` mounts / 202 unique paths, classified three ways:
 //!
 //! ```text
-//!   176 mounts  /api/**            175 unique after the duplicate `/api/v1/linkedin/auth`
+//!   178 mounts  /api/**            177 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     18        public            -> PUBLIC_ROUTES below
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    155        private           -> require_auth: app JWT, tenant-status checked
+//!    156        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (31 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -32,7 +32,13 @@
 //!                                    keyed by a public slug.
 //! ```
 //!
-//! Three movements since the first census. The first two share one shape — an image the recipient's
+//!
+//! The count moved TWICE on 2026-10-18 and only one of the two bumped this census: the
+//! sign-in-address pair (`POST /api/v1/auth/email-change` + its confirm leg, commit cb19fbf) added
+//! a mount and left the numbers here (and in the test below) one short, so `cargo test` was RED on
+//! HEAD. The CSV lead import (`POST /api/v1/leads/import`, this commit) added the next one, and both
+//! are counted now.
+//!//! Three movements since the first census. The first two share one shape — an image the recipient's
 //! own client fetches with a bare `<img src>`, which cannot present a bearer token:
 //!
 //! * the profile-picture pair (`POST /api/v1/auth/avatar` + `GET /api/v1/auth/avatar/:user_id`,
@@ -315,9 +321,9 @@ mod tests {
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 201, "mounted route count moved");
+        assert_eq!(mounted.len(), 203, "mounted route count moved");
         assert_eq!(
-            api, 176,
+            api, 178,
             "/api/ mount count moved — update the census in the module docs"
         );
     }

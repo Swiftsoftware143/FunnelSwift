@@ -212,6 +212,9 @@ pub fn create_router(
             get(lead_handler::list_leads).post(lead_handler::create_lead),
         )
         .route("/api/v1/leads/export", get(lead_handler::export_leads))
+        // The IMPORT half of the same `has_import_export` entitlement (2026-10-18). Static
+        // segment, so it wins over `/api/v1/leads/:id` in matchit exactly as `export` does.
+        .route("/api/v1/leads/import", post(lead_handler::import_leads))
         .route(
             "/api/v1/leads/:id",
             get(lead_handler::get_lead)

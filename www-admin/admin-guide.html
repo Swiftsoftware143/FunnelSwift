@@ -102,6 +102,8 @@
       <a href="#kinetic-admin" class="section-title" onclick="closeMobile()">Kinetic Admin</a>
       <a href="#kinetic-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🃏</span> Manage Templates</a>
       <a href="#theme-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Manage Themes</a>
+      <a href="#lead-import" class="section-title" onclick="closeMobile()">Lead Import</a>
+      <a href="#lead-import" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📤</span> Import a CSV</a>
       <a href="#bulk-ops" class="section-title" onclick="closeMobile()">Bulk Operations</a>
       <a href="#bulk-ops" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🗑️</span> Bulk Delete</a>
       <a href="#api" class="section-title" onclick="closeMobile()">API Reference</a>
@@ -165,7 +167,7 @@
           <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
           <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — a dashboard counter only, and <strong>permanently inert</strong>: every workspace holds exactly one user (its owner) and no route adds a second member, so nothing can fire this cap. Measured 2026-10-02 (kanban <code>t_49e4cef9</code>): all 15 workspaces hold exactly 1 active user each (the System tenant 0) and the plan column reads 1 across the board (Agency / Scale carries a -1 = unlimited row). Reviving it means building the add-a-member surface first, then gating it.</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
-          <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead export — GET /api/v1/leads/export</td></tr>
+          <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead import and export — POST /api/v1/leads/import, GET /api/v1/leads/export</td></tr>
           <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — a plan-page marker only, with no gate of its own: multi-destination delivery is what the <strong>Webhooks</strong> engine does (POST /api/v1/webhooks, gated by <code>has_webhooks</code>). The resource this key used to switch on was retired on 2026-10-02 (kanban t_0aaf0bc5).</td></tr>
           <tr><td><code>has_mini_funnels</code></td><td>Toggle</td><td>Mini funnels — POST /api/v1/kinetic/cards (mini_funnel type)</td></tr>
           <tr><td><code>has_card_gating</code></td><td>Toggle</td><td>Card gating (password / consent / age) — PUT /api/v1/kinetic/cards/:id/password|gating</td></tr>
@@ -665,6 +667,46 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <!-- ============ BULK OPS ============ -->
+      <h2 id="lead-import">📤 Importing Leads from a File</h2>
+
+      <div class="card">
+        <h3>Which plans can import</h3>
+        <p>The same switch that lets a workspace export its leads also lets it import a file: the
+        <strong>import/export</strong> plan feature (Agency / Scale carries it). On a plan without it
+        the Import button answers with the upgrade message and nothing is written — importing is not
+        a way around the plan.</p>
+
+        <h3>The file</h3>
+        <p>On <strong>Leads</strong>, press <strong>📤 Import CSV</strong> and pick a
+        <code>.csv</code> file. The first line is the header; name the columns you have, in any order,
+        and leave out the rest. These spellings are understood (case and spaces do not matter):</p>
+        <pre>Name  (or First Name + Last Name)
+Email
+Phone
+Company
+Source
+Stage   (defaults to New)
+Status  (defaults to new)
+Score   (a whole number; a value that is not a number is ignored)
+Tags    (several tags separated by ; or |)
+Notes</pre>
+        <p>A file exported from this same screen already has the right header, so an export can be
+        imported back into another workspace unchanged.</p>
+
+        <h3>What it does with the rows</h3>
+        <p>Every row is checked before anything is saved. A row needs a name or an email; a field
+        longer than its column holds, or an email that is not an address, is reported by
+        <strong>line number</strong> and that row is skipped. An address already in the workspace is
+        counted as a duplicate and skipped, so importing the same file twice does not double the
+        leads.</p>
+        <p>The file is written in <strong>one go</strong>: if the workspace's plan has room for fewer
+        leads than the file would add, the import is refused whole, with both numbers in the message,
+        and nothing is saved. One file can carry up to 2,000 data rows; split a bigger one.</p>
+        <p>An import does not send the per-lead "new lead" webhook or the WorkflowSwift hand-off that
+        a lead created one at a time does — a data load is not a burst of new events.</p>
+      </div>
+
+      
       <h2 id="bulk-ops">🗑️ Bulk Operations</h2>
 
       <div class="card">
