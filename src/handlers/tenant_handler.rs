@@ -383,16 +383,21 @@ const PORTFOLIO_MARKERS: [&str; 3] = ["swiftimpact", "zaarhub", "giraudy"];
 /// The fleet's own PERSISTENT FIXTURES — kept by rule, exactly like the portfolio.
 ///
 /// The tenancy canary looks its two workspaces up BY NAME on every run (`probe-canary-a` /
-/// `probe-canary-b`, `ON CONFLICT (slug) DO NOTHING`), and the fixed-UUID seed row is referenced by
-/// literal id. Deleting one is not cleanup: the canary silently recreates a fresh tenant and its
-/// verdict stops meaning anything. The sweep tool (`scripts/test-tenant-sweep.py`) carries the same
-/// KEEP list — but the OPERATOR PANEL did not, and it is the sharper edge: `probe-canary-*` sits on
-/// the fleet's own mail domain, so the console's own probe predicate counts those rows as probes and
-/// "Select probes" arms them. Measured live 2026-10-18: two canary rows in the Tenants list, both
-/// ticked by the one-click control, and this guard refused them only by luck of a name it does not
-/// carry. A one-click control must never be able to delete a fixture.
-const FIXTURE_SLUG_PREFIXES: [&str; 1] = ["probe-canary-"];
-const FIXTURE_IDS: [&str; 1] = ["00000000-0000-0000-0000-000000000001"];
+/// `probe-canary-b`, `ON CONFLICT (slug) DO NOTHING`). Deleting one is not cleanup: the canary
+/// silently recreates a fresh tenant and its verdict stops meaning anything. The sweep tool
+/// (`scripts/test-tenant-sweep.py`) carries the same KEEP list — but the OPERATOR PANEL did not, and
+/// it is the sharper edge: `probe-canary-*` sits on the fleet's own mail domain, so the console's own
+/// probe predicate counts those rows as probes and "Select probes" arms them. Measured live
+/// 2026-10-18: two canary rows in the Tenants list, both ticked by the one-click control, and this
+/// guard refused them only by luck of a name it does not carry. A one-click control must never be
+/// able to delete a fixture.
+///
+/// The guard keys on the SLUG, because that is how the row is addressed everywhere else — the canary
+/// looks it up by slug, and the operator's list names it by slug. The retired `System` seed tenant
+/// (`…0001`, migration 0014/055) has no row in this database any more, so a literal-id comparison
+/// guarded nothing and tripped the fleet's own gate rule against hardcoded UUIDs; `system` is kept in
+/// this list so the day a seed row reappears it is still undeletable.
+const FIXTURE_SLUG_PREFIXES: [&str; 2] = ["probe-canary-", "system"];
 
 /// Refuse to delete three things: the account the caller is signed in as (a lockout, not a cleanup),
 /// a portfolio company (kept by rule) and a fleet fixture the canary looks up by name (sabotage).
@@ -408,12 +413,6 @@ async fn guard_protected(
                 "refusing to delete the account you are signed in as".to_string(),
             ));
         }
-    }
-    let id_text = tenant_id.to_string();
-    if FIXTURE_IDS.iter().any(|f| f.eq_ignore_ascii_case(&id_text)) {
-        return Err(AppError::BadRequest(
-            "refusing to delete a fleet fixture (fixed seed id)".to_string(),
-        ));
     }
     let row: Option<(String, String, String)> = sqlx::query_as(
         "SELECT COALESCE(name, ''), COALESCE(email, ''), COALESCE(slug, '') FROM tenants WHERE id = $1",

@@ -126,6 +126,12 @@ pub fn create_router(
         .route("/h/:slug", get(kinetic_handler::render_card))
         .route("/thank/:slug", get(kinetic_handler::render_card))
         .route("/funnel/:slug", get(funnel_handler::render_funnel))
+        // The public opt-in form ON that page. A served surface like `/k/:slug/lead`, so it sits
+        // outside the `/api/v1` credential boundary by construction (no allowlist entry needed).
+        .route(
+            "/funnel/:slug/submit",
+            post(funnel_handler::submit_funnel_lead),
+        )
         .route(
             "/card/:id/track",
             post(crate::handlers::card_analytics_handler::track_card_event),

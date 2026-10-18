@@ -3249,6 +3249,41 @@ function fnDelete(f){
     .then(function(){LAFN();})
     .catch(function(e){window.alert((e&&e.message)||"Could not delete the funnel.");});
 }
+/* The page editor (cron 2026-10-18). A funnel's public page now renders the customer's own
+   headline, subheadline, button label and thank-you — the four strings
+   `PUT /api/v1/funnels/:id` writes (migration 111). It opens on the row the list already holds
+   (`list_funnels` ships those fields), so there is no second request and the form cannot
+   disagree with the row the customer clicked. An EMPTY box is meaningful: it clears the field
+   and the page falls back to its default, which is why "" is sent rather than the key omitted. */
+function fnEdit(f){
+  var host=$("fn-edit"); if(!host) return;
+  host.innerHTML='<div class="cc" style="border:1px solid #cbd5e1">'
+    +'<h4 style="font-size:14px;margin-bottom:4px">Public page — '+X(f.name)+'</h4>'
+    +'<p style="color:#64748b;font-size:12px;margin-bottom:10px">What a visitor reads at '
+    +'<a href="https://funnelswift.net/funnel/'+X(f.slug)+'" target="_blank" rel="noopener">your page</a>. '
+    +'Leave a box empty to use the default.</p>'
+    +'<label style="font-size:12px;color:#475569">Headline</label>'
+    +'<input id="fn-hl" maxlength="200" value="'+(f.headline?X(f.headline):"")+'" placeholder="'+X(f.name)+'" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;margin:4px 0 10px">'
+    +'<label style="font-size:12px;color:#475569">Subheadline</label>'
+    +'<input id="fn-sub" maxlength="400" value="'+(f.subheadline?X(f.subheadline):"")+'" placeholder="Leave your details and we\'ll be in touch." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;margin:4px 0 10px">'
+    +'<label style="font-size:12px;color:#475569">Button label</label>'
+    +'<input id="fn-cta" maxlength="60" value="'+(f.cta_label?X(f.cta_label):"")+'" placeholder="Get started" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;margin:4px 0 10px">'
+    +'<label style="font-size:12px;color:#475569">Thank-you message (shown after someone signs up)</label>'
+    +'<input id="fn-thx" maxlength="300" value="'+(f.thank_you?X(f.thank_you):"")+'" placeholder="Thanks — you\'re on the list." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;margin:4px 0 12px">'
+    +'<button class="btn btn-p" id="fn-save">Save page</button> '
+    +'<button class="btn" id="fn-close">Close</button>'
+    +'<div id="fn-edit-msg" style="font-size:13px;margin-top:8px"></div></div>';
+  $("fn-close").onclick=function(){host.innerHTML="";};
+  $("fn-save").onclick=function(){
+    var b=$("fn-save"); b.disabled=true; b.textContent="Saving...";
+    var body={headline:$("fn-hl").value.trim(),subheadline:$("fn-sub").value.trim(),
+              cta_label:$("fn-cta").value.trim(),thank_you:$("fn-thx").value.trim()};
+    api("/api/v1/funnels/"+f.id,{method:"PUT",body:JSON.stringify(body)})
+      .then(function(){fnSay("Page saved — open its link to see it.",false);LAFN();})
+      .catch(function(e){b.disabled=false;b.textContent="Save page";
+        $("fn-edit-msg").innerHTML='<span style="color:#dc2626">'+X((e&&e.message)||"Could not save the page.")+'</span>';});
+  };
+}
 function LAFN(){
   api("/api/v1/funnels").then(function(d){
     FN=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
@@ -3258,7 +3293,7 @@ function LAFN(){
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
       +'<input id="fn-name" placeholder="New funnel name (e.g. Spring Webinar Signups)" maxlength="200" style="flex:1;min-width:220px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">'
       +'<button class="btn btn-p" id="fn-add">+ Create funnel</button></div>'
-      +'<div id="fn-msg">'+(FNSAY?'<p style="font-size:13px;color:'+(FNSAY.bad?"#dc2626":"#16a34a")+'">'+X(FNSAY.msg)+'</p>':'')+'</div><div id="fn-list"></div></div>';
+      +'<div id="fn-msg">'+(FNSAY?'<p style="font-size:13px;color:'+(FNSAY.bad?"#dc2626":"#16a34a")+'">'+X(FNSAY.msg)+'</p>':'')+'</div><div id="fn-edit"></div><div id="fn-list"></div></div>';
     var nameEl=$("fn-name");
     $("fn-add").onclick=function(){
       var nm=(nameEl.value||"").trim();
@@ -3283,6 +3318,8 @@ function LAFN(){
         +'<td style="font-size:12px"><a href="'+X(url)+'" target="_blank" rel="noopener">'+X(url)+'</a></td>'
         +'<td style="font-size:12px;color:#64748b">'+X(String(f.created_at||"").slice(0,10))+'</td><td></td>';
       var td=tr.querySelectorAll("td")[3];
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnEdit(f);}},"Edit page"));
+      td.appendChild(document.createTextNode(" "));
       var cp=El("button",{"class":"btn btn-sm",onclick:function(){fnCopy(url,cp);}},"Copy link");
       td.appendChild(cp); td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnRename(f);}},"Rename"));
