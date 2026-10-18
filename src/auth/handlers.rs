@@ -800,3 +800,222 @@ pub async fn get_usage(
     let usage = features::get_usage_json(&state, tenant_id).await;
     Ok(Json(usage))
 }
+
+// ── CHANGE OF SIGN-IN ADDRESS (cron 2026-10-18) ────────────────────────────────────────────────
+//
+// The profile screen told the customer "Your sign-in address cannot be changed here" and no route
+// anywhere in the app could change `users.email`. Signup collects NAME + EMAIL only, so ONE typo
+// produced an account that could never receive another message from us, with no way out.
+//
+// The change is PROVEN, not merely requested: the link goes to the NEW address, and only that
+// mailbox can complete it. `users.email` moves at confirmation time, never at request time — so a
+// mistyped new address cannot lock the customer out of their own account.
+//
+// A reserved/harness address (example.invalid and friends) is WITHHELD at source, exactly like
+// signup and password reset: the pending row is still written so the flow stays exercisable, but no
+// provider request is made and the panel records a `withheld` non-send.
+
+#[derive(Debug, Deserialize)]
+pub struct RequestEmailChangeRequest {
+    pub new_email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfirmEmailChangeRequest {
+    pub token: String,
+}
+
+pub async fn request_email_change(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(req): Json<RequestEmailChangeRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    // Same single validator every other writer of `users.email` uses.
+    let new_email = crate::security::email_addr::normalize(&req.new_email)
+        .map_err(AppError::UnprocessableEntity)?;
+    let user_id = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let current = sqlx::query_as::<_, (String, String)>(
+        "SELECT email, name FROM users WHERE id = $1 AND is_active = true",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+
+    if current.0.eq_ignore_ascii_case(&new_email) {
+        return Err(AppError::BadRequest(
+            "That is already your sign-in address".into(),
+        ));
+    }
+
+    // Uniqueness is checked here so a clash reads as a sentence, not a 500 from the column.
+    let taken: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE lower(email) = $1 AND is_active = true AND id <> $2",
+    )
+    .bind(&new_email)
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    if taken.is_some() {
+        return Err(AppError::Conflict(
+            "That address is already used by another account".into(),
+        ));
+    }
+
+    let token = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + chrono::Duration::hours(2);
+
+    // One live request per user: retire the previous one before inserting.
+    sqlx::query("UPDATE email_changes SET used = true WHERE user_id = $1 AND used = false")
+        .bind(user_id)
+        .execute(&state.pool)
+        .await
+        .ok();
+
+    sqlx::query(
+        "INSERT INTO email_changes (user_id, new_email, token, expires_at) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(user_id)
+    .bind(&new_email)
+    .bind(&token)
+    .bind(expires_at)
+    .execute(&state.pool)
+    .await?;
+
+    let link = format!("https://app.funnelswift.net/confirm-email-change.html?token={token}");
+
+    let withheld = crate::security::probe_addr::harness_domain(&new_email);
+    if let Some(domain) = withheld {
+        tracing::info!(
+            email = %new_email,
+            domain = %domain,
+            "email-change: confirmation mail SUPPRESSED — reserved/harness address; a send could only bounce"
+        );
+        crate::email::record_withheld(
+            &state.pool,
+            "sign-in address change",
+            &new_email,
+            &format!("'{domain}' is a fleet-harness / reserved address"),
+        )
+        .await;
+    } else {
+        let mut vars: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+        vars.insert("name", current.1.as_str());
+        vars.insert("new_email", new_email.as_str());
+        vars.insert("link", link.as_str());
+        vars.insert("token", token.as_str());
+        if let Err(e) = crate::email::send_template_email_for_tenant(
+            &state.pool,
+            tenant_id,
+            tenant_id,
+            &new_email,
+            "email_change",
+            &vars,
+        )
+        .await
+        {
+            tracing::error!(
+                "Failed to send sign-in address confirmation to {}: {}",
+                new_email,
+                e
+            );
+            // No link reached the customer, so the pending row must not look usable.
+            sqlx::query("UPDATE email_changes SET used = true WHERE token = $1")
+                .bind(&token)
+                .execute(&state.pool)
+                .await
+                .ok();
+            return Err(AppError::UpstreamRefused(
+                "We could not send the confirmation link, so nothing was changed. Try again in a moment."
+                    .into(),
+            ));
+        }
+    }
+
+    Ok(Json(json!({
+        "status": "pending",
+        "delivered": withheld.is_none(),
+        "new_email": new_email,
+        "message": if withheld.is_none() {
+            "Check the new address for a confirmation link. Your sign-in email stays the same until you open it."
+        } else {
+            "This address is a reserved test address, so no mail was sent. Nothing has been changed."
+        },
+    })))
+}
+
+/// `POST /api/v1/auth/email-change/confirm` — anonymous by necessity: the token IS the credential
+/// the customer just received, and a link opened in a browser carries no session.
+pub async fn confirm_email_change(
+    State(state): State<AppState>,
+    Json(req): Json<ConfirmEmailChangeRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    let token = req.token.trim().to_string();
+    if token.is_empty() {
+        return Err(AppError::BadRequest(
+            "The confirmation link is missing its code".into(),
+        ));
+    }
+
+    let row = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+        "SELECT id, user_id, new_email FROM email_changes
+         WHERE token = $1 AND used = false AND expires_at > NOW()",
+    )
+    .bind(&token)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest("That confirmation link is invalid or has expired".into())
+    })?;
+
+    // The address may have been taken between request and confirmation.
+    let taken: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE lower(email) = $1 AND is_active = true AND id <> $2",
+    )
+    .bind(&row.2)
+    .bind(row.1)
+    .fetch_optional(&state.pool)
+    .await?;
+    if taken.is_some() {
+        return Err(AppError::Conflict(
+            "That address has since been used by another account, so nothing was changed".into(),
+        ));
+    }
+
+    let user = sqlx::query_as::<_, (Uuid, String)>(
+        "UPDATE users SET email = $1, email_verified = true, updated_at = NOW()
+         WHERE id = $2 AND is_active = true
+         RETURNING tenant_id, role",
+    )
+    .bind(&row.2)
+    .bind(row.1)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::BadRequest("That account is no longer active".into()))?;
+
+    // tenants.status enforcement: a retired workspace cannot take a new credential either.
+    if !crate::handlers::tenant_handler::workspace_access_allowed(&state.pool, user.0, &user.1)
+        .await?
+    {
+        return Err(AppError::Forbidden(
+            crate::auth::global_auth::WORKSPACE_INACTIVE.into(),
+        ));
+    }
+
+    sqlx::query("UPDATE email_changes SET used = true WHERE id = $1")
+        .bind(row.0)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(json!({
+        "status": "ok",
+        "email": row.2,
+        "message": "Your sign-in address has been changed. Use it the next time you sign in.",
+    })))
+}

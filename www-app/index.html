@@ -3785,8 +3785,15 @@ function LPROF(){
     h+='<div class="card" style="margin-bottom:14px"><h3>Your details</h3>';
     h+='<div class="fld"><label>Name</label><input id="pf-name" maxlength="243" value="'+X(nm)+'" placeholder="Your name"></div>';
     h+='<div class="fld"><label>Company</label><input id="pf-co" maxlength="255" value="'+X(co)+'" placeholder="Your company"></div>';
-    h+='<div class="fld"><label>Email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">Your sign-in address cannot be changed here.</p></div>';
-    h+='<button class="btn" onclick="SPF()">Save</button><span id="pf-msg" class="msg" style="margin-left:8px"></span></div>';
+    h+='<div class="fld"><label>Sign-in email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">This is the address you sign in with, and where every message from us goes.</p></div>';
+    h+='<button class="btn" onclick="SPF()">Save</button><span id="pf-msg" class="msg" style="margin-left:8px"></span>';
+    /* Change of sign-in address (cron 2026-10-18). Before this the line above read "cannot be
+       changed here" and nothing in the app could change it — signup is name+email only, so one
+       typo meant an account that could never receive another message. The change is PROVEN: the
+       link goes to the NEW address and only that mailbox can complete it. */
+    h+='<div style="border-top:1px solid #e2e8f0;margin-top:16px;padding-top:14px">';
+    h+='<div class="fld"><label>Change sign-in email</label><input id="pf-newemail" type="email" autocomplete="email" placeholder="new@example.com"><p style="font-size:11px;color:#94a3b8;margin-top:4px">We send a confirmation link to the new address. Nothing changes until you open it, so a typo here cannot lock you out.</p></div>';
+    h+='<button class="btn btn-sm" onclick="RQE()">Send confirmation link</button><span id="pf-emsg" class="msg" style="margin-left:8px"></span></div>';
     /* password: the new password, its confirmation, and the CURRENT password LAST as the check */
     h+='<div class="card"><h3>Change Password</h3>';
     h+='<div class="fld"><label>New password</label><input id="pf-np" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>';
@@ -3811,6 +3818,29 @@ function SPF(){
       pfMsg("pf-msg","Saved","ms");
     })
     .catch(function(e){ pfMsg("pf-msg",(e&&e.message)||"Could not save","me"); });
+}
+/* Ask for a change of sign-in address (cron 2026-10-18). Posts the NEW address; the API mails a
+   confirmation link to it and changes nothing yet. A refusal (bad address, address taken) lands in
+   the field's own message — posted directly so a 409/422 cannot be mistaken for an expired session. */
+function RQE(){
+  var inp=$("pf-newemail"), v=((inp||{}).value||"").trim();
+  if(!v){ pfMsg("pf-emsg","Enter the new email address","me"); return; }
+  if(v.indexOf("@")<1){ pfMsg("pf-emsg","That does not look like an email address","me"); return; }
+  pfMsg("pf-emsg","Sending...","mi");
+  fetch("/api/v1/auth/email-change",{method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+      body:JSON.stringify({new_email:v})})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+      if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
+      return d||{};})})
+    .then(function(d){
+      if(inp) inp.value="";
+      if(d.delivered===false){
+        pfMsg("pf-emsg",d.message||"That address cannot receive mail, so nothing was sent.","me"); return;
+      }
+      pfMsg("pf-emsg",d.message||"Check the new address for the confirmation link.","mi");
+    })
+    .catch(function(e){ pfMsg("pf-emsg",(e&&e.message)||"Could not start the change","me"); });
 }
 function CPF(){
   var np=(($("pf-np")||{}).value||""), np2=(($("pf-np2")||{}).value||""), cp=(($("pf-cp")||{}).value||"");

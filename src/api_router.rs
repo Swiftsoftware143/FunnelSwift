@@ -8,8 +8,8 @@ use tower_http::trace::TraceLayer;
 use askama::Template;
 
 use crate::auth::handlers::{
-    change_password, delete_avatar, forgot_password, get_avatar, get_usage, login, me, register,
-    reset_password, update_profile, upload_avatar,
+    change_password, confirm_email_change, delete_avatar, forgot_password, get_avatar, get_usage,
+    login, me, register, request_email_change, reset_password, update_profile, upload_avatar,
 };
 use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
@@ -173,6 +173,13 @@ pub fn create_router(
         .route("/api/v1/auth/me", get(me))
         .route("/api/v1/me/usage", get(get_usage))
         .route("/api/v1/auth/password", put(change_password))
+        // Change of sign-in address (cron 2026-10-18): the request is authenticated and acts on the
+        // caller's OWN row; the confirmation is public because the mailed token IS the credential.
+        .route("/api/v1/auth/email-change", post(request_email_change))
+        .route(
+            "/api/v1/auth/email-change/confirm",
+            post(confirm_email_change),
+        )
         .route("/api/v1/auth/profile", put(update_profile))
         // Profile picture (kanban t_ff948669). The upload is bounded a little above the handler's own
         // 2 MB ceiling so an oversized body is refused before it is buffered; the GET is public by

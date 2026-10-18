@@ -112,6 +112,11 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
+    // The confirmation half of the sign-in-address change (cron 2026-10-18). The customer opens the
+    // link from the NEW mailbox in a browser with no session; the mailed token IS the credential,
+    // and the handler accepts nothing else. Its request twin (`/api/v1/auth/email-change`) stays
+    // PRIVATE — the exact-template matcher below is what keeps the pair apart.
+    "/api/v1/auth/email-change/confirm",
     // --- public catalogues / served marketing surfaces --------------------------
     "/api/v1/seo/sitemap.xml",
     // The marketing site injects the platform-level `seo_*` rows from `site_settings` (no tenant
@@ -423,6 +428,8 @@ mod tests {
             "/api/v1/auth/login",
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/reset-password",
+            // the customer opens this from the NEW mailbox with no session at all
+            "/api/v1/auth/email-change/confirm",
             "/api/v1/seo/sitemap.xml",
             "/api/v1/seo/inject",
             "/api/v1/web-to-lead",
@@ -442,6 +449,10 @@ mod tests {
         assert!(!is_public_route("/api/v1/auth/avatar"));
         assert!(!is_public_route("/api/v1/auth/avatar/abc/extra"));
         assert!(!is_public_route("/api/v1/auth/avatars/x"));
+        // the REQUEST half of the address change writes the caller's own row and takes a session;
+        // only the mailed-token confirmation may be anonymous
+        assert!(!is_public_route("/api/v1/auth/email-change"));
+        assert!(!is_public_route("/api/v1/auth/email-change/confirm/extra"));
         // the branding upload/remove twin, the collection path, and every longer shape stay private
         assert!(!is_public_route("/api/v1/settings/branding/logo"));
         assert!(!is_public_route("/api/v1/branding/logo"));

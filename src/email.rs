@@ -463,6 +463,21 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // Change of sign-in address (cron 2026-10-18). The link carries the one-shot token to the
+        // page that completes the change; the body names the new address so a customer who did not
+        // ask for this can see the mistake immediately and ignore it (nothing changes until the link
+        // is opened). A DB row named `email_change` overrides this arm; the wording here is what an
+        // install without the row sends.
+        "email_change" => {
+            let new_email = vars.get("new_email").unwrap_or(&"").to_string();
+            let link = vars.get("link").unwrap_or(&"").to_string();
+            let subject = format!("Confirm your new {APP_NAME} sign-in address");
+            let text = format!(
+                "Hi {0},\n\nWe received a request to change the sign-in address on your {1} account to:\n\n{2}\n\nOpen this link to confirm the change:\n\n{3}\n\nYour sign-in address stays exactly as it is until you open that link. The link expires in 2 hours.\n\nIf you did not ask for this, ignore this message and nothing will change.\n\n- The {1} Team",
+                name, APP_NAME, new_email, link
+            );
+            (subject, Some(text), None)
+        }
         // David's model (2026-09-29): the signup form collects NAME + EMAIL only, the system
         // generates the first password and sends it here, and the user replaces it in their profile.
         // Before this arm existed there was NO email in this app that carried a password — the
