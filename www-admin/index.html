@@ -2986,10 +2986,11 @@ async function renderTenants() {
       </div>
       ${TENANT_USERS === null ? '<div class="empty" style="padding:16px">Loading…</div>' : (TENANT_USERS.length === 0
         ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
-        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td>${x(u.role||'')}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td></tr>`).join('')}</tbody></table></div>`)}
+        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td></tr>`).join('')}</tbody></table></div>`)}
       <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input class="input" id="tu-name" placeholder="Their name"></div>
         <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input class="input" id="tu-email" placeholder="them@company.com"></div>
+        <div style="min-width:170px"><label style="font-size:12px;color:var(--muted)">Role</label><select class="input" id="tu-role"><option value="user" selected>Member</option><option value="company_admin">Company admin</option><option value="admin">Admin (full access)</option><option value="business_user">Business user</option></select></div>
         <button class="btn btn-sm" id="tu-add">Add user</button>
       </div>
       <div id="tu-msg" style="margin-top:10px;font-size:13px">${TENANT_USERS_MSG||''}</div>
@@ -3075,7 +3076,7 @@ function bindTenants() {
     if (!email) { showToast('An email address is required', 'error', false); return; }
     addTu.disabled = true;
     try {
-      const r = await api('/admin/users', { method: 'POST', body: JSON.stringify({ tenant_id: TENANT_USER_TENANT, name: (nameEl && nameEl.value || '').trim(), email }) });
+      const r = await api('/admin/users', { method: 'POST', body: JSON.stringify({ tenant_id: TENANT_USER_TENANT, name: (nameEl && nameEl.value || '').trim(), email, role: ((document.getElementById('tu-role')||{}).value || 'user') }) });
       // The credentials mail is the only way the customer learns their password. When it did not go
       // out, the route hands the generated value back ONCE — that is the whole point of this pane.
       if (r && r.credentials_emailed) {
@@ -3094,6 +3095,29 @@ function bindTenants() {
     }
     renderApp();
   });
+  // Move an existing teammate to another role. The route refuses two cases in words — your own
+  // role, and the workspace's only admin — so those refusals land in the panel instead of a toast
+  // that disappears.
+  document.querySelectorAll('.tu-role-sel').forEach(sel => sel.addEventListener('change', async () => {
+    const uid = sel.getAttribute('data-user');
+    const role = sel.value;
+    const prev = sel.getAttribute('data-current') || '';
+    if (!uid || role === prev) return;
+    sel.disabled = true;
+    try {
+      const r = await api('/admin/users/' + encodeURIComponent(uid) + '/role', { method: 'POST', body: JSON.stringify({ role }) });
+      TENANT_USERS_MSG = '<span style="color:#15803d">✅ ' + x((r && r.email) || 'That teammate') + ' is now ' + x(roleLabel((r && r.role) || role)) + '.</span>';
+      try {
+        const l = await api('/admin/tenants/' + encodeURIComponent(TENANT_USER_TENANT) + '/users', { method: 'POST', body: '{}' });
+        TENANT_USERS = Array.isArray(l) ? l : ((l && (l.users || l.data)) || []);
+      } catch (e) {}
+    } catch (e) {
+      sel.value = prev;
+      sel.disabled = false;
+      TENANT_USERS_MSG = '<span style="color:#b91c1c">' + x((e && e.message) || 'Could not change that role') + '</span>';
+    }
+    renderApp();
+  }));
   sync();
 }
 
