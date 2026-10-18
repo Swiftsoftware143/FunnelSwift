@@ -523,6 +523,9 @@ function buildNav() {
   sections.push(`<div class="sidebar-section-label">AFFILIATE</div>`);
   if (isSuperAdmin()) {
     sections.push(`<div class="nav-item ${STATE.view==='affiliates'?'active':''}" data-view="affiliates"><span class="icon">🤝</span><span class="nav-text">Affiliates</span></div>`);
+    // The programme's LEADS: GET /api/v1/admin/affiliate-leads had no screen (David's rule: a
+    // backend route with no UI is a defect). Admin-only, because the route is.
+    sections.push(`<div class="nav-item ${STATE.view==='affiliateLeads'?'active':''}" data-view="affiliateLeads"><span class="icon">📇</span><span class="nav-text">Affiliate Leads</span></div>`);
   }
   sections.push(`<div class="nav-item ${STATE.view==='affiliateProducts'?'active':''}" data-view="affiliateProducts"><span class="icon">📦</span><span class="nav-text">Affiliate Products</span></div>`);
   sections.push(`<div class="nav-item ${STATE.view==='affiliatePayouts'?'active':''}" data-view="affiliatePayouts"><span class="icon">💰</span><span class="nav-text">${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}</span></div>`);
@@ -585,6 +588,8 @@ const viewRenderers = {
   affiliates: renderAffiliates,
   affiliateProducts: renderAffiliateProducts,
   affiliatePayouts: renderAffiliatePayouts,
+  // David's Affiliate Leads screen: the API shipped 2026-09-28 with no way in.
+  affiliateLeads: renderAffiliateLeads,
   // David's bar: *"I should be able to do everything in the admin panel."* These two had a backend
   // and no screen at all — the tier screen was missing entirely (a "Calculate tier" button with no
   // tiers to calculate against) and the commission-group backend had no way in.
@@ -650,6 +655,7 @@ function bindView(view) {
     case 'affiliates': bindAffiliates(); break;
     case 'affiliateProducts': bindAffiliateProducts(); break;
     case 'affiliatePayouts': bindAffiliatePayouts(); break;
+    case 'affiliateLeads': bindAffiliateLeads(); break;
     case 'commissionGroups': bindCommissionGroups(); break;
     case 'rateBands': bindRateBands(); break;
     case 'emailTemplates': bindEmailTemplates(); break;
@@ -1544,6 +1550,79 @@ function bindAffiliates() {
     } catch(e) { showToast(e.message, 'error'); }
   });
 }
+// ── AFFILIATE LEADS (Super Admin) ──────────────────────────────────────────────────────────────
+// GET /api/v1/admin/affiliate-leads shipped on 2026-09-28 — its handler quotes the ask verbatim
+// ("the admin should see all the affiliate leads and which affiliate they belong to. Direct signups
+// show system. And a column for whether the lead themselves became an affiliate") — and NO screen in
+// this console ever called it. David's rule: a backend route with no UI is a DEFECT.
+//
+// PROGRAMME-WIDE on purpose: the leads belong to the AFFILIATES' tenants (each capture is stored
+// under the tenant whose form took it), so a tenant-scoped read shows the platform admin an empty
+// screen forever. Read-only: this screen writes nothing.
+async function renderAffiliateLeads() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div><div class="desc">Only super admins can see the affiliate programme's leads.</div></div>`;
+  let d = null, err = null;
+  try { d = await api('/admin/affiliate-leads'); } catch (e) { err = e.message; }
+  if (!d) return `<div class="card"><div class="empty"><div class="icon">⚠️</div><div class="title">Could not load the affiliate leads</div><div class="desc">${x(err || 'Unknown error')}</div></div></div>`;
+  const s = d.summary || {};
+  const leads = d.leads || [];
+  const num = v => (v == null ? 0 : v);
+  const money = v => '$' + Number(v || 0).toFixed(2);
+  const tile = (label, value, note) => `<div class="card" style="padding:16px"><div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${x(label)}</div><div id="al-tile-${x(label.toLowerCase().replace(/[^a-z]+/g,'-'))}" style="font-size:24px;font-weight:700;margin-top:4px">${value}</div>${note ? `<div style="font-size:12px;color:#94a3b8;margin-top:2px">${x(note)}</div>` : ''}</div>`;
+  const rows = leads.map(l => {
+    const who = l.affiliate_name || 'system';
+    const mine = (who !== 'system');
+    const search = [l.name, l.email, l.phone, who, l.plan, l.status, l.last_movement].map(v => String(v || '').toLowerCase()).join(' ');
+    const comm = l.commission_count
+      ? `${num(l.commission_count)} · ${money(l.commission_total)}${l.commission_status ? ' (' + x(l.commission_status) + ')' : ''}`
+      : '—';
+    return `<tr data-al-search="${x(search)}">
+      <td><strong>${x(l.name || '(no name)')}</strong><div style="font-size:12px;color:#64748b">${x(l.email || '')}${l.phone ? ' · ' + x(l.phone) : ''}</div></td>
+      <td>${mine ? x(who) : '<span class="badge badge-yellow">system</span>'}</td>
+      <td>${l.became_affiliate ? '<span class="badge badge-green">Yes</span>' : '<span class="badge">No</span>'}</td>
+      <td>${x(l.plan || '—')}${l.pays ? ' <span class="badge badge-blue">paying</span>' : ''}</td>
+      <td>${x(l.status || 'new')}</td>
+      <td>${comm}</td>
+      <td>${l.last_movement ? x(l.last_movement) + (l.last_movement_date ? '<div style="font-size:12px;color:#64748b">' + x(l.last_movement_date) + '</div>' : '') : '—'}</td>
+      <td>${formatDate(l.created_at)}</td>
+    </tr>`;
+  }).join('');
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:20px">
+      <div><h1 style="font-size:22px;font-weight:700">Affiliate Leads</h1>
+      <p style="font-size:13px;color:#64748b;margin-top:4px">Every lead the affiliate programme produced and which affiliate it belongs to. A lead nobody referred shows <b>system</b> — nobody is paid for it. <b>Became affiliate</b> marks a lead who later joined the programme themselves.</p></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+      ${tile('Leads', num(s.total), 'in the programme')}
+      ${tile('Attributed', num(s.credited), 'credited to an affiliate')}
+      ${tile('From affiliate forms', num(s.from_affiliate_forms))}
+      ${tile('Joined programme', num(s.became_affiliates), 'became affiliates')}
+      ${tile('Upgraded', num(s.upgraded))}
+      ${tile('Downgraded', num(s.downgraded))}
+      ${tile('Commission value', money(s.commission_value))}
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+        <h2 style="font-size:16px;font-weight:600">Leads</h2>
+        <input id="aff-lead-search" class="input" style="max-width:280px" placeholder="Filter by name, email or affiliate" />
+      </div>
+      ${leads.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Lead</th><th>Affiliate</th><th>Became affiliate</th><th>Plan</th><th>Status</th><th>Commission</th><th>Last movement</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p style="font-size:12px;color:#94a3b8;margin-top:8px">Showing the newest ${leads.length} of ${num(s.total)} (the API returns the latest 200).</p>`
+      : `<div class="empty"><div class="icon">🤝</div><div class="title">No affiliate leads yet</div><div class="desc">This screen fills as affiliates' forms capture leads: a lead lands here when it is submitted through an affiliate form, stamped with a referring account, or carries a product's system tag.</div></div>`}
+    </div>
+  </div>`;
+}
+function bindAffiliateLeads() {
+  const box = document.getElementById('aff-lead-search');
+  if (!box) return;
+  box.oninput = () => {
+    const q = box.value.trim().toLowerCase();
+    document.querySelectorAll('tr[data-al-search]').forEach(tr => {
+      tr.style.display = (!q || (tr.getAttribute('data-al-search') || '').indexOf(q) !== -1) ? '' : 'none';
+    });
+  };
+}
+
 window._editAffiliate = function(id) { openAffiliateModal(id); };
 function openAffiliateModal(id) {
   STATE.modal = { title: id ? 'Edit Affiliate' : 'Add Affiliate', content: `<div class="empty"><div class="icon">⏳</div></div>` };

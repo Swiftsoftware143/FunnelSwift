@@ -65,7 +65,8 @@ const SQL_PROGRAMME_LEADS: &str = concat!(
 
 const SQL_PROGRAMME_COUNT: &str = concat!(
     "SELECT count(*) AS total, \
-                count(*) FILTER (WHERE l.created_by IS NOT NULL) AS credited, \
+                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliates a3 \
+                                                WHERE a3.user_id = l.created_by)) AS credited, \
                 count(*) FILTER (WHERE l.source = 'affiliate') AS from_affiliate_forms, \
                 count(*) FILTER (WHERE EXISTS (SELECT 1 FROM affiliates a2 \
                                                 WHERE lower(a2.email) = lower(l.email))) AS joined, \
