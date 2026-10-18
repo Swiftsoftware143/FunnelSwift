@@ -1097,6 +1097,41 @@ function openPlanModal(id) {
 }
 
 // ── LEADS ──
+// ── LEAD PIPELINE ──
+// The pipeline has lived in the database since the app shipped: `leads.stage` (VARCHAR(100),
+// DEFAULT 'New'), the dashboard's `leads_by_stage`, and the conversion rate that counts
+// stage='Closed Won'. Three writable routes have existed just as long — POST /leads/:id/stage,
+// PUT /leads/:id/status and POST /leads/:id/tags — and NOTHING in either console ever called the
+// stage or tag writer, so a lead could be created and then never advanced: the operator saw a
+// tag column it could not fill and a pipeline its own guide told it to filter by. These are the
+// missing callers. The vocabulary is the tenant's `lead_stages` setting (title-case, edited on the
+// customer's Lead Stages screen) with the same default the backend seeds.
+const DEFAULT_LEAD_STAGES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'];
+let LEAD_STAGES = DEFAULT_LEAD_STAGES.slice();
+async function loadLeadStages() {
+  try {
+    const st = await api('/settings');
+    const rows = Array.isArray(st) ? st : (st.data || []);
+    rows.forEach(s => {
+      if (s.key === 'lead_stages' && Array.isArray(s.value) && s.value.length) LEAD_STAGES = s.value.map(String);
+    });
+  } catch (e) { /* keep the default vocabulary */ }
+  return LEAD_STAGES;
+}
+// A row's own value is appended when it is not in the vocabulary, so a stage renamed after the
+// lead was written still shows what the lead actually says instead of silently reading "New".
+function leadStageOptions(current) {
+  const list = LEAD_STAGES.slice();
+  const cur = String(current || 'New');
+  if (!list.includes(cur)) list.push(cur);
+  return list.map(s => `<option value="${x(s)}"${s === cur ? ' selected' : ''}>${x(s)}</option>`).join('');
+}
+function leadStageCell(l) {
+  const cur = String(l.stage || 'New');
+  return `<select class="input lead-stage-sel" data-lead="${x(l.id)}" data-current="${x(cur)}"
+            style="padding:4px 6px;font-size:12px;min-width:120px" title="Move this lead to another stage">${leadStageOptions(cur)}</select>`;
+}
+
 async function renderLeads() {
   // PAGED, SERVER-SEARCHED (2026-10-18). GET /leads has always answered {data,total,page,per_page}, but
   // this screen called it with no parameters and kept `data` only — so a workspace with more than 20
@@ -1115,6 +1150,7 @@ async function renderLeads() {
   const total = Array.isArray(payload) ? leads.length : (payload.total || leads.length);
   const from = total === 0 ? 0 : (page - 1) * per + 1;
   const to = Math.min(page * per, total);
+  await loadLeadStages();
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1129,15 +1165,16 @@ async function renderLeads() {
     </div>
     <div class="card">
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Stage</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody id="leads-tbody">${leads.map(l=>`<tr>
           <td><strong>${x(l.name||l.full_name||'-')}</strong></td>
           <td>${x(l.email||'-')}</td>
           <td><span class="badge badge-blue">${x(l.source||'direct')}</span></td>
+          <td>${leadStageCell(l)}</td>
           <td>${(l.tags||[]).map(t=>`<span class="badge badge-green">${x(t.name||t)}</span>`).join(' ')}</td>
           <td>${formatDate(l.created_at)}</td>
           <td><button class="btn btn-secondary btn-xs" onclick="window._editLead('${l.id}')">Edit</button></td>
-        </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--muted)">${term ? 'No lead matches that search.' : 'No leads yet — add one, or import a CSV.'}</td></tr>`}</tbody>
+        </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted)">${term ? 'No lead matches that search.' : 'No leads yet — add one, or import a CSV.'}</td></tr>`}</tbody>
       </table></div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px">
         <span style="font-size:13px;color:var(--muted)">Showing ${from}–${to} of ${total}${term ? ' matching "' + x(term) + '"' : ''}</span>
@@ -1150,6 +1187,23 @@ async function renderLeads() {
   </div>`;
 }
 function bindLeads() {
+  // The stage writer. One listener on the container, so a re-render never leaves a
+  // dead control behind; a refusal restores the select to the value the row still has.
+  document.querySelectorAll('.lead-stage-sel').forEach(sel => sel.addEventListener('change', async () => {
+    const id = sel.getAttribute('data-lead');
+    const prev = sel.getAttribute('data-current') || '';
+    const stage = sel.value;
+    if (!id || stage === prev) return;
+    sel.disabled = true;
+    try {
+      await api('/leads/' + id + '/stage', { method: 'POST', body: JSON.stringify({ stage }) });
+      sel.setAttribute('data-current', stage);
+      showToast('Moved to ' + stage, 'success');
+    } catch (e) {
+      sel.value = prev;
+      showToast((e && e.message) || 'Could not change the stage', 'error');
+    } finally { sel.disabled = false; }
+  }));
   document.getElementById('add-lead-btn')?.addEventListener('click', () => openLeadModal());
   // The server has had GET /leads/export since it shipped, but nothing in this console ever
   // called it — so an operator with a few hundred leads had no way to get them out, and the
@@ -1261,19 +1315,57 @@ function openLeadModal(id) {
       <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(lead.name||'')}"></div>
       <div class="form-group"><label class="form-label">Email</label><input class="input" name="email" type="email" value="${x(lead.email||'')}"></div>
       <div class="form-row"><div class="form-group"><label class="form-label">Phone</label><input class="input" name="phone" value="${x(lead.phone||'')}"></div><div class="form-group"><label class="form-label">Source</label><input class="input" name="source" value="${x(lead.source||'')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Stage</label><select class="input" name="stage">${leadStageOptions(lead.stage || 'New')}</select></div><div class="form-group"><label class="form-label">Tags</label><div id="lead-tag-picker" style="max-height:110px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px"><span style="color:var(--muted)">Loading tags…</span></div></div></div>
       <div class="form-group"><label class="form-label">Notes</label><textarea class="input" name="notes" rows="3" style="resize:vertical">${x(lead.notes||'')}</textarea></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Lead</button>
       </div>
     </form>`;
+    // Tag picker: the tenant's own tags, with the lead's current ones ticked. Tag NAMES are
+    // what POST /leads/:id/tags takes, and it diffs an add list and a remove list, so an
+    // untick really takes the tag off (a mis-tag used to be permanent from the UI).
+    const currentTagNames = (lead.tags || []).map(t => String(t && t.name ? t.name : t));
+    (async () => {
+      const box = document.getElementById('lead-tag-picker');
+      if (!box) return;
+      let tags = [];
+      try { tags = await api('/tags'); } catch (e) { tags = []; }
+      if (!Array.isArray(tags)) tags = tags.data || tags.tags || [];
+      box.innerHTML = tags.length ? tags.map(t => {
+        const name = String(t.name || t);
+        const on = currentTagNames.includes(name) ? ' checked' : '';
+        return `<label style="display:block;padding:2px 0"><input type="checkbox" class="lead-tag-chk" value="${x(name)}"${on}> ${x(name)}</label>`;
+      }).join('') : '<span style="color:var(--muted)">No tags yet — create one on the Tags screen.</span>';
+    })();
     document.getElementById('lead-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const data = Object.fromEntries(fd);
+      const pickedStage = data.stage || '';
+      const pickedTags = Array.from(document.querySelectorAll('.lead-tag-chk:checked')).map(c => c.value);
+      delete data.stage;
       try {
+        let leadId = id;
         if (id) await api('/leads/'+id, { method: 'PUT', body: JSON.stringify(data) });
-        else await api('/leads', { method: 'POST', body: JSON.stringify(data) });
+        else {
+          const made = await api('/leads', { method: 'POST', body: JSON.stringify(data) });
+          leadId = (made && (made.id || (made.data && made.data.id))) || null;
+        }
+        // The two writers the modal never had. One refusal must not lose the other's work,
+        // so each is reported on its own and the lead itself is already saved above.
+        if (leadId && pickedStage && pickedStage !== String(lead.stage || 'New')) {
+          try { await api('/leads/' + leadId + '/stage', { method: 'POST', body: JSON.stringify({ stage: pickedStage }) }); }
+          catch (e) { showToast('Saved, but the stage was refused: ' + ((e && e.message) || 'error'), 'error'); }
+        }
+        if (leadId) {
+          const add = pickedTags.filter(n => !currentTagNames.includes(n));
+          const remove = currentTagNames.filter(n => !pickedTags.includes(n));
+          if (add.length || remove.length) {
+            try { await api('/leads/' + leadId + '/tags', { method: 'POST', body: JSON.stringify({ tags: add, remove }) }); }
+            catch (e) { showToast('Saved, but the tags were refused: ' + ((e && e.message) || 'error'), 'error'); }
+          }
+        }
         showToast(id?'Lead updated':'Lead created', 'success');
         STATE.modal = null; renderApp();
       } catch(e) { showToast(e.message, 'error'); }
