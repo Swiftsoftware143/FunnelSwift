@@ -3223,7 +3223,25 @@ function isProbeAddress(addr) {
 // column existed (and for rows a probe left behind at a door that does not write it) — the column
 // simply outranks them.
 const probeHarnessOf = (t) => String((t && t.probe_harness) || '').trim();
+// ── PERSISTENT FIXTURES (cron 2026-10-18) ────────────────────────────────────────────────────────
+// The tenancy canaries and the fixed seed row are the fleet's OWN fixtures: `canary-id-watch` looks
+// both canary workspaces up by NAME on every run (`probe-canary-a` / `probe-canary-b`), so deleting
+// one is not cleanup — the next canary run silently recreates a fresh tenant and its verdict stops
+// meaning anything. Their owner addresses sit on the fleet's own mail domain, so the probe predicate
+// above counts them as probes and "Select probes" ARMED them: one click put the canaries in the
+// selection and left a live Delete button aimed at the fleet's own fixtures. The API now refuses a
+// fixture outright; this predicate is the other half — the picker must not ARM one either.
+const FIXTURE_SLUG_PREFIXES = ['probe-canary-'];
+const FIXTURE_IDS = ['00000000-0000-0000-0000-000000000001'];
+function isFleetFixture(t) {
+  const slug = String((t && (t.slug || t.tenant_slug)) || '').toLowerCase();
+  const id = String((t && t.id) || '').toLowerCase();
+  return FIXTURE_SLUG_PREFIXES.some(p => slug.startsWith(p)) || FIXTURE_IDS.indexOf(id) !== -1;
+}
 function probeBadgeFor(t, ownerEmail) {
+  if (isFleetFixture(t)) {
+    return ` <span class="badge" title="a fleet fixture the canary looks up by name - kept on purpose, never deletable">fixture</span>`;
+  }
   const harness = probeHarnessOf(t);
   const probe = !!harness || isProbeAddress(ownerEmail);
   if (!probe) return '';
@@ -3276,7 +3294,7 @@ async function renderTenants() {
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
-      <tbody>${items.map(t=>`<tr data-probe="${probeBadgeFor(t, String(t.owner_email||t.email||'')) ? '1' : ''}">
+      <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}">
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}</td>

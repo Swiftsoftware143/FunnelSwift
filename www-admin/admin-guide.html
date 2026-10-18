@@ -133,6 +133,8 @@
           <li><strong>Assign Plan</strong> — Click "Plan" on any tenant row to select a plan from the dropdown</li>
           <li><strong>View Details</strong> — Click a tenant name to see full info</li>
           <li><strong>Disable</strong> — Toggle tenant active/inactive</li>
+          <li><strong>Select probes</strong> — ticks every workspace a test run minted (a <em>probe</em> badge: a reserved address such as <code>@example.invalid</code>, or a recorded test harness). "Delete selected" then retires exactly those rows in one call, and each row reports its own result, so a refusal never hides behind a green toast.</li>
+          <li><strong>Fixture rows cannot be deleted</strong> — the two Tenancy Canary workspaces and the fixed seed row are the monitoring fixtures this platform checks itself against. They carry a <em>fixture</em> badge, "Select probes" never ticks them, and the delete refuses them by name even if an id is sent directly. Deleting one would not be a cleanup: the canary would quietly rebuild a fresh workspace and its verdict would stop meaning anything.</li>
         </ul>
       </div>
 
