@@ -12,16 +12,16 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-16, from `api_router.rs` source)
+//! # The census (re-measured 2026-10-18 by the test's own counter over `api_router.rs`)
 //!
-//! 197 `.route(..)` mounts / 196 unique paths, classified three ways:
+//! 201 `.route(..)` mounts / 200 unique paths, classified three ways:
 //!
 //! ```text
-//!   172 mounts  /api/**            171 unique after the duplicate `/api/v1/linkedin/auth`
+//!   176 mounts  /api/**            175 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     17        public            -> PUBLIC_ROUTES below (15 unique + the health pair)
+//!     18        public            -> PUBLIC_ROUTES below
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    152        private           -> require_auth: app JWT, tenant-status checked
+//!    155        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (31 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -309,15 +309,15 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 197 mounts, 172 of them on the API surface. If a route is
-    /// added or removed the documented numbers move, so the doc gets re-read.
+    /// The census the module docs quote: 201 mounts, 176 of them on the API surface. If a route is
+    /// added or removed, this test is the reminder to re-measure the docs above with it.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 197, "mounted route count moved");
+        assert_eq!(mounted.len(), 201, "mounted route count moved");
         assert_eq!(
-            api, 172,
+            api, 176,
             "/api/ mount count moved — update the census in the module docs"
         );
     }
