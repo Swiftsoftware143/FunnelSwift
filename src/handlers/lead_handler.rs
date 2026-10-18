@@ -56,15 +56,67 @@ pub async fn list_leads(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM leads WHERE tenant_id = $1")
-        .bind(tenant_id)
-        .fetch_one(&state.pool)
-        .await?;
+    // THE FILTERS THE QUERY ALREADY DECLARED, now actually applied (2026-10-18). `LeadQuery` has
+    // carried `search`, `stage` and `source` since it was written, and this handler bound NONE of
+    // them: every call returned the whole workspace, so the console's search box only ever filtered
+    // the rows it had already loaded (and the API answered `total` for the unfiltered set). Measured
+    // live before the fix: `GET /leads?search=Lead 061` answered the same 120 rows with
+    // `total=120`.
+    //
+    // The ORDER BY also gains a tiebreak. Every lead a single import writes shares one
+    // `created_at` (one transaction, one `now()`), and with a non-unique sort key PostgreSQL is free
+    // to return them in a different order per query — i.e. LIMIT/OFFSET paging over an import could
+    // repeat a row on page 2 and drop another entirely.
+    let search = query
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("%{s}%"));
+    let stage = query
+        .stage
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let source = query
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
-    let leads = sqlx::query_as::<_, Lead>(
-        "SELECT * FROM leads WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+    let total = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM leads
+         WHERE tenant_id = $1
+           AND ($2::text IS NULL
+                OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
+                OR phone ILIKE $2 OR notes ILIKE $2)
+           AND ($3::text IS NULL OR stage = $3)
+           AND ($4::text IS NULL OR source = $4)",
     )
     .bind(tenant_id)
+    .bind(&search)
+    .bind(&stage)
+    .bind(&source)
+    .fetch_one(&state.pool)
+    .await?;
+
+    let leads = sqlx::query_as::<_, Lead>(
+        "SELECT * FROM leads
+         WHERE tenant_id = $1
+           AND ($2::text IS NULL
+                OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
+                OR phone ILIKE $2 OR notes ILIKE $2)
+           AND ($3::text IS NULL OR stage = $3)
+           AND ($4::text IS NULL OR source = $4)
+         ORDER BY created_at DESC, id DESC
+         LIMIT $5 OFFSET $6",
+    )
+    .bind(tenant_id)
+    .bind(&search)
+    .bind(&stage)
+    .bind(&source)
     .bind(per_page)
     .bind(offset)
     .fetch_all(&state.pool)

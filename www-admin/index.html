@@ -1098,32 +1098,55 @@ function openPlanModal(id) {
 
 // ── LEADS ──
 async function renderLeads() {
-  let leads = [];
-  try { leads = await api('/leads'); } catch(e) { leads = []; }
-  if (!Array.isArray(leads)) leads = leads.data || leads.leads || [];
+  // PAGED, SERVER-SEARCHED (2026-10-18). GET /leads has always answered {data,total,page,per_page}, but
+  // this screen called it with no parameters and kept `data` only — so a workspace with more than 20
+  // leads showed the newest 20 and nothing else, and the search box filtered just those 20. After a CSV
+  // import that was the difference between "my file worked" and "where did my file go". The page and
+  // the term now go to the server, and the footer says which slice is on screen.
+  const per = 50;
+  const page = Math.max(1, STATE.leadsPage || 1);
+  const term = (STATE.leadsSearch || '').trim();
+  let payload = { data: [], total: 0 };
+  try {
+    payload = await api('/leads?per_page=' + per + '&page=' + page +
+      (term ? '&search=' + encodeURIComponent(term) : ''));
+  } catch (e) { payload = { data: [], total: 0 }; }
+  let leads = Array.isArray(payload) ? payload : (payload.data || payload.leads || []);
+  const total = Array.isArray(payload) ? leads.length : (payload.total || leads.length);
+  const from = total === 0 ? 0 : (page - 1) * per + 1;
+  const to = Math.min(page * per, total);
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <h1 style="font-size:22px;font-weight:700">Leads</h1>
       <div class="btn-group">
-        <div class="search-bar"><span class="search-icon">🔍</span><input class="input" id="lead-search" placeholder="Search leads..." style="width:200px"></div>
+        <div class="search-bar"><span class="search-icon">🔍</span><input class="input" id="lead-search" placeholder="Search all leads..." style="width:200px" value="${x(term)}"></div>
         <input type="file" id="import-leads-file" accept=".csv,text/csv" style="display:none">
         <button class="btn btn-secondary btn-sm" id="import-leads-btn">📤 Import CSV</button>
         <button class="btn btn-secondary btn-sm" id="export-leads-btn">📥 Export CSV</button>
         <button class="btn btn-primary btn-sm" id="add-lead-btn">+ Add Lead</button>
       </div>
     </div>
-    <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
-      <tbody id="leads-tbody">${leads.map(l=>`<tr>
-        <td><strong>${x(l.name||l.full_name||'-')}</strong></td>
-        <td>${x(l.email||'-')}</td>
-        <td><span class="badge badge-blue">${x(l.source||'direct')}</span></td>
-        <td>${(l.tags||[]).map(t=>`<span class="badge badge-green">${x(t.name||t)}</span>`).join(' ')}</td>
-        <td>${formatDate(l.created_at)}</td>
-        <td><button class="btn btn-secondary btn-xs" onclick="window._editLead('${l.id}')">Edit</button></td>
-      </tr>`).join('')}</tbody>
-    </table></div></div>
+    <div class="card">
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="leads-tbody">${leads.map(l=>`<tr>
+          <td><strong>${x(l.name||l.full_name||'-')}</strong></td>
+          <td>${x(l.email||'-')}</td>
+          <td><span class="badge badge-blue">${x(l.source||'direct')}</span></td>
+          <td>${(l.tags||[]).map(t=>`<span class="badge badge-green">${x(t.name||t)}</span>`).join(' ')}</td>
+          <td>${formatDate(l.created_at)}</td>
+          <td><button class="btn btn-secondary btn-xs" onclick="window._editLead('${l.id}')">Edit</button></td>
+        </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--muted)">${term ? 'No lead matches that search.' : 'No leads yet — add one, or import a CSV.'}</td></tr>`}</tbody>
+      </table></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px">
+        <span style="font-size:13px;color:var(--muted)">Showing ${from}–${to} of ${total}${term ? ' matching "' + x(term) + '"' : ''}</span>
+        <div class="btn-group">
+          <button class="btn btn-secondary btn-sm" id="leads-prev" ${page <= 1 ? 'disabled' : ''}>← Previous</button>
+          <button class="btn btn-secondary btn-sm" id="leads-next" ${to >= total ? 'disabled' : ''}>Next →</button>
+        </div>
+      </div>
+    </div>
   </div>`;
 }
 function bindLeads() {
@@ -1164,6 +1187,8 @@ function bindLeads() {
       showToast((d.message || 'Leads imported') +
         (first ? ' — line ' + first.line + ': ' + first.reason : ''), 'success');
       STATE.modal = null;
+      STATE.leadsPage = 1;
+      STATE.leadsSearch = '';
       renderApp();
     } catch (e) {
       showToast('Import failed: ' + ((e && e.message) || 'request failed'), 'error');
@@ -1200,11 +1225,25 @@ function bindLeads() {
       if (btn) { btn.disabled = false; btn.textContent = '📥 Export CSV'; }
     }
   });
-  document.getElementById('lead-search')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('#leads-tbody tr').forEach(tr => {
-      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
+  // Server-side search: the box used to hide rows in the 20 it had already loaded, so a lead older
+  // than page one could not be found at all. Debounced, and it goes back to page 1 with each new term.
+  let leadSearchTimer = null;
+  document.getElementById('lead-search')?.addEventListener('input', function () {
+    const v = this.value;
+    clearTimeout(leadSearchTimer);
+    leadSearchTimer = setTimeout(() => {
+      STATE.leadsSearch = v;
+      STATE.leadsPage = 1;
+      renderApp();
+    }, 350);
+  });
+  document.getElementById('leads-prev')?.addEventListener('click', () => {
+    STATE.leadsPage = Math.max(1, (STATE.leadsPage || 1) - 1);
+    renderApp();
+  });
+  document.getElementById('leads-next')?.addEventListener('click', () => {
+    STATE.leadsPage = (STATE.leadsPage || 1) + 1;
+    renderApp();
   });
 }
 window._editLead = function(id) { openLeadModal(id); };
