@@ -2963,11 +2963,14 @@ async function renderTenants() {
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
       <h1 style="font-size:22px;font-weight:700;margin:0">🏢 Tenants</h1>
-      <button class="btn btn-danger btn-sm" id="tnDel" disabled>Delete selected</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-secondary btn-sm" id="tnProbes" data-tenants="select-probes" disabled>Select probes (0)</button>
+        <button class="btn btn-danger btn-sm" id="tnDel" disabled>Delete selected</button>
+      </div>
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
-      <tbody>${items.map(t=>`<tr>
+      <tbody>${items.map(t=>`<tr data-probe="${probeBadgeFor(t, String(t.owner_email||t.email||'')) ? '1' : ''}">
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}</td>
@@ -2982,7 +2985,10 @@ async function renderTenants() {
     ${TENANT_USER_TENANT ? `<div class="card" id="tenant-users-panel" style="margin-top:16px">
       <div class="card-header" style="padding:0;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
         <h2 style="font-size:16px;font-weight:700;margin:0">👥 People in ${x(TENANT_USER_TENANT_NAME||'this workspace')}</h2>
-        <button class="btn btn-secondary btn-sm" id="tu-close">Close</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <a class="btn btn-secondary btn-sm" id="tu-guide" href="/admin-guide.html#teammates" target="_blank" rel="noopener" title="What each role can do, and what happens when you add a teammate">📖 How roles work</a>
+          <button class="btn btn-secondary btn-sm" id="tu-close">Close</button>
+        </div>
       </div>
       ${TENANT_USERS === null ? '<div class="empty" style="padding:16px">Loading…</div>' : (TENANT_USERS.length === 0
         ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
@@ -3014,6 +3020,22 @@ function bindTenants() {
     if (all) all.checked = boxes().length > 0 && picked.length === boxes().length;
   };
   if (all) all.addEventListener('change', () => { boxes().forEach(b => { b.checked = all.checked; }); sync(); });
+  // ONE-CLICK PROBE SELECT (cron 2026-10-18). The rows carry `data-probe="1"` from the SAME predicate
+  // that renders the probe badge (`probeBadgeFor`), so the button's count, the rows it ticks and the
+  // badges on screen cannot disagree — which is exactly how a test-account sweep under-counts when the
+  // operator has to tick rows by eye. Rows the API refuses are still ticked: bulk-delete answers per
+  // id and keeps the reason next to the row it kept.
+  const probeBoxes = () => Array.from(document.querySelectorAll('tr[data-probe="1"] .tn-chk'));
+  const pb = document.getElementById('tnProbes');
+  if (pb) {
+    pb.textContent = 'Select probes (' + probeBoxes().length + ')';
+    pb.disabled = probeBoxes().length === 0;
+    pb.addEventListener('click', () => {
+      boxes().forEach(b => { b.checked = false; });
+      probeBoxes().forEach(b => { b.checked = true; });
+      sync();
+    });
+  }
   boxes().forEach(b => b.addEventListener('change', sync));
   // Assign a workspace's plan from the row it is read on. The backend route has existed since
   // `assign_plan` (POST /api/v1/tenants/:id/plan) and its only caller was the Plan Admin screen's
