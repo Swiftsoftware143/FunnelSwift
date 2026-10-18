@@ -915,14 +915,15 @@ async function renderPortfolio() {
     </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">🏢</div><div class="title">No companies yet</div><div class="desc">Add your first portfolio company</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Company</th><th>Email</th><th>Plan</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Company</th><th>Email</th><th>Description</th><th>Added</th><th>Actions</th></tr></thead>
       <tbody>${items.map(c=>`<tr>
-        <td><strong>${x(c.company_name||c.name)}</strong>${c.description?`<div style="font-size:11px;color:var(--muted)">${x(c.description)}</div>`:''}</td>
-        <td>${x(c.email||'-')}</td>
-        <td><span class="badge badge-blue">${x(c.plan_slug||c.plan||'free')}</span></td>
-        <td><span class="badge ${c.status==='active'?'badge-green':'badge-yellow'}">${x(c.status||'active')}</span></td>
+        <td><strong>${x(c.name)}</strong>${c.slug?`<div style="font-size:11px;color:var(--muted)">${x(c.slug)}</div>`:''}</td>
+        <td>${c.email?`<a href="mailto:${x(c.email)}" style="color:var(--primary)">${x(c.email)}</a>`:'-'}</td>
+        <td>${c.description?x(c.description):'<span style="color:var(--muted)">-</span>'}</td>
+        <td>${formatDate(c.created_at)}</td>
         <td>
           <button class="btn btn-secondary btn-xs" onclick="window._editPortfolio('${c.id}')">Edit</button>
+          <button class="btn btn-danger btn-xs" onclick="window._deletePortfolio('${c.id}')">Delete</button>
         </td>
       </tr>`).join('')}</tbody>
     </table></div></div>`}
@@ -985,10 +986,64 @@ window._impersonate = async function(tenantId) {
 };
 
 function openPortfolioModal(id) {
+  // "Add Company" used to open an EMPTY dialog: this function set only a title, so the modal body
+  // was blank and the create/edit path the API already supported was unreachable from the screen.
+  // The form below posts the same four fields the row has real columns for (name, slug, email,
+  // description) -- no Plan and no Status, because portfolio_companies has neither.
+  STATE.modal = { title: id ? 'Edit Company' : 'Add Company', content: `<div class="empty"><div class="icon">⏳</div></div>` };
   STATE.modalData = { id };
-  STATE.modal = { title: id ? 'Edit Company' : 'Add Company' };
   renderApp();
+  setTimeout(async () => {
+    let co = {};
+    if (id) {
+      try { co = await api('/portfolio-companies/' + id); }
+      catch (e) { showToast('Could not load the company: ' + e.message, 'error'); STATE.modal = null; renderApp(); return; }
+    }
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    body.innerHTML = `<form id="portfolio-form">
+      <div class="form-group"><label class="form-label">Company name</label>
+        <input class="input" name="name" value="${x(co.name||'')}" maxlength="120" required></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Short name (in the URL)</label>
+          <input class="input" name="slug" value="${x(co.slug||'')}" pattern="[a-z0-9-]+" maxlength="60" required>
+          <div style="font-size:11px;color:var(--muted)">lowercase letters, numbers and dashes only</div></div>
+        <div class="form-group"><label class="form-label">Contact email</label>
+          <input class="input" name="email" type="email" value="${x(co.email||'')}" placeholder="name@company.com"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label>
+        <textarea class="input" name="description" rows="3" maxlength="500" placeholder="What this company does">${x(co.description||'')}</textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        ${id?`<button type="button" class="btn btn-danger" onclick="window._deletePortfolio('${id}')">Delete</button>`:''}
+        <button type="submit" class="btn btn-primary">${id?'Save changes':'Add company'}</button>
+      </div>
+    </form>`;
+    document.getElementById('portfolio-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      // an empty box is "no value", not the literal empty string: the column is nullable
+      ['email','description'].forEach(k => { if (!String(data[k]||'').trim()) data[k] = null; });
+      data.name = String(data.name||'').trim();
+      data.slug = String(data.slug||'').trim().toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'');
+      if (!data.name || !data.slug) { showToast('A company needs a name and a short name', 'error'); return; }
+      try {
+        if (id) await api('/portfolio-companies/'+id, { method: 'PUT', body: JSON.stringify(data) });
+        else await api('/portfolio-companies', { method: 'POST', body: JSON.stringify(data) });
+        showToast(id?'Company updated':'Company added', 'success');
+        STATE.modal = null; STATE.modalData = null; renderApp();
+      } catch (e) { showToast(e.message, 'error'); }
+    });
+  }, 100);
 }
+window._deletePortfolio = async function(id) {
+  if (!confirm('Delete this company? Its record is removed; nothing else in your account changes.')) return;
+  try {
+    await api('/portfolio-companies/'+id, { method: 'DELETE' });
+    showToast('Company deleted', 'success');
+    STATE.modal = null; STATE.modalData = null; renderApp();
+  } catch (e) { showToast(e.message, 'error'); }
+};
 
 function renderModal(m) {
   return `<div class="modal-overlay" onclick="window._closeModal(event)">

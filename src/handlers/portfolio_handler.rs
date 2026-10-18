@@ -19,6 +19,11 @@ pub struct PortfolioCompany {
     pub tenant_id: Uuid,
     pub name: String,
     pub slug: String,
+    // The contact half of the row. The columns have existed since the table shipped and POST
+    // already writes them, but every read omitted them, so the console's Company -> Email column
+    // was permanently "-" and the description never reached the screen at all.
+    pub email: Option<String>,
+    pub description: Option<String>,
     pub settings: Value,
     pub created_at: String,
     pub updated_at: String,
@@ -37,6 +42,8 @@ pub struct CreatePortfolioCompanyRequest {
 pub struct UpdatePortfolioCompanyRequest {
     pub name: Option<String>,
     pub slug: Option<String>,
+    pub email: Option<String>,
+    pub description: Option<String>,
     pub settings: Option<Value>,
 }
 
@@ -46,6 +53,8 @@ fn row_to_portfolio_company(row: &sqlx::postgres::PgRow) -> Result<PortfolioComp
         tenant_id: row.try_get("tenant_id")?,
         name: row.try_get("name")?,
         slug: row.try_get("slug")?,
+        email: row.try_get("email")?,
+        description: row.try_get("description")?,
         settings: row.try_get("settings")?,
         created_at: row
             .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")?
@@ -66,7 +75,7 @@ pub async fn list_portfolio_companies(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let rows = sqlx::query(
-        "SELECT id, tenant_id, name, slug, settings, created_at, updated_at FROM portfolio_companies WHERE tenant_id = $1 ORDER BY name",
+        "SELECT id, tenant_id, name, slug, email, description, settings, created_at, updated_at FROM portfolio_companies WHERE tenant_id = $1 ORDER BY name",
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
@@ -127,7 +136,7 @@ pub async fn get_portfolio_company(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let row = sqlx::query(
-        "SELECT id, tenant_id, name, slug, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
+        "SELECT id, tenant_id, name, slug, email, description, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
@@ -153,7 +162,7 @@ pub async fn update_portfolio_company(
 
     // Fetch existing
     let row = sqlx::query(
-        "SELECT id, tenant_id, name, slug, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
+        "SELECT id, tenant_id, name, slug, email, description, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
@@ -167,13 +176,19 @@ pub async fn update_portfolio_company(
     let name = req.name.unwrap_or(current.name);
     let slug = req.slug.unwrap_or(current.slug);
     let settings = req.settings.unwrap_or(current.settings);
+    // Contact fields are preserved when the caller omits them, exactly like name/slug: the edit
+    // form always sends all four, so an absent field means "not part of this edit", not "clear it".
+    let email = req.email.or(current.email);
+    let description = req.description.or(current.description);
 
     sqlx::query(
-        "UPDATE portfolio_companies SET name = $1, slug = $2, settings = $3, updated_at = $4 WHERE id = $5 AND tenant_id = $6",
+        "UPDATE portfolio_companies SET name = $1, slug = $2, settings = $3, email = $4, description = $5, updated_at = $6 WHERE id = $7 AND tenant_id = $8",
     )
     .bind(&name)
     .bind(&slug)
     .bind(&settings)
+    .bind(&email)
+    .bind(&description)
     .bind(now)
     .bind(id)
     .bind(tenant_id)
