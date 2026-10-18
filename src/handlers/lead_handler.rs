@@ -221,7 +221,7 @@ pub async fn create_lead(
 
     sqlx::query(
         r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company, source, stage, tags, custom_fields, notes, assigned_to, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE(NULLIF(TRIM($10), ''), 'New'), $11, $12, $13, $14, $15)"#,
     )
     .bind(lead_id)
     .bind(tenant_id)
