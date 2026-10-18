@@ -1913,6 +1913,7 @@ async function renderEmailTemplates() {
           Choose smtp, mailgun, sendgrid or sendiio and paste that provider's key — the dropdown is served by the API.
         </div>
         <div id="ep-last-send" style="font-size:12px;margin:-4px 0 12px"></div>
+        <div id="ep-history" style="margin:0 0 16px"></div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
           <div class="form-group"><label class="form-label">Provider</label><select class="input" id="ep-provider"></select></div>
           <div class="form-group"><label class="form-label">From name</label><input class="input" id="ep-from-name" placeholder="FunnelSwift"></div>
@@ -2008,6 +2009,34 @@ async function bindEmailProvider() {
           + ' <span style="color:#64748b">· ' + x(when) + ' · &quot;' + x(last.subject || '') + '&quot; to ' + x(last.to || '') + '</span>'
           + (last.ok ? '' : '<div style="color:#b91c1c;margin-top:4px">' + x(String(last.detail || 'no reason recorded')) + '</div>');
       }
+    }
+    /* The HISTORY beside the one-slot "last email" line (GET /admin/email-log, migration 109):
+       the slot is overwritten by every later message, so a credentials mail the provider refused at
+       signup vanished from the panel as soon as any other mail succeeded. This is the list an
+       operator reads to answer "did that customer ever get their password?". */
+    const hist = document.getElementById('ep-history');
+    if (hist) {
+      try {
+        const h = await api('/admin/email-log');
+        const rows = (h && h.sends) || [];
+        if (!rows.length) {
+          hist.innerHTML = '<div style="color:#64748b;font-size:12px">No email attempts recorded yet.</div>';
+        } else {
+          const colour = st => st === 'sent' ? '#15803d' : st === 'withheld' ? '#b45309' : '#b91c1c';
+          const word = st => st === 'sent' ? 'sent' : st === 'withheld' ? 'not sent (reserved address)' : 'REFUSED';
+          hist.innerHTML = '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ')</div>'
+            + '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
+            + '<th style="padding:2px 6px">When</th><th style="padding:2px 6px">To</th><th style="padding:2px 6px">Subject</th>'
+            + '<th style="padding:2px 6px">Result</th><th style="padding:2px 6px">Reason</th></tr></thead><tbody>'
+            + rows.map(r => '<tr style="border-top:1px solid #e2e8f0">'
+              + '<td style="padding:2px 6px;color:#64748b">' + x(r.at ? new Date(r.at).toLocaleString() : '') + '</td>'
+              + '<td style="padding:2px 6px">' + x(r.to || '') + '</td>'
+              + '<td style="padding:2px 6px">' + x(r.subject || '') + '</td>'
+              + '<td style="padding:2px 6px;color:' + colour(r.status) + '">' + x(word(r.status)) + '</td>'
+              + '<td style="padding:2px 6px;color:#b91c1c">' + x(r.detail || '') + '</td></tr>').join('')
+            + '</tbody></table>';
+        }
+      } catch (e) { hist.innerHTML = '<div style="color:#b91c1c;font-size:12px">Could not load the send history: ' + x(e.message) + '</div>'; }
     }
   } catch (e) {
     showToast('Could not load email provider: ' + e.message, 'error');
@@ -2897,6 +2926,25 @@ function probeBadgeFor(t, ownerEmail) {
     : 'a reserved address - a fleet probe, not a customer';
   return ` <span class="badge badge-yellow" title="${x(why)}">probe</span>`;
 }
+// ── the PLAN cell ──
+// The cell used to print `t.plan_name || t.plan_slug || 'Free'`, so a workspace with NO subscription
+// row at all (measured live 2026-10-18: CEOBotTest and the two tenancy canaries have zero active
+// subscriptions) advertised a confident "Free" badge next to workspaces genuinely on "Capture Free" /
+// "Kinetic Free". Those are two different states -- "on the free tier" and "never put on a plan" --
+// and the operator could not tell them apart. It is a select now: it shows the REAL plan when there
+// is one, says "no plan" when there is none, and assigns through `POST /api/v1/tenants/:id/plan`
+// (handlers::tenant_handler::assign_plan -> set_active_plan, the same writer the Plan Admin screen
+// uses), so the fix happens where the problem is seen instead of two screens away.
+let TENANT_PLAN_ROWS = [];
+function tenantPlanCell(t) {
+  const cur = String(t.plan_slug || '');
+  const opts = ['<option value=""' + (cur ? '' : ' selected') + '>— no plan —</option>']
+    .concat(TENANT_PLAN_ROWS.map(p =>
+      `<option value="${x(p.slug)}"${p.slug === cur ? ' selected' : ''}>${x(p.name)}</option>`));
+  return `<select class="input plan-sel" data-tenant="${x(t.id)}" data-current="${x(cur)}" ` +
+    `style="min-width:150px" title="Assign this workspace's plan (writes the active subscription row)">` +
+    opts.join('') + `</select>`;
+}
 // ── TENANTS (Super Admin only) ──
 async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
@@ -2904,6 +2952,11 @@ async function renderTenants() {
   let items = [];
   try { items = await api('/tenants'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
+  // The vocabulary the plan select offers: read once per render from the same `/plans` catalogue the
+  // Plans screen uses (6 rows live), never a hard-coded list -- a new plan appears here the moment it
+  // is created.
+  try { const ps = await api('/plans'); TENANT_PLAN_ROWS = Array.isArray(ps) ? ps : (ps.plans || ps.data || []); }
+  catch(e) { TENANT_PLAN_ROWS = []; }
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
@@ -2917,7 +2970,7 @@ async function renderTenants() {
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
-        <td><span class="badge badge-blue">${x(t.plan_name||t.plan_slug||'Free')}</span></td>
+        <td>${tenantPlanCell(t)}</td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
         <td>${t.user_count||0}</td>
         <td>${formatDate(t.created_at)}</td>
@@ -2943,6 +2996,29 @@ function bindTenants() {
   };
   if (all) all.addEventListener('change', () => { boxes().forEach(b => { b.checked = all.checked; }); sync(); });
   boxes().forEach(b => b.addEventListener('change', sync));
+  // Assign a workspace's plan from the row it is read on. The backend route has existed since
+  // `assign_plan` (POST /api/v1/tenants/:id/plan) and its only caller was the Plan Admin screen's
+  // two-dropdown form, so an operator looking at "no plan" here had to remember which screen could
+  // fix it. Same writer either way: `set_active_plan` on the active subscription row.
+  document.querySelectorAll('.plan-sel').forEach(sel => sel.addEventListener('change', async () => {
+    const tid = sel.getAttribute('data-tenant');
+    const slug = sel.value;
+    const prev = sel.getAttribute('data-current') || '';
+    if (slug === prev) return;
+    if (!slug) { sel.value = prev; showToast('A workspace keeps its plan once it has one - pick a plan', 'info'); return; }
+    const plan = TENANT_PLAN_ROWS.find(p => p.slug === slug);
+    if (!plan) { sel.value = prev; showToast('That plan is not in the catalogue', 'error'); return; }
+    sel.disabled = true;
+    try {
+      await api('/tenants/' + encodeURIComponent(tid) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id }) });
+      showToast('Plan set to ' + (plan.name || slug), 'success');
+      renderApp();
+    } catch (e) {
+      sel.disabled = false;
+      sel.value = prev;
+      showToast((e && e.message) || 'Could not set the plan', 'error');
+    }
+  }));
   if (del) del.addEventListener('click', async () => {
     const ids = boxes().filter(b => b.checked).map(b => b.value).filter(Boolean);
     if (ids.length === 0) return;
