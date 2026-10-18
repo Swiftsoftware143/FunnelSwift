@@ -342,14 +342,33 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
     // `company` (migration 098) and `avatar_url` are the two fields the profile screen renders and
     // writes. Both live only on `users` — the picture's BYTES are in `user_avatars` and are read by
     // `get_avatar`, never here, so this row stays small.
-    let user_info: Option<(String, Option<String>, Option<String>, Option<String>)> =
-        sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>)>(
-            "SELECT name, username, company, avatar_url FROM users WHERE id::text = $1",
-        )
-        .bind(&auth.user_id)
-        .fetch_optional(&state.pool)
-        .await
-        .unwrap_or(None);
+    let user_info: Option<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as::<
+        _,
+        (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
+        // `email` is read from the ROW, not from the JWT claim (cron 2026-10-18). The claim is a
+        // snapshot taken at sign-in, so a customer who had just CONFIRMED a change of sign-in
+        // address saw the OLD address on their own profile until they signed in again — the one
+        // screen they would go to in order to check. The address is the account's identity, so
+        // this answer must come from the account.
+        "SELECT name, username, company, avatar_url, email FROM users WHERE id::text = $1",
+    )
+    .bind(&auth.user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
 
     // The `api_key` field of this response was REMOVED (kanban t_726416be). It used to carry the
     // 8-char prefix of the caller's 'Auto-generated' `api_keys` row — the last reader of that table
@@ -401,11 +420,14 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
     Json(json!({
         "user_id": auth.user_id,
         "tenant_id": auth.tenant_id,
-        "email": auth.email,
-        "name": user_info.as_ref().map(|(n,_,_,_)| n.clone()).unwrap_or_default(),
-        "username": user_info.as_ref().and_then(|(_,u,_,_)| u.clone()).unwrap_or_default(),
-        "company": user_info.as_ref().and_then(|(_,_,c,_)| c.clone()).unwrap_or_default(),
-        "avatar_url": user_info.as_ref().and_then(|(_,_,_,a)| a.clone()).unwrap_or_default(),
+        "email": user_info
+            .as_ref()
+            .and_then(|(_, _, _, _, e)| e.clone())
+            .unwrap_or_else(|| auth.email.clone()),
+        "name": user_info.as_ref().map(|(n, _, _, _, _)| n.clone()).unwrap_or_default(),
+        "username": user_info.as_ref().and_then(|(_, u, _, _, _)| u.clone()).unwrap_or_default(),
+        "company": user_info.as_ref().and_then(|(_, _, c, _, _)| c.clone()).unwrap_or_default(),
+        "avatar_url": user_info.as_ref().and_then(|(_, _, _, a, _)| a.clone()).unwrap_or_default(),
         "role": auth.role,
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
