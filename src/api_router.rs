@@ -596,6 +596,13 @@ pub fn create_router(
             "/api/v1/admin/tenants/:id/users",
             post(crate::handlers::admin_handler::list_tenant_users),
         )
+        // Add a teammate to an existing workspace (2026-10-18). The route above only LISTS a
+        // workspace's people, so the panel had no way to add one and the credentials-mint failure
+        // mode ("the account exists, the mail never went, nobody knows the password") had no remedy.
+        .route(
+            "/api/v1/admin/users",
+            post(crate::handlers::admin_handler::create_tenant_user),
+        )
         .route(
             "/api/v1/admin/tenants/:id/feature-overrides",
             get(crate::handlers::admin_handler::get_tenant_feature_overrides),

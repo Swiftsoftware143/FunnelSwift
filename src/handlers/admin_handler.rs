@@ -650,8 +650,19 @@ pub async fn list_tenant_users(
     }
     let tid = tenant_id;
 
-    let users = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, String, bool)>(
-        r#"SELECT id, email, first_name, last_name, role, is_active
+    let users = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            bool,
+            String,
+        ),
+    >(
+        r#"SELECT id, email, first_name, last_name, role, is_active, name
            FROM users WHERE tenant_id = $1
            ORDER BY created_at DESC"#,
     )
@@ -661,19 +672,148 @@ pub async fn list_tenant_users(
 
     let result: Vec<Value> = users
         .into_iter()
-        .map(|(id, email, first_name, last_name, role, is_active)| {
-            json!({
-                "id": id.to_string(),
-                "email": email,
-                "first_name": first_name,
-                "last_name": last_name,
-                "role": role,
-                "is_active": is_active,
-            })
-        })
+        .map(
+            |(id, email, first_name, last_name, role, is_active, name)| {
+                json!({
+                    "id": id.to_string(),
+                    "email": email,
+                    "name": name,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "role": role,
+                    "is_active": is_active,
+                })
+            },
+        )
         .collect();
 
     Ok(Json(json!(result)))
+}
+
+/// Mint a user INSIDE an existing workspace (Super Admin only).
+///
+/// `POST /api/v1/admin/users` with `{tenant_id, name, email}`. Until now the console could only
+/// LIST a workspace's people (`POST /admin/tenants/:id/users`) — there was no route that added one,
+/// so the "Users" count on the Tenants table was a dead number and an operator had no way to add a
+/// teammate to a customer's workspace.
+///
+/// The mint follows the same contract as the first-user mint: generate a password, hash it, and mail
+/// it. The failure mode that contract left open is the one this route closes — when the credentials
+/// mail cannot go out (no provider configured, provider refused) or is deliberately withheld (a
+/// reserved/harness address is never attempted), the account exists with a password nobody knows.
+/// So the answer states the outcome: `credentials_emailed` says the provider accepted the message,
+/// and when it did not, `handover_password` carries the generated value for THIS response only, so
+/// the operator can pass it to the customer.
+pub async fn create_tenant_user(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(req): Json<Value>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let tenant_id = req
+        .get("tenant_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| AppError::BadRequest("tenant_id must be a uuid".into()))?;
+    let email = req
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return Err(AppError::BadRequest(
+            "a valid email address is required".into(),
+        ));
+    }
+    let given = req
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let name = if given.is_empty() {
+        email.split('@').next().unwrap_or("Teammate").to_string()
+    } else {
+        given
+    };
+
+    // The workspace must exist: a mint against a stale id would leave an orphan user row.
+    let tenant_name: Option<String> = sqlx::query_scalar("SELECT name FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let tenant_name = tenant_name.ok_or_else(|| AppError::NotFound("No such workspace".into()))?;
+
+    let taken: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+        .bind(&email)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    if taken > 0 {
+        return Err(AppError::Conflict(format!(
+            "{email} already has an account"
+        )));
+    }
+
+    let generated_password = Uuid::new_v4()
+        .to_string()
+        .replace('-', "")
+        .chars()
+        .take(12)
+        .collect::<String>();
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(generated_password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+        .to_string();
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, 'member', true, NOW(), NOW())",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&email)
+    .bind(&password_hash)
+    .bind(&name)
+    .execute(&state.pool)
+    .await?;
+
+    // `harness_domain` is the fleet's ONE suppression test: a reserved address is never sent to, so
+    // nothing leaves and nothing can bounce. It is not a failure, but it is also not a delivery —
+    // the operator still has to hand the password over.
+    let withheld = crate::security::probe_addr::harness_domain(&email).is_some();
+    let mut emailed = false;
+    let mut detail = String::new();
+    if !withheld {
+        match crate::email::send_credentials_email(
+            &state.pool,
+            tenant_id,
+            &email,
+            &name,
+            &generated_password,
+        )
+        .await
+        {
+            Ok(()) => emailed = true,
+            Err(e) => detail = e,
+        }
+    }
+
+    Ok(Json(json!({
+        "id": user_id.to_string(),
+        "tenant_id": tenant_id.to_string(),
+        "tenant_name": tenant_name,
+        "email": email,
+        "name": name,
+        "credentials_emailed": emailed,
+        "withheld": withheld,
+        "detail": detail,
+        "handover_password": if emailed { Value::Null } else { json!(generated_password) },
+    })))
 }
 
 /// List ALL kinetic cards across all tenants (admin only)

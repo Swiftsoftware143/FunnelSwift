@@ -2945,6 +2945,8 @@ function tenantPlanCell(t) {
     `style="min-width:150px" title="Assign this workspace's plan (writes the active subscription row)">` +
     opts.join('') + `</select>`;
 }
+// The workspace whose people are open below the Tenants table (2026-10-18). `null` = closed.
+let TENANT_USER_TENANT = null, TENANT_USER_TENANT_NAME = '', TENANT_USERS = null, TENANT_USERS_MSG = '';
 // ── TENANTS (Super Admin only) ──
 async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
@@ -2972,11 +2974,27 @@ async function renderTenants() {
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td>${tenantPlanCell(t)}</td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
-        <td>${t.user_count||0}</td>
+        <td><button class="btn btn-secondary btn-xs tu-open" data-tenant="${x(t.id)}" data-name="${x(t.name||t.company_name||'')}" title="See this workspace's people, and add one">${t.user_count||0} user${(t.user_count||0)===1?'':'s'}</button></td>
         <td>${formatDate(t.created_at)}</td>
         <td>${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
+    ${TENANT_USER_TENANT ? `<div class="card" id="tenant-users-panel" style="margin-top:16px">
+      <div class="card-header" style="padding:0;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+        <h2 style="font-size:16px;font-weight:700;margin:0">👥 People in ${x(TENANT_USER_TENANT_NAME||'this workspace')}</h2>
+        <button class="btn btn-secondary btn-sm" id="tu-close">Close</button>
+      </div>
+      ${TENANT_USERS === null ? '<div class="empty" style="padding:16px">Loading…</div>' : (TENANT_USERS.length === 0
+        ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
+        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td>${x(u.role||'')}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td></tr>`).join('')}</tbody></table></div>`)}
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input class="input" id="tu-name" placeholder="Their name"></div>
+        <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input class="input" id="tu-email" placeholder="them@company.com"></div>
+        <button class="btn btn-sm" id="tu-add">Add user</button>
+      </div>
+      <div id="tu-msg" style="margin-top:10px;font-size:13px">${TENANT_USERS_MSG||''}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Adding a user mints their login and emails the password. If the email cannot be sent, the password is shown here once so you can hand it over.</div>
+    </div>` : ''}
   </div>`;
 }
 // Bulk tenant delete (kanban t_ac2fe688). The backend refuses two deletes — the account you are
@@ -3033,6 +3051,46 @@ function bindTenants() {
       if (refused.length && refused[0] && refused[0].error) showToast(refused[0].error, 'error');
     } catch (e) {
       showToast((e && e.message) || 'Delete failed', 'error');
+    }
+    renderApp();
+  });
+  // ── one workspace's people: open, list, add ──
+  document.querySelectorAll('.tu-open').forEach(b => b.addEventListener('click', async () => {
+    TENANT_USER_TENANT = b.getAttribute('data-tenant');
+    TENANT_USER_TENANT_NAME = b.getAttribute('data-name') || '';
+    TENANT_USERS = null; TENANT_USERS_MSG = '';
+    renderApp();
+    try {
+      const r = await api('/admin/tenants/' + encodeURIComponent(TENANT_USER_TENANT) + '/users', { method: 'POST', body: '{}' });
+      TENANT_USERS = Array.isArray(r) ? r : ((r && (r.users || r.data)) || []);
+    } catch (e) { TENANT_USERS = []; TENANT_USERS_MSG = '<span style="color:#b91c1c">Could not load the people here: ' + x(e.message) + '</span>'; }
+    renderApp();
+  }));
+  const closeTu = document.getElementById('tu-close');
+  if (closeTu) closeTu.addEventListener('click', () => { TENANT_USER_TENANT = null; TENANT_USERS = null; TENANT_USERS_MSG = ''; renderApp(); });
+  const addTu = document.getElementById('tu-add');
+  if (addTu) addTu.addEventListener('click', async () => {
+    const nameEl = document.getElementById('tu-name'), mailEl = document.getElementById('tu-email');
+    const email = (mailEl && mailEl.value || '').trim();
+    if (!email) { showToast('An email address is required', 'error', false); return; }
+    addTu.disabled = true;
+    try {
+      const r = await api('/admin/users', { method: 'POST', body: JSON.stringify({ tenant_id: TENANT_USER_TENANT, name: (nameEl && nameEl.value || '').trim(), email }) });
+      // The credentials mail is the only way the customer learns their password. When it did not go
+      // out, the route hands the generated value back ONCE — that is the whole point of this pane.
+      if (r && r.credentials_emailed) {
+        TENANT_USERS_MSG = '<span style="color:#15803d">✅ Added ' + x(r.email) + ' — their login details were emailed.</span>';
+      } else if (r && r.withheld) {
+        TENANT_USERS_MSG = '<span style="color:#b45309">⛔ Added ' + x(r.email) + ', but nothing was emailed (reserved/test address). Hand them this password:</span> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">' + x(r.handover_password || '') + '</code>';
+      } else {
+        TENANT_USERS_MSG = '<span style="color:#b91c1c">❌ Added ' + x(r && r.email || email) + ', but the credentials email FAILED — they have no way in. Hand them this password:</span> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">' + x((r && r.handover_password) || '') + '</code>' + (r && r.detail ? '<div style="font-size:12px;color:#b91c1c">' + x(r.detail) + '</div>' : '');
+      }
+      try {
+        const l = await api('/admin/tenants/' + encodeURIComponent(TENANT_USER_TENANT) + '/users', { method: 'POST', body: '{}' });
+        TENANT_USERS = Array.isArray(l) ? l : ((l && (l.users || l.data)) || []);
+      } catch (e) {}
+    } catch (e) {
+      TENANT_USERS_MSG = '<span style="color:#b91c1c">' + x(e.message) + '</span>';
     }
     renderApp();
   });
