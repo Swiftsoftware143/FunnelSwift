@@ -175,7 +175,13 @@ pub async fn remaining_headroom(
     feature_key: &str,
 ) -> AppResult<Option<i64>> {
     match resolved_limit(state, tenant_id, feature_key).await? {
+        // `None` = the key is configured nowhere (house rule: allow), and `-1` is the plan
+        // convention for UNLIMITED (see [`check_numeric_limit`]). Both mean "no ceiling", so an
+        // import must not read -1 as "zero rows fit" — measured live 2026-10-18: the Agency plan
+        // carries max_leads = -1 and the first version of this helper answered 0, which refused a
+        // two-row import on the plan that advertises the feature.
         None => Ok(None),
+        Some(-1) => Ok(None),
         Some(limit) => {
             let used = get_usage_count(state, tenant_id, feature_key).await;
             Ok(Some((limit as i64 - used).max(0)))
