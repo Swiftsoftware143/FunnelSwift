@@ -38,6 +38,30 @@ pub async fn get_settings(
         }
     }
 
+    // A branding `logo_url` is a POINTER into `tenant_logos`, and the console renders it as the
+    // brand thumbnail while every sender embeds it in the mail header. The pointer and the row are
+    // written by different paths, so a row removed on its own (restore, hand-run DELETE, residue
+    // sweep) would otherwise leave a broken image in both places. Same invariant
+    // `crate::branding::load` holds for the senders.
+    let points_at_logo = settings.iter().any(|s| {
+        s.key == crate::branding::SETTINGS_KEY
+            && s.value
+                .get("logo_url")
+                .and_then(|v| v.as_str())
+                .map(|u| !u.trim().is_empty())
+                .unwrap_or(false)
+    });
+    if points_at_logo && !crate::branding::logo_exists(&state.pool, tenant_id).await {
+        for setting in settings
+            .iter_mut()
+            .filter(|s| s.key == crate::branding::SETTINGS_KEY)
+        {
+            if let Some(obj) = setting.value.as_object_mut() {
+                obj.insert("logo_url".to_string(), json!(""));
+            }
+        }
+    }
+
     Ok(Json(settings))
 }
 
@@ -93,10 +117,20 @@ pub async fn update_settings(
                 .await
                 .ok()
                 .flatten();
-                obj.insert(
-                    "logo_url".to_string(),
-                    serde_json::Value::String(stored_logo.unwrap_or_default()),
-                );
+                // A stored pointer whose `tenant_logos` row is gone is NOT inherited: inheriting it
+                // would re-save a dead URL that answers 404 in every mail. Same invariant the
+                // settings read and `branding::load` hold.
+                let inherited = match stored_logo {
+                    Some(u) if !u.trim().is_empty() => {
+                        if crate::branding::logo_exists(&state.pool, tenant_id).await {
+                            u
+                        } else {
+                            String::new()
+                        }
+                    }
+                    other => other.unwrap_or_default(),
+                };
+                obj.insert("logo_url".to_string(), serde_json::Value::String(inherited));
             }
         }
     }
