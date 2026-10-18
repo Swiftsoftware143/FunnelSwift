@@ -610,6 +610,12 @@ pub fn create_router(
             "/api/v1/admin/users",
             post(crate::handlers::admin_handler::create_tenant_user),
         )
+        // Move an existing teammate to another role (2026-10-18). The panel could add a teammate
+        // and then never correct the role it had put them on, so a wrong role needed direct SQL.
+        .route(
+            "/api/v1/admin/users/:id/role",
+            post(crate::handlers::admin_handler::set_tenant_user_role),
+        )
         .route(
             "/api/v1/admin/tenants/:id/feature-overrides",
             get(crate::handlers::admin_handler::get_tenant_feature_overrides),

@@ -690,6 +690,29 @@ pub async fn list_tenant_users(
     Ok(Json(json!(result)))
 }
 
+/// The roles a teammate may be minted with, or moved to.
+///
+/// This is the vocabulary the live `users` table actually holds (measured 2026-10-18:
+/// user / admin / company_admin / business_user); `member` is not one of them and no gate in this
+/// app recognises it. One list, shared by the mint and the role change, so the two can never drift.
+pub const TEAMMATE_ROLES: [&str; 4] = ["user", "admin", "company_admin", "business_user"];
+
+/// Parse a requested teammate role: absent/blank keeps the member default, anything outside
+/// [`TEAMMATE_ROLES`] is a 400 that names the field instead of a row no gate would recognise.
+fn teammate_role(raw: Option<&str>) -> Result<String, AppError> {
+    let role = raw
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "user".to_string());
+    if !TEAMMATE_ROLES.contains(&role.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "role must be one of: {}",
+            TEAMMATE_ROLES.join(", ")
+        )));
+    }
+    Ok(role)
+}
+
 /// Mint a user INSIDE an existing workspace (Super Admin only).
 ///
 /// `POST /api/v1/admin/users` with `{tenant_id, name, email}`. Until now the console could only
@@ -772,22 +795,8 @@ pub async fn create_tenant_user(
     let user_id = Uuid::new_v4();
     // The ROLE the teammate lands on. It used to be the literal 'user' for every mint, so an
     // operator adding a co-admin or a company admin had no way to say so and the panel could only
-    // ever add members (2026-10-18). The vocabulary is the one the live `users` table actually
-    // holds (user / admin / company_admin / business_user), so an unknown value is a 400 that names
-    // the field rather than a row the app's own gates would not recognise.
-    const ALLOWED_ROLES: [&str; 4] = ["user", "admin", "company_admin", "business_user"];
-    let role = req
-        .get("role")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "user".to_string());
-    if !ALLOWED_ROLES.contains(&role.as_str()) {
-        return Err(AppError::BadRequest(format!(
-            "role must be one of: {}",
-            ALLOWED_ROLES.join(", ")
-        )));
-    }
+    // ever add members (2026-10-18).
+    let role = teammate_role(req.get("role").and_then(|v| v.as_str()))?;
     sqlx::query(
         "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())",
@@ -833,6 +842,66 @@ pub async fn create_tenant_user(
         "withheld": withheld,
         "detail": detail,
         "handover_password": if emailed { Value::Null } else { json!(generated_password) },
+    })))
+}
+
+/// Move an existing teammate to another role (admin only).
+///
+/// `POST /api/v1/admin/users/:id/role` with `{role}`. The console could add a teammate but never
+/// change the role it had put them on, so the only way to correct a wrong role was direct SQL.
+/// Two invariants live here rather than in the operator's memory: nobody can change their OWN role
+/// (a super admin who demoted themselves would lose the console mid-session), and the LAST active
+/// admin of a workspace cannot be demoted (that leaves the workspace with nobody who can administer
+/// it). Both answer 400 with the reason, so the panel can print the sentence.
+pub async fn set_tenant_user_role(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<Value>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let role = teammate_role(req.get("role").and_then(|v| v.as_str()))?;
+
+    let row: Option<(Uuid, Uuid, String, String)> =
+        sqlx::query_as("SELECT id, tenant_id, email, role FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (uid, tenant_id, email, current) =
+        row.ok_or_else(|| AppError::NotFound("No such teammate".into()))?;
+
+    if current == role {
+        return Ok(Json(json!({
+            "id": uid.to_string(), "email": email, "role": role, "changed": false
+        })));
+    }
+    if uid.to_string() == auth.user_id {
+        return Err(AppError::BadRequest(
+            "you cannot change your own role - ask another admin".into(),
+        ));
+    }
+    if current == "admin" {
+        let admins: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role = 'admin' AND is_active",
+        )
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await?;
+        if admins <= 1 {
+            return Err(AppError::BadRequest(
+                "that is the workspace's only admin - promote someone else first".into(),
+            ));
+        }
+    }
+    sqlx::query("UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&role)
+        .bind(uid)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(json!({
+        "id": uid.to_string(), "email": email, "role": role, "changed": true
     })))
 }
 
