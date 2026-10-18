@@ -149,6 +149,12 @@ async fn dispatch_for_tenant(
 /// `email_last_send`, WorkflowSwift `last_send_ok`); FunnelSwift recorded nothing at all.
 ///
 /// Writing the record NEVER fails a send: an error here is logged and dropped.
+///
+/// Two records, one funnel: the single-value panel slot below AND one row of history. The slot
+/// answers "what happened to the most recent message?"; the history (migration 109) answers "did that
+/// customer's welcome mail ever go out?", which the slot cannot — any later mail overwrites it. An
+/// operator who watched a signup's credentials mail fail saw the failure erased by the next password
+/// reset, so the one screen meant to prove delivery proved nothing.
 pub(crate) async fn record_last_send(
     pool: &PgPool,
     to: &str,
@@ -156,6 +162,35 @@ pub(crate) async fn record_last_send(
     ok: bool,
     detail: &str,
 ) {
+    write_panel(pool, to, subject, ok, detail).await;
+    append_log(
+        pool,
+        to,
+        subject,
+        if ok { "sent" } else { "failed" },
+        detail,
+    )
+    .await;
+}
+
+/// Append one row to the delivery history (`email_send_log`, migration 109).
+async fn append_log(pool: &PgPool, to: &str, subject: &str, status: &str, detail: &str) {
+    if let Err(e) = sqlx::query(
+        "INSERT INTO email_send_log (to_email, subject, status, detail) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(to)
+    .bind(subject)
+    .bind(status)
+    .bind(detail.chars().take(240).collect::<String>())
+    .execute(pool)
+    .await
+    {
+        tracing::warn!("could not append to email_send_log: {e}");
+    }
+}
+
+/// Write the one-slot record the Email Provider panel reads (`admin_settings.email_last_send`).
+async fn write_panel(pool: &PgPool, to: &str, subject: &str, ok: bool, detail: &str) {
     let payload = json!({
         "at": chrono::Utc::now().to_rfc3339(),
         "ok": ok,
@@ -182,7 +217,11 @@ pub(crate) async fn record_last_send(
 /// yet and there is no subject to record.
 pub(crate) async fn record_withheld(pool: &PgPool, kind: &str, to: &str, reason: &str) {
     let detail = format!("withheld: {reason}, so nothing was sent (no provider request)");
-    record_last_send(pool, to, &format!("{kind} (withheld)"), false, &detail).await;
+    let subject = format!("{kind} (withheld)");
+    // History FIRST and as its own status: a reserved recipient is a NON-SEND, never a provider
+    // refusal, so it neither reads as a failure nor adds a second `failed` row via the slot writer.
+    append_log(pool, to, &subject, "withheld", &detail).await;
+    write_panel(pool, to, &subject, false, &detail).await;
 }
 
 /// The app's OWN support address. David (2026-10-08): the reply-to/support address in

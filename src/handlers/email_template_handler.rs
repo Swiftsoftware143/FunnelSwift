@@ -341,6 +341,41 @@ pub async fn list_template_types(
 ///
 /// Admin-gated in-handler as well as at the router choke point (kanban t_9cf378bc): the
 /// handler must not be reachable merely because it is mounted behind the auth middleware.
+/// `GET /api/v1/admin/email-log` — the last 50 transactional sends this installation attempted.
+///
+/// The Email Provider panel's "last email" line answers only the most recent attempt; this is the
+/// history beside it, so a credentials mail that was refused at signup is still visible after later
+/// mail succeeded. `withheld` rows are reserved/harness recipients that were never attempted.
+pub async fn email_log(
+    user: crate::auth::middleware::AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT to_email, subject, status, detail, created_at FROM email_send_log \
+         ORDER BY created_at DESC LIMIT 50",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+    let sends: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "to": r.get::<String, _>("to_email"),
+                "subject": r.get::<Option<String>, _>("subject"),
+                "status": r.get::<String, _>("status"),
+                "detail": r.get::<Option<String>, _>("detail"),
+                "at": r
+                    .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                    .to_rfc3339(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "sends": sends })))
+}
+
 pub async fn get_email_config(
     user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,

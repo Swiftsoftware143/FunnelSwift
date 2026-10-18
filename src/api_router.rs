@@ -845,6 +845,10 @@ pub fn create_router(
             "/api/v1/admin/email-config/test",
             post(email_template_handler::test_email_config),
         )
+        .route(
+            "/api/v1/admin/email-log",
+            get(email_template_handler::email_log),
+        )
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
         // LinkedIn - profile lookup
