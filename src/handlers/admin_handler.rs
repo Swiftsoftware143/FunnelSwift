@@ -770,18 +770,34 @@ pub async fn create_tenant_user(
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
         .to_string();
     let user_id = Uuid::new_v4();
-    // 'user' is the role this app's own vocabulary uses for a workspace member (the live table holds
-    // user / admin / company_admin / business_user; the portfolio mint's 'member' is not one of them
-    // and no gate would recognise it).
+    // The ROLE the teammate lands on. It used to be the literal 'user' for every mint, so an
+    // operator adding a co-admin or a company admin had no way to say so and the panel could only
+    // ever add members (2026-10-18). The vocabulary is the one the live `users` table actually
+    // holds (user / admin / company_admin / business_user), so an unknown value is a 400 that names
+    // the field rather than a row the app's own gates would not recognise.
+    const ALLOWED_ROLES: [&str; 4] = ["user", "admin", "company_admin", "business_user"];
+    let role = req
+        .get("role")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "user".to_string());
+    if !ALLOWED_ROLES.contains(&role.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "role must be one of: {}",
+            ALLOWED_ROLES.join(", ")
+        )));
+    }
     sqlx::query(
         "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, 'user', true, NOW(), NOW())",
+         VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())",
     )
     .bind(user_id)
     .bind(tenant_id)
     .bind(&email)
     .bind(&password_hash)
     .bind(&name)
+    .bind(&role)
     .execute(&state.pool)
     .await?;
 
@@ -812,6 +828,7 @@ pub async fn create_tenant_user(
         "tenant_name": tenant_name,
         "email": email,
         "name": name,
+        "role": role,
         "credentials_emailed": emailed,
         "withheld": withheld,
         "detail": detail,
