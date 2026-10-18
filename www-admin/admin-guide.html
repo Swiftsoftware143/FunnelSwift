@@ -602,6 +602,29 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <div class="card">
+        <h3>Recent sends &mdash; the answer to &ldquo;did that customer ever get their password?&rdquo;</h3>
+        <p>Under the same card is a <strong>Recent sends</strong> list. The one-line result above it only
+        holds the <em>last</em> message this installation attempted, so any later mail overwrites it &mdash;
+        a welcome mail the provider refused at signup would disappear from the panel the moment an invoice
+        notice went out. The list keeps the history instead: the last 50 transactional attempts, newest
+        first, each with its recipient, subject, result and &mdash; when it did not go out &mdash; the
+        provider's own reason.</p>
+        <p>Read the <strong>Result</strong> column like this:</p>
+        <ul>
+          <li><strong>sent</strong> &mdash; the mail provider accepted the message for delivery.</li>
+          <li><strong>not sent (reserved address)</strong> &mdash; the recipient was a test/reserved address
+          (<code>.invalid</code>, <code>.example</code> and similar), so the message was deliberately
+          withheld and no real inbox was touched. This is normal and is what keeps test signups from
+          mailing anyone.</li>
+          <li><strong>REFUSED</strong> &mdash; the provider would not take the message, so the customer
+          received nothing. The reason column carries the provider's own words; fix the credential or the
+          recipient and send again.</li>
+        </ul>
+        <p>If the list is empty, no transactional mail has been attempted on this installation yet. It is
+        read-only &mdash; the panel cannot alter or resend a row, it only reports what the app actually did.</p>
+      </div>
+
+      <div class="card">
         <h3>Affiliate Portal</h3>
         <p>Affiliates log in at <code>/affiliate</code> to see their dashboard, leads/conversions, earnings and referral links. In the main app, the sidebar's <strong>My Affiliate</strong> tab is where they tick the products they want to promote.</p>
       </div>
