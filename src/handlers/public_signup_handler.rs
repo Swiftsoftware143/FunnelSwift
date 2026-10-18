@@ -113,6 +113,24 @@ pub async fn public_signup(
     // long is a 422 and nothing is written.
     let name =
         crate::security::display_name::normalize(&name).map_err(AppError::UnprocessableEntity)?;
+    // ── OPTIONAL WORKSPACE NAME (2026-10-18) ────────────────────────────────────────────────────
+    // A client that also collects a business name (the mobile app's signup) may send `tenant_name`;
+    // this door is the fleet's name+email-only door, so it must honour that field or the business
+    // name a customer typed is silently thrown away. Absent or blank keeps the historical
+    // derivation, so the web form's behaviour is byte-identical. Validated the same way `name` is,
+    // because it lands in the same two `varchar(255)` columns.
+    let workspace_name = payload["tenant_name"]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{name}'s Workspace"));
+    crate::security::display_name::check_len(
+        &workspace_name,
+        crate::security::display_name::MAX_NAME_CHARS,
+        "tenant_name",
+    )
+    .map_err(AppError::UnprocessableEntity)?;
 
     // Check for duplicate email
     // `lower(email)` so a row stored before normalisation existed still counts as the same address.
@@ -140,7 +158,7 @@ pub async fn public_signup(
     let tenant_id = Uuid::new_v4();
     let tenant_slug = format!(
         "{}-{}",
-        crate::security::display_name::slugify(&name),
+        crate::security::display_name::slugify(&workspace_name),
         Uuid::new_v4()
             .to_string()
             .chars()
@@ -161,7 +179,7 @@ pub async fn public_signup(
     let mut tx = state.pool.begin().await?;
     sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
-        .bind(format!("{}'s Workspace", name))
+        .bind(&workspace_name)
         .bind(&tenant_slug)
         .bind(&probe_harness)
         .execute(&mut *tx)
