@@ -770,9 +770,12 @@ pub async fn create_tenant_user(
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
         .to_string();
     let user_id = Uuid::new_v4();
+    // 'user' is the role this app's own vocabulary uses for a workspace member (the live table holds
+    // user / admin / company_admin / business_user; the portfolio mint's 'member' is not one of them
+    // and no gate would recognise it).
     sqlx::query(
         "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, 'member', true, NOW(), NOW())",
+         VALUES ($1, $2, $3, $4, $5, 'user', true, NOW(), NOW())",
     )
     .bind(user_id)
     .bind(tenant_id)
