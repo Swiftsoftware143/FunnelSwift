@@ -498,12 +498,20 @@ pub async fn list_checkout_sessions(
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    // What the operator's screen has to answer is "which plan did this workspace try to buy, and
+    // what happened to it" — not a list of uuids. `purchasable_id` alone cannot answer that, so the
+    // plan's own name/slug are joined in here, and the refusal's cause is lifted out of `metadata`
+    // (the `provider_missing` arm writes `reason = payment_provider_not_configured`). A session whose
+    // purchasable row is gone keeps its row and reads as unnamed rather than disappearing.
     let rows = sqlx::query(
-        r#"SELECT id, provider_type, purchasable_type, purchasable_id::text,
-                  amount::text, currency, status, provider_session_id, created_at
-           FROM checkout_sessions
-           WHERE tenant_id = $1
-           ORDER BY created_at DESC
+        r#"SELECT cs.id, cs.provider_type, cs.purchasable_type, cs.purchasable_id::text,
+                  cs.amount::text, cs.currency, cs.status, cs.provider_session_id, cs.created_at,
+                  cs.metadata, p.name AS plan_name, p.slug AS plan_slug
+           FROM checkout_sessions cs
+           LEFT JOIN plans p
+                  ON cs.purchasable_type = 'plan' AND p.id = cs.purchasable_id
+           WHERE cs.tenant_id = $1
+           ORDER BY cs.created_at DESC
            LIMIT 50"#,
     )
     .bind(tenant_id)
@@ -521,6 +529,15 @@ pub async fn list_checkout_sessions(
                 "amount": r.try_get::<String,_>("amount").unwrap_or_else(|_| "0".to_string()),
                 "currency": r.try_get::<String,_>("currency").unwrap_or_else(|_| "USD".to_string()),
                 "status": r.try_get::<String,_>("status").unwrap_or_default(),
+                // What was being bought, named. `None` for a non-plan purchase or a plan row that
+                // has since been deleted — the screen renders that as a dash, never as a bare uuid.
+                "plan_name": r.try_get::<Option<String>,_>("plan_name").unwrap_or(None),
+                "plan_slug": r.try_get::<Option<String>,_>("plan_slug").unwrap_or(None),
+                // The recorded cause, when the arm that wrote the row left one.
+                "reason": r
+                    .try_get::<Option<Value>,_>("metadata")
+                    .unwrap_or(None)
+                    .and_then(|m| m.get("reason").and_then(|v| v.as_str()).map(|s| s.to_string())),
                 "created_at": r
                     .try_get::<chrono::DateTime<chrono::Utc>,_>("created_at")
                     .map(|t| t.to_rfc3339())
