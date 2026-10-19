@@ -5015,7 +5015,8 @@ async function renderPlanRequests() {
     return '<tr data-plan-request="' + x(r.id) + '">' +
       '<td><strong>' + x(r.tenant_name || r.tenant_id) + '</strong><div style="font-size:11px;color:var(--muted)">' +
       x(r.requested_by || '') + '</div></td>' +
-      '<td>' + x(r.plan_name || r.plan_slug) + '</td>' +
+      '<td>' + x(r.plan_name || r.plan_slug) +
+      (r.note ? '<div style="font-size:11px;color:var(--muted);max-width:280px">' + x(r.note) + '</div>' : '') + '</td>' +
       '<td>' + planReqChip(r.status) + '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
       '<td style="text-align:right;white-space:nowrap">' + acts + '</td></tr>';
