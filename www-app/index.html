@@ -4092,6 +4092,30 @@ function ULB(){
     })
     .catch(function(e){ LBM((e&&e.message)||"Upload failed","e"); });
 }
+// What a CUSTOMER sees — mirrors Branding::header_html (src/branding.rs): a centred logo (max 56px
+// high / 240px wide); otherwise the brand name in 20px #111827; then a 3px rule in the brand colour;
+// nothing at all when neither is set. Painted from the FIELD values (not the saved document) so a
+// name or colour can be judged before saving. It sends nothing and saves nothing.
+function LBP(logoUrl){
+  var box=$("lm-bp"); if(!box) return;
+  var blank=$("lm-bp-blank");
+  var nm=((($("lm-bn")||{}).value)||"").trim();
+  var raw=((($("lm-bc")||{}).value)||"#4f46e5").trim();
+  var col=/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(raw)?raw:"#4f46e5";
+  var logo=(logoUrl||"").trim();
+  var branded=!!(nm||logo);
+  var h="";
+  if(branded){
+    h+='<div style="text-align:center;padding:16px 0 6px">';
+    if(logo) h+='<img src="'+X(logo)+'" alt="'+X(nm||"Your logo")+'" style="max-height:56px;max-width:240px;display:inline-block">';
+    else h+='<span style="font:700 20px/1.3 -apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#111827">'+X(nm)+'</span>';
+    h+='</div><div style="border-top:3px solid '+col+';margin:0 0 16px"></div>';
+  }
+  h+='<div style="font:14px/1.5 -apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#111827">Hi Alex — this is a sample of the message body. '+
+     (branded?'Only the header above comes from your branding.':'With no branding set, the mail opens with FunnelSwift\'s own header.')+'</div>';
+  box.innerHTML=h;
+  if(blank){ blank.style.display=branded?"none":"block"; blank.textContent=branded?"":"Nothing is set yet, so mail keeps FunnelSwift's own header."; }
+}
 function DLB(){
   LBM("Removing...","i");
   api("/api/v1/settings/branding/logo",{method:"DELETE"})
@@ -4285,6 +4309,16 @@ function LM(){
     ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){SLB();}},"Save branding"));
     ebRow.appendChild(El("span",{id:"lm-brand-msg",style:"font-size:11px;color:#64748b"}));
     wrap.appendChild(ebRow);
+    var bpWrap=El("div",{style:"margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0"});
+    bpWrap.appendChild(El("strong",{style:"font-size:13px"},"What your customers see"));
+    bpWrap.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin:4px 0 10px"},"The header block the app puts at the top of every email this workspace sends. It follows the fields above as you type; this preview sends nothing and saves nothing."));
+    bpWrap.appendChild(El("div",{id:"lm-bp",style:"border:1px solid #e2e8f0;border-radius:10px;padding:20px;background:#fff;max-width:520px"}));
+    bpWrap.appendChild(El("div",{id:"lm-bp-blank",style:"font-size:11px;color:#94a3b8;margin-top:6px"}));
+    ebDiv.appendChild(bpWrap);
+    var bpName=$("lm-bn"), bpColor=$("lm-bc");
+    if(bpName) bpName.addEventListener("input",function(){ LBP(br.logo_url); });
+    if(bpColor) bpColor.addEventListener("input",function(){ LBP(br.logo_url); });
+    LBP(br.logo_url);
 
     /* Email provider — THIS workspace's OWN sending identity (kanban t_7ac7ceb5). Built LAST, after
        every innerHTML write on this parent, and its dynamic half renders into its own #lep-fields

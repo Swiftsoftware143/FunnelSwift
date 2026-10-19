@@ -500,6 +500,10 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
         <li><strong>Brand display name</strong> — up to 60 characters, printed above the message.</li>
         <li><strong>Brand colour</strong> — a hex colour such as <code>#4f46e5</code>; it draws the rule under your logo.</li>
       </ul>
+      <p><strong>What your customers see</strong> sits below those fields: the header block FunnelSwift
+        puts at the top of the email — your logo up to 56 px high and 240 px wide, otherwise the display
+        name, then a 3 px rule in your colour — and it follows the fields as you type, so a name or a colour
+        can be judged before saving. The preview sends nothing and saves nothing.</p>
       <p>Click <strong>Save branding</strong>. From then on the welcome / login-credentials mail, purchase
         confirmations and password resets for this account open with your logo and name. The logo is stored
         against your account and served from a public URL (<code>GET /api/v1/branding/logo/{tenant_id}</code>),
