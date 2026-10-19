@@ -828,6 +828,17 @@ function D(){
    "funnel", so a workspace with several funnels could not tell which page produced a lead. The
    slug is shown immediately (readable without a call); this pass upgrades it to the funnel's own
    name once the (small) funnel list arrives, and adds that name to the row's search text. */
+var FN_NAMES={};
+function fnName(slug,cb){
+  if(!slug) return;
+  if(FN_NAMES[slug]){ cb(FN_NAMES[slug]); return; }
+  api("/api/v1/funnels").then(function(fd){
+    (Array.isArray(fd)?fd:((fd&&fd.data)||[])).forEach(function(f){
+      if(f&&f.slug) FN_NAMES[f.slug]=f.name||f.slug;
+    });
+    cb(FN_NAMES[slug]||String(slug).replace(/-/g," "));
+  }).catch(function(){ cb(String(slug).replace(/-/g," ")); });
+}
 function fnLabelSources(){
   var els=[].slice.call(document.querySelectorAll(".ld-src[data-slug]")).filter(function(e){
     return !!e.getAttribute("data-slug");
@@ -838,6 +849,7 @@ function fnLabelSources(){
     (Array.isArray(fd)?fd:((fd&&fd.data)||[])).forEach(function(f){
       if(f&&f.slug) m[f.slug]=f.name||f.slug;
     });
+    Object.keys(m).forEach(function(k){ FN_NAMES[k]=m[k]; });
     els.forEach(function(e){
       var s=e.getAttribute("data-slug"); if(!s) return;
       var nm=m[s]||s.replace(/-/g," ");
@@ -928,6 +940,15 @@ function LDV(id){
         if(k==="created_at"&&v!=="-") v=String(v).slice(0,19);
         info.appendChild(El("div",{},[El("span",{style:"font-size:10px;color:#64748b;display:block"},labels[i]),El("span",{style:"font-size:13px;font-weight:500"},String(v))]));
       });
+      // The lead's own detail names the page it was captured on, not just the word "funnel":
+      // `custom_fields.funnel_slug` is written by submit_funnel_lead and the name is read from the
+      // same small funnel list the Leads table uses (fnName).
+      var cf=(l.custom_fields&&typeof l.custom_fields==="object")?l.custom_fields:{};
+      if(l.source==="funnel"&&cf.funnel_slug){
+        var fnVal=El("span",{style:"font-size:13px;font-weight:500"},String(cf.funnel_slug).replace(/-/g," "));
+        info.appendChild(El("div",{},[El("span",{style:"font-size:10px;color:#64748b;display:block"},"Funnel"),fnVal]));
+        fnName(String(cf.funnel_slug),function(nm){fnVal.textContent=nm;});
+      }
       $("mb").appendChild(info);
       $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
     });
