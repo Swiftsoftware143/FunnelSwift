@@ -937,11 +937,16 @@ pub async fn admin_list_all_cards(
             bool,
         ),
     >(
-        r#"SELECT kc.id, kc.tenant_id, COALESCE(pc.name, 'Unknown') as tenant_name,
+        // The "Tenant" column names the WORKSPACE a card belongs to, so the name comes from
+        // `tenants` — the owning row. This query used to join `portfolio_companies` (the tenant's
+        // own list of client companies, a different thing entirely): it answered 'Unknown' for
+        // every card on this install (measured 2026-10-19: 7 cards, 0 portfolio_companies rows)
+        // and would have multiplied a card once per portfolio company for a tenant that had any.
+        r#"SELECT kc.id, kc.tenant_id, COALESCE(t.name, 'Unknown') as tenant_name,
                kc.title, kc.slug, COALESCE(kc.template_type, 'default') as template_type, kc.theme,
                COALESCE(ts.value #>> '{}', '') as subdomain, kc.avatar_url, kc.is_active
         FROM kinetic_cards kc
-        LEFT JOIN portfolio_companies pc ON pc.tenant_id = kc.tenant_id
+        LEFT JOIN tenants t ON t.id = kc.tenant_id
         LEFT JOIN tenant_settings ts ON ts.tenant_id = kc.tenant_id AND ts.key = 'subdomain'
         ORDER BY kc.updated_at DESC
         LIMIT 200"#,
