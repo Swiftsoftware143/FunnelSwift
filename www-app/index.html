@@ -288,6 +288,7 @@ var helpContent={
   "allcards":'<h4>All Cards</h4><p>Every Kinetic card in this workspace in one list. Open a card to edit it, copy its public link or QR code, or remove it.</p>',
   "sgroups":'<h4>System Tag Groups</h4><p>Groups an <strong>admin</strong> creates to organise the shared System Tags. Grouping changes how the tags are listed; it does not change what a tag does.</p>',
   "payouts":'<h4>Affiliate Payouts</h4><p>The payout history for your affiliate partners: what was earned and what has been paid out. <strong>Admin only.</strong></p>',
+  "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above, then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
   "afleads":'<h4>Affiliate Leads</h4><p>The leads each affiliate has brought in, so you can see who is producing. <strong>Admin only.</strong></p>'
 };
 function toggleHelp() {
@@ -815,11 +816,40 @@ function D(){
       
       tr.setAttribute("data-search",(name+" "+l.email+" "+l.phone+" "+status+" "+l.source).toLowerCase());
       tr.setAttribute("data-status",status);
-      tr.innerHTML='<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td>'+X(l.source||"-")+'</td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
+      tr.innerHTML='<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(l.source==="funnel"?"Funnel":(l.source||"-"))+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
+    fnLabelSources();
   });
+}
+/* kanban 2026-10-19 — a lead captured on a funnel records WHICH page in `custom_fields.funnel_slug`
+   (funnel_handler.rs::submit_funnel_lead writes it), but this list printed the bare source word
+   "funnel", so a workspace with several funnels could not tell which page produced a lead. The
+   slug is shown immediately (readable without a call); this pass upgrades it to the funnel's own
+   name once the (small) funnel list arrives, and adds that name to the row's search text. */
+function fnLabelSources(){
+  var els=[].slice.call(document.querySelectorAll(".ld-src[data-slug]")).filter(function(e){
+    return !!e.getAttribute("data-slug");
+  });
+  if(!els.length) return;
+  api("/api/v1/funnels").then(function(fd){
+    var m={};
+    (Array.isArray(fd)?fd:((fd&&fd.data)||[])).forEach(function(f){
+      if(f&&f.slug) m[f.slug]=f.name||f.slug;
+    });
+    els.forEach(function(e){
+      var s=e.getAttribute("data-slug"); if(!s) return;
+      var nm=m[s]||s.replace(/-/g," ");
+      e.textContent="Funnel \u00b7 "+nm;
+      e.setAttribute("title","Captured on the funnel \u201c"+nm+"\u201d");
+      var tr=e.closest?e.closest("tr"):null;
+      if(tr){
+        var ds=tr.getAttribute("data-search")||"";
+        tr.setAttribute("data-search",ds+" funnel "+String(nm).toLowerCase());
+      }
+    });
+  }).catch(function(){});
 }
 function LDf(q){
   var s=document.querySelector("#ld-filters input"); if(!s) return;
