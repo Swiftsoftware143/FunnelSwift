@@ -105,7 +105,13 @@ try{
   // old code handed the session over in the URL fragment, which skipped that check entirely.
   loading.innerHTML = "<strong>Account created!</strong><br>Check your email — we've sent your login " +
     "details to " + body.email.replace(/[<>&]/g, '') + '.<br><br>You can change your password any time ' +
-    'in your profile settings.';
+    'in your profile settings.' +
+    '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
+    'Nothing in your inbox after a minute? Check your spam folder, then ' +
+    '<a href="https://app.funnelswift.net/forgot-password?email=' + encodeURIComponent(body.email) + '" ' +
+    'style="color:#2563eb;font-weight:600">send yourself a reset code</a>' +
+    ' or <a href="https://app.funnelswift.net/login.html" style="color:#2563eb;font-weight:600">sign in</a>.' +
+    '</div>';
   loading.style.display = 'block';
   btn.innerHTML = 'Check your email';
 } catch(ex) {

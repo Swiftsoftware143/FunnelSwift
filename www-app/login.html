@@ -104,6 +104,10 @@ var r=document.getElementById("rm");if(r){r.className="msg";r.textContent=""}
    gets the email box in one click instead of the sign-in box and a second hunt for the link.
    No behaviour changes for a plain visit to /login.html. */
 (function(){ var viaUrl=/[?&#](forgot|reset)\b/.test(location.search+location.hash), viaPath=/^\/forgot-password\/?$/.test(location.pathname); if((viaUrl||viaPath) && typeof showForgot==="function") showForgot(); })();
+/* Prefill the reset-request box from ?email= (cron 2026-10-19). The signup success panel's
+   "send yourself a reset code" link carries the address the customer just typed, so a customer
+   whose credentials mail has not arrived does not have to retype it to get back in. */
+(function(){try{var q=new URLSearchParams(location.search).get("email")||"";if(q){var f=document.getElementById("fe");if(f){f.value=q;}}}catch(ex){}})();
 function R(){
 var e=document.getElementById("fe").value.trim(),m=document.getElementById("fm"),b=document.getElementById("fb");
 if(!e){m.className="msg e";m.textContent="Enter your email";return}
