@@ -633,6 +633,46 @@ mod tests {
         pairs.iter().copied().collect()
     }
 
+    // The plan-request answer is the one mail this app sends on the operator's behalf rather than
+    // on a customer's action, and it is composed from an inline arm (no template row on a fresh
+    // install). A withheld row stores only the KIND, never the subject, so the copy is asserted
+    // here — the live probe can prove the recipient and the count, not the words.
+    #[test]
+    fn plan_request_update_arm_names_the_plan_and_carries_the_note() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("plan_name", "Kinetic Pro"),
+            ("status_word", "complete"),
+            ("reply", "Your workspace is live on Kinetic Pro."),
+        ]));
+        let (subject, text, _html) = get_inline("plan_request_update", &v);
+        let text = text.unwrap_or_default();
+        assert!(subject.contains("Kinetic Pro"), "subject was {subject}");
+        assert!(text.contains("Your workspace is live on Kinetic Pro."));
+        assert!(text.contains("A note from our team"));
+        assert!(
+            text.contains("/upgrade"),
+            "the customer must be told where to look"
+        );
+    }
+
+    #[test]
+    fn plan_request_update_arm_omits_the_note_block_when_there_is_no_note() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("plan_name", "Kinetic Pro"),
+            ("status_word", "received"),
+            ("reply", ""),
+        ]));
+        let (_subject, text, _html) = get_inline("plan_request_update", &v);
+        let text = text.unwrap_or_default();
+        assert!(
+            !text.contains("A note from our team"),
+            "empty note block leaked"
+        );
+        assert!(text.contains("Kinetic Pro"));
+    }
+
     #[test]
     fn render_substitutes_double_braces() {
         let v = bound_vars(vars(&[("name", "PW Test")]));
