@@ -245,6 +245,42 @@ pub async fn create_checkout_session(
 
     match configured {
         None => {
+            // A REFUSED upgrade is still demand (2026-10-19). Nobody was charged and no provider
+            // session exists, but the workspace asked for a named plan — so record the attempt in
+            // `checkout_sessions` with a status that says exactly why it stopped. The workspace's
+            // own Checkout Sessions screen is the history of what was attempted, and support can
+            // read which plan was wanted instead of guessing from a 503 in a log line.
+            let plan_slug = payload["plan_slug"]
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let plan: Option<(Uuid, f64)> =
+                sqlx::query_as("SELECT id, COALESCE(price, 0)::float8 FROM plans WHERE slug = $1")
+                    .bind(&plan_slug)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .unwrap_or(None);
+            let user_id = Uuid::parse_str(&auth.user_id).ok();
+            // `amount` is NUMERIC; bind the price as text and cast, so the type is never in doubt.
+            let amount_text = plan.as_ref().map(|p| format!("{:.2}", p.1));
+            let recorded = sqlx::query(
+                "INSERT INTO checkout_sessions \
+                   (tenant_id, user_id, provider_type, purchasable_type, purchasable_id, amount, \
+                    currency, status, metadata) \
+                 VALUES ($1, $2, 'none', 'plan', $3, COALESCE($4::numeric, 0), 'USD', \
+                    'provider_missing', $5)",
+            )
+            .bind(tenant_id)
+            .bind(user_id)
+            .bind(plan.as_ref().map(|p| p.0))
+            .bind(amount_text)
+            .bind(json!({ "plan_slug": plan_slug, "reason": "payment_provider_not_configured" }))
+            .execute(&state.pool)
+            .await;
+            if let Err(e) = recorded {
+                tracing::error!("checkout/create: could not record the refused attempt: {e:?}");
+            }
             tracing::error!(
                 "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
                  no active provider owned by a platform-operator account either"
@@ -254,7 +290,8 @@ pub async fn create_checkout_session(
                 Json(json!({
                     "error": "payment_provider_not_configured",
                     "message": "No payment provider is configured, so checkout cannot work. The platform operator adds Stripe's keys in the admin panel (Provider Keys / Payment providers) on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own. No session was created and no charge can occur.",
-                    "configured": false
+                    "configured": false,
+                    "request_recorded": true
                 })),
             ))
         }
