@@ -138,6 +138,23 @@
         </ul>
       </div>
 
+      <div class="card">
+        <h3>Plan requests — where a customer's upgrade ask lands</h3>
+        <p>A customer who wants a paid plan while self-serve checkout is unavailable asks from their own
+        <strong>Upgrade</strong> screen. The ask is a stored row, not a message that disappears on reload:
+        it appears here under <strong>Plan Requests</strong> with the workspace, the plan, the date and
+        anything the customer typed. Answering it moves the state the customer reads:</p>
+        <ul>
+          <li><strong>Open</strong> — filed and not yet handled. The customer's dashboard and Upgrade screen both show it, with a note that it is with our team.</li>
+          <li><strong>Contacted</strong> — you have reached out. The customer sees that too.</li>
+          <li><strong>Done</strong> — answering <em>done</em> also <strong>moves the workspace onto that plan</strong>: the old subscription is deactivated, the movement is dated, and any referrer is settled once, by the same code path the Tenants plan picker uses. A plan that cannot be resolved does not fail your save, but the row says the plan did not move.</li>
+          <li><strong>Declined</strong> — the customer reads your note explaining why, on the screen where they asked.</li>
+          <li><strong>Withdrawn</strong> — the customer took the ask back themselves while it was still open. Nothing was charged and no plan moved; the row stays as a record rather than vanishing, and the customer can ask again later.</li>
+        </ul>
+        <p>Only an <em>open</em> or <em>contacted</em> ask can be withdrawn — once you have answered, the
+        decision stands and the customer's own console offers no withdraw control on it.</p>
+      </div>
+
       <!-- ============ PLANS ============ -->
       <h2 id="plans">💳 Plans & Feature Toggles</h2>
       <p>Plans define what each tenant can access. Navigate to <code>/admin/plans</code> to manage them. Each plan has a set of feature toggles stored as JSONB:</p>

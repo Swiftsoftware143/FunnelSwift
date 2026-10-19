@@ -162,6 +162,91 @@ pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResu
     Ok(Json(json!({ "requests": requests })))
 }
 
+/// `DELETE /api/v1/plan-requests/:id` — this workspace WITHDRAWS its own open ask.
+///
+/// WHY (measured 2026-10-19): a customer could file an ask and then had no way to take it back. The
+/// row IS the record the operator works from — a `done` answer MOVES the workspace onto that plan —
+/// so an ask that is no longer wanted sits in the queue and can be acted on after the customer
+/// changed their mind. Their own screen lists the ask, so the control belongs beside it.
+///
+/// Scope and refusals, deliberately narrow:
+/// * the row must belong to the CALLER'S OWN tenant (`tenant_id = $2`), so an id from another
+///   workspace answers **404** — the same answer as an id that does not exist, which confirms
+///   nothing about whether such a row is anywhere in the database;
+/// * only `open` / `contacted` can be withdrawn. An ANSWERED ask (`done` / `declined`) is a decision
+///   the workspace already received, so that write answers **409** with its reason instead of
+///   quietly rewriting history;
+/// * it is idempotent for this workspace: re-sending it for an already-withdrawn ask answers 200
+///   with `withdrawn: false`, because the state the caller asked for is already true;
+/// * nothing moves and nothing is charged — no plan, no subscription, no commission. The row's
+///   `status` is the whole effect, and it is what the operator's queue reads.
+pub async fn withdraw(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    let tenant_id = parse_tenant(&auth)?;
+    let id = Uuid::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid request id".into()))?;
+
+    let updated: Option<(Uuid, String, String)> = sqlx::query_as(
+        "UPDATE plan_requests
+            SET status = 'withdrawn', updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2 AND status IN ('open','contacted')
+      RETURNING id, plan_slug, plan_name",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some((id, plan_slug, plan_name)) = updated {
+        return Ok((
+            StatusCode::OK,
+            Json(json!({
+                "id": id,
+                "status": "withdrawn",
+                "withdrawn": true,
+                "plan_slug": plan_slug,
+                "plan_name": plan_name,
+            })),
+        ));
+    }
+
+    // No row was open for this workspace. Say WHICH of the three states it is, from the row itself
+    // (this workspace's only): absent -> 404, already withdrawn -> 200, answered -> 409.
+    let current: Option<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT id, status, plan_name FROM plan_requests WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    match current {
+        None => Err(AppError::NotFound("No such plan request".into())),
+        Some((id, status, plan_name)) if status == "withdrawn" => Ok((
+            StatusCode::OK,
+            Json(json!({
+                "id": id,
+                "status": "withdrawn",
+                "withdrawn": false,
+                "plan_name": plan_name,
+            })),
+        )),
+        Some((id, status, plan_name)) => Ok((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "id": id,
+                "status": status,
+                "withdrawn": false,
+                "plan_name": plan_name,
+                "message": "That request has already been answered, so it cannot be withdrawn. \
+                            Reply to the note on it if the answer is not what you wanted."
+            })),
+        )),
+    }
+}
+
 /// `GET /api/v1/admin/plan-requests` — the operator's queue. Optional `?status=open`.
 pub async fn admin_list(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
     if !auth.is_admin {

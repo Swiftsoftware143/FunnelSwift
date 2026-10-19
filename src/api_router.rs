@@ -784,6 +784,13 @@ pub fn create_router(
             "/api/v1/plan-requests",
             get(plan_request_handler::list_mine).post(plan_request_handler::create),
         )
+        // The customer's OWN ask can be taken back while it is still unanswered (2026-10-19). The row
+        // is the record the operator acts on — and `done` MOVES the workspace onto the plan — so an
+        // ask that is no longer wanted must not sit in the queue waiting to be granted.
+        .route(
+            "/api/v1/plan-requests/:id",
+            delete(plan_request_handler::withdraw),
+        )
         .route(
             "/api/v1/admin/plan-requests",
             get(plan_request_handler::admin_list),

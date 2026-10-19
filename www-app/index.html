@@ -696,7 +696,7 @@ else if(T){
 
 /* === DASHBOARD === */
 function D(){
-  $("ct").innerHTML='<div id="pl"></div><div id="sr"></div><div id="da"></div>';
+  $("ct").innerHTML='<div id="pl"></div><div id="prq"></div><div id="sr"></div><div id="da"></div>';
   /* kanban cron-1015 — this console's own help text promises "Your current plan is shown on the
      dashboard", and the dashboard showed only lead/card counts (the "Plans" tile is the tenant's
      own funnel-plan count, `d.plans_total`). The subscription plan is already in this page: the
@@ -741,6 +741,48 @@ function D(){
   // The usage half of the same strip: fetched on every dashboard load, and the card repaints when
   // it lands (paintPlan guards on the node still being attached, so a tab switch is safe).
   api("/api/v1/me/usage").then(function(d){ if(d&&!d.error){USG=d; paintPlan(U);} });
+  /* cron 2026-10-19 — the ask a workspace filed on the Upgrade screen was invisible here. A customer
+     who requested a paid plan saw the SAME "Your Plan / Free" strip on their home screen, with no
+     sign that anything was waiting on our side, while the row the operator acts on sat in a queue
+     only the operator could see. This paints the newest ask: an unanswered one carries the status
+     and the way to take it back (DELETE /plan-requests/:id), and an answered one carries the
+     operator's note, so the answer reaches the screen the customer actually lands on. Nothing is
+     invented when the read fails or the workspace has never asked. */
+  api("/api/v1/plan-requests").then(function(d){
+    var box=$("prq"); if(!box||!box.parentNode) return;
+    var rows=(d&&Array.isArray(d.requests))?d.requests:[];
+    if(!rows.length) return;
+    var q=rows[0];
+    var st=String(q.status||'open');
+    var label={open:'With our team',contacted:'We have contacted you',done:'Done — this workspace was moved',declined:'Declined — see the note',withdrawn:'Withdrawn by you'}[st]||st;
+    var chipBg=st==='done'?'#dcfce7':(st==='declined'?'#fee2e2':(st==='contacted'?'#dbeafe':(st==='withdrawn'?'#f1f5f9':'#fef3c7')));
+    var chipFg=st==='done'?'#166534':(st==='declined'?'#991b1b':(st==='contacted'?'#1e40af':(st==='withdrawn'?'#475569':'#92400e')));
+    var h='<div class="card" data-plan-request-card="'+X(q.id)+'" style="margin-bottom:16px">';
+    h+='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">';
+    h+='<div><h3 style="margin:0 0 2px">Your plan request</h3><div style="font-size:16px;font-weight:700">'+X(q.plan_name||q.plan_slug||'')+'</div>';
+    h+='<div style="color:#64748b;font-size:12px;margin-top:2px">Filed '+X(String(q.created_at||'').slice(0,10))+'</div></div>';
+    h+='<span data-plan-request-state="'+X(st)+'" style="background:'+chipBg+';color:'+chipFg+';padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">'+X(label)+'</span></div>';
+    if(q.reply){h+='<div style="margin-top:10px;background:#f8fafc;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;font-size:13px;color:#334155;white-space:pre-wrap"><strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'+X(q.reply)+'</div>';}
+    h+='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
+    if(st==='open'||st==='contacted'){
+      h+='<button class="btn" data-withdraw-plan-request="'+X(q.id)+'" onclick="withdrawPlanRequest(\''+X(q.id)+'\')">Withdraw this request</button>';
+    }
+    h+='<button class="btn btn-o" onclick="S(\'upgrade\')">Open the Upgrade screen</button></div></div>';
+    box.innerHTML=h;
+  });
+  /* The dashboard's own withdraw control. It calls the SAME endpoint the Upgrade screen's control
+     calls (one write path, so the two screens cannot disagree) and repaints this tab from the server
+     afterwards, so what is shown is the row that is now stored. */
+  window.withdrawPlanRequest=function(id){
+    if(!confirm('Withdraw your plan request? Nothing has been charged, and you can ask again later.')) return;
+    fetch("/api/v1/plan-requests/"+encodeURIComponent(id),{method:"DELETE",headers:{"Authorization":"Bearer "+T}})
+      .then(function(r){return r.json().catch(function(){return {};}).then(function(d){return {ok:r.ok,status:r.status,d:d};});})
+      .then(function(res){
+        if(!res.ok && res.status!==409){alert((res.d&&(res.d.message||res.d.error))||('The request could not be withdrawn (server answered '+res.status+').'));return;}
+        if(res.status===409){alert((res.d&&res.d.message)||'That request has already been answered, so it cannot be withdrawn.');}
+        D();
+      });
+  };
   // kanban t_a493e3f2: this loader paints two of its OWN panels from async callbacks, and S(<tab>)
   // replaces #ct wholesale — a tab switch between the request and its callback detaches #sr/#da, so a
   // late response ran $("sr").innerHTML=h on null and threw an UNCAUGHT TypeError inside the page.
@@ -4323,7 +4365,7 @@ function SG(id,returnTab,isSystem){
 
 
 </script>
-<script src="/upgrade.js?v=20261019b"></script>
+<script src="/upgrade.js?v=20261019c"></script>
 <!-- Cookie Consent Banner -->
 <div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#0f172a;color:#e2e8f0;z-index:99999;padding:16px 24px;font-family:system-ui,sans-serif;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.4);display:none">
   <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">

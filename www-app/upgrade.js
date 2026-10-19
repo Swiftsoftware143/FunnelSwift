@@ -36,7 +36,8 @@ var PREQ_LABEL = {
   open:      'Open — with our team',
   contacted: 'We have contacted you',
   done:      'Done — this workspace was moved',
-  declined:  'Declined — see the note'
+  declined:  'Declined — see the note',
+  withdrawn: 'Withdrawn by you'
 };
 
 function reqChip(status){
@@ -94,11 +95,51 @@ function renderRequests(){
           + '<strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'
           + esc(q.reply) + '</div>';
       }
+      // An ask that is still unanswered can be taken back (2026-10-19): the row is what the operator
+      // grants, so an ask the customer no longer wants must not stay in the queue waiting to be
+      // acted on. Only the two OPEN states carry the control; an answered ask is a decision already
+      // received, and the server refuses to rewrite it (409).
+      if(q.status === 'open' || q.status === 'contacted'){
+        h += '<div style="margin-top:6px"><button data-withdraw-plan-request="'+esc(q.id)+'" '
+          + 'onclick="withdrawRequest(\''+esc(q.id)+'\')" '
+          + 'style="padding:5px 10px;background:#fff;color:#64748b;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;cursor:pointer">'
+          + 'Withdraw this request</button></div>';
+      }
       h += '</div>';
     });
-    h += '<p style="font-size:11px;color:#94a3b8;margin:10px 0 0">Our team reads these. You will see the state change here once it is handled.</p></div>';
+    h += '<p style="font-size:11px;color:#94a3b8;margin:10px 0 0">Our team reads these. You will see the state change here once it is handled — or withdraw one yourself while it is still open.</p></div>';
   }
   return h;
+}
+
+/* Take back an ask that is still open. The server answers 200 for the change AND for an ask that was
+   already withdrawn (the state the caller asked for is already true), and 409 once the team has
+   answered — that sentence is shown as-is rather than guessed at here. */
+async function withdrawRequest(id){
+  var p = null;
+  for(var i=0;i<PREQS.length;i++){ if(String(PREQS[i].id)===String(id)) p = PREQS[i]; }
+  var name = p ? (p.plan_name || p.plan_slug) : 'that plan';
+  if(!confirm('Withdraw your request for the ' + name + ' plan? Nothing has been charged, and you can ask again later.')) return;
+  var token = T || '';
+  PREQ_MSG = null;
+  try {
+    var r = await fetch(window.location.origin+'/api/v1/plan-requests/'+encodeURIComponent(id), {
+      method:'DELETE',
+      headers:{Authorization:'Bearer '+token}
+    });
+    var d = {};
+    try { d = await r.json(); } catch(e) { d = {}; }
+    if(r.ok){
+      PREQ_MSG = {ok:true, text:'Request withdrawn. Nothing was charged — you can request the plan again at any time.'};
+    } else if(r.status === 409){
+      PREQ_MSG = {ok:false, text:(d && d.message) || 'That request has already been answered, so it cannot be withdrawn.'};
+    } else {
+      PREQ_MSG = {ok:false, text:(d && (d.message||d.error)) || ('The request could not be withdrawn (server answered '+r.status+').')};
+    }
+  } catch(e) {
+    PREQ_MSG = {ok:false, text:'The request could not be withdrawn ('+(e && e.message ? e.message : e)+').'};
+  }
+  loadRequests();
 }
 
 async function requestPlan(slug){
