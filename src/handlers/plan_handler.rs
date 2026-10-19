@@ -50,6 +50,29 @@ fn reject_retired_feature_keys(features: &serde_json::Value) -> AppResult<()> {
     Ok(())
 }
 
+/// The `plans.side` vocabulary the rest of the product actually reads. `plan_resolver::ProductSide`
+/// treats the capture product as `main` (or `both`) and the kinetic product as `kinetic` (or
+/// `both`), so a stored value outside that set makes the plan invisible to the side it was meant
+/// for — the plan picker stops listing it and the free-tier resolver stops finding it.
+///
+/// The console's plan editor used to post `capture`, which no resolver matches, and because the
+/// store took any string, editing a plan silently detached it (measured live 2026-10-19: a plan put
+/// to `capture` dropped out of the price-0 `main|both` set). The editor now posts `main`, and this
+/// guard is the durable half: `capture` is normalised to `main` so an already-cached console cannot
+/// corrupt a row, and anything else is refused instead of stored.
+fn canonical_plan_side(side: &str) -> AppResult<&'static str> {
+    match side.trim().to_ascii_lowercase().as_str() {
+        "main" | "capture" => Ok("main"),
+        "kinetic" => Ok("kinetic"),
+        "both" => Ok("both"),
+        other => Err(AppError::BadRequest(format!(
+            "side must be one of main, kinetic or both ('capture' is accepted as an alias of main); got '{other}'. \
+             The plan resolver reads main|both for the capture side and kinetic|both for the kinetic side, \
+             so any other value would hide the plan from every side."
+        ))),
+    }
+}
+
 // ── Affiliate Product Auto-Sync helpers ──
 
 /// THE ONE WRITER of a plan-derived affiliate product (kanban t_6d326447).
@@ -292,7 +315,7 @@ pub async fn create_plan(
     .bind(&req.slug)
     .bind(req.price)
     .bind(req.annual_price)
-    .bind(req.side.as_deref().unwrap_or("main"))
+    .bind(canonical_plan_side(req.side.as_deref().unwrap_or("main"))?)
     .bind(req.billing_cycle.as_deref().unwrap_or("month"))
     .bind(req.max_cards)
     .bind(req.max_qr_codes)
@@ -414,7 +437,10 @@ pub async fn update_plan(
     .bind(req.features.or(existing.features))
     .bind(sync_rate)
     .bind(req.annual_price.or(existing.annual_price))
-    .bind(req.side.clone().unwrap_or_else(|| existing.side.clone()))
+    .bind(match req.side.as_deref() {
+        Some(s) => canonical_plan_side(s)?.to_string(),
+        None => existing.side.clone(),
+    })
     .bind(req.billing_cycle.clone().unwrap_or_else(|| existing.billing_cycle.clone()))
     .bind(req.max_custom_domains.or(existing.max_custom_domains))
     .bind(req.max_cards.or(existing.max_cards))
