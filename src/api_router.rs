@@ -19,11 +19,11 @@ use crate::handlers::{
     checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
     dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
     insight_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
-    mobile_notify_handler, ocr, plan_handler, portfolio_handler, product_category_handler,
-    provider_keys_handler, public_signup_handler, qr_handler, seo_handler, settings_handler,
-    site_handler, site_settings_handler, tag_group_handler, tag_handler, tag_rule_handler,
-    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
-    workflowswift_push,
+    mobile_notify_handler, ocr, plan_handler, plan_request_handler, portfolio_handler,
+    product_category_handler, provider_keys_handler, public_signup_handler, qr_handler,
+    seo_handler, settings_handler, site_handler, site_settings_handler, tag_group_handler,
+    tag_handler, tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint,
+    web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -775,6 +775,22 @@ pub fn create_router(
         .route(
             "/api/v1/checkout/session/:id",
             get(checkout_handler::get_checkout_session_public),
+        )
+        // A workspace ASKS to be moved onto a paid plan (migration 112). This exists because an
+        // install with NO payment provider refuses every purchase, and before these routes the
+        // customer's ask was an alert that vanished on reload — nothing the operator could see.
+        // The two admin arms answer 403 to anyone who is not the platform operator.
+        .route(
+            "/api/v1/plan-requests",
+            get(plan_request_handler::list_mine).post(plan_request_handler::create),
+        )
+        .route(
+            "/api/v1/admin/plan-requests",
+            get(plan_request_handler::admin_list),
+        )
+        .route(
+            "/api/v1/admin/plan-requests/:id",
+            put(plan_request_handler::admin_update),
         )
         // Payment webhooks ARE registered: `/api/v1/webhooks/stripe` sits at the top of this
         // router with its own signature verification (kanban t_6e746b75 shipped it together with the

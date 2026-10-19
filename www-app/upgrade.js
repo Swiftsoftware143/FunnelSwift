@@ -1,4 +1,19 @@
 /* Pricing / Upgrade — loaded externally to avoid escaping issues */
+/* 2026-10-19 (cron `default`): the Upgrade screen could not record anything. On this install no
+   payment provider is configured, so POST /api/v1/checkout/create refuses every purchase (503
+   `payment_provider_not_configured`); the screen said so in an alert that a reload erased, and its
+   other failure arm told the customer to "open a support ticket" — a screen this app does not have.
+   A customer who wanted to PAY left no trace the operator could act on.
+
+   Now the ask is a row: `POST /api/v1/plan-requests` records it, `GET /api/v1/plan-requests` lists
+   this workspace's asks with their live state, and the platform operator reads the same rows here
+   (the admin arm of this screen) and moves the state on. The state shown is read from the server on
+   every load, so a reload cannot lie about it. */
+var PLANS = {};        // slug -> plan object, filled by renderUpgrade
+var PREQS = [];        // this workspace's plan requests, newest first
+var PREQ_OFFER = null; // {slug,name} — set when checkout refused, offered as a request button
+var PREQ_MSG = null;   // {ok,text}
+
 async function LPU(){
   $("pt").textContent="Upgrade Plan";
   $("ct").innerHTML='<div class="loading">Loading plans...</div>';
@@ -8,21 +23,166 @@ async function LPU(){
     var plans = await resp.json();
     if(!Array.isArray(plans)) { $("ct").innerHTML='<div class="error">Failed to load plans.</div>'; return; }
     renderUpgrade(plans);
+    loadRequests();
   } catch(e) { $("ct").innerHTML='<div class="error">'+e.message+'</div>'; }
+}
+
+function esc(v){
+  return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+var PREQ_LABEL = {
+  open:      'Open — with our team',
+  contacted: 'We have contacted you',
+  done:      'Done — this workspace was moved',
+  declined:  'Declined — see the note'
+};
+
+function reqChip(status){
+  var s = String(status || 'open');
+  var bg = s === 'done' ? '#dcfce7' : (s === 'declined' ? '#fee2e2' : (s === 'contacted' ? '#dbeafe' : '#fef3c7'));
+  var fg = s === 'done' ? '#166534' : (s === 'declined' ? '#991b1b' : (s === 'contacted' ? '#1e40af' : '#92400e'));
+  return '<span style="background:'+bg+';color:'+fg+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'
+    + esc(PREQ_LABEL[s] || s) + '</span>';
+}
+
+async function loadRequests(){
+  try {
+    var token = T || '';
+    var r = await fetch(window.location.origin+'/api/v1/plan-requests', {headers:{Authorization:'Bearer '+token}});
+    if(r.ok){
+      var d = await r.json();
+      PREQS = Array.isArray(d && d.requests) ? d.requests : [];
+    }
+  } catch(e) { PREQS = []; }
+  var box = document.getElementById('preq');
+  if(box) box.innerHTML = renderRequests();
+  if(window.U && window.U.is_admin) loadAdminRequests();
+}
+
+function renderRequests(){
+  var h = '';
+  if(PREQ_MSG){
+    h += '<div style="background:'+(PREQ_MSG.ok?'#f0fdf4':'#fef2f2')+';border-left:4px solid '
+      + (PREQ_MSG.ok?'#16a34a':'#dc2626') + ';padding:12px 14px;border-radius:6px;margin-bottom:14px;font-size:14px">'
+      + esc(PREQ_MSG.text) + '</div>';
+  }
+  // The offer the checkout refusal raised: the customer's next step instead of a dead end.
+  if(PREQ_OFFER && !PREQS.some(function(x){ return x.plan_slug === PREQ_OFFER.slug && (x.status === 'open' || x.status === 'contacted'); })){
+    h += '<div data-plan-offer="'+esc(PREQ_OFFER.slug)+'" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:16px">'
+      + '<p style="font-size:14px;color:#92400e;margin:0 0 10px">Upgrades are not open on this workspace yet — nothing was charged. '
+      + 'We can move you onto the <strong>'+esc(PREQ_OFFER.name)+'</strong> plan ourselves and confirm here.</p>'
+      + '<button data-request-plan="'+esc(PREQ_OFFER.slug)+'" onclick="requestPlan(\''+esc(PREQ_OFFER.slug)+'\')" '
+      + 'style="padding:10px 16px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">'
+      + 'Request the '+esc(PREQ_OFFER.name)+' plan</button></div>';
+  }
+  // This workspace's own asks, with the state the server holds.
+  if(PREQS.length){
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px">'
+      + '<h4 style="font-size:15px;font-weight:700;margin:0 0 10px">Your plan requests</h4>';
+    PREQS.forEach(function(q){
+      h += '<div data-plan-request="'+esc(q.id)+'" style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
+        + '<div><strong>'+esc(q.plan_name || q.plan_slug)+'</strong>'
+        + '<span style="color:#94a3b8"> · '+esc(String(q.created_at||'').slice(0,10))+'</span></div>'
+        + '<div>'+reqChip(q.status)+'</div></div>';
+    });
+    h += '<p style="font-size:11px;color:#94a3b8;margin:10px 0 0">Our team reads these. You will see the state change here once it is handled.</p></div>';
+  }
+  return h;
+}
+
+async function requestPlan(slug){
+  var p = PLANS[slug] || (PREQ_OFFER && PREQ_OFFER.slug === slug ? PREQ_OFFER : null);
+  if(!p) return;
+  var token = T || '';
+  PREQ_MSG = null;
+  try {
+    var r = await fetch(window.location.origin+'/api/v1/plan-requests', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({plan_slug:slug})
+    });
+    var d = {};
+    try { d = await r.json(); } catch(e) { d = {}; }
+    if(!r.ok){
+      PREQ_MSG = {ok:false, text:(d && (d.message||d.error)) || ('The request could not be sent (server answered '+r.status+'). Nothing was charged.')};
+    } else if(d && d.status === 'existing'){
+      PREQ_MSG = {ok:true, text:'Your request for the '+p.name+' plan is already with our team.'};
+    } else {
+      PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan and confirm here. Nothing was charged.'};
+    }
+    PREQ_OFFER = null;
+  } catch(e) {
+    PREQ_MSG = {ok:false, text:'The request could not be sent ('+(e && e.message ? e.message : e)+'). Nothing was charged — please try again.'};
+  }
+  loadRequests();
+}
+
+/* The operator's queue. Same screen, admin arm: a workspace ask that nobody can see is the defect
+   this whole screen was fixed for, so the list and the state buttons live beside the plans. */
+async function loadAdminRequests(){
+  var box = document.getElementById('preq-admin');
+  if(!box) return;
+  try {
+    var token = T || '';
+    var r = await fetch(window.location.origin+'/api/v1/admin/plan-requests', {headers:{Authorization:'Bearer '+token}});
+    if(!r.ok){ box.innerHTML = ''; return; }
+    var d = await r.json();
+    var list = Array.isArray(d && d.requests) ? d.requests : [];
+    if(!list.length){ box.innerHTML = ''; return; }
+    var h = '<div data-admin-plan-requests style="background:#fff;border:2px solid #6366f1;border-radius:10px;padding:16px;margin-bottom:20px">'
+      + '<h4 style="font-size:15px;font-weight:700;margin:0 0 4px">Plan requests from workspaces ('+list.length+')</h4>'
+      + '<p style="font-size:11px;color:#64748b;margin:0 0 10px">Every ask a customer filed because the install has no payment provider. '
+      + 'Move the state on here — the customer sees it on their own Upgrade screen.</p>';
+    list.forEach(function(q){
+      h += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
+        + '<div><strong>'+esc(q.tenant_name)+'</strong> · '+esc(q.plan_name || q.plan_slug)
+        + '<div style="color:#94a3b8;font-size:11px">'+esc(q.requested_by||'')+' · '+esc(String(q.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'
+        + '<div style="display:flex;gap:6px;align-items:center">'+reqChip(q.status);
+      ['contacted','done','declined'].forEach(function(s){
+        if(q.status !== s){
+          h += '<button data-set-status="'+esc(q.id)+'" data-status="'+s+'" onclick="setRequestStatus(\''+esc(q.id)+'\',\''+s+'\')" '
+            + 'style="padding:4px 8px;font-size:11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;cursor:pointer">'+s+'</button>';
+        }
+      });
+      h += '</div></div>';
+    });
+    h += '</div>';
+    box.innerHTML = h;
+  } catch(e) { box.innerHTML = ''; }
+}
+
+async function setRequestStatus(id, status){
+  var token = T || '';
+  try {
+    var r = await fetch(window.location.origin+'/api/v1/admin/plan-requests/'+id, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({status:status})
+    });
+    if(!r.ok){ var d = {}; try { d = await r.json(); } catch(e) {} alert((d && (d.message||d.error)) || ('Could not update ('+r.status+')')); return; }
+  } catch(e) { alert('Could not update: '+e.message); return; }
+  loadAdminRequests();
+  loadRequests();
 }
 
 function renderUpgrade(plans){
   // Which plan is this workspace ACTUALLY on? `/auth/me` carries the plans row the account is
   // subscribed to (`current_plan`, with its real `slug`), and `plan_name` is the human label.
   // FunnelSwift sells TWO products (Capture and Kinetic) and BOTH have a free plan, so deciding by
-  // "is it free" marked Capture Free AND Kinetic Free as "Current Plan" for a Capture account at the
-  // same time — and hid the way up from the other one. Match the SLUG when the server gave us one,
+  // "is it free" marked Capture Free AND Kinetic Free as "Current Plan" for a Capture account at
+  // the same time — and hid the way up from the other one. Match the SLUG when the server gave us one,
   // the NAME otherwise; if neither resolves, leave every row actionable rather than mark a wrong one.
+  PLANS = {};
+  plans.forEach(function(p){ if(p && p.slug) PLANS[p.slug] = p; });
+
   var cp = (window.U && window.U.current_plan) || null;
   var curSlug = (cp && cp.slug) ? String(cp.slug) : '';
   var currentPlan = (cp && cp.name) || (window.U && (window.U.plan_name||window.U.plan)) || 'Free';
   var html = '<div style="max-width:900px;margin:0 auto"><h2 style="font-size:22px;font-weight:700">Upgrade Your Plan</h2>';
-  html += '<p style="color:#64748b;margin-bottom:20px">Current: <strong>'+currentPlan+'</strong></p>';
+  html += '<p style="color:#64748b;margin-bottom:12px">Current: <strong>'+esc(currentPlan)+'</strong></p>';
+  html += '<div id="preq-admin"></div><div id="preq"></div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
   
   plans.forEach(function(p){
@@ -30,9 +190,9 @@ function renderUpgrade(plans){
     var bg = isCurrent ? '#eef2ff' : '#fff';
     var border = isCurrent ? '2px solid #6366f1' : '1px solid #e2e8f0';
     html += '<div style="background:'+bg+';border:'+border+';border-radius:12px;padding:20px;display:flex;flex-direction:column">';
-    html += '<div style="margin-bottom:16px"><h4 style="font-size:16px;font-weight:700;margin:0">'+p.name+'</h4>';
-    html += '<span style="font-size:10px;color:#6366f1;background:#eef2ff;padding:2px 8px;border-radius:4px;font-weight:600">'+p.side.toUpperCase()+'</span></div>';
-    html += '<div style="margin-bottom:12px"><span style="font-size:28px;font-weight:800">$'+p.price+'</span><span style="color:#64748b;font-size:13px">/mo</span></div>';
+    html += '<div style="margin-bottom:16px"><h4 style="font-size:16px;font-weight:700;margin:0">'+esc(p.name)+'</h4>';
+    html += '<span style="font-size:10px;color:#6366f1;background:#eef2ff;padding:2px 8px;border-radius:4px;font-weight:600">'+esc(String(p.side||'').toUpperCase())+'</span></div>';
+    html += '<div style="margin-bottom:12px"><span style="font-size:28px;font-weight:800">$'+esc(p.price)+'</span><span style="color:#64748b;font-size:13px">/mo</span></div>';
     
     [
       {l:'Cards',v:p.max_cards},{l:'QR Codes',v:p.max_qr_codes},
@@ -66,9 +226,9 @@ function renderUpgrade(plans){
     if(isCurrent){
       html += '<div style="text-align:center;padding:10px;background:#6366f1;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Current Plan</div>';
     } else if(price <= 0){
-      html += '<div data-free-plan="'+p.slug+'" style="text-align:center;padding:10px;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:13px;font-weight:600">Free plan — nothing to pay</div>';
+      html += '<div data-free-plan="'+esc(p.slug)+'" style="text-align:center;padding:10px;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:13px;font-weight:600">Free plan — nothing to pay</div>';
     } else {
-      html += '<button data-upgrade-plan="'+p.slug+'" onclick="upgradeTo(\''+p.slug+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
+      html += '<button data-upgrade-plan="'+esc(p.slug)+'" onclick="upgradeTo(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
     }
     html += '</div></div>';
   });
@@ -105,17 +265,20 @@ function upgradeTo(slug){
       // told the one thing they care about, and a refused /checkout/create never creates a session,
       // so no charge can have occurred on ANY of its failure arms.
       //
-      // 2026-10-15 (this arm used to open the alert with the server's sentence): on an install with
-      // no payment provider configured the server answers the OPERATOR's instructions — measured
-      // live in Chromium on app.funnelswift.net/dashboard (real mouse click on "Upgrade" -> 503
-      // POST /api/v1/checkout/create -> the alert read "No payment provider is configured, so
-      // checkout cannot work. The platform operator adds Stripe's keys in the admin panel …"). The
-      // buyer is not the person who adds keys, and that sentence reads like something they broke.
-      // Fleet convention (the sentence IncentiveSwift's Plan & Billing already ships): lead with
-      // the customer's own line and the fact that nothing was charged, then the detail unchanged.
-      // The operator keeps the whole reason — it is still printed above, in the same alert.
+      // 2026-10-19: this used to END in an alert. An alert is not a record — a reload erased it, and
+      // the operator never learned that someone tried to buy. The refusal now raises an inline
+      // offer with ONE real next step (file the ask), which is written to `plan_requests` and read
+      // back from the server. The customer's line still leads, and "nothing was charged" is still
+      // said first, because that is what a buyer mid-purchase needs to know.
       if(data && data.message) {
         var operatorMsg = /provider|not configured/i.test(data.message);
+        if(operatorMsg && PLANS[slug]){
+          PREQ_OFFER = { slug: slug, name: PLANS[slug].name || slug };
+          PREQ_MSG = { ok:true, text:'Upgrades are not open on this workspace yet — nothing was charged.' };
+          loadRequests();
+          window.scrollTo(0,0);
+          return;
+        }
         var lead = operatorMsg
           ? 'Upgrades are not open on this workspace yet \u2014 nothing was charged.'
           : 'The upgrade could not be started \u2014 nothing was charged.';
@@ -125,8 +288,7 @@ function upgradeTo(slug){
       if(!data || !data._ok){
         alert('The upgrade could not be started (the server answered ' +
           ((data && data._status) || 'no reply') + '). Nothing was charged.\n\n' +
-          'Please try again in a moment. If it keeps happening, open a support ticket and quote ' +
-          'that number.' + ((data && data._raw) ? '\n\nServer said: ' + data._raw : ''));
+          'Please try again in a moment.');
         return;
       }
       alert('Upgrade request submitted. We will contact you.');

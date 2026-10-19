@@ -37,6 +37,9 @@ pub mod linkedin_auth_handler;
 pub mod mobile_notify_handler;
 pub mod ocr;
 pub mod plan_handler;
+// A workspace ASKS to be moved onto a paid plan when the install has no payment provider
+// (migration 112). The row is the record both sides read.
+pub mod plan_request_handler;
 // RETIRED (kanban t_dc418458): `pub mod plan_tag_handler;` — the only reader of
 // `plan_tag_mappings` (0 rows, no consumer) was its own list/sync CRUD. Both routes, the handler
 // and the table were retired together; see the RETIRED note in `src/api_router.rs`.
