@@ -43,6 +43,10 @@ pub struct CreateBody {
 #[derive(Deserialize)]
 pub struct UpdateBody {
     pub status: String,
+    /// An optional sentence for the customer, stored WITH the state change so the Upgrade screen
+    /// can explain a `declined`/`contacted` chip instead of leaving the customer guessing.
+    #[serde(default)]
+    pub reply: Option<String>,
 }
 
 fn parse_tenant(auth: &AuthUser) -> AppResult<Uuid> {
@@ -130,7 +134,8 @@ pub async fn create(
 pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
     let tenant_id = parse_tenant(&auth)?;
     let rows = sqlx::query(
-        "SELECT id, plan_slug, plan_name, note, status, created_at::text AS created_at
+        "SELECT id, plan_slug, plan_name, note, status, reply, replied_at::text AS replied_at,
+                created_at::text AS created_at
            FROM plan_requests WHERE tenant_id = $1
           ORDER BY created_at DESC LIMIT 50",
     )
@@ -147,6 +152,8 @@ pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResu
                 "plan_name": r.get::<String, _>("plan_name"),
                 "note": r.get::<String, _>("note"),
                 "status": r.get::<String, _>("status"),
+                "reply": r.get::<String, _>("reply"),
+                "replied_at": r.get::<Option<String>, _>("replied_at"),
                 "created_at": r.get::<String, _>("created_at"),
             })
         })
@@ -161,7 +168,8 @@ pub async fn admin_list(auth: AuthUser, State(state): State<AppState>) -> AppRes
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     let rows = sqlx::query(
-        "SELECT pr.id, pr.plan_slug, pr.plan_name, pr.note, pr.status, pr.requested_by,
+        "SELECT pr.id, pr.plan_slug, pr.plan_name, pr.note, pr.status, pr.reply,
+                pr.replied_at::text AS replied_at, pr.requested_by,
                 pr.created_at::text AS created_at, t.name AS tenant_name, t.id AS tenant_id
            FROM plan_requests pr
            JOIN tenants t ON t.id = pr.tenant_id
@@ -183,6 +191,8 @@ pub async fn admin_list(auth: AuthUser, State(state): State<AppState>) -> AppRes
                 "plan_name": r.get::<String, _>("plan_name"),
                 "note": r.get::<String, _>("note"),
                 "status": r.get::<String, _>("status"),
+                "reply": r.get::<String, _>("reply"),
+                "replied_at": r.get::<Option<String>, _>("replied_at"),
                 "created_at": r.get::<String, _>("created_at"),
             })
         })
@@ -214,13 +224,25 @@ pub async fn admin_update(
             STATUSES.join(", ")
         )));
     }
+    // The note is optional, but when it IS sent it belongs to the same write as the state: a
+    // customer must never read a new status with the previous explanation still attached.
+    let reply: Option<String> = body
+        .reply
+        .map(|r| r.trim().chars().take(1000).collect::<String>())
+        .filter(|r| !r.is_empty());
     let row = sqlx::query(
-        "UPDATE plan_requests SET status = $2, updated_at = NOW()
+        "UPDATE plan_requests
+            SET status = $2,
+                reply = COALESCE($3, reply),
+                replied_at = CASE WHEN $3 IS NULL THEN replied_at ELSE NOW() END,
+                updated_at = NOW()
           WHERE id = $1
-         RETURNING id, status, updated_at::text AS updated_at",
+         RETURNING id, status, reply, replied_at::text AS replied_at,
+                   updated_at::text AS updated_at",
     )
     .bind(id)
     .bind(&status)
+    .bind(reply.as_deref())
     .fetch_optional(&state.pool)
     .await?;
     let row = row.ok_or_else(|| AppError::NotFound("No such plan request".into()))?;
@@ -228,6 +250,8 @@ pub async fn admin_update(
     Ok(Json(json!({
         "id": row.get::<Uuid, _>("id"),
         "status": row.get::<String, _>("status"),
+        "reply": row.get::<String, _>("reply"),
+        "replied_at": row.get::<Option<String>, _>("replied_at"),
         "updated_at": row.get::<String, _>("updated_at"),
     })))
 }
