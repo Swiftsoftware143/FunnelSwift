@@ -4989,10 +4989,13 @@ const PLAN_REQ_LABEL = {
   open: 'Open — waiting on us',
   contacted: 'Contacted — we reached out',
   done: 'Done — moved onto the plan',
-  declined: 'Declined'
+  declined: 'Declined',
+  // The customer took the ask back while it was still open (2026-10-19). Kept in the queue as a
+  // record, and it can no longer be answered: the server refuses to move a withdrawn ask.
+  withdrawn: 'Withdrawn by the customer'
 };
-const PLAN_REQ_BG = { open: '#fef3c7', contacted: '#dbeafe', done: '#dcfce7', declined: '#fee2e2' };
-const PLAN_REQ_FG = { open: '#92400e', contacted: '#1e40af', done: '#166534', declined: '#991b1b' };
+const PLAN_REQ_BG = { open: '#fef3c7', contacted: '#dbeafe', done: '#dcfce7', declined: '#fee2e2', withdrawn: '#f1f5f9' };
+const PLAN_REQ_FG = { open: '#92400e', contacted: '#1e40af', done: '#166534', declined: '#991b1b', withdrawn: '#475569' };
 function planReqChip(s) {
   const k = String(s || 'open');
   return '<span style="background:' + (PLAN_REQ_BG[k] || '#f1f5f9') + ';color:' + (PLAN_REQ_FG[k] || '#334155') +
@@ -5008,7 +5011,12 @@ async function renderPlanRequests() {
   const open = typeof payload.open === 'number' ? payload.open : list.filter(r => r.status === 'open').length;
   PLAN_REQ_OPEN = open;
   const rowFor = (r) => {
-    const acts = ['contacted', 'done', 'declined'].filter(st => st !== r.status).map(st =>
+    // A WITHDRAWN ask has no answer to give: the customer took it back, and the server refuses to
+    // move it (409). Offering the state buttons here would only produce a red toast, so the cell says
+    // what happened instead — the row stays readable as a record.
+    const acts = r.status === 'withdrawn'
+      ? '<span style="font-size:11px;color:var(--muted)">Customer withdrew it</span>'
+      : ['contacted', 'done', 'declined'].filter(st => st !== r.status).map(st =>
       '<button class="btn" data-pr-id="' + x(r.id) + '" data-pr-status="' + st + '" data-pr-ws="' + x(r.tenant_name || '') +
       '" data-pr-tenant="' + x(r.tenant_id || '') + '" data-pr-slug="' + x(r.plan_slug || '') +
       '" style="padding:4px 8px;font-size:11px;margin-left:4px">' + st + '</button>').join('');

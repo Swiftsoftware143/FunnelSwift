@@ -309,6 +309,25 @@ pub async fn admin_update(
             STATUSES.join(", ")
         )));
     }
+    // A WITHDRAWN ask is closed BY THE CUSTOMER: it can no longer be granted, declined or moved.
+    // Without this guard the operator's queue still offered "done" on that row (the buttons only
+    // exclude the state the row already carries), so answering it would have moved the workspace onto
+    // a plan its owner had explicitly taken back — the exact outcome the withdraw control exists to
+    // prevent. Reads the row by id alone because the operator's queue is install-wide.
+    if status != "withdrawn" {
+        let current: Option<String> =
+            sqlx::query_scalar("SELECT status FROM plan_requests WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&state.pool)
+                .await?;
+        if current.as_deref() == Some("withdrawn") {
+            return Err(AppError::Conflict(
+                "The customer withdrew this request, so it cannot be answered. \
+                 They can file a new one at any time."
+                    .into(),
+            ));
+        }
+    }
     // The note is optional, but when it IS sent it belongs to the same write as the state: a
     // customer must never read a new status with the previous explanation still attached.
     let reply: Option<String> = body
