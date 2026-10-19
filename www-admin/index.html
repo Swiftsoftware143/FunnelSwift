@@ -137,6 +137,10 @@ const API_BASE = '/api/v1';
 let TOKEN = localStorage.getItem('ws_fs_token') || '';
 let USER = null; // { user_id, tenant_id, email, name, role, is_admin, api_key, current_plan, planObj }
 let STATE = { view: 'dashboard', modal: null, data: {}, toast: null, subView: null };
+// Open asks in the operator's plan-request queue (below). Kept at this level because the shell is
+// re-rendered on every view switch: the sidebar label has to carry the count from the module, not
+// from a DOM node that the next render throws away. `var` so the boot IIFE cannot hit a TDZ.
+var PLAN_REQ_OPEN = 0;
 
 // ── API ──
 async function api(path, opts={}) {
@@ -407,6 +411,9 @@ function doLogout() {
 (async function init() {
   if (TOKEN) await loadUser();
   renderApp();
+  // kanban cron-1019: put the count of waiting plan asks on the sidebar label before the operator
+  // has to think of opening the screen. Fire-and-forget: a failure here must not delay the console.
+  refreshPlanRequestBadge();
   // A reload mid-impersonation must not silently swallow the banner: the operator needs to see
   // which account this session belongs to and the control that hands their own session back.
   if (localStorage.getItem(IMP_ORIGINAL_KEY)) {
@@ -565,6 +572,12 @@ function buildNav() {
     sections.push(`<div class="nav-item ${STATE.view==='siteSettings'?'active':''}" data-view="siteSettings"><span class="icon">🌐</span><span class="nav-text">Site Settings</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></div>`);
+    // kanban cron-1019: a workspace that ASKS to be moved onto a paid plan writes a `plan_requests`
+    // row (the customer's Upgrade screen does this when no payment provider is configured). The
+    // operator's queue route existed with NO screen here — the ask was readable only by calling the
+    // API. This is that screen, and the count rides in the label so an ask is visible without
+    // opening it.
+    sections.push(`<div class="nav-item ${STATE.view==='planRequests'?'active':''}" data-view="planRequests"><span class="icon">🙋</span><span class="nav-text">Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></div>`);
     sections.push(`<div class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></div>`);
@@ -612,6 +625,7 @@ const viewRenderers = {
   siteSettings: renderSiteSettings,
   tagRules: renderTagRules,
   checkoutSessions: renderCheckoutSessions,
+  planRequests: renderPlanRequests,
 };
 
 async function renderView() {
@@ -672,6 +686,7 @@ function bindView(view) {
     case 'siteSettings': bindSiteSettings(); break;
     case 'tagRules': bindTagRules(); break;
     case 'checkoutSessions': break;
+    case 'planRequests': bindPlanRequests(); break;
     case 'cardAnalytics': bindCardAnalytics(); break;
     case 'cardUtmBuilder': bindCardUtmBuilder(); break;
     case 'cardLocations': bindCardLocations(); break;
@@ -4963,6 +4978,117 @@ async function renderCheckoutSessions() {
   </div>`;
 }
 
+// ═══ SIDEBAR VIEW: Plan Requests ═════════════════════════════════════════════
+// kanban cron-1019 — the operator's queue for a workspace that ASKED to be moved onto a paid plan.
+// The ask is filed from the customer's own Upgrade screen (this install has no payment provider, so
+// a purchase cannot complete and the ask IS the buying path), and it is a real row in
+// `plan_requests`. Before this screen the operator could only read it by calling the API, while the
+// customer waited on a state nobody could move. Read: GET /api/v1/admin/plan-requests.
+// Write: PUT /api/v1/admin/plan-requests/:id — the same row the customer's screen re-reads on load.
+const PLAN_REQ_LABEL = {
+  open: 'Open — waiting on us',
+  contacted: 'Contacted — we reached out',
+  done: 'Done — moved onto the plan',
+  declined: 'Declined'
+};
+const PLAN_REQ_BG = { open: '#fef3c7', contacted: '#dbeafe', done: '#dcfce7', declined: '#fee2e2' };
+const PLAN_REQ_FG = { open: '#92400e', contacted: '#1e40af', done: '#166534', declined: '#991b1b' };
+function planReqChip(s) {
+  const k = String(s || 'open');
+  return '<span style="background:' + (PLAN_REQ_BG[k] || '#f1f5f9') + ';color:' + (PLAN_REQ_FG[k] || '#334155') +
+    ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' + x(PLAN_REQ_LABEL[k] || k) + '</span>';
+}
+
+async function renderPlanRequests() {
+  let payload = { requests: [], open: 0 };
+  let err = '';
+  try { payload = await api('/admin/plan-requests') || payload; }
+  catch (e) { err = (e && e.message) || 'Could not load the queue'; }
+  const list = Array.isArray(payload.requests) ? payload.requests : [];
+  const open = typeof payload.open === 'number' ? payload.open : list.filter(r => r.status === 'open').length;
+  PLAN_REQ_OPEN = open;
+  const rowFor = (r) => {
+    const acts = ['contacted', 'done', 'declined'].filter(st => st !== r.status).map(st =>
+      '<button class="btn" data-pr-id="' + x(r.id) + '" data-pr-status="' + st + '" data-pr-ws="' + x(r.tenant_name || '') +
+      '" data-pr-tenant="' + x(r.tenant_id || '') + '" data-pr-slug="' + x(r.plan_slug || '') +
+      '" style="padding:4px 8px;font-size:11px;margin-left:4px">' + st + '</button>').join('');
+    return '<tr data-plan-request="' + x(r.id) + '">' +
+      '<td><strong>' + x(r.tenant_name || r.tenant_id) + '</strong><div style="font-size:11px;color:var(--muted)">' +
+      x(r.requested_by || '') + '</div></td>' +
+      '<td>' + x(r.plan_name || r.plan_slug) + '</td>' +
+      '<td>' + planReqChip(r.status) + '</td>' +
+      '<td>' + formatDate(r.created_at) + '</td>' +
+      '<td style="text-align:right;white-space:nowrap">' + acts + '</td></tr>';
+  };
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Plan Requests</h1>
+    <!-- routes: GET /api/v1/admin/plan-requests · PUT /api/v1/admin/plan-requests/:id -->
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">A workspace asks to be moved onto a paid plan from its own Upgrade screen. Nothing is charged on either side — moving the state here is what the customer sees the next time their screen loads.</div>
+    ${err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : ''}
+    ${open ? '<div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;color:#92400e"><strong>' + open + '</strong> workspace' + (open === 1 ? ' is' : 's are') + ' waiting on an answer.</div>' : ''}
+    <div class="card">
+      ${wiredTable(['Workspace', 'Requested plan', 'State', 'Asked', ''], list.map(rowFor), 'No workspace has asked for a plan change')}
+    </div>
+  </div>`;
+}
+
+function bindPlanRequests() {
+  document.querySelectorAll('button[data-pr-id]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-pr-id');
+      const status = b.getAttribute('data-pr-status');
+      const ws = b.getAttribute('data-pr-ws') || 'this workspace';
+      const tid = b.getAttribute('data-pr-tenant');
+      const slug = b.getAttribute('data-pr-slug');
+      if (status === 'declined' && !confirm('Decline ' + ws + '\u2019s plan request?')) return;
+      b.disabled = true;
+      try {
+        // "done" means the workspace was actually MOVED onto the plan it asked for. The state alone
+        // would leave the customer on the old plan while the chip told them they had been moved, so
+        // the move is written here (the same writer the Tenants screen's plan selector uses:
+        // POST /api/v1/tenants/:id/plan) BEFORE the request is marked done. If the plan cannot be
+        // resolved the operator is told, and the request is NOT marked done — a lie is worse than
+        // an unfinished step.
+        let moved = '';
+        if (status === 'done' && tid && slug) {
+          let plans = [];
+          try { plans = await api('/plans') || []; } catch (e) { plans = []; }
+          const plan = (Array.isArray(plans) ? plans : (plans.plans || [])).find(p => p && p.slug === slug);
+          if (!plan) {
+            b.disabled = false;
+            showToast('Plan "' + slug + '" is not in the catalogue — nothing was changed', 'error');
+            return;
+          }
+          await api('/tenants/' + encodeURIComponent(tid) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id }) });
+          moved = ' and moved the workspace onto ' + (plan.name || slug);
+        }
+        await api('/admin/plan-requests/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ status }) });
+        showToast('Marked ' + status + moved, 'success');
+        renderApp();
+      } catch (e) {
+        b.disabled = false;
+        showToast((e && e.message) || 'Could not update the request', 'error');
+      }
+    });
+  });
+}
+
+// Run once at boot: a wait nobody can see is the defect this screen exists for, so the count is put
+// on the nav label before the operator clicks anything.
+async function refreshPlanRequestBadge() {
+  if (!USER || (USER.role !== 'admin' && !USER.is_admin)) return;
+  try {
+    const d = await api('/admin/plan-requests');
+    const list = Array.isArray(d && d.requests) ? d.requests : [];
+    PLAN_REQ_OPEN = list.filter(r => r.status === 'open').length;
+  } catch (e) { return; }
+  const nav = document.querySelector('.nav-item[data-view="planRequests"]');
+  if (!nav) return;
+  const lbl = nav.querySelector('.nav-text');
+  if (lbl) lbl.textContent = 'Plan Requests' + (PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : '');
+  if (PLAN_REQ_OPEN) nav.style.background = 'rgba(239,68,68,.08)';
+}
+
 </script>
 <script>
 /* Inline guide content for the FunnelSwift ADMIN CONSOLE (fleet standard, FS-10).
@@ -4997,6 +5123,7 @@ window.appGuidePages = {
   "tagGroups": { title: "Tag Groups", desc: "Group related tags so a rule or an audience can target several at once.", actions: ["Create a group", "Add tags to it", "Use the group in a rule or campaign"] },
   "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts"] },
   "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
+  "planRequests": { title: "Plan Requests", desc: "A workspace that wants a paid plan asks here — its own Upgrade screen files the request because this install cannot take a card. Nothing is charged. Move a request to contacted, done or declined, and the customer sees that state the next time their screen loads.", actions: ["See every request and the workspace it came from", "Mark a request contacted, done or declined", "The number on the label is how many are still waiting"] },
   "settings": { title: "Settings", desc: "This app's own configuration for your account — the mail server it sends through and the other integration slots.", actions: ["Set the mail server credentials", "Check whether email is configured", "Review the other settings"] },
   "superAdmin": { title: "Super Admin", desc: "Platform-wide controls, visible only to a platform administrator.", actions: ["Review the platform settings", "Check the features registry"] }
 };
