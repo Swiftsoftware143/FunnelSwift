@@ -236,7 +236,7 @@ pub async fn admin_update(
     let row = sqlx::query(
         "WITH old AS (
             SELECT pr.status AS old_status, pr.reply AS old_reply, pr.plan_name,
-                   pr.requested_by, pr.tenant_id
+                   pr.plan_slug, pr.requested_by, pr.tenant_id
               FROM plan_requests pr WHERE pr.id = $1
          ), upd AS (
             UPDATE plan_requests
@@ -248,8 +248,8 @@ pub async fn admin_update(
          RETURNING id, status, reply, replied_at::text AS replied_at,
                    updated_at::text AS updated_at
          )
-         SELECT upd.*, old.old_status, old.old_reply, old.plan_name, old.requested_by,
-                old.tenant_id, t.name AS tenant_name
+         SELECT upd.*, old.old_status, old.old_reply, old.plan_name, old.plan_slug,
+                old.requested_by, old.tenant_id, t.name AS tenant_name
            FROM upd CROSS JOIN old LEFT JOIN tenants t ON t.id = old.tenant_id",
     )
     .bind(id)
@@ -267,6 +267,71 @@ pub async fn admin_update(
     let requested_by = row.get::<String, _>("requested_by");
     let tenant_id = row.get::<Uuid, _>("tenant_id");
     let tenant_name = row.try_get::<String, _>("tenant_name").unwrap_or_default();
+    let plan_slug = row.get::<String, _>("plan_slug");
+
+    // CLOSING THE LOOP (2026-10-19): `done` is the operator saying the workspace GOT the plan.
+    // Until this arm existed the status moved and the workspace's plan did not: the ask read
+    // "complete", the customer was mailed "complete", and the tier on their dashboard was still the
+    // old one, because moving them was a separate action on the Tenants screen that nothing asked
+    // for. The write is `plan_handler::set_active_plan` — the only writer of a tenant's plan, the
+    // same call the Tenants picker makes — so the old row is deactivated, the movement is dated and
+    // a referrer is settled exactly once, by the one code path that knows how.
+    //
+    // Only on the TRANSITION into `done`, and never when the workspace already holds that plan: a
+    // second save must not mint a second subscription row or settle a commission twice. A plan that
+    // cannot be resolved does not fail the operator's save — the state change is the record — but it
+    // is reported back so the screen can say the plan did not move, instead of implying it did.
+    let mut plan_applied = false;
+    let mut plan_note: Option<String> = None;
+    if new_status == "done" && old_status != "done" {
+        let target: Option<(Uuid, String)> =
+            sqlx::query_as("SELECT id, slug FROM plans WHERE slug = $1")
+                .bind(&plan_slug)
+                .fetch_optional(&state.pool)
+                .await?;
+        match target {
+            None => {
+                tracing::warn!(
+                    request = %id, plan = %plan_slug,
+                    "plan-request marked done, but no plan carries that slug — the plan did NOT move"
+                );
+                plan_note = Some(format!("no plan is called '{plan_slug}' any more"));
+            }
+            Some((plan_id, slug)) => {
+                let already = crate::plan_movement::current_plan(&state.pool, tenant_id)
+                    .await
+                    .map(|(s, _)| s == slug)
+                    .unwrap_or(false);
+                if already {
+                    plan_note = Some(format!("already on {slug}"));
+                } else {
+                    match crate::handlers::plan_handler::set_active_plan(
+                        &state.pool,
+                        tenant_id,
+                        plan_id,
+                    )
+                    .await
+                    {
+                        Ok((_, applied)) => {
+                            plan_applied = true;
+                            plan_note = Some(applied);
+                            tracing::info!(
+                                request = %id, tenant = %tenant_id, plan = %plan_slug,
+                                "plan-request done: the workspace was moved onto the plan it asked for"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                request = %id, tenant = %tenant_id, plan = %plan_slug,
+                                "plan-request done, but the plan move failed: {e}"
+                            );
+                            plan_note = Some(format!("the plan move failed: {e}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Tell the customer, but only when their screen would show something new. A mail failure never
     // fails the operator's save: the row is already written, and the sender records a refused send in
@@ -323,5 +388,8 @@ pub async fn admin_update(
         "reply": row.get::<String, _>("reply"),
         "replied_at": row.get::<Option<String>, _>("replied_at"),
         "updated_at": row.get::<String, _>("updated_at"),
+        // Whether the workspace's plan actually moved on this save, and why not when it did not.
+        "plan_applied": plan_applied,
+        "plan_note": plan_note,
     })))
 }
