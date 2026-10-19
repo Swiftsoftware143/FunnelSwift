@@ -1070,10 +1070,46 @@ window._closeModal = function(e) {
 };
 
 // ── PLANS ──
+// ── UPGRADE (2026-10-19) ────────────────────────────────────────────────────────────────────────
+// The Plans screen shipped a "Compare Plans & Upgrade" button whose only action was
+// `_navTo('plans')` — the view it was already on. A free-plan customer had NO way to start an
+// upgrade from this console: the click did nothing and no request was made. Every paid, non-current
+// plan now carries an Upgrade button that POSTs /api/v1/checkout/create (the same route the tenant
+// app's Upgrade tab uses), follows the provider's URL on success, and — when the install has no
+// payment provider configured yet — says so plainly instead of failing silently.
+function planIsCurrent(p) {
+  const cp = (USER && (USER.current_plan || USER.planObj)) || null;
+  if (!cp) return false;
+  if (cp.slug) return String(cp.slug) === String(p.slug);
+  if (cp.name) return String(cp.name) === String(p.name);
+  return false;
+}
+
+window._startUpgrade = async function (slug) {
+  if (!slug) return;
+  try {
+    const r = await api('/checkout/create', { method: 'POST', body: JSON.stringify({ plan_slug: slug }) });
+    const url = r && (r.url || r.checkout_url || (r.session && r.session.url));
+    if (url) { window.location.href = url; return; }
+    showToast('Checkout was created but no payment link came back — nothing was charged. Please contact support.', 'error', false);
+  } catch (e) {
+    const msg = String((e && e.message) || '');
+    if (msg === '402') return;                 // api() already toasted the plan limit
+    if (/payment_provider|not[_ ]configured/i.test(msg)) {
+      showToast('Upgrades are not open on this workspace yet — nothing was charged. Contact support and we will set the plan up for you.', 'info', false);
+    } else {
+      showToast('Could not start checkout: ' + msg + ' — nothing was charged.', 'error', false);
+    }
+  }
+};
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
 async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
   if (!Array.isArray(plans)) plans = plans.data || plans.plans || [];
+  const _paid = plans.filter(p => Number(p.price) > 0 && !planIsCurrent(p));
+  const _target = _paid.length ? _paid[0] : null;
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1081,7 +1117,7 @@ async function renderPlans() {
       ${isSuperAdmin() ? `<button class="btn btn-primary btn-sm" id="add-plan-btn">+ Add Plan</button>` : ''}
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Features</th>${isSuperAdmin()?'<th>Actions</th>':''}</tr></thead>
+      <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Features</th><th>Actions</th></tr></thead>
       <tbody>${plans.map(p=>`<tr>
         <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div></td>
         <td>${p.price>0?formatCurrency(p.price):'Free'}</td>
@@ -1093,15 +1129,23 @@ async function renderPlans() {
           ${p.has_analytics?'<span class="badge badge-blue">Analytics</span> ':''}
           ${p.has_import_export?'<span class="badge badge-yellow">Import/Export</span>':''}
         </td>
-        ${isSuperAdmin()?`<td><button class="btn btn-secondary btn-xs" onclick="window._editPlan('${p.id}')">Edit</button></td>`:''}
+        <td>${
+          isSuperAdmin()
+            ? `<button class="btn btn-secondary btn-xs" onclick="window._editPlan('${p.id}')">Edit</button>`
+            : (planIsCurrent(p)
+                ? `<span class="badge badge-blue">Current plan</span>`
+                : (Number(p.price) > 0
+                    ? `<button class="btn btn-primary btn-xs" data-upgrade-plan="${x(p.slug)}" onclick="window._startUpgrade('${x(p.slug)}')">Upgrade</button>`
+                    : `<span class="badge">Free plan</span>`))
+        }</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
-    ${!isSuperAdmin() && (!USER.current_plan || Number(USER.current_plan.price) === 0) ? `
+    ${!isSuperAdmin() && _target ? `
     <div class="card" style="text-align:center;padding:30px;background:#eef2ff;border:2px solid var(--primary);margin-top:16px">
       <div style="font-size:32px;margin-bottom:8px">🚀</div>
       <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">Ready to unlock more features?</h2>
       <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Upgrade to a paid plan to get more cards, leads, and advanced features.</p>
-      <button class="btn btn-primary" onclick="window._navTo('plans')">Compare Plans & Upgrade</button>
+      <button class="btn btn-primary" data-upgrade-plan="${x(_target.slug)}" onclick="window._startUpgrade('${x(_target.slug)}')">Upgrade to ${x(_target.name)}</button>
     </div>`:''}
   </div>`;
 }
