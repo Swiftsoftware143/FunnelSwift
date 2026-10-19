@@ -230,15 +230,27 @@ pub async fn admin_update(
         .reply
         .map(|r| r.trim().chars().take(1000).collect::<String>())
         .filter(|r| !r.is_empty());
+    // The row BEFORE the write travels back with it, so "did anything the customer can read actually
+    // change?" is answered by the database rather than by trusting the request body. Saving a status
+    // the row already carries must not mail the customer a second time.
     let row = sqlx::query(
-        "UPDATE plan_requests
-            SET status = $2,
-                reply = COALESCE($3, reply),
-                replied_at = CASE WHEN $3 IS NULL THEN replied_at ELSE NOW() END,
-                updated_at = NOW()
-          WHERE id = $1
+        "WITH old AS (
+            SELECT pr.status AS old_status, pr.reply AS old_reply, pr.plan_name,
+                   pr.requested_by, pr.tenant_id
+              FROM plan_requests pr WHERE pr.id = $1
+         ), upd AS (
+            UPDATE plan_requests
+               SET status = $2,
+                   reply = COALESCE($3, reply),
+                   replied_at = CASE WHEN $3 IS NULL THEN replied_at ELSE NOW() END,
+                   updated_at = NOW()
+             WHERE id = $1
          RETURNING id, status, reply, replied_at::text AS replied_at,
-                   updated_at::text AS updated_at",
+                   updated_at::text AS updated_at
+         )
+         SELECT upd.*, old.old_status, old.old_reply, old.plan_name, old.requested_by,
+                old.tenant_id, t.name AS tenant_name
+           FROM upd CROSS JOIN old LEFT JOIN tenants t ON t.id = old.tenant_id",
     )
     .bind(id)
     .bind(&status)
@@ -246,6 +258,64 @@ pub async fn admin_update(
     .fetch_optional(&state.pool)
     .await?;
     let row = row.ok_or_else(|| AppError::NotFound("No such plan request".into()))?;
+
+    let new_status = row.get::<String, _>("status");
+    let new_reply = row.get::<String, _>("reply");
+    let old_status = row.get::<String, _>("old_status");
+    let old_reply = row.get::<String, _>("old_reply");
+    let plan_name = row.get::<String, _>("plan_name");
+    let requested_by = row.get::<String, _>("requested_by");
+    let tenant_id = row.get::<Uuid, _>("tenant_id");
+    let tenant_name = row.try_get::<String, _>("tenant_name").unwrap_or_default();
+
+    // Tell the customer, but only when their screen would show something new. A mail failure never
+    // fails the operator's save: the row is already written, and the sender records a refused send in
+    // `email_send_log` (and a reserved/harness recipient as a non-send), where the operator can see it.
+    if new_status != old_status || (!new_reply.is_empty() && new_reply != old_reply) {
+        let filer_name: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT COALESCE(NULLIF(first_name, ''), NULLIF(name, '')) FROM users
+              WHERE tenant_id = $1 AND lower(email) = lower($2) LIMIT 1",
+        )
+        .bind(tenant_id)
+        .bind(&requested_by)
+        .fetch_optional(&state.pool)
+        .await?
+        .flatten();
+        let greeting = filer_name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| {
+                let t = tenant_name.trim().to_string();
+                if t.is_empty() {
+                    "there".to_string()
+                } else {
+                    t
+                }
+            });
+        let status_word = match new_status.as_str() {
+            "contacted" => "with our team - someone will be in touch",
+            "done" => "complete",
+            "declined" => "closed",
+            _ => "received",
+        };
+        if let Err(e) = crate::email::send_plan_request_update_email(
+            &state.pool,
+            tenant_id,
+            &requested_by,
+            &greeting,
+            &plan_name,
+            status_word,
+            &new_reply,
+        )
+        .await
+        {
+            tracing::warn!(
+                request = %id,
+                to = %requested_by,
+                "plan-request update mail was not sent: {e}"
+            );
+        }
+    }
 
     Ok(Json(json!({
         "id": row.get::<Uuid, _>("id"),

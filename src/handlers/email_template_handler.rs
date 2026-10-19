@@ -333,6 +333,7 @@ pub async fn list_template_types(
         serde_json::json!({"type": "password_reset", "description": "Sent when a user requests a password reset — carries the reset code", "merge_fields": ["name", "token", "app_name", "brand_name", "logo_url"]}),
         serde_json::json!({"type": "welcome", "description": "Stored only — no sender in this app reaches it; signup sends `credentials`", "merge_fields": ["name", "email", "login_url", "app_name", "brand_name", "logo_url"]}),
         serde_json::json!({"type": "purchase_confirmed", "description": "Stored only — no sender in this app (there is no in-app checkout)", "merge_fields": ["name", "plan_name", "login_url", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "plan_request_update", "description": "Sent when the operator answers a customer's plan request — carries the new state and the operator's note", "merge_fields": ["name", "plan_name", "status_word", "reply", "app_name", "brand_name", "logo_url"]}),
     ]))
 }
 

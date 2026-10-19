@@ -501,6 +501,27 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // A plan request is the ONLY way a customer can ask for a paid plan on this install (no
+        // payment provider is configured, so checkout refuses). Until 2026-10-19 the operator's
+        // answer was stored and the customer was never told: the ask sat in the row while the person
+        // who wanted to pay heard nothing. This arm is the copy an install without a
+        // `plan_request_update` template row sends; `reply` is empty when the operator wrote none.
+        "plan_request_update" => {
+            let plan = vars.get("plan_name").unwrap_or(&"a plan").to_string();
+            let state_word = vars.get("status_word").unwrap_or(&"updated").to_string();
+            let reply = vars.get("reply").unwrap_or(&"").to_string();
+            let reply_line = if reply.is_empty() {
+                String::new()
+            } else {
+                format!("A note from our team:\n\n{reply}\n\n")
+            };
+            let subject = format!("Your {APP_NAME} plan request - {plan}");
+            let text = format!(
+                "Hi {0},\n\nThanks for asking about the {1} plan. Your request is now {2}.\n\n{3}You can see the request and our reply any time on the Upgrade tab: {4}/upgrade\n\n- The {5} Team",
+                name, plan, state_word, reply_line, app_url, APP_NAME
+            );
+            (subject, Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -568,6 +589,37 @@ pub async fn send_reset_email(
         tenant_id,
         to,
         "password_reset",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+/// Tell the customer their plan request moved on.
+///
+/// Called from `PUT /api/v1/admin/plan-requests/:id`. The operator's answer is only worth writing if
+/// the person who asked hears it — and while no payment provider is configured this request IS the
+/// sales path, so an answer nobody reads is a lost sale. Renders through the tenant's own templates
+/// and branding, like every other mail this app sends.
+pub async fn send_plan_request_update_email(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    name: &str,
+    plan_name: &str,
+    status_word: &str,
+    reply: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("plan_name", plan_name);
+    vars.insert("status_word", status_word);
+    vars.insert("reply", reply);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "plan_request_update",
         &bound_vars(vars),
     )
     .await
