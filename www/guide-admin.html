@@ -90,6 +90,7 @@
       <a href="#overview" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📋</span> Dashboard</a>
       <a href="#tenants" class="section-title" onclick="closeMobile()">Tenant Management</a>
       <a href="#tenants" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏢</span> Tenants & Plans</a>
+      <a href="#plan-requests" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🙋</span> Plan Requests</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">💳</span> Plans</a>
       <a href="#template-gating" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔒</span> Template Gating</a>
       <a href="#branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Branding Toggle</a>
@@ -129,6 +130,22 @@
           <li><strong>View Details</strong> — Click a tenant name to see full info</li>
           <li><strong>Disable</strong> — Toggle tenant active/inactive</li>
         </ul>
+      </div>
+
+      <!-- ============ PLAN REQUESTS ============ -->
+      <h2 id="plan-requests">🙋 Plan Requests</h2>
+      <p>A workspace that wants a paid plan asks for it from its own Upgrade screen. On this install that is how a sale happens: there is no payment provider configured, so the checkout itself refuses the card and the ask becomes the buying path. The ask is stored as a row the customer can re-read, and this screen is where you answer it.</p>
+
+      <div class="card">
+        <h3>Reading the queue</h3>
+        <p>Each row is one workspace's ask: the workspace, the plan it asked for, who filed it and when, and the state. Open asks sort first. The number beside <strong>Plan Requests</strong> in the sidebar is how many are still open, so a waiting customer is visible without opening the screen.</p>
+        <ul>
+          <li><strong>Open</strong> — filed, nobody has answered yet. The customer's own screen says "Open — with our team".</li>
+          <li><strong>Contacted</strong> — records that you have reached out. The customer's screen then reads "We have contacted you"; their plan does not change.</li>
+          <li><strong>Done</strong> — moves the workspace onto the plan it asked for <em>and</em> closes the request. The plan change is written first (the same writer the Tenants screen's plan dropdown uses); if that plan cannot be found in the catalogue nothing is changed and you are told, so a "Done" chip can never sit above a workspace that was not moved.</li>
+          <li><strong>Declined</strong> — closes the request without changing the plan.</li>
+        </ul>
+        <p>Nothing is charged on either side. A request is settled between you and the customer — invoicing, a transfer, or a manual upgrade — and the state here is the record of what was agreed. The customer sees every change the next time their Upgrade screen loads; no email is sent for a state change.</p>
       </div>
 
       <!-- ============ PLANS ============ -->
@@ -559,6 +576,16 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
 
       <!-- ============ API ============ -->
       <h2 id="api">🔌 Admin API Reference</h2>
+
+      <div class="card">
+        <h3>Plan Requests</h3>
+        <table>
+          <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+          <tr><td>GET</td><td>/api/v1/admin/plan-requests</td><td>Every workspace's ask, open ones first, with the workspace name and the plan asked for</td></tr>
+          <tr><td>PUT</td><td>/api/v1/admin/plan-requests/:id</td><td>Move one ask on — body <code>{"status":"contacted"}</code>, where the status is contacted, done or declined (the Plan Requests screen also writes the plan change for <code>done</code>)</td></tr>
+          <tr><td>POST</td><td>/api/v1/tenants/:id/plan</td><td>Move a workspace onto a plan — what the screen sends before it marks an ask done</td></tr>
+        </table>
+      </div>
 
       <div class="card">
         <h3>Plan Management</h3>
