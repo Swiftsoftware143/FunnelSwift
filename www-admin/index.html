@@ -5019,6 +5019,13 @@ async function renderPlanRequests() {
       (r.note ? '<div style="font-size:11px;color:var(--muted);max-width:280px">' + x(r.note) + '</div>' : '') + '</td>' +
       '<td>' + planReqChip(r.status) + '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
+      '<td><div style="display:flex;gap:4px;align-items:center">' +
+      '<input data-pr-reply="' + x(r.id) + '" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
+      'style="width:150px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">' +
+      '<button class="btn" data-pr-save-reply="' + x(r.id) + '" data-pr-cur="' + x(r.status) + '" ' +
+      'style="padding:3px 6px;font-size:11px">Save</button></div>' +
+      (r.replied_at ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">sent ' + formatDate(r.replied_at) + '</div>' : '') +
+      '</td>' +
       '<td style="text-align:right;white-space:nowrap">' + acts + '</td></tr>';
   };
   return `<div>
@@ -5028,12 +5035,35 @@ async function renderPlanRequests() {
     ${err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : ''}
     ${open ? '<div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;color:#92400e"><strong>' + open + '</strong> workspace' + (open === 1 ? ' is' : 's are') + ' waiting on an answer.</div>' : ''}
     <div class="card">
-      ${wiredTable(['Workspace', 'Requested plan', 'State', 'Asked', ''], list.map(rowFor), 'No workspace has asked for a plan change')}
+      ${wiredTable(['Workspace', 'Requested plan', 'State', 'Asked', 'Note to customer', ''], list.map(rowFor), 'No workspace has asked for a plan change')}
     </div>
   </div>`;
 }
 
+function planReqReplyValue(id) {
+  const el = document.querySelector('input[data-pr-reply="' + id + '"]');
+  return el ? String(el.value || '') : '';
+}
+
 function bindPlanRequests() {
+  // The note can be saved on its own: an operator who only wants to EXPLAIN a declined ask should
+  // not have to move the state to do it, and a corrected sentence should not restate the state.
+  document.querySelectorAll('button[data-pr-save-reply]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-pr-save-reply');
+      const cur = b.getAttribute('data-pr-cur') || 'open';
+      b.disabled = true;
+      try {
+        await api('/admin/plan-requests/' + encodeURIComponent(id),
+          { method: 'PUT', body: JSON.stringify({ status: cur, reply: planReqReplyValue(id) }) });
+        showToast('Note saved \u2014 the customer reads it on their Upgrade screen', 'success');
+        renderApp();
+      } catch (e) {
+        b.disabled = false;
+        showToast((e && e.message) || 'Could not save the note', 'error');
+      }
+    });
+  });
   document.querySelectorAll('button[data-pr-id]').forEach(b => {
     b.addEventListener('click', async () => {
       const id = b.getAttribute('data-pr-id');
@@ -5063,7 +5093,10 @@ function bindPlanRequests() {
           await api('/tenants/' + encodeURIComponent(tid) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id }) });
           moved = ' and moved the workspace onto ' + (plan.name || slug);
         }
-        await api('/admin/plan-requests/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ status }) });
+        // The note typed beside the buttons travels WITH the state change, so a "declined" chip is
+        // never shown to the customer without the sentence that explains it.
+        await api('/admin/plan-requests/' + encodeURIComponent(id),
+          { method: 'PUT', body: JSON.stringify({ status, reply: planReqReplyValue(id) }) });
         showToast('Marked ' + status + moved, 'success');
         renderApp();
       } catch (e) {

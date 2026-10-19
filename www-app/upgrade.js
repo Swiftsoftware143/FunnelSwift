@@ -82,10 +82,19 @@ function renderRequests(){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px">'
       + '<h4 style="font-size:15px;font-weight:700;margin:0 0 10px">Your plan requests</h4>';
     PREQS.forEach(function(q){
-      h += '<div data-plan-request="'+esc(q.id)+'" style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
+      h += '<div data-plan-request="'+esc(q.id)+'" style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
+        + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center">'
         + '<div><strong>'+esc(q.plan_name || q.plan_slug)+'</strong>'
         + '<span style="color:#94a3b8"> · '+esc(String(q.created_at||'').slice(0,10))+'</span></div>'
         + '<div>'+reqChip(q.status)+'</div></div>';
+      // The operator's own sentence, when there is one. A "declined" chip with no explanation is
+      // the dead end this screen exists to remove, so the note is rendered where the state is.
+      if(q.reply){
+        h += '<div data-plan-request-reply style="margin-top:6px;background:#f8fafc;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;font-size:12px;color:#334155;white-space:pre-wrap">'
+          + '<strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'
+          + esc(q.reply) + '</div>';
+      }
+      h += '</div>';
     });
     h += '<p style="font-size:11px;color:#94a3b8;margin:10px 0 0">Our team reads these. You will see the state change here once it is handled.</p></div>';
   }
@@ -136,7 +145,8 @@ async function loadAdminRequests(){
       + '<p style="font-size:11px;color:#64748b;margin:0 0 10px">Every ask a customer filed because the install has no payment provider. '
       + 'Move the state on here — the customer sees it on their own Upgrade screen.</p>';
     list.forEach(function(q){
-      h += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
+      h += '<div data-admin-plan-request="'+esc(q.id)+'" style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center">'
         + '<div><strong>'+esc(q.tenant_name)+'</strong> · '+esc(q.plan_name || q.plan_slug)
         + '<div style="color:#94a3b8;font-size:11px">'+esc(q.requested_by||'')+' · '+esc(String(q.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'
         + '<div style="display:flex;gap:6px;align-items:center">'+reqChip(q.status);
@@ -146,7 +156,13 @@ async function loadAdminRequests(){
             + 'style="padding:4px 8px;font-size:11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;cursor:pointer">'+s+'</button>';
         }
       });
-      h += '</div></div>';
+      h += '</div></div>'
+        + '<div style="display:flex;gap:6px;margin-top:6px">'
+        + '<input data-reply-for="'+esc(q.id)+'" value="'+esc(q.reply||'')+'" placeholder="A note the customer reads on their Upgrade screen" '
+        + 'style="flex:1;padding:6px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px">'
+        + '<button onclick="saveRequestReply(\''+esc(q.id)+'\',\''+esc(q.status)+'\')" '
+        + 'style="padding:4px 10px;font-size:11px;border:1px solid #6366f1;background:#eef2ff;color:#3730a3;border-radius:6px;cursor:pointer">Save note</button>'
+        + '</div></div>';
     });
     h += '</div>';
     box.innerHTML = h;
@@ -159,10 +175,31 @@ async function setRequestStatus(id, status){
     var r = await fetch(window.location.origin+'/api/v1/admin/plan-requests/'+id, {
       method:'PUT',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body:JSON.stringify({status:status})
+      body:JSON.stringify({status:status, reply:replyBoxValue(id)})
     });
     if(!r.ok){ var d = {}; try { d = await r.json(); } catch(e) {} alert((d && (d.message||d.error)) || ('Could not update ('+r.status+')')); return; }
   } catch(e) { alert('Could not update: '+e.message); return; }
+  loadAdminRequests();
+  loadRequests();
+}
+
+function replyBoxValue(id){
+  var el = document.querySelector('[data-reply-for="'+id+'"]');
+  return el ? String(el.value || '') : '';
+}
+
+/* Save the note on its own, leaving the state where it is: a "contacted" ask that needs one more
+   sentence, or a note corrected after the fact, should not force a state change to be recorded. */
+async function saveRequestReply(id, status){
+  var token = T || '';
+  try {
+    var r = await fetch(window.location.origin+'/api/v1/admin/plan-requests/'+id, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({status:status, reply:replyBoxValue(id)})
+    });
+    if(!r.ok){ var d = {}; try { d = await r.json(); } catch(e) {} alert((d && (d.message||d.error)) || ('Could not save the note ('+r.status+')')); return; }
+  } catch(e) { alert('Could not save the note: '+e.message); return; }
   loadAdminRequests();
   loadRequests();
 }
