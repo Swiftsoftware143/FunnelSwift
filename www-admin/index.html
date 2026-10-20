@@ -5013,6 +5013,10 @@ async function renderPlanRequests() {
   let err = '';
   try { payload = await api('/admin/plan-requests') || payload; }
   catch (e) { err = (e && e.message) || 'Could not load the queue'; }
+  // Keep the shared cache warm from the queue's own read (cron-1020): the operator's status move
+  // re-renders this screen, so the dashboard card must not keep counting a request they just closed
+  // — one list feeds both surfaces, so they can never disagree.
+  if (!err && Array.isArray(payload.requests)) { PREQ_LIST = payload.requests; paintPlanRequests(); }
   const list = Array.isArray(payload.requests) ? payload.requests : [];
   const open = typeof payload.open === 'number' ? payload.open : list.filter(r => r.status === 'open').length;
   PLAN_REQ_OPEN = open;
