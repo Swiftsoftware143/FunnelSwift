@@ -3972,8 +3972,15 @@ function bindCardAnalytics() {
 
 // ── CARD LIST (Sub-view) ──
 async function renderCardList() {
+  /* This screen says "All Cards", but it read the WORKSPACE-scoped `/kinetic/cards`, so an operator
+     saw only their own workspace's cards and every other customer's cards were invisible (measured
+     2026-10-20: `/kinetic/cards` -> 0 rows for a fresh operator, while `/admin/kinetic-cards` -> 7
+     cards across 3 workspaces). The admin route existed with no door onto it. The per-card
+     Stats/UTM panes are still workspace-scoped READS/WRITES, so they are offered only on the
+     operator's own cards; a foreign card is shown, labelled with its workspace, and not editable. */
+  const ownTenant = (typeof USER !== 'undefined' && USER && USER.tenant_id) ? USER.tenant_id : '';
   let cards = [];
-  try { const r = await api('/kinetic/cards'); cards = Array.isArray(r)?r:(r?.cards||r?.data||[]); } catch(e) { cards = []; }
+  try { const r = await api('/admin/kinetic-cards'); cards = Array.isArray(r)?r:(r?.cards||r?.data||[]); } catch(e) { cards = []; }
 
   return `<div class="card" style="padding:20px;margin-top:20px">
     <div class="card-header" style="padding:0;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
@@ -3981,16 +3988,18 @@ async function renderCardList() {
       <button class="btn btn-sm" onclick="window._setState({subView:null})" style="background:var(--border)">✕ Close</button>
     </div>
     ${cards.length===0?'<div class="empty"><div class="desc">No cards found</div></div>':`<div class="table-wrap"><table class="table" style="font-size:12px">
-      <thead><tr><th>Card</th><th>Type</th><th>Slug</th><th>Views</th><th>UTM</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Card</th><th>Workspace</th><th>Type</th><th>Slug</th><th>Views</th><th>UTM</th><th>Actions</th></tr></thead>
       <tbody>${cards.map(c=>`<tr>
-        <td><strong>${x(c.title||'Untitled')}</strong></td>
+        <td><strong>${x(c.title||'Untitled')}</strong>${c.is_active===false?' <span class="badge" style="background:#e2e8f0">inactive</span>':''}</td>
+        <td>${x(c.tenant_name||'Unknown')}</td>
         <td><span class="badge badge-blue">${x(c.template_type||c.type||'card')}</span></td>
         <td><code style="font-size:11px">${x(c.slug)}</code></td>
         <td>${(c.view_count||c.views||0).toLocaleString()}</td>
-        <td>${c.utm_source?`<span class="badge badge-green">UTM Set</span>`:`<span class="badge" style="background:#e2e8f0">None</span>`}</td>
+        <td>${c.utm_source?`<span class="badge badge-green">${x(c.utm_source)}</span>`:`<span class="badge" style="background:#e2e8f0">None</span>`}</td>
         <td>
-          <button class="btn btn-primary btn-xs" onclick="window._setState({subView:'cardDetail',data:{cardId:'${c.id}'}})">📊 Stats</button>
-          <button class="btn btn-xs" onclick="window._setState({view:'cardUtmBuilder',data:{cardId:'${c.id}'}})" style="background:var(--warning);color:#fff;margin-left:4px">🔗 UTM</button>
+          ${(!ownTenant||c.tenant_id===ownTenant)?`<button class="btn btn-primary btn-xs" onclick="window._setState({subView:'cardDetail',data:{cardId:'${c.id}'}})">📊 Stats</button>
+          <button class="btn btn-xs" onclick="window._setState({view:'cardUtmBuilder',data:{cardId:'${c.id}'}})" style="background:var(--warning);color:#fff;margin-left:4px">🔗 UTM</button>`
+          :`<span style="color:var(--muted,#94a3b8);font-size:11px">other workspace</span>`}
         </td>
       </tr>`).join('')}</tbody>
     </table></div>`}
