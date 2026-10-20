@@ -43,6 +43,51 @@ pub async fn ensure_system_tenant(pool: &sqlx::PgPool) -> Result<(), crate::erro
     Ok(())
 }
 
+/// Re-seed the ONE free catalogue product per app that the fleet's upgrade-event endpoint looks up.
+///
+/// The reader (`handlers::affiliate_tracking_handler::handle_affiliate_upgrade_event`) credits a
+/// commission with `SELECT id FROM affiliate_products WHERE source_app = $1 AND is_active = true`.
+/// Measured live 2026-10-19: `affiliate_products` held 0 rows, so that lookup matched nothing and
+/// every cross-app upgrade would have recorded a commission with a NULL product — the money lands,
+/// the attribution does not. Migration 055 seeded these rows and its `NOT EXISTS` guard means it can
+/// never run again, while the rows themselves are one `ON DELETE CASCADE` away from being wiped
+/// again with the System tenant (measured: that has now happened twice).
+///
+/// Idempotency is the reader's own predicate: an ACTIVE row for a `source_app` satisfies both the
+/// lookup and this guard, so a re-run inserts nothing and an admin's deliberately INACTIVE row is
+/// left alone rather than resurrected. The keys are the compile-time literals each sibling app
+/// sends; nothing here invents one.
+pub async fn ensure_fleet_catalogue(pool: &sqlx::PgPool) -> Result<u64, crate::error::AppError> {
+    ensure_system_tenant(pool).await?;
+    let res = sqlx::query(
+        r#"INSERT INTO affiliate_products
+              (id, tenant_id, name, description, price, default_commission_rate, is_active,
+               is_third_party, product_type, owner_name, source_app, slug)
+           SELECT gen_random_uuid(), $1,
+                  v.name, v.description, 0, 20.0, true, false, 'software', 'SwiftSoftware',
+                  v.key, v.slug
+             FROM (VALUES
+                   ('workflowswift',      'WorkflowSwift Free',
+                    'WorkflowSwift automation - free plan', 'workflowswift-free'),
+                   ('coreswift',          'CoreSwift Free',
+                    'CoreSwift CRM - free plan', 'coreswift-free'),
+                   ('incentiveswift',     'IncentiveSwift Free',
+                    'IncentiveSwift campaigns and loyalty - free plan', 'incentiveswift-free'),
+                   ('adaswift',           'ADASwift Free',
+                    'ADASwift accessibility - free plan', 'adaswift-free'),
+                   ('missedcallrespondr', 'MissedCall Respondr Free',
+                    'MissedCall Respondr - free plan', 'missedcallrespondr-free')
+                  ) AS v(key, name, description, slug)
+            WHERE NOT EXISTS (
+                   SELECT 1 FROM affiliate_products p
+                    WHERE p.source_app = v.key AND p.is_active = true)"#,
+    )
+    .bind(system_tenant_id())
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -83,6 +83,21 @@ async fn main() -> Result<()> {
 
     let pool = database.pool().clone();
 
+    // The fleet's affiliate catalogue lives in this database and is owned by the System tenant.
+    // Both halves are one cascade away from vanishing with that tenant row (measured live
+    // 2026-10-19: 0 catalogue rows, every cross-app upgrade attribution resolving to nothing), and
+    // migration 055 can never re-run because its own `NOT EXISTS` guard is now satisfied by
+    // absence. Converge at every boot instead. Never fatal: a seed that cannot run must not stop
+    // the app serving.
+    match system_tenant::ensure_fleet_catalogue(&pool).await {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(
+            rows = n,
+            "affiliate catalogue: re-seeded missing fleet product(s)"
+        ),
+        Err(e) => tracing::error!("affiliate catalogue seed failed: {}", e),
+    }
+
     // Seal any credential still in the CLEAR in `admin_settings.email` (kanban t_a794cb09).
     // Both write paths seal before they store, and this makes the row converge at boot as well:
     // a database restored from a dump taken before the change — or a writer added later that
