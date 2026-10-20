@@ -12,17 +12,17 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-18 by the test's own counter over `api_router.rs`)
+//! # The census (re-measured 2026-10-20 by the test's own counter over `api_router.rs`)
 //!
-//! 203 `.route(..)` mounts / 202 unique paths, classified three ways:
+//! 208 `.route(..)` mounts / 207 unique paths, classified three ways:
 //!
 //! ```text
-//!   178 mounts  /api/**            177 unique after the duplicate `/api/v1/linkedin/auth`
+//!   182 mounts  /api/**            181 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     18        public            -> PUBLIC_ROUTES below
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    156        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (31 of them `/api/v1/admin/**` = the operator surface,
+//!    161        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (33 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -232,7 +232,7 @@ pub fn is_internal_route(path: &str) -> bool {
 /// lead/unlock form posts, the tracking pixel, `/`, `/robots.txt` and `/admin/plans` (a static
 /// Askama shell with no query). Keeping them out of the boundary is the pre-existing, deliberate
 /// split (`require_auth` always guarded `/api/` only): a served page carries no tenant data, it
-/// renders and then asks the API with the session the browser holds. The census of those 25 mounts
+/// renders and then asks the API with the session the browser holds. The census of those 26 mounts
 /// is in the module docs.
 pub fn is_api_path(path: &str) -> bool {
     path.starts_with("/api/")
@@ -320,11 +320,31 @@ mod tests {
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
+        let mut unique: Vec<&String> = mounted.iter().collect();
+        unique.sort_unstable();
+        unique.dedup();
         let api = mounted.iter().filter(|p| is_api_path(p)).count();
-        assert_eq!(mounted.len(), 203, "mounted route count moved");
+        let public = mounted.iter().filter(|p| is_public_route(p)).count();
+        let internal = mounted.iter().filter(|p| is_internal_route(p)).count();
+        // Everything on the API surface that neither list claims is behind `require_auth`.
+        let private = mounted
+            .iter()
+            .filter(|p| is_api_path(p) && !is_public_route(p) && !is_internal_route(p))
+            .count();
+        let served = mounted.len() - api;
+        // One tuple, so a movement names WHICH bucket moved instead of only that the total did.
         assert_eq!(
-            api, 178,
-            "/api/ mount count moved — update the census in the module docs"
+            (
+                mounted.len(),
+                unique.len(),
+                api,
+                public,
+                internal,
+                private,
+                served
+            ),
+            (208, 207, 182, 18, 3, 161, 26),
+            "the census in the module docs no longer matches the router"
         );
     }
 
