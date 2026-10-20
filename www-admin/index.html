@@ -414,6 +414,9 @@ function doLogout() {
   // kanban cron-1019: put the count of waiting plan asks on the sidebar label before the operator
   // has to think of opening the screen. Fire-and-forget: a failure here must not delay the console.
   refreshPlanRequestBadge();
+  // Re-check while the console stays open (kanban cron-1020): a buying request that arrives between
+  // page loads now shows up on its own, within one interval, instead of waiting for a reload.
+  setInterval(() => { if (TOKEN) refreshPlanRequestBadge(); }, 45000);
   // A reload mid-impersonation must not silently swallow the banner: the operator needs to see
   // which account this session belongs to and the control that hands their own session back.
   if (localStorage.getItem(IMP_ORIGINAL_KEY)) {
@@ -702,6 +705,7 @@ async function renderDashboard() {
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">Dashboard</h1>
+    <div id="preqCard"></div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-value">${stats?.total_leads||0}</div><div class="stat-label">Total Leads</div></div>
       <div class="stat-card"><div class="stat-value">${stats?.total_cards||0}</div><div class="stat-label">Cards Created</div></div>
@@ -719,7 +723,9 @@ async function renderDashboard() {
     </div>
   </div>`;
 }
-function bindDashboard() {}
+// The waiting-requests card is painted from the list refreshPlanRequestBadge() already caches, so a
+// dashboard paint never adds a second call to the same route.
+function bindDashboard() { paintPlanRequests(); }
 
 // ── MY ACCOUNT ──
 async function renderMyAccount() {
@@ -5121,14 +5127,44 @@ async function refreshPlanRequestBadge() {
   if (!USER || (USER.role !== 'admin' && !USER.is_admin)) return;
   try {
     const d = await api('/admin/plan-requests');
-    const list = Array.isArray(d && d.requests) ? d.requests : [];
-    PLAN_REQ_OPEN = list.filter(r => r.status === 'open').length;
+    PREQ_LIST = Array.isArray(d && d.requests) ? d.requests : [];
   } catch (e) { return; }
+  paintPlanRequests();
+}
+
+// kanban cron-1020 — the count reached the sidebar ONLY at boot, so a request that arrived while an
+// operator had the console open was invisible until they reloaded (measured: filing a request left
+// the open console unchanged, with the row already in the queue). Two things follow from one cached
+// read: the sidebar label (as before) and a card at the TOP of the dashboard, because a label on a
+// collapsed sidebar section is easy to miss and this is the one screen the operator lands on. Both
+// repaint from the same list, so they can never disagree, and a workspace with nothing waiting gets
+// no card at all — nothing is invented.
+var PREQ_LIST = null;
+function paintPlanRequests() {
+  if (PREQ_LIST === null) return;
+  const openRows = PREQ_LIST.filter(r => r.status === 'open');
+  PLAN_REQ_OPEN = openRows.length;
   const nav = document.querySelector('.nav-item[data-view="planRequests"]');
-  if (!nav) return;
-  const lbl = nav.querySelector('.nav-text');
-  if (lbl) lbl.textContent = 'Plan Requests' + (PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : '');
-  if (PLAN_REQ_OPEN) nav.style.background = 'rgba(239,68,68,.08)';
+  if (nav) {
+    const lbl = nav.querySelector('.nav-text');
+    if (lbl) lbl.textContent = 'Plan Requests' + (PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : '');
+    nav.style.background = PLAN_REQ_OPEN ? 'rgba(239,68,68,.08)' : '';
+  }
+  const box = document.getElementById('preqCard');
+  if (!box) return;
+  if (!openRows.length) { box.innerHTML = ''; return; }
+  const r = openRows[0];
+  const who = r.tenant_name || r.requested_by || '';
+  box.innerHTML = '<div class="card" data-plan-requests-waiting="' + PLAN_REQ_OPEN + '"'
+    + ' style="border-left:4px solid #ef4444;margin-bottom:16px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+    + '<div><div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Waiting on you</div>'
+    + '<div style="font-size:20px;font-weight:800">' + PLAN_REQ_OPEN + ' plan request' + (PLAN_REQ_OPEN === 1 ? '' : 's') + '</div>'
+    + '<div style="color:#475569;font-size:13px;margin-top:2px">' + x(r.plan_name || r.plan_slug || '')
+    + (who ? ' &middot; ' + x(who) : '') + ' &middot; ' + formatDate(r.created_at) + '</div></div>'
+    + '<button class="btn" data-open-plan-requests="1">Open the queue</button></div></div>';
+  const btn = box.querySelector('[data-open-plan-requests]');
+  if (btn) btn.addEventListener('click', () => { STATE.view = 'planRequests'; STATE.subView = null; renderApp(); });
 }
 
 </script>
