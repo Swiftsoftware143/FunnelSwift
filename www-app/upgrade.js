@@ -364,6 +364,12 @@ function upgradeTo(slug){
           PREQ_MSG = { ok:true, text:'Upgrades are not open on this workspace yet — nothing was charged.' };
           loadRequests();
           window.scrollTo(0,0);
+          // ONE PRESS FILES IT (cron 2026-10-20). Measured LIVE in Chromium on app.funnelswift.net
+          // before this change: pressing Upgrade answered 503 /api/v1/checkout/create and only
+          // RENDERED the offer card — GET /api/v1/plan-requests still returned 0 rows, so a buyer
+          // who pressed once had asked for nothing. The ask is filed on that same press; the button
+          // stays as the retry control (requestPlan's catch arm leaves PREQ_OFFER set on failure).
+          requestPlan(slug);
           return;
         }
         var lead = operatorMsg
