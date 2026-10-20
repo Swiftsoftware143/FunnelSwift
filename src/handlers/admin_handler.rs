@@ -935,6 +935,8 @@ pub async fn admin_list_all_cards(
             String,
             Option<String>,
             bool,
+            i64,
+            Option<String>,
         ),
     >(
         // The "Tenant" column names the WORKSPACE a card belongs to, so the name comes from
@@ -942,9 +944,20 @@ pub async fn admin_list_all_cards(
         // own list of client companies, a different thing entirely): it answered 'Unknown' for
         // every card on this install (measured 2026-10-19: 7 cards, 0 portfolio_companies rows)
         // and would have multiplied a card once per portfolio company for a tenant that had any.
+        //  * the console's "All Cards" table has always rendered a Views column and a UTM badge,
+        //    and this payload carried NEITHER, so every row showed 0 views and "None" whatever the
+        //    card had actually done. The two correlated reads below are the same sources the
+        //    per-card analytics screens use: `kinetic_card_daily_stats.views` (summed per card) and
+        //    the newest non-null `utm_source` in `kinetic_card_events`. Both are scalar subqueries,
+        //    so the row count cannot multiply.
         r#"SELECT kc.id, kc.tenant_id, COALESCE(t.name, 'Unknown') as tenant_name,
                kc.title, kc.slug, COALESCE(kc.template_type, 'default') as template_type, kc.theme,
-               COALESCE(ts.value #>> '{}', '') as subdomain, kc.avatar_url, kc.is_active
+               COALESCE(ts.value #>> '{}', '') as subdomain, kc.avatar_url, kc.is_active,
+               COALESCE((SELECT SUM(s.views) FROM kinetic_card_daily_stats s
+                          WHERE s.card_id = kc.id), 0)::bigint as view_count,
+               (SELECT e.utm_source FROM kinetic_card_events e
+                 WHERE e.card_id = kc.id AND e.utm_source IS NOT NULL AND e.utm_source <> ''
+                 ORDER BY e.created_at DESC LIMIT 1) as utm_source
         FROM kinetic_cards kc
         LEFT JOIN tenants t ON t.id = kc.tenant_id
         LEFT JOIN tenant_settings ts ON ts.tenant_id = kc.tenant_id AND ts.key = 'subdomain'
@@ -968,6 +981,8 @@ pub async fn admin_list_all_cards(
                 subdomain,
                 avatar_url,
                 is_active,
+                view_count,
+                utm_source,
             )| {
                 json!({
                     "id": id.to_string(),
@@ -980,6 +995,8 @@ pub async fn admin_list_all_cards(
                     "subdomain": subdomain,
                     "avatar_url": avatar_url,
                     "is_active": is_active,
+                    "view_count": view_count,
+                    "utm_source": utm_source,
                 })
             },
         )
