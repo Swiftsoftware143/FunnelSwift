@@ -207,10 +207,20 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     // 401 (the SPA turns 401 into "Session expired" + sign-out); a database that cannot answer is
     // a 503, never a pass.
     match user_session_state(&state.pool, &claims.sub).await {
-        Ok(Some((true, row_role))) => {
+        Ok(Some((true, row_role, valid_from))) => {
             if platform_admin_claim_outranks_row(&claims.role, &row_role) {
                 tracing::warn!(
                     "refused a platform-admin claim the users row no longer grants (user {})",
+                    claims.sub
+                );
+                return reject(StatusCode::UNAUTHORIZED, SESSION_REVOKED);
+            }
+            // SESSION REVOCATION (kanban t_80787a0f): the same read returns the instant this
+            // account last changed or reset its password, so a token minted before it stops here
+            // — 401, exactly like a deleted account. `None` (never rotated) changes nothing.
+            if session_predates_password_change(Some(claims.iat as i64), valid_from) {
+                tracing::warn!(
+                    "refused a session minted before the account's password change (user {})",
                     claims.sub
                 );
                 return reject(StatusCode::UNAUTHORIZED, SESSION_REVOKED);
@@ -269,27 +279,49 @@ pub const WORKSPACE_INACTIVE: &str =
 /// (kanban t_53fcb666). The SPA's 401 arm turns it into "Session expired" + sign-out.
 pub const SESSION_REVOKED: &str = "This session is no longer valid. Please sign in again.";
 
-/// Is the user named by a token's `sub` still a live, enabled row in `users`, and what does that
-/// row grant TODAY?
+/// Is the user named by a token's `sub` still a live, enabled row in `users`, what does that
+/// row grant TODAY, and when were its sessions last ended by a password change?
 ///
 /// `Ok(None)` — no such row (the account was deleted) or a `sub` that is not even a uuid, i.e.
-/// the credential names nobody. `Ok(Some((false, _)))` — the row exists but is disabled. Both
-/// refuse. `Ok(Some((true, role)))` — the row is live; `role` is its CURRENT grant, which the
-/// caller compares against the token's claim so a demoted operator's old token stops working
-/// (kanban t_28184826).
+/// the credential names nobody. `Ok(Some((false, _, _)))` — the row exists but is disabled. Both
+/// refuse. `Ok(Some((true, role, valid_from)))` — the row is live; `role` is its CURRENT grant,
+/// which the caller compares against the token's claim so a demoted operator's old token stops
+/// working (kanban t_28184826), and `valid_from` is `users.sessions_valid_from` as a unix epoch
+/// (`None` = this account never changed or reset its password, so no session is restricted) which
+/// ends the sessions that predate it (kanban t_80787a0f).
 /// `Err` — the database could not answer; the caller refuses with 503 rather than pretending the
 /// account is gone (`live-error-path-proof`).
 async fn user_session_state(
     pool: &sqlx::PgPool,
     sub: &str,
-) -> Result<Option<(bool, String)>, sqlx::Error> {
+) -> Result<Option<(bool, String, Option<i64>)>, sqlx::Error> {
     let Ok(user_id) = uuid::Uuid::parse_str(sub) else {
         return Ok(None);
     };
-    sqlx::query_as::<_, (bool, String)>("SELECT is_active, role FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await
+    sqlx::query_as::<_, (bool, String, Option<i64>)>(
+        "SELECT is_active, role, floor(EXTRACT(EPOCH FROM sessions_valid_from))::bigint
+           FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Does a session minted at `jwt_iat` predate the instant its account last changed or reset its
+/// password? (kanban t_80787a0f)
+///
+/// Pure, so both arms are unit-tested. `valid_from` is `users.sessions_valid_from` as a unix epoch
+/// (`None` = never restricted, which is every account until it rotates its password, so every
+/// token already in the wild keeps working). A session with no `iat` cannot prove it is newer than
+/// the change, and the safe answer for a credential is "cannot prove → refuse". `iat` is second-granularity (and the change's own timestamp is floored to a second for this reason), so a session minted in the SAME second as the change cannot be told apart from a re-login and is allowed.
+pub fn session_predates_password_change(jwt_iat: Option<i64>, valid_from: Option<i64>) -> bool {
+    match valid_from {
+        None => false,
+        Some(v) => match jwt_iat {
+            None => true,
+            Some(iat) => iat < v,
+        },
+    }
 }
 
 fn reject(status: StatusCode, error: &str) -> Response {
@@ -491,5 +523,25 @@ mod tests {
         assert!(is_public("/api/v1/kinetic/cards/7/gate"));
         // ...but a longer sibling is now private.
         assert!(!is_public("/api/v1/checkout/session/abc/refund"));
+    }
+
+    /// The reported defect (kanban t_80787a0f): changing or resetting the password revoked
+    /// nothing, because the boundary decided on the token's claims alone. The rule is one
+    /// comparison — a session minted BEFORE `users.sessions_valid_from` is refused — and it must
+    /// change nothing else: a NULL timestamp (every account that never rotated), a session minted
+    /// at or after the change, and a session without an `iat` on an unrestricted row all stay as
+    /// they were.
+    #[test]
+    fn a_session_minted_before_the_password_change_is_refused_and_nothing_else_is() {
+        // NULL column: never restricted, so every token already in the wild keeps working.
+        assert!(!session_predates_password_change(Some(1_000), None));
+        // Minted BEFORE the change -> refused.
+        assert!(session_predates_password_change(Some(1_000), Some(2_000)));
+        // Minted AT the change or after it -> allowed (a re-login must work).
+        assert!(!session_predates_password_change(Some(2_000), Some(2_000)));
+        assert!(!session_predates_password_change(Some(3_000), Some(2_000)));
+        // A session that cannot prove it is newer is refused rather than trusted.
+        assert!(session_predates_password_change(None, Some(2_000)));
+        assert!(!session_predates_password_change(None, None));
     }
 }
