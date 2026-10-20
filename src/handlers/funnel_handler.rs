@@ -284,7 +284,9 @@ pub async fn render_funnel(
         )
     })
     .collect();
-    let mut seo_meta = String::from("<meta name=\"description\" content=\"FunnelSwift — interactive funnel for leads and conversion.\">\n<meta property=\"og:type\" content=\"website\">\n<meta property=\"twitter:card\" content=\"summary_large_image\">\n");
+    // og:type / twitter:card here; the DESCRIPTION and the share-card title are pushed once
+    // the funnel row is known (see below), so a shared link previews the customer's own words.
+    let mut seo_meta = String::from("<meta property=\"og:type\" content=\"website\">\n<meta property=\"twitter:card\" content=\"summary_large_image\">\n");
     let mut seo_scripts = String::new();
     for (k, v) in &seo_rows {
         let short = k.strip_prefix("seo_").unwrap_or(k);
@@ -366,6 +368,26 @@ pub async fn render_funnel(
         html_escape(&raw_subheadline),
         html_escape(&raw_cta),
     );
+
+    // SHARE CARD (card t_cron1020): the funnel's own words, not a generic app blurb. A funnel link
+    // is made to be pasted into WhatsApp / Facebook / LinkedIn, and every one of those reads
+    // og:title + og:description. Titles are capped at 120 and descriptions at 300 chars because
+    // that is what the previews show; the values are escaped on the way into the ATTRIBUTES.
+    if status == StatusCode::OK {
+        let og_title: String = raw_headline.chars().take(120).collect();
+        let og_desc: String = raw_subheadline.chars().take(300).collect();
+        seo_meta.push_str(&format!(
+            "<meta name=\"description\" content=\"{desc}\">\n\
+             <meta property=\"og:title\" content=\"{title}\">\n\
+             <meta property=\"og:description\" content=\"{desc}\">\n\
+             <meta property=\"og:url\" content=\"https://funnelswift.net/funnel/{slug}\">\n\
+             <meta name=\"twitter:title\" content=\"{title}\">\n\
+             <meta name=\"twitter:description\" content=\"{desc}\">\n",
+            desc = html_escape(&og_desc),
+            title = html_escape(&og_title),
+            slug = html_escape(&slug),
+        ));
+    }
 
     (
         status,
