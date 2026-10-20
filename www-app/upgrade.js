@@ -162,8 +162,13 @@ async function requestPlan(slug){
     } else {
       /* cron 2026-10-20 — the server now mails the filer a receipt. Say so only when the send
          actually happened: `acknowledged:false` means the row is on record and the mail did not go
-         out (no provider configured, or a send failure), so promising a copy would be a lie. */
-      var mailed = (d && d.acknowledged === false) ? '' : ' We have emailed you a copy of this request.';
+         out (no provider configured, or a send failure), so promising a copy would be a lie.
+         FAIL CLOSED on a missing field too (measured live 2026-10-20, cron): `=== false` only
+         suppressed an EXPLICIT false, so a 200 whose body carried no `acknowledged` at all — an
+         older server, a proxy, any caller of this endpoint that is not the current binary — made
+         the console promise a copy nothing had queued. The promise needs a positive `true`, which
+         is what ADASwift, IncentiveSwift and MissedCall already require. */
+      var mailed = (d && d.acknowledged === true) ? ' We have emailed you a copy of this request.' : '';
       PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan and confirm here. Nothing was charged.'+mailed};
     }
     PREQ_OFFER = null;
