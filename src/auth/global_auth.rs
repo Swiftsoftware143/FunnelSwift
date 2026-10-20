@@ -165,6 +165,28 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         return reject(StatusCode::FORBIDDEN, "Platform admin role required");
     }
 
+    // ── the `users` row must still exist, and must still be enabled (kanban t_53fcb666) ──────
+    // Everything downstream (`AuthUser` and every handler) is built from the token CLAIMS alone,
+    // so before this the credential outlived the account. Measured on this app 2026-10-20: after
+    // `delete from users` + `delete from tenants`, the SAME token still answered 200 from
+    // `GET /api/v1/auth/me`, and a deleted PLATFORM ADMIN's token still read
+    // `GET /api/v1/admin/kinetic-cards` (7 cards across 3 workspaces). Deleting the row is how the
+    // fleet remediates a compromised account AND how its probe sweep cleans up throwaways, so
+    // deletion has to BE the revocation: one primary-key read per request, for EVERY role —
+    // including the platform admin, which the workspace check below deliberately exempts (that
+    // exemption is why the admin probe survived the tenant gate).
+    // Fail closed: a missing row, a disabled row and a `sub` that is not even a uuid all refuse
+    // 401 (the SPA turns 401 into "Session expired" + sign-out); a database that cannot answer is
+    // a 503, never a pass.
+    match user_session_state(&state.pool, &claims.sub).await {
+        Ok(Some(true)) => {}
+        Ok(_) => return reject(StatusCode::UNAUTHORIZED, SESSION_REVOKED),
+        Err(e) => {
+            tracing::error!("user session state lookup failed for {}: {e}", claims.sub);
+            return reject(StatusCode::SERVICE_UNAVAILABLE, "Session state unavailable");
+        }
+    }
+
     // ── tenants.status enforcement (kanban t_af890bbf) ───────────────────────────────────────
     // This is the ONLY place every authenticated /api/v1 route passes through, so a workspace
     // retired in the admin Tenants screen stops here — including the sessions minted before the
@@ -206,6 +228,26 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
 /// login page and the impersonation handler can all match on it.
 pub const WORKSPACE_INACTIVE: &str =
     "This workspace is inactive. Contact support to restore access.";
+
+/// The one user-visible string for a credential whose `users` row is gone or disabled
+/// (kanban t_53fcb666). The SPA's 401 arm turns it into "Session expired" + sign-out.
+pub const SESSION_REVOKED: &str = "This session is no longer valid. Please sign in again.";
+
+/// Is the user named by a token's `sub` still a live, enabled row in `users`?
+///
+/// `Ok(None)` — no such row (the account was deleted) or a `sub` that is not even a uuid, i.e.
+/// the credential names nobody. `Ok(Some(false))` — the row exists but is disabled. Both refuse.
+/// `Err` — the database could not answer; the caller refuses with 503 rather than pretending the
+/// account is gone (`live-error-path-proof`).
+async fn user_session_state(pool: &sqlx::PgPool, sub: &str) -> Result<Option<bool>, sqlx::Error> {
+    let Ok(user_id) = uuid::Uuid::parse_str(sub) else {
+        return Ok(None);
+    };
+    sqlx::query_scalar::<_, bool>("SELECT is_active FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+}
 
 fn reject(status: StatusCode, error: &str) -> Response {
     (
