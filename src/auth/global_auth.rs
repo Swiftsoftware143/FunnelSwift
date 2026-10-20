@@ -70,6 +70,26 @@ pub fn is_platform_admin(role: &str) -> bool {
     role == crate::handlers::tenant_handler::PLATFORM_ADMIN_ROLE
 }
 
+/// Does a token's platform-admin CLAIM exceed the authority its `users` row still grants?
+/// (kanban t_28184826)
+///
+/// Measured live on this app 2026-10-20 after kanban t_53fcb666 shipped: the boundary proved the
+/// row EXISTED and was enabled, but every authorization decision downstream — including
+/// [`admin_surface_denied_for`] — still read `claims.role`. So DEMOTING a compromised operator
+/// (the other half of "delete or disable the account") left the 30-day token with its old
+/// authority: a real live row at `company_admin`, minted as `admin`, still answered **200** on
+/// `GET /api/v1/admin/kinetic-cards`. A demotion is an `UPDATE users SET role=…`; it has to take
+/// effect on the next request, not at token expiry.
+///
+/// The rule is deliberately ONE-DIRECTIONAL: a claim may be LOWER than the row (the self-serve
+/// signup mints `role: "user"` while the row may already be `company_admin`) and nothing here
+/// refuses that — the tenant surfaces behave exactly as they did. Only a claim of PLATFORM
+/// authority the row no longer grants is refused, because that is the one that reaches
+/// platform-wide configuration. `true` means refuse (401, the SPA's "session expired" arm).
+pub fn platform_admin_claim_outranks_row(claim_role: &str, row_role: &str) -> bool {
+    is_platform_admin(claim_role) && !is_platform_admin(row_role)
+}
+
 const ADMIN_PREFIX: &str = "/api/v1/admin";
 const ADMIN_PREFIX_NESTED: &str = "/api/v1/admin/";
 /// The ONE admin path an impersonation session is allowed to reach: the one that ends it.
@@ -165,7 +185,8 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         return reject(StatusCode::FORBIDDEN, "Platform admin role required");
     }
 
-    // ── the `users` row must still exist, and must still be enabled (kanban t_53fcb666) ──────
+    // ── the `users` row must still exist, must still be enabled, and must still GRANT the
+    //    platform authority the token claims (kanban t_53fcb666 + t_28184826) ─────────────────
     // Everything downstream (`AuthUser` and every handler) is built from the token CLAIMS alone,
     // so before this the credential outlived the account. Measured on this app 2026-10-20: after
     // `delete from users` + `delete from tenants`, the SAME token still answered 200 from
@@ -175,11 +196,26 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
     // deletion has to BE the revocation: one primary-key read per request, for EVERY role —
     // including the platform admin, which the workspace check below deliberately exempts (that
     // exemption is why the admin probe survived the tenant gate).
+    //
+    // The same read answers the DEMOTION half (kanban t_28184826): it returns the row's live
+    // `role`, and a token that still CLAIMS platform-admin authority for a row that no longer
+    // grants it is refused exactly like a deleted account — 401, re-login, and the fresh token
+    // carries the row's real role. Measured before this: a real live row at `company_admin`,
+    // minted as `admin`, still read the platform surface for the token's whole 30-day life.
+    //
     // Fail closed: a missing row, a disabled row and a `sub` that is not even a uuid all refuse
     // 401 (the SPA turns 401 into "Session expired" + sign-out); a database that cannot answer is
     // a 503, never a pass.
     match user_session_state(&state.pool, &claims.sub).await {
-        Ok(Some(true)) => {}
+        Ok(Some((true, row_role))) => {
+            if platform_admin_claim_outranks_row(&claims.role, &row_role) {
+                tracing::warn!(
+                    "refused a platform-admin claim the users row no longer grants (user {})",
+                    claims.sub
+                );
+                return reject(StatusCode::UNAUTHORIZED, SESSION_REVOKED);
+            }
+        }
         Ok(_) => return reject(StatusCode::UNAUTHORIZED, SESSION_REVOKED),
         Err(e) => {
             tracing::error!("user session state lookup failed for {}: {e}", claims.sub);
@@ -233,17 +269,24 @@ pub const WORKSPACE_INACTIVE: &str =
 /// (kanban t_53fcb666). The SPA's 401 arm turns it into "Session expired" + sign-out.
 pub const SESSION_REVOKED: &str = "This session is no longer valid. Please sign in again.";
 
-/// Is the user named by a token's `sub` still a live, enabled row in `users`?
+/// Is the user named by a token's `sub` still a live, enabled row in `users`, and what does that
+/// row grant TODAY?
 ///
 /// `Ok(None)` — no such row (the account was deleted) or a `sub` that is not even a uuid, i.e.
-/// the credential names nobody. `Ok(Some(false))` — the row exists but is disabled. Both refuse.
+/// the credential names nobody. `Ok(Some((false, _)))` — the row exists but is disabled. Both
+/// refuse. `Ok(Some((true, role)))` — the row is live; `role` is its CURRENT grant, which the
+/// caller compares against the token's claim so a demoted operator's old token stops working
+/// (kanban t_28184826).
 /// `Err` — the database could not answer; the caller refuses with 503 rather than pretending the
 /// account is gone (`live-error-path-proof`).
-async fn user_session_state(pool: &sqlx::PgPool, sub: &str) -> Result<Option<bool>, sqlx::Error> {
+async fn user_session_state(
+    pool: &sqlx::PgPool,
+    sub: &str,
+) -> Result<Option<(bool, String)>, sqlx::Error> {
     let Ok(user_id) = uuid::Uuid::parse_str(sub) else {
         return Ok(None);
     };
-    sqlx::query_scalar::<_, bool>("SELECT is_active FROM users WHERE id = $1")
+    sqlx::query_as::<_, (bool, String)>("SELECT is_active, role FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_optional(pool)
         .await
@@ -387,6 +430,32 @@ mod tests {
         ] {
             assert!(!is_platform_admin(role), "{role} is not a platform admin");
         }
+    }
+
+    /// The reported defect (kanban t_28184826): demoting a platform admin — `UPDATE users SET
+    /// role='company_admin'` — left the 30-day token reading `/api/v1/admin/*`, because the only
+    /// thing the boundary compared was the CLAIM. A claim of platform authority the row no longer
+    /// grants must be refused, whichever direction the demotion went.
+    #[test]
+    fn a_platform_admin_claim_the_row_no_longer_grants_is_refused() {
+        // The measured case: real live row at `company_admin`, token minted while it was `admin`.
+        assert!(platform_admin_claim_outranks_row("admin", "company_admin"));
+        for demoted_to in ["user", "business_user", "member", ""] {
+            assert!(
+                platform_admin_claim_outranks_row("admin", demoted_to),
+                "an admin claim over a {demoted_to:?} row must be refused"
+            );
+        }
+        // A real platform admin is untouched, claim and row agreeing.
+        assert!(!platform_admin_claim_outranks_row("admin", "admin"));
+        // A claim LOWER than the row is NOT this rule's business: the tenant surfaces keep the
+        // exact behaviour they had (the signup mints `user` while the row may already be a
+        // company admin) — this rule is one-directional on purpose.
+        assert!(!platform_admin_claim_outranks_row("user", "company_admin"));
+        assert!(!platform_admin_claim_outranks_row("company_admin", "admin"));
+        // Tenant roles never trip it in either direction.
+        assert!(!platform_admin_claim_outranks_row("company_admin", "user"));
+        assert!(!platform_admin_claim_outranks_row("user", "user"));
     }
 
     /// The boundary arm for `route_policy::INTERNAL_ROUTES` (kanban t_1f29c01f): the shared key is
