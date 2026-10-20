@@ -4222,8 +4222,16 @@ function SEP(){
   if(v==="platform"){
     if(!confirm("Remove your workspace's own email provider and go back to FunnelSwift's mail service?"))return;
     EPMSG("Saving...","i");
-    api("/api/v1/settings/email_config",{method:"DELETE"})
-      .then(function(){ EPMSG("Removed — this workspace is back on FunnelSwift's mail service","s"); EPLOAD(); })
+    api("/api/v1/settings/email-config",{method:"DELETE"})
+      .then(function(r){
+        /* The answer names what was actually cleared and which configuration a send would use next,
+           so the message can never claim a state the server did not reach. */
+        var n=(r&&r.removed&&r.removed.length)||0;
+        var eff=(r&&r.effective&&r.effective.source)||"system";
+        var tail=eff==="system"?(" — this workspace is back on FunnelSwift's mail service")
+               :eff==="workspace"?(" — another saved mail setting is still in use; check the fields below")
+               :(" — no email provider is configured on this installation");
+        EPMSG("Removed "+(n?(n+" saved mail setting"+(n===1?"":"s")):"nothing")+tail,"s"); EPLOAD(); })
       .catch(function(e){ EPMSG((e&&e.message)||"Could not remove it","e"); });
     return;
   }

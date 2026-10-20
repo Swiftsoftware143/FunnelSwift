@@ -573,7 +573,7 @@ pub fn create_router(
         // reads and tests, so there is one writer and one vocabulary, not a second one.
         .route(
             "/api/v1/settings/email-config",
-            get(settings_handler::get_email_config),
+            get(settings_handler::get_email_config).delete(settings_handler::delete_email_config),
         )
         .route(
             "/api/v1/settings/email-config/test",

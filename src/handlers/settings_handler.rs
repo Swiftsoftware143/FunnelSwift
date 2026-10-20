@@ -165,6 +165,17 @@ pub async fn delete_setting(
             "Cannot delete protected setting".into(),
         ));
     }
+    // The three mail rows resolve in a fixed order, so deleting ONE of them can leave the workspace
+    // still sending through its own transport while the panel says it removed it. This generic
+    // route cannot clear all three (it names one key), so it refuses them and points at the route
+    // that can — the same guard shape as the protected keys above.
+    if crate::email_provider::TENANT_CONFIG_KEYS.contains(&key.as_str()) {
+        return Err(AppError::BadRequest(
+            "Remove your workspace's email provider through DELETE /api/v1/settings/email-config — \
+             it clears every stored mail setting at once."
+                .into(),
+        ));
+    }
 
     let result = sqlx::query("DELETE FROM tenant_settings WHERE tenant_id = $1 AND key = $2")
         .bind(tenant_id)
@@ -224,6 +235,63 @@ pub async fn get_email_config(
     Ok(Json(json!({
         "own": own,
         "own_set": !own.is_null(),
+        "effective": effective,
+    })))
+}
+
+/// DELETE /api/v1/settings/email-config — remove this workspace's OWN sending identity.
+///
+/// **Every row that can speak for the workspace, not just one.** A send resolves its configuration
+/// in a fixed order (`email_provider::resolve_source`): `email_config`, then the legacy
+/// `mailgun_config`, then the legacy `smtp_config`. The screen used to send its remove through the
+/// generic `DELETE /api/v1/settings/:key` with `key='email_config'`, which deleted exactly that one
+/// row — so a workspace that had ever saved a provider under a legacy key kept sending through its
+/// OWN transport while the panel said "Removed — this workspace is back on FunnelSwift's mail
+/// service". A destructive control that reports a state it did not reach is worse than no control,
+/// so the delete now names all three keys in one statement and answers with the source a send
+/// would actually use afterwards.
+///
+/// Idempotent: with no rows stored it removes nothing and still answers `200` with the effective
+/// source (which is the system mail), because "it is already removed" is the state the caller asked
+/// for. `removed` names each key that existed, so the console can say what it actually cleared.
+pub async fn delete_email_config(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let keys: Vec<String> = crate::email_provider::TENANT_CONFIG_KEYS
+        .iter()
+        .map(|k| k.to_string())
+        .collect();
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "DELETE FROM tenant_settings
+          WHERE tenant_id = $1 AND key = ANY($2)
+      RETURNING key",
+    )
+    .bind(tenant_id)
+    .bind(&keys)
+    .fetch_all(&state.pool)
+    .await?;
+    let removed: Vec<String> = rows.into_iter().map(|(k,)| k).collect();
+
+    let effective = crate::email_provider::resolve_source(&state.pool, Some(tenant_id))
+        .await
+        .map(|(cfg, src)| {
+            json!({
+                "source": src.as_str(),
+                "provider": cfg.provider,
+                "sender": cfg.sender(),
+            })
+        })
+        .unwrap_or_else(|| json!({"source": "none", "provider": null, "sender": null}));
+
+    Ok(Json(json!({
+        "status": "ok",
+        "removed": removed,
         "effective": effective,
     })))
 }
