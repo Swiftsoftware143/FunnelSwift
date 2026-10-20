@@ -972,15 +972,29 @@ async fn apply_lead_tags(
             let url = format!("{}/api/v1/webhooks/cross-app/tag-sync", state.coreswift_url);
             let internal_sync_key = state.internal_sync_key.clone();
             let client = reqwest::Client::new();
-            tokio::spawn(async move {
-                let _ = client
-                    .post(&url)
-                    .header("x-internal-key", &internal_sync_key)
-                    .json(&sync_payload)
-                    .timeout(std::time::Duration::from_secs(5))
-                    .send()
-                    .await;
-            });
+            // HARNESS RESIDUE STAYS OUT OF THE HUB. This arm is the one that actually wrote probe
+            // people into CoreSwift-CRM's contact list (measured 2026-10-20: tagging a
+            // `probe-...@example.invalid` lead created a contact there within 22 ms, and it
+            // outlived the lead's deletion — 360 such contacts had accumulated). A reserved test
+            // address can never belong to a customer, so the sync is skipped and said out loud
+            // instead of quietly filling the operator's CRM with fake people.
+            if crate::coreswift::is_reserved_test_email(&lemail) {
+                tracing::info!(
+                    lead = %id,
+                    "[coreswift] cross-app tag sync skipped: {} is a reserved test address",
+                    lemail
+                );
+            } else {
+                tokio::spawn(async move {
+                    let _ = client
+                        .post(&url)
+                        .header("x-internal-key", &internal_sync_key)
+                        .json(&sync_payload)
+                        .timeout(std::time::Duration::from_secs(5))
+                        .send()
+                        .await;
+                });
+            }
         }
     }
 

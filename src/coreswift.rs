@@ -31,6 +31,38 @@ fn auth_header_value(api_key: &str) -> String {
     format!("{}{} {}", AUTH_SCHEME, AUTH_SCHEME_REST, api_key)
 }
 
+/// Domains that can never belong to a customer: the RFC 2606 / RFC 6761 reserved names
+/// (`example.com/.net/.org`, anything under `.invalid` or `.test`, `localhost`) plus the
+/// fleet's own harness domains.
+///
+/// A probe, canary or harness run is REQUIRED to use one of these instead of a person's
+/// address (see the `test-mail-hygiene` skill), so a lead carrying one is harness residue by
+/// construction and must never be written into the hub. Measured 2026-10-20: tagging a
+/// `probe-...@example.invalid` lead in FunnelSwift pushed it through the cross-app tag sync
+/// into CoreSwift-CRM, where the fake person stayed in the operator's contact list even after
+/// the lead was deleted — the same class of residue as a test account left behind.
+const RESERVED_TEST_DOMAINS: &[&str] = &[
+    "example.com",
+    "example.net",
+    "example.org",
+    "invalid",
+    "test",
+    "localhost",
+    "swiftsoftware.dev",
+    "local.coreswift",
+];
+
+/// True when `email` sits on a reserved/harness domain (see [`RESERVED_TEST_DOMAINS`]).
+pub fn is_reserved_test_email(email: &str) -> bool {
+    let lowered = email.trim().to_ascii_lowercase();
+    let Some((_, domain)) = lowered.rsplit_once('@') else {
+        return false;
+    };
+    RESERVED_TEST_DOMAINS
+        .iter()
+        .any(|reserved| domain == *reserved || domain.ends_with(&format!(".{reserved}")))
+}
+
 /// Last-resort hub base URL (env override, else the public default).
 fn env_hub_url() -> String {
     std::env::var("CORESWIFT_URL")
@@ -220,6 +252,16 @@ pub async fn push_lead_to_coreswift(
     if !lead.has_identity() {
         tracing::debug!("[coreswift] lead push skipped: no email/phone/name to identify it");
         return Ok(false);
+    }
+    // Harness residue never reaches the hub: a probe/canary address is not a person, and a
+    // contact left in the operator's list is the CRM equivalent of a test account left behind.
+    if let Some(email) = lead.email.as_deref() {
+        if is_reserved_test_email(email) {
+            tracing::info!(
+                "[coreswift] lead push skipped: {email} is a reserved test address (harness residue stays out of the hub)"
+            );
+            return Ok(false);
+        }
     }
     let Some(conn) = resolve_conn(db, tenant_id).await? else {
         tracing::debug!(
