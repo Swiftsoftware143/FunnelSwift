@@ -19,6 +19,30 @@ pub fn system_tenant_id() -> Uuid {
     Uuid::from_u128(SYSTEM_TENANT_U128)
 }
 
+/// Make sure the system tenant ROW exists before anything stamps it as an owner.
+///
+/// The catalogue's owner is a real row in `tenants`, and `affiliate_products.tenant_id` is
+/// `FOREIGN KEY … ON DELETE CASCADE`, so the day that row disappears the whole catalogue goes with
+/// it — and every later write that stamps the sentinel fails on the constraint instead of creating
+/// the product. Measured live 2026-10-19: the row was gone, `affiliate_products` held 0 rows while
+/// 6 plans existed, and creating or editing a plan logged
+/// `affiliate products_tenant_id_fkey` (see `plan_handler::sync_plan_to_affiliate_product`).
+///
+/// The console's delete guard refuses the `system` slug (`tenant_handler::FIXTURE_SLUG_PREFIXES`),
+/// but a cleanup script talking to Postgres directly is not the console — this seed has already
+/// been lost twice (migration 055 documents the first time). So the writer repairs it instead of
+/// trusting a seed: `ON CONFLICT DO NOTHING` makes this idempotent and free on the common path,
+/// and it never touches an existing row's name or settings.
+pub async fn ensure_system_tenant(pool: &sqlx::PgPool) -> Result<(), crate::error::AppError> {
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug) VALUES ($1, 'System', 'system') ON CONFLICT DO NOTHING",
+    )
+    .bind(system_tenant_id())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

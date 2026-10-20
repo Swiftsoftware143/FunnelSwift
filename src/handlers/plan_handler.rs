@@ -170,6 +170,12 @@ pub async fn sync_plan_to_affiliate_product(
     // ONE definition (`system_tenant.rs`), so this is not a UUID literal and not "the oldest tenant".
     let effective_tenant_id: uuid::Uuid = crate::system_tenant::system_tenant_id();
 
+    // The owner must EXIST before it is stamped: `affiliate_products.tenant_id` is a real foreign
+    // key, so a sentinel with no `tenants` row fails every insert (measured live 2026-10-19: the
+    // catalogue was empty and every plan create/edit logged the constraint violation). Repaired
+    // here, by the one function that writes the owner, so the fix covers all three call sites.
+    crate::system_tenant::ensure_system_tenant(pool).await?;
+
     // Check if affiliate product already exists for this plan
     let existing: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM affiliate_products WHERE plan_id = $1")
