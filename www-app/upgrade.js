@@ -160,7 +160,11 @@ async function requestPlan(slug){
     } else if(d && d.status === 'existing'){
       PREQ_MSG = {ok:true, text:'Your request for the '+p.name+' plan is already with our team.'};
     } else {
-      PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan and confirm here. Nothing was charged.'};
+      /* cron 2026-10-20 — the server now mails the filer a receipt. Say so only when the send
+         actually happened: `acknowledged:false` means the row is on record and the mail did not go
+         out (no provider configured, or a send failure), so promising a copy would be a lie. */
+      var mailed = (d && d.acknowledged === false) ? '' : ' We have emailed you a copy of this request.';
+      PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan and confirm here. Nothing was charged.'+mailed};
     }
     PREQ_OFFER = null;
   } catch(e) {

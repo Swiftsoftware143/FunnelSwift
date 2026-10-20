@@ -522,6 +522,27 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // The customer's RECEIPT (cron 2026-10-20). Filing a plan request is this install's only
+        // buying path (checkout refuses: no payment provider is configured), and until now the
+        // person who had just asked to pay heard nothing back — their screen showed a chip and
+        // their inbox stayed empty. This is the acknowledgement: what was asked for, that a person
+        // will answer by email, and that nothing has been charged. The operator's answer is the
+        // separate `plan_request_update` arm below. `note` is empty when the customer wrote none.
+        "plan_request_received" => {
+            let plan = vars.get("plan_name").unwrap_or(&"a plan").to_string();
+            let note = vars.get("note").unwrap_or(&"").to_string();
+            let note_block = if note.is_empty() {
+                String::new()
+            } else {
+                format!("What you told us:\n\n{note}\n\n")
+            };
+            let subject = format!("We have your {APP_NAME} plan request - {plan}");
+            let text = format!(
+                "Hi {0},\n\nThanks - your request for the {1} plan is with our team. You asked for the upgrade and nothing has been charged.\n\n{2}A person will reply to this address, and the answer appears on your Upgrade tab: {3}/upgrade\n\nIf you change your mind, you can withdraw the request from that same screen until we answer it.\n\n- The {4} Team",
+                name, plan, note_block, app_url, APP_NAME
+            );
+            (subject, Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -589,6 +610,37 @@ pub async fn send_reset_email(
         tenant_id,
         to,
         "password_reset",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+/// Acknowledge a plan request the moment the customer files it (cron 2026-10-20).
+///
+/// Called from `POST /api/v1/plan-requests`, after the row is written. The row is the record the
+/// operator works from; this mail is what tells the person who just asked to pay that the ask
+/// arrived. Best effort by design — a mail failure must never lose the request, so the caller logs
+/// and keeps the `201`. Renders through the tenant's own templates and branding, like every other
+/// mail this app sends, and a reserved/harness recipient is withheld and recorded as a non-send.
+#[allow(clippy::too_many_arguments)]
+pub async fn send_plan_request_received_email(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    name: &str,
+    plan_name: &str,
+    note: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("plan_name", plan_name);
+    vars.insert("note", note);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "plan_request_received",
         &bound_vars(vars),
     )
     .await
@@ -670,6 +722,37 @@ mod tests {
             !text.contains("A note from our team"),
             "empty note block leaked"
         );
+        assert!(text.contains("Kinetic Pro"));
+    }
+
+    #[test]
+    fn plan_request_received_arm_acknowledges_the_ask_and_names_no_charge() {
+        // cron 2026-10-20 — the receipt a customer gets the moment they file the only buying path
+        // this install offers. Asserts the three facts the copy exists to carry: which plan, that a
+        // person will answer, and that nothing was charged.
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("plan_name", "Kinetic Pro"),
+            ("note", "please call me on Monday"),
+        ]));
+        let (subject, text, _html) = get_inline("plan_request_received", &v);
+        let text = text.unwrap_or_default();
+        assert!(subject.contains("Kinetic Pro"), "subject was {subject}");
+        assert!(text.contains("nothing has been charged"));
+        assert!(text.contains("please call me on Monday"));
+        assert!(text.contains("/upgrade"), "where to look is missing");
+    }
+
+    #[test]
+    fn plan_request_received_arm_omits_the_note_block_when_there_is_no_note() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("plan_name", "Kinetic Pro"),
+            ("note", ""),
+        ]));
+        let (_subject, text, _html) = get_inline("plan_request_received", &v);
+        let text = text.unwrap_or_default();
+        assert!(!text.contains("What you told us"), "empty note leaked");
         assert!(text.contains("Kinetic Pro"));
     }
 

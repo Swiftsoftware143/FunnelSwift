@@ -118,6 +118,42 @@ pub async fn create(
     .fetch_one(&state.pool)
     .await?;
 
+    // ACKNOWLEDGE (cron 2026-10-20): the ask is on record — tell the person who filed it. While no
+    // payment provider is configured this request IS the buying path, and until now the customer's
+    // screen changed while their inbox stayed empty. Best effort: a mail failure never loses the
+    // request (the row above is written and the operator's queue reads it), and a reserved/harness
+    // recipient is withheld by the sender and recorded as a non-send.
+    let filer_name: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT COALESCE(NULLIF(first_name, ''), NULLIF(name, '')) FROM users
+          WHERE tenant_id = $1 AND lower(email) = lower($2) LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(&auth.email)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+    let greeting = filer_name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "there".to_string());
+    let mut acknowledged = true;
+    if let Err(e) = crate::email::send_plan_request_received_email(
+        &state.pool,
+        tenant_id,
+        &auth.email,
+        &greeting,
+        &plan_name,
+        &note,
+    )
+    .await
+    {
+        acknowledged = false;
+        tracing::warn!(
+            plan = %slug, to = %auth.email,
+            "plan-request receipt mail was not sent: {e}"
+        );
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({
@@ -126,6 +162,9 @@ pub async fn create(
             "plan_slug": slug,
             "plan_name": plan_name,
             "created_at": row.get::<String, _>("created_at"),
+            // Whether the customer's receipt actually went out, so the Upgrade screen can say
+            // "we emailed you a copy" only when it is true.
+            "acknowledged": acknowledged,
         })),
     ))
 }
