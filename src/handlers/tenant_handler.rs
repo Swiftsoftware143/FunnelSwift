@@ -4,7 +4,7 @@ use crate::handlers::plan_handler::set_active_plan;
 use crate::security::display_name::slugify;
 use crate::state::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -109,10 +109,21 @@ pub async fn workspace_access_allowed(
 pub async fn list_tenants(
     auth: AuthUser,
     State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> AppResult<Json<serde_json::Value>> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin only".into()));
     }
+    // HARNESS TRAFFIC IS NOT A CUSTOMER (measured live 2026-10-21, same class as ADASwift
+    // 8cf989d, missedcallrespondr 2a38b95, WorkflowSwift 61bca4d and IncentiveSwift 216ec71f).
+    // `tenants.probe_harness` is stamped at signup from the `X-Swift-Harness` header; a harness
+    // retires its identity but not the workspace, so the operator's list could carry a workspace
+    // nobody can sign into. The tag is authoritative and NULL for every real workspace, so hiding
+    // tagged rows cannot hide a customer; `?include_probe=1` keeps them observable for support.
+    let include_probe = params
+        .get("include_probe")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     // NOTE: tenants never had status/is_visible/plan_id columns, so the old query referenced
     // columns that do not exist and then swallowed the resulting error with
     // `.unwrap_or_default()` — every caller silently received `[]` (126 rows in the DB, empty
@@ -153,8 +164,12 @@ pub async fn list_tenants(
                ORDER BY s.start_date DESC NULLS LAST LIMIT 1
            ) sub ON TRUE
            LEFT JOIN plans p ON p.id = sub.plan_id
+           WHERE $1::bool
+              OR COALESCE(t.probe_harness, '') = ''
+              OR t.probe_harness ~* '^CNRY'
            ORDER BY t.created_at DESC"#,
     )
+    .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
     let tenants: Vec<serde_json::Value> = rows
