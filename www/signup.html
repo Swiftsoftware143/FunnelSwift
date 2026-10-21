@@ -29,6 +29,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .login-link a:hover{text-decoration:underline}
 .ref-badge{display:none;background:#eef2ff;color:#4338ca;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:500;text-align:center;margin-bottom:16px}
 .ref-badge.show{display:block}
+.plan-badge{display:none;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:500;text-align:center;margin-bottom:16px;line-height:1.5}
+.plan-badge.show{display:block}
 </style>
 </head>
 <body>
@@ -37,6 +39,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <h1>Get Started Free</h1>
 <p class="sub">Create your FunnelSwift workspace</p>
 <div class="ref-badge" id="ref-badge"></div>
+<div class="plan-badge" id="plan-badge"></div>
 <div class="error" id="signup-error"></div>
 <form id="signup-form">
 <div class="form-group">
@@ -71,6 +74,31 @@ if (refCode) {
   badge.classList.add('show');
 }
 
+// ── WHICH PRODUCT the visitor picked on /pricing (measured live 2026-10-21) ──────────────
+// Every card on /pricing advertises ONE product, and the plain door seats whichever side the
+// server defaults to. A visitor who chose 'Kinetic Pro' was therefore landed on a CAPTURE
+// workspace whose dashboard reads 'Cards not on this plan'. The CTA now carries the slug and
+// the server derives the SIDE from it (a slug starting 'kinetic' -> kinetic free tier); this
+// page only has to pass it on and say, in plain words, what the account starts on.
+var PLANS = {
+  'capture-free':    {label: 'Capture Free',    starts: 'Capture Free'},
+  'kinetic-free':    {label: 'Kinetic Free',    starts: 'Kinetic Free'},
+  'capture-starter': {label: 'Capture Starter', starts: 'Capture Free'},
+  'kinetic-pro':     {label: 'Kinetic Pro',     starts: 'Kinetic Free'},
+  'suite':           {label: 'Suite',           starts: 'Capture Free'},
+  'agency-scale':    {label: 'Agency / Scale',  starts: 'Capture Free'}
+};
+var chosenPlan = (new URLSearchParams(location.search).get('plan') || '').trim().toLowerCase();
+var chosen = PLANS[chosenPlan] || null;
+if (chosen) {
+  var pb = document.getElementById('plan-badge');
+  pb.textContent = (chosen.starts === chosen.label)
+    ? 'You picked ' + chosen.label + ' — free, no card. Name and email is all we need.'
+    : 'You picked ' + chosen.label + '. New accounts start on ' + chosen.starts +
+      ', and you can move up any time from your dashboard.';
+  pb.classList.add('show');
+}
+
 document.getElementById('signup-form').addEventListener('submit', async function(e){
 e.preventDefault();
 var btn = document.getElementById('signup-btn');
@@ -85,7 +113,9 @@ var body = {
   email: document.getElementById('signup-email').value,
   // No password: the server generates the login credentials and emails them to this address.
   source: refCode ? 'affiliate_referral' : 'homepage',
-  plan: 'free'
+  // The slug the visitor chose. The server honours only its PRODUCT SIDE and always seats
+  // that side's zero-priced tier, so a paid card still starts on the matching free plan.
+  plan: chosen ? chosenPlan : 'free'
 };
 
 if (refCode) {
