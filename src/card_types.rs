@@ -85,6 +85,24 @@ pub const DEFAULT_CARD_TYPE: &str = "bio_link";
 /// The plan-gated card type (`plans.has_mini_funnels`, checked in `create_card`).
 pub const MINI_FUNNEL: &str = "mini_funnel";
 
+/// The URL prefix a card of this type is published under.
+///
+/// The public router mounts the same renderer at `/k/:slug`, `/b/:slug`, `/c/:slug`,
+/// `/m/:slug`, `/f/:slug` and `/h/:slug` (`api_router`), and the console labels each type with
+/// that prefix. A QR code has to encode the address a scanner should OPEN, so the prefix must be
+/// the type's own instead of an assumed `/k/` (cron 2026-10-21 — nothing published a scannable
+/// code before, so there was no caller to get it wrong).
+pub fn url_prefix(template_type: &str) -> &'static str {
+    match canonical(template_type).unwrap_or(DEFAULT_CARD_TYPE) {
+        "bio_link" => "b",
+        "business_card" => "c",
+        "mini_page" => "m",
+        "mini_funnel" => "f",
+        "hero" => "h",
+        _ => "k",
+    }
+}
+
 /// The canonical id for `raw`, or `None` for a value that is neither canonical nor a known alias
 /// (the caller keeps such a value verbatim — see the module doc).
 pub fn canonical(raw: &str) -> Option<&'static str> {
