@@ -807,11 +807,13 @@ async function renderMyAccount() {
         <div><div class="form-label">Leads Limit</div><div>${fmtPlanLimit(plan.max_leads)}</div></div>
         <div><div class="form-label">Webhooks</div><div>${plan.has_webhooks?'✅':'❌'}</div></div>
         <!-- (cron 2026-10-20) The four entitlements BELOW are paid features the customer bought and
-             could not see: `plans` carries max_forms, max_custom_domains, has_analytics and
+             could not see: the plans row carries max_forms, max_custom_domains, has_analytics and
              has_white_label, the gates enforce them, and this card listed only cards/leads/webhooks.
-             `/auth/me` already serves the whole plans row as `current_plan` (row_to_json(p.*)), so
-             these are render-only - no route change. fmtPlanLimit maps NULL/-1 to "∞" and 0 to
-             "None", the same reading the gates use. -->
+             GET /api/v1/auth/me already serves the whole plans row as current_plan
+             (row_to_json(p.*)), so these are render-only - no route change. fmtPlanLimit maps
+             NULL/-1 to "∞" and 0 to "None", the same reading the gates use. NOTE: this comment
+             lives inside a JS template literal, so it must never contain a backtick — one closes
+             the template and the whole console stops parsing (measured 2026-10-21). -->
         <div><div class="form-label">Forms</div><div>${fmtPlanLimit(plan.max_forms)}</div></div>
         <div><div class="form-label">Custom Domains</div><div>${fmtPlanLimit(plan.max_custom_domains)}</div></div>
         <div><div class="form-label">Analytics</div><div>${plan.has_analytics?'✅':'❌'}</div></div>
