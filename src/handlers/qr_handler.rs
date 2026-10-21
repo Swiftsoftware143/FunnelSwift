@@ -17,8 +17,9 @@ use uuid::Uuid;
 /// stays the canonical address.
 const CARD_ORIGIN: &str = "https://kntcrd.com";
 
-/// The URL a QR code for `card_id` should open. `None` when the card no longer exists.
-async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<String>> {
+/// The URL a QR code `id` should open, and whether the row is switched on. `None` when the row or
+/// its card is gone.
+async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<(String, bool)>> {
     let row: Option<(String, Option<String>, bool)> = sqlx::query_as(
         "SELECT c.slug, c.template_type, q.is_active \
          FROM kinetic_qr_codes q JOIN kinetic_cards c ON c.id = q.card_id \
@@ -27,12 +28,15 @@ async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<String>> 
     .bind(id)
     .fetch_optional(&state.pool)
     .await?;
-    Ok(row.map(|(slug, template_type, _active)| {
-        format!(
-            "{}/{}/{}",
-            CARD_ORIGIN,
-            card_types::url_prefix(template_type.as_deref().unwrap_or_default()),
-            slug
+    Ok(row.map(|(slug, template_type, is_active)| {
+        (
+            format!(
+                "{}/{}/{}",
+                CARD_ORIGIN,
+                card_types::url_prefix(template_type.as_deref().unwrap_or_default()),
+                slug
+            ),
+            is_active,
         )
     }))
 }
@@ -277,9 +281,14 @@ pub async fn get_qr_svg(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<(StatusCode, [(HeaderName, &'static str); 2], String)> {
-    let url = qr_target_url(&state, id)
+    let (url, is_active) = qr_target_url(&state, id)
         .await?
         .ok_or_else(|| AppError::NotFound("QR code not found".into()))?;
+    // A switched-off QR must stop resolving: an image that keeps serving after the owner turned
+    // it off is the same false PASS as a 200 that changes nothing.
+    if !is_active {
+        return Err(AppError::NotFound("QR code is switched off".into()));
+    }
     Ok((
         StatusCode::OK,
         [
@@ -297,9 +306,14 @@ pub async fn get_qr_png(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<(StatusCode, [(HeaderName, &'static str); 2], Vec<u8>)> {
-    let url = qr_target_url(&state, id)
+    let (url, is_active) = qr_target_url(&state, id)
         .await?
         .ok_or_else(|| AppError::NotFound("QR code not found".into()))?;
+    // A switched-off QR must stop resolving: an image that keeps serving after the owner turned
+    // it off is the same false PASS as a 200 that changes nothing.
+    if !is_active {
+        return Err(AppError::NotFound("QR code is switched off".into()));
+    }
     Ok((
         StatusCode::OK,
         [
