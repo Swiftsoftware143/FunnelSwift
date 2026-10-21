@@ -375,7 +375,61 @@ pub async fn email_log(
             })
         })
         .collect();
-    Ok(Json(serde_json::json!({ "sends": sends })))
+    // THE WINDOW, NOT JUST THE TAIL (2026-10-21). The list above answers "what happened to the last
+    // 50 attempts"; it cannot answer "has ANY customer mail been refused this week", because a
+    // refusal older than the last 50 sends has scrolled out of it. That is the question an operator
+    // asks before trusting the signup path, so it is counted here rather than left to be inferred
+    // from a list. `withheld` is separated from `refused` on purpose: a reserved/harness recipient
+    // was never attempted and is not a delivery failure.
+    let counts = sqlx::query(
+        "SELECT status, COUNT(*)::bigint AS n FROM email_send_log \
+         WHERE created_at > NOW() - INTERVAL '7 days' GROUP BY status",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+    let mut sent: i64 = 0;
+    let mut withheld: i64 = 0;
+    let mut refused: i64 = 0;
+    for r in counts.iter() {
+        let status: String = r.get("status");
+        let n: i64 = r.get("n");
+        match status.as_str() {
+            "sent" => sent += n,
+            "withheld" => withheld += n,
+            _ => refused += n,
+        }
+    }
+    // The most recent REFUSAL anywhere in the window, so a failure the tail no longer shows still
+    // names its recipient and reason. `null` means nothing was refused.
+    let last_refused = sqlx::query(
+        "SELECT to_email, subject, detail, created_at FROM email_send_log \
+         WHERE status NOT IN ('sent', 'withheld') AND created_at > NOW() - INTERVAL '7 days' \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .map(|r| {
+        serde_json::json!({
+            "to": r.get::<String, _>("to_email"),
+            "subject": r.get::<Option<String>, _>("subject"),
+            "detail": r.get::<Option<String>, _>("detail"),
+            "at": r
+                .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                .to_rfc3339(),
+        })
+    });
+    Ok(Json(serde_json::json!({
+        "sends": sends,
+        "summary": {
+            "window_days": 7,
+            "sent": sent,
+            "withheld": withheld,
+            "refused": refused,
+            "last_refused": last_refused,
+        }
+    })))
 }
 
 pub async fn get_email_config(

@@ -2498,12 +2498,28 @@ async function bindEmailProvider() {
       try {
         const h = await api('/admin/email-log');
         const rows = (h && h.sends) || [];
+        /* THE WINDOW, NOT JUST THE TAIL (2026-10-21). The table below lists the last sends, so a
+           refusal older than that list has scrolled away — which is exactly the case an operator
+           worries about ("did that customer ever get their password?"). The API counts the last
+           7 days by outcome, and this line states the verdict in one sentence before the detail. */
+        const sm = (h && h.summary) || null;
+        const sumLine = !sm ? '' : '<div style="font-size:12px;margin-bottom:8px;padding:8px 10px;border-radius:6px;background:'
+          + ((sm.refused > 0) ? '#fef2f2' : '#f0fdf4') + ';color:' + ((sm.refused > 0) ? '#b91c1c' : '#15803d') + '">'
+          + ((sm.refused > 0)
+              ? '\u274c ' + sm.refused + ' email' + (sm.refused === 1 ? ' was' : 's were') + ' REFUSED in the last '
+                + sm.window_days + ' days \u2014 those customers received nothing.'
+              : '\u2705 No email was refused in the last ' + sm.window_days + ' days.')
+          + ' <span style="color:#475569">\u00b7 ' + sm.sent + ' sent \u00b7 ' + sm.withheld
+          + ' not sent (reserved/test addresses)</span>'
+          + (sm.last_refused ? '<div style="margin-top:4px">Last refusal: ' + x(sm.last_refused.to || '')
+              + ' \u2014 ' + x(String(sm.last_refused.detail || '')) + '</div>' : '')
+          + '</div>';
         if (!rows.length) {
-          hist.innerHTML = '<div style="color:#64748b;font-size:12px">No email attempts recorded yet.</div>';
+          hist.innerHTML = sumLine + '<div style="color:#64748b;font-size:12px">No email attempts recorded yet.</div>';
         } else {
           const colour = st => st === 'sent' ? '#15803d' : st === 'withheld' ? '#b45309' : '#b91c1c';
           const word = st => st === 'sent' ? 'sent' : st === 'withheld' ? 'not sent (reserved address)' : 'REFUSED';
-          hist.innerHTML = '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ')</div>'
+          hist.innerHTML = sumLine + '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ')</div>'
             + '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
             + '<th style="padding:2px 6px">When</th><th style="padding:2px 6px">To</th><th style="padding:2px 6px">Subject</th>'
             + '<th style="padding:2px 6px">Result</th><th style="padding:2px 6px">Reason</th></tr></thead><tbody>'
