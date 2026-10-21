@@ -325,7 +325,16 @@ function renderUpgrade(plans){
 }
 
 function upgradeTo(slug){
-  if(!confirm('Upgrade to '+slug+' plan?')) return;
+  // The confirmation names the PLAN and the AMOUNT, never the internal slug. Measured live
+  // 2026-10-21 in Chromium on app.funnelswift.net: pressing Upgrade raised
+  // "Upgrade to kinetic-pro plan?" — an internal identifier on the one screen where the price is
+  // the whole question. The name/price come from the catalogue row this screen already rendered,
+  // so the confirmation can never disagree with the card the customer just read.
+  var planObj = PLANS[slug] || (PREQ_OFFER && PREQ_OFFER.slug === slug ? PREQ_OFFER : null);
+  var label = (planObj && planObj.name) ? planObj.name : slug;
+  var raw = planObj ? Number(planObj.price === null || planObj.price === undefined ? 0 : planObj.price) : 0;
+  var amount = raw > 0 ? ' \u2014 $' + (raw % 1 === 0 ? String(raw) : raw.toFixed(2)) + '/month' : '';
+  if(!confirm('Upgrade this workspace to ' + label + amount + '?\n\nNothing is charged until the payment provider confirms the payment.')) return;
   try {
     var token = T || '';
     fetch(window.location.origin+'/api/v1/checkout/create', {
