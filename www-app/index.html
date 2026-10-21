@@ -151,6 +151,10 @@ tr:hover{background:#f8fafc}
   <a data-tab="profile" onclick="S('profile')">Profile</a>
   <a data-tab="leads" onclick="S('leads')">Leads</a>
   <a data-tab="funnels" onclick="S('funnels')">Funnels</a>
+  <!-- cron 2026-10-21: GET/POST /api/v1/campaigns and GET/PUT /:id are tenant-scoped in the
+       handler and had NO screen in either console, so a workspace could not manage its own
+       campaigns. A backend route with no UI is a defect. -->
+  <a data-tab="campaigns" onclick="S('campaigns')">Campaigns</a>
   <a data-tab="upgrade" onclick="S('upgrade')" style="color:#fbbf24;font-weight:600">⭐ Upgrade</a>
   <a data-tab="cards" onclick="S('cards')">Kinetic Cards</a>
   <!-- the workspace's OWN card performance: GET /api/v1/analytics/overview
@@ -357,6 +361,104 @@ var MOVED={domains:"settings"};
 /* The tab-title map above is one long literal; a new screen's title is added here instead of
    rewriting that line (and every later screen keeps appending the same way). */
 TI.funnels="Funnels";
+TI.campaigns="Campaigns";
+/* === CAMPAIGNS (kanban cron 2026-10-21) =====================================================
+   A whole tenant-facing feature existed with NO screen anywhere: `campaigns` (a table with
+   tenant_id), `GET/POST /api/v1/campaigns` and `GET/PUT /api/v1/campaigns/:id` — every one of
+   them scoped by `auth.tenant_id` in the handler — and the ONLY caller in the fleet was the
+   operator's own console. So a customer could not create, list or change a campaign of their
+   own while the API for exactly that sat mounted and answering. David's standing rule is that a
+   backend route with no UI is a defect, not a feature; this is that screen.
+   It reads the caller's OWN tenant: the handler binds auth.tenant_id and applies no admin check,
+   so a workspace sees only its campaigns and never anyone else's. */
+var CAM_STATUS=["draft","active","paused","completed"];
+function LCAM(){
+  var c=$("ct");
+  c.innerHTML='<div class="cc">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">'
+    +'<div><h3 style="margin:0">Campaigns</h3>'
+    +'<p style="color:#64748b;font-size:13px;margin:6px 0 0">The campaigns this workspace runs. Give each one a name and a status so you can tell what is running from what is still a draft.</p></div>'
+    +'<button class="btn" id="cam-new">New campaign</button></div>'
+    +'<div id="cam-form" style="display:none;margin-top:16px"></div>'
+    +'<div id="cam-msg" style="display:none;margin-top:12px;font-size:13px"></div>'
+    +'<div id="cam-list" style="margin-top:16px"><div class="loading">Loading...</div></div>'
+    +'</div>';
+  var msg=function(t,ok){var m=$("cam-msg");if(!m)return;m.style.display=t?"block":"none";
+    m.style.color=ok?"#166534":"#b91c1c";m.textContent=t||"";};
+  var badge=function(s){
+    var v=s||"draft";
+    var bg=v==="active"?"#dcfce7":(v==="paused"?"#fef3c7":(v==="completed"?"#e0e7ff":"#f1f5f9"));
+    var fg=v==="active"?"#166534":(v==="paused"?"#92400e":(v==="completed"?"#3730a3":"#475569"));
+    return '<span data-cam-status="'+X(v)+'" style="background:'+bg+';color:'+fg+';padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600">'+X(v)+'</span>';
+  };
+  function form(row){
+    var f=$("cam-form"); if(!f) return;
+    var r=row||{};
+    var opts=CAM_STATUS.map(function(s){return '<option value="'+s+'"'+(String(r.status||"draft")===s?" selected":"")+'>'+s+'</option>';}).join("");
+    f.innerHTML='<div class="card" data-cam-form="1"><h3 style="margin:0 0 10px">'+(row?"Edit campaign":"New campaign")+'</h3>'
+      +'<label style="font-size:12px;color:#64748b">Name</label>'
+      +'<input class="input" id="cam-name" style="width:100%;margin:4px 0 10px" maxlength="255" value="'+X(r.name||"")+'" placeholder="Spring promo">'
+      +'<label style="font-size:12px;color:#64748b">Type</label>'
+      +'<input class="input" id="cam-type" style="width:100%;margin:4px 0 10px" maxlength="64" value="'+X(r.campaign_type||"email")+'" placeholder="email">'
+      +'<label style="font-size:12px;color:#64748b">Status</label>'
+      +'<select class="input" id="cam-status" style="width:100%;margin:4px 0 10px">'+opts+'</select>'
+      +'<label style="font-size:12px;color:#64748b">Description</label>'
+      +'<textarea class="input" id="cam-desc" style="width:100%;margin:4px 0 12px;min-height:70px" placeholder="What this campaign is for">'+X(r.description||"")+'</textarea>'
+      +'<div style="display:flex;gap:8px"><button class="btn" id="cam-save">'+(row?"Save changes":"Create campaign")+'</button>'
+      +'<button class="btn btn-o" id="cam-cancel">Cancel</button></div></div>';
+    f.style.display="block";
+    $("cam-cancel").onclick=function(){f.style.display="none";f.innerHTML="";};
+    $("cam-save").onclick=function(){
+      var name=($("cam-name").value||"").trim();
+      if(!name){msg("Give the campaign a name.",false);return;}
+      var body={name:name,type:($("cam-type").value||"").trim()||"email",
+                status:$("cam-status").value,
+                description:($("cam-desc").value||"").trim()};
+      var p=row?("/api/v1/campaigns/"+encodeURIComponent(row.id)):"/api/v1/campaigns";
+      $("cam-save").disabled=true;
+      api(p,{method:row?"PUT":"POST",body:JSON.stringify(body)}).then(function(d){
+        if(d&&d.error){msg(d.message||d.error,false);$("cam-save").disabled=false;return;}
+        f.style.display="none"; f.innerHTML="";
+        msg(row?"Campaign updated.":"Campaign created.",true);
+        load();
+      }).catch(function(e){msg("The campaign could not be saved"+(e&&e.message?" — "+e.message:"")+".",false);$("cam-save").disabled=false;});
+    };
+  }
+  function load(){
+    api("/api/v1/campaigns").then(function(d){
+      var box=$("cam-list"); if(!box||!box.parentNode) return;
+      var rows=Array.isArray(d)?d:(d&&Array.isArray(d.campaigns)?d.campaigns:[]);
+      if(!rows.length){
+        box.innerHTML='<div class="card"><p style="color:#64748b;font-size:13px;margin:0">No campaigns yet. Press <strong>New campaign</strong> to start one.</p></div>';
+        return;
+      }
+      var h='<div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'
+        +'<thead><tr><th style="text-align:left;padding:8px 6px">Name</th><th style="text-align:left;padding:8px 6px">Type</th>'
+        +'<th style="text-align:left;padding:8px 6px">Status</th><th style="text-align:left;padding:8px 6px">Created</th>'
+        +'<th style="text-align:left;padding:8px 6px"></th></tr></thead><tbody>';
+      rows.forEach(function(r,i){
+        h+='<tr data-campaign="'+X(r.id)+'">'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0"><div style="font-weight:600">'+X(r.name)+'</div>'
+          +(r.description?'<div style="color:#64748b;font-size:12px">'+X(r.description)+'</div>':'')+'</td>'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+X(r.campaign_type||"—")+'</td>'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+badge(r.status)+'</td>'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+X(String(r.created_at||"").slice(0,10))+'</td>'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0"><button class="btn btn-o" data-cam-edit="'+i+'">Edit</button></td>'
+          +'</tr>';
+      });
+      h+='</tbody></table></div>';
+      box.innerHTML=h;
+      Array.prototype.forEach.call(box.querySelectorAll("[data-cam-edit]"),function(b){
+        b.onclick=function(){form(rows[parseInt(b.getAttribute("data-cam-edit"),10)]);};
+      });
+    }).catch(function(e){
+      var box=$("cam-list"); if(box) box.innerHTML='<div class="card"><p style="color:#b91c1c;font-size:13px;margin:0">The campaigns could not be loaded'+(e&&e.message?" — "+e.message:"")+'.</p></div>';
+    });
+  }
+  $("cam-new").onclick=function(){form(null);};
+  load();
+}
+
 function S(t){
   if(ADMIN_ONLY[t]&&!(U&&U.is_admin)){
     $("pt").textContent=(TI[t]||t);
@@ -373,7 +475,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -506,6 +608,7 @@ function LMA(){
     }
     api("/api/v1/affiliate/promotable-products").then(function(r){
       var ps=(r&&r.products)||[];
+      AFF_PRODUCTS=ps;
       // YOUR TRACKING LINK — the one thing the served affiliate guide promises ("you share your
       // affiliate link") that no served surface showed. The backend builds it from the caller's
       // tenant referral code (`GET /api/v1/affiliate/me` -> tracking_link) and `www/signup.html`
@@ -534,6 +637,10 @@ function LMA(){
           +'<td>'+(p.has_tag?X(p.tag_name||""):'<em>no tag \u2014 cannot be credited</em>')+'</td></tr>';
       });
       h+='</tbody></table><div style="margin-top:12px"><button class="btn btn-p" onclick="affSave()">Save</button> <span id="aff-saved" style="opacity:.8"></span></div></div>';
+      h+='<div class="card" style="margin-top:14px"><h3>Product links</h3>'
+        +'<p style="opacity:.8">Your main link credits you for any signup. A product link credits you the same way and also records WHICH product the signup came for, so you can see what each link sells.</p>'
+        +'<span id="aff-link-msg" style="opacity:.8;font-size:12px"></span>'
+        +'<div id="aff-links" class="loading">Loading...</div></div>';
       h+='<div class="card" style="margin-top:14px"><h3>Your rate</h3><p>You earn '+(d.effective_rate!=null?X(d.effective_rate)+"%":"your plan's rate")+' on a referred sale unless a product or group rate says otherwise, and a personal override always wins.</p>'
         +(d.affiliate&&d.affiliate.rate_reason?'<p style="font-size:12px;color:#64748b;margin-top:6px">How your rate was set: '+X(d.affiliate.rate_reason)+'.</p>':'')
         +(d.next_band?'<p style="font-size:12px;color:#64748b;margin-top:6px">Next step: '+X(d.next_band.label)+' at '+X(d.next_band.rate)+'% once you have '+X(d.next_band.min_paying_customers)+' paying customer(s) with '+X(d.next_band.min_apps_per_customer)+' app(s) each &mdash; you have '+X(d.next_band.paying_customers)+' customer(s) across '+X(d.next_band.apps_per_customer)+' app(s).</p>':'')
@@ -542,6 +649,7 @@ function LMA(){
       h+=affGuideLink();
       c.innerHTML=h;
       affEarn();
+      affLinks();
     }).catch(function(e){ c.innerHTML='<div class="card"><p>Could not load products: '+X((e&&e.message)||"unknown")+'</p></div>'; });
   });
 }
@@ -596,6 +704,70 @@ function affEarn(){
     box=$("aff-earn"); if(!box||!box.parentNode) return;
     box.className=""; box.innerHTML='<p id="aff-earn-err" style="color:#b45309">Could not load your earnings: '+X((e&&e.message)||"unknown")+'</p>';
   });
+}
+
+/* === PRODUCT LINKS (per-product affiliate credit) ===
+   THE reader for GET /api/v1/affiliate-links and the writer for POST /api/v1/affiliate-links. Both
+   routes shipped on 2026-09-28 and no served surface ever called either: the Promote tab showed ONE
+   main link (the tenant referral code) and the product table, so an affiliate could not mint a link
+   that records which product a signup came for, and could not see the codes they already owned.
+   The handler resolves the affiliate from the SESSION (never a body affiliate_id), so this screen
+   can only ever write the caller's own links. */
+var AFF_PRODUCTS=[];
+function affLinks(){
+  var box=$("aff-links"); if(!box) return;
+  api("/api/v1/affiliate-links").then(function(rows){
+    box=$("aff-links"); if(!box||!box.parentNode) return;
+    rows=Array.isArray(rows)?rows:((rows&&rows.data)||[]);
+    var base=(AFF&&AFF.tracking_link)?String(AFF.tracking_link).split("?")[0]:"";
+    var h;
+    if(!rows.length){
+      h='<p id="aff-links-empty" style="opacity:.75">No product links yet. Pick a product below and create one \u2014 it credits you exactly like your main link and tells you which product the customer wanted.</p>';
+    } else {
+      h='<table class="tbl"><thead><tr><th>Product</th><th>Code</th><th>Share link</th><th>Created</th><th></th></tr></thead><tbody>';
+      rows.forEach(function(l){
+        var url=base?(base+"?ref="+l.tracking_code):("?ref="+l.tracking_code);
+        h+='<tr data-aff-link="'+X(l.id||"")+'"><td>'+X(l.target_software||"\u2014")+'</td>'
+          +'<td><code>'+X(l.tracking_code||"")+'</code></td>'
+          +'<td style="word-break:break-all;font-size:12px">'+X(url)+'</td>'
+          +'<td>'+(l.created_at?X(String(l.created_at).slice(0,10)):"\u2014")+'</td>'
+          +'<td><button type="button" class="btn" data-copy="'+X(url)+'" onclick="affCopyText(this)">Copy</button></td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">'
+      +'<select id="aff-link-product" class="input" style="min-width:220px"></select>'
+      +'<button type="button" class="btn btn-p" id="aff-link-create" onclick="affCreateLink()">Create product link</button></div>';
+    box.className=""; box.innerHTML=h;
+    var sel=$("aff-link-product");
+    if(sel){
+      var ps=AFF_PRODUCTS||[];
+      sel.innerHTML=ps.length?ps.map(function(p){return '<option value="'+X(p.name)+'">'+X(p.name)+'</option>';}).join(""):'<option value="">No products available</option>';
+    }
+  }).catch(function(e){
+    box=$("aff-links"); if(!box||!box.parentNode) return;
+    box.className=""; box.innerHTML='<p id="aff-links-err" style="color:#b45309">Could not load your product links: '+X((e&&e.message)||"unknown")+'</p>';
+  });
+}
+function affCopyText(b){
+  var t=b.getAttribute("data-copy")||"";
+  function done(){b.textContent="Copied"; setTimeout(function(){b.textContent="Copy";},1500);}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){done()});}
+    else{var i=document.createElement("textarea");i.value=t;document.body.appendChild(i);i.select();document.execCommand("copy");i.remove();done();}
+  }catch(e){alert("Copy failed \u2014 select the link text instead.");}
+}
+function affCreateLink(){
+  var sel=$("aff-link-product"), msg=$("aff-link-msg");
+  var prod=sel?String(sel.value||""):"";
+  if(!prod){ if(msg) msg.textContent="Pick a product first."; return; }
+  if(msg) msg.textContent="Creating...";
+  api("/api/v1/affiliate-links",{method:"POST",body:JSON.stringify({target_software:prod})})
+    .then(function(r){
+      if(msg) msg.textContent="Created"+(r&&r.tracking_code?" "+r.tracking_code:"")+" \u2014 it is in the list above.";
+      affLinks();
+    })
+    .catch(function(e){ if(msg) msg.textContent="Could not create: "+((e&&e.message)||"unknown"); });
 }
 
 function affSave(){
