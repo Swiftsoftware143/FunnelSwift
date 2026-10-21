@@ -616,6 +616,42 @@ function O(title, bodyBuilder){
 }
 function C(){ $("mod").classList.remove("sh"); }
 
+/* QR codes for a card (cron 2026-10-21). The two image routes existed as stubs — the SVG was a
+   solid black square and the PNG had ZERO bytes — while every plan carries a max_qr_codes limit
+   and the dashboard counts "QR codes", so the feature had a price and no output. This is the
+   screen: one press gets (or re-uses) the card's QR and shows the scannable image, its PNG and
+   SVG. POST /api/v1/kinetic/qr is idempotent per card, so pressing twice never spends the free
+   plan's single slot. */
+function QRC(c){
+  O("QR code: "+(c.title||c.slug||"card"),function(){
+    var box=El("div",{style:"text-align:center;padding:12px;border:1px solid #e2e8f0;border-radius:10px;min-height:120px"});
+    box.innerHTML='<p style="font-size:12px;color:#64748b;margin:0">Preparing the code\u2026</p>';
+    $("mb").appendChild(box);
+    api("/api/v1/kinetic/qr",{method:"POST",body:JSON.stringify({card_id:c.id,title:c.title||c.slug})})
+    .then(function(row){
+      if(!row||!row.id) throw new Error("The server did not return a QR code.");
+      var png="/api/v1/kinetic/qr/"+encodeURIComponent(row.id)+"/png";
+      var svg="/api/v1/kinetic/qr/"+encodeURIComponent(row.id)+"/svg";
+      box.innerHTML='<img alt="QR code for '+(c.slug||"this card")+'" src="'+png+'" style="width:240px;height:240px;display:block;margin:0 auto">'
+        +'<p style="font-size:11px;color:#64748b;margin:6px 0 0">Scan to open <b>'+X(c.title||c.slug||"")+'</b>. Right-click the image to save it, or use the buttons below.</p>';
+      var f=$("mf");
+      f.appendChild(El("a",{"class":"btn","href":png,"download":(c.slug||"card")+"-qr.png",style:"text-decoration:none"},"Download PNG"));
+      f.appendChild(El("a",{"class":"btn","href":svg,"download":(c.slug||"card")+"-qr.svg",style:"text-decoration:none"},"Download SVG"));
+      f.appendChild(El("button",{"class":"btn",onclick:function(){
+        var link=location.origin+png;
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          navigator.clipboard.writeText(link).then(function(){$("mm").className="msg ok";$("mm").textContent="Image link copied \u2014 paste it into a QR Code block or any image field.";},function(){$("mm").textContent=link;});
+        } else { $("mm").textContent=link; }
+      }},"Copy image link"));
+      f.appendChild(El("button",{"class":"btn","onclick":C},"Close"));
+    }).catch(function(e){
+      box.innerHTML='<p style="font-size:13px;color:#dc2626;margin:0">'+X((e&&e.message)||"Could not make a QR code for this card.")+'</p>'
+        +'<p style="font-size:11px;color:#64748b;margin:8px 0 0">A workspace on the free plan holds one QR code; the paid plans hold more.</p>';
+      $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
+    });
+  });
+}
+
 /* El: create element with properties */
 function El(tag, props, children){
   var e=document.createElement(tag);
@@ -1268,6 +1304,7 @@ function LCM(){
       var kurl=(KCB&&KCB.subdomain)?("https://"+KCB.subdomain+".kntcrd.com/k/"):"https://kntcrd.com/k/";
       act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){window.open(kurl+(c.slug||"")+"?preview=1","_blank")}},"Preview"));
       act.appendChild(El("a",{"class":"btn btn-sm btn-o",style:"text-decoration:none",href:kurl+(c.slug||""),target:"_blank"},"View"));
+      act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){QRC(c)}},"QR"));
       act.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DC(c.id)}},"Del"));
       it.appendChild(act);
       grd.appendChild(it);
@@ -1940,7 +1977,7 @@ function MFC(data){
     mcBlocksChanged();
   };
   p4.appendChild(El("div",{style:"margin-top:2px"},[mcAddBtn,mcAddMsg]));
-  p4.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin:6px 0 0;line-height:1.4"},"Tip: a Lead Form block captures submissions on the card itself; the QR Code block takes a URL to a QR image (the app does not generate QR images)."));
+  p4.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin:6px 0 0;line-height:1.4"},"Tip: a Lead Form block captures submissions on the card itself; the QR Code block takes a URL to a QR image — press QR on a card, then paste that image link here."));
   // → POST /api/v1/kinetic/preview-blocks : the served renderer, on the UNSAVED blocks.
   function mcPreviewBlocks(){
     var box=$("mc-blk-preview"); if(!box) return;
