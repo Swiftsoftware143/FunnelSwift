@@ -483,16 +483,43 @@ pub async fn stop_impersonation(auth: AuthUser) -> AppResult<impl IntoResponse> 
 /// dashboard read 0. The four JSON keys are the console's own. `plans` has no active/inactive
 /// column, so `total_plans` is the plan-table count (the console labels it "Active Plans").
 /// Admin-gated: these are platform-wide numbers, not tenant-scoped ones.
-pub async fn admin_stats(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+///
+/// HARNESS TRAFFIC IS NOT A CUSTOMER (measured live 2026-10-21). The Tenants list this dashboard
+/// sits above already hides a harness-tagged workspace (`tenants.probe_harness`, stamped at signup
+/// by `crate::probe_harness::for_signup`; see `tenant_handler::list_tenants`). These counters did
+/// not, so the headline said "N tenants" while the list underneath showed N-1 and the operator had
+/// no way to tell which number was true. Both now apply the SAME predicate: a tagged workspace is
+/// excluded unless the caller passes `?include_probe=1`, and a workspace minted before the column
+/// existed (`probe_harness` NULL) is a customer as far as this count is concerned. `^CNRY` rows stay
+/// visible, exactly as the list keeps them, so the fleet's own canaries remain observable.
+pub async fn admin_stats(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> AppResult<Json<Value>> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let total_tenants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants")
-        .fetch_one(&state.pool)
-        .await?;
-    let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.pool)
-        .await?;
+    let include_probe = params
+        .get("include_probe")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    // One predicate, spelled twice exactly as the list spells it: a workspace is COUNTED only
+    // when it would be LISTED. `$1::bool OR COALESCE(t.probe_harness,'') = '' OR t.probe_harness ~* '^CNRY'`
+    let total_tenants: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tenants t \
+         WHERE $1::bool OR COALESCE(t.probe_harness, '') = '' OR t.probe_harness ~* '^CNRY'",
+    )
+    .bind(include_probe)
+    .fetch_one(&state.pool)
+    .await?;
+    let total_users: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users u JOIN tenants t ON t.id = u.tenant_id \
+         WHERE $1::bool OR COALESCE(t.probe_harness, '') = '' OR t.probe_harness ~* '^CNRY'",
+    )
+    .bind(include_probe)
+    .fetch_one(&state.pool)
+    .await?;
     let total_affiliates: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM affiliates")
         .fetch_one(&state.pool)
         .await?;
