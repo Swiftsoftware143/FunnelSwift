@@ -202,10 +202,26 @@ pub async fn register(
     // the free tier through `plans.price = 0` + `plans.side` (both NOT NULL) and reports what it
     // did: a warning in the log when this install has no free plan for this side, an ERROR and a
     // `plan_assignment.warning` in the response when it has no free plan at all.
+    // WHICH SIDE is derived from the REQUEST — never hardcoded (measured live 2026-10-21).
+    //
+    // The pricing cards on funnelswift.com carry the slug the visitor picked into /signup.html
+    // (`?plan=kinetic-pro`), and that page posts it back here as `plan`. This handler used to
+    // ignore it and pin `ProductSide::Capture`, so a visitor who chose Kinetic Pro landed on a
+    // Capture workspace whose dashboard reads "Cards not on this plan" — the exact defect the
+    // page-side change was meant to remove, silently re-introduced on the server. Same predicate
+    // the sibling public door (`handlers::public_signup_handler::public_signup`) already uses: a
+    // slug starting `kinetic` is the Kinetic Cards product, anything else (including a missing
+    // field) is the Capture product this route's own page serves.
+    let side = match req.plan_slug.as_deref() {
+        Some(p) if p.trim().to_lowercase().starts_with("kinetic") => {
+            crate::plan_resolver::ProductSide::Kinetic
+        }
+        _ => crate::plan_resolver::ProductSide::Capture,
+    };
     let plan = crate::plan_resolver::assign_free_plan(
         &state.pool,
         tenant_id,
-        crate::plan_resolver::ProductSide::Capture,
+        side,
         "POST /api/v1/auth/register",
     )
     .await?;

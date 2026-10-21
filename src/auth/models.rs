@@ -48,6 +48,15 @@ pub struct RegisterRequest {
     pub password: String,
     pub name: String,
     pub tenant_name: Option<String>,
+    /// The plan/product the visitor picked before signing up.
+    ///
+    /// The public signup page forwards it as `plan` (`/signup.html?plan=kinetic-pro` — the pricing
+    /// cards have carried the slug since 2026-10-21), while API callers have always used
+    /// `plan_slug`. BOTH names are accepted here, because a field that only one of the two callers
+    /// can fill is a field that silently does nothing: measured live 2026-10-21, the page posted
+    /// `plan: "kinetic-pro"` and this struct ignored it, so `register` seated the visitor on the
+    /// Capture free tier while the page had just told them they picked Kinetic.
+    #[serde(default, alias = "plan")]
     pub plan_slug: Option<String>,
 }
 
