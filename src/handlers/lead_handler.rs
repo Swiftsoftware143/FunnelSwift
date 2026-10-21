@@ -7,6 +7,7 @@ use axum::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
@@ -531,6 +532,25 @@ pub async fn assign_lead(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    // The owner must be a person IN THIS WORKSPACE. The route used to take any uuid it was handed
+    // and write it straight into `leads.assigned_to` — nothing checked the row belonged to the
+    // caller's tenant, so a workspace could hand its lead to another workspace's user id (a row
+    // that would then render as an owner nobody in this tenant can name). Checked before the
+    // UPDATE, so a refusal leaves the lead exactly as it was.
+    if let Some(owner) = req.assigned_to {
+        let in_tenant: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM users WHERE id = $1 AND tenant_id = $2")
+                .bind(owner)
+                .bind(tenant_id)
+                .fetch_optional(&state.pool)
+                .await?;
+        if in_tenant.is_none() {
+            return Err(AppError::BadRequest(
+                "That person is not in this workspace".into(),
+            ));
+        }
+    }
+
     let result = sqlx::query(
         "UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
     )
@@ -543,7 +563,63 @@ pub async fn assign_lead(
         return Err(AppError::NotFound("Lead not found".into()));
     }
 
-    Ok(Json(json!({"message": "Lead assigned"})))
+    Ok(Json(json!({
+        "message": if req.assigned_to.is_some() { "Lead assigned" } else { "Lead unassigned" },
+        "assigned_to": req.assigned_to,
+    })))
+}
+
+/// `GET /api/v1/team/members` — the people in the CALLER's workspace, for the lead owner picker.
+///
+/// Why it exists: `POST /leads/:id/assign` has been in the router since the leads table did, and
+/// NOTHING in the console could reach it — the operator had no way to give a lead to a teammate,
+/// so `assigned_to` was a column only an API client could write. The picker needs a list of
+/// people, and the only list route was `/api/v1/admin/tenants/:id/users`, which is platform-admin
+/// (correctly): a workspace must be able to see its OWN people without being an install operator.
+///
+/// Scoped from the CREDENTIAL, never from the request: the tenant comes from the token, so the
+/// route cannot be pointed at somebody else's workspace, and it returns no password material.
+pub async fn team_members(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // Active people only: an owner picker that offers a disabled login hands leads to somebody who
+    // cannot sign in to work them.
+    let rows = sqlx::query(
+        "SELECT id, name, email, role::text AS role
+           FROM users
+          WHERE tenant_id = $1 AND is_active = true
+          ORDER BY lower(coalesce(nullif(name, ''), email)), email",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let members: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            let name: String = r.try_get("name").unwrap_or_default();
+            let email: String = r.try_get("email").unwrap_or_default();
+            let label = if name.trim().is_empty() {
+                email.clone()
+            } else {
+                name
+            };
+            json!({
+                "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+                "name": label,
+                "email": email,
+                "role": r.try_get::<String, _>("role").unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "members": members })))
 }
 
 pub async fn update_lead_stage(

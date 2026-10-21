@@ -1294,6 +1294,32 @@ function openPlanModal(id) {
 // customer's Lead Stages screen) with the same default the backend seeds.
 const DEFAULT_LEAD_STAGES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'];
 let LEAD_STAGES = DEFAULT_LEAD_STAGES.slice();
+// The people in this workspace, for the lead owner picker (cron 2026-10-21). `null` means "not
+// loaded yet", which is different from "loaded and there is nobody else here": the picker says so
+// instead of showing an empty list that looks broken.
+let LEAD_TEAM = null;
+async function loadLeadTeam() {
+  try {
+    const r = await api('/team/members');
+    const rows = Array.isArray(r) ? r : ((r && r.members) || []);
+    LEAD_TEAM = Array.isArray(rows) ? rows : [];
+  } catch (e) { LEAD_TEAM = []; }
+  return LEAD_TEAM;
+}
+// One row's owner control. The current owner is written into the option list even when it is not
+// in LEAD_TEAM (a person removed from the workspace still owns their leads), so the row shows the
+// truth instead of silently reading "Unassigned".
+function leadOwnerCell(l) {
+  const cur = String(l.assigned_to || '');
+  const people = (LEAD_TEAM || []).slice();
+  if (cur && !people.some(p => String(p.id) === cur)) people.push({ id: cur, name: 'Former teammate' });
+  const opts = [`<option value=""${cur === '' ? ' selected' : ''}>Unassigned</option>`].concat(
+    people.map(p => `<option value="${x(p.id)}"${String(p.id) === cur ? ' selected' : ''}>${x(p.name || p.email || 'Teammate')}</option>`));
+  const title = LEAD_TEAM === null ? 'Loading the people in this workspace…'
+    : (people.length ? 'Give this lead to a teammate' : 'Nobody else is in this workspace yet — add a teammate first');
+  return `<select class="input lead-owner-sel" data-lead="${x(l.id)}" data-current="${x(cur)}"
+            style="padding:4px 6px;font-size:12px;min-width:130px" title="${x(title)}">${opts.join('')}</select>`;
+}
 async function loadLeadStages() {
   try {
     const st = await api('/settings');
@@ -1337,6 +1363,7 @@ async function renderLeads() {
   const from = total === 0 ? 0 : (page - 1) * per + 1;
   const to = Math.min(page * per, total);
   await loadLeadStages();
+  await loadLeadTeam();
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1351,16 +1378,17 @@ async function renderLeads() {
     </div>
     <div class="card">
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Stage</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Stage</th><th>Owner</th><th>Tags</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody id="leads-tbody">${leads.map(l=>`<tr>
           <td><strong>${x(l.name||l.full_name||'-')}</strong></td>
           <td>${x(l.email||'-')}</td>
           <td><span class="badge badge-blue">${x(l.source||'direct')}</span></td>
           <td>${leadStageCell(l)}</td>
+          <td>${leadOwnerCell(l)}</td>
           <td>${(l.tags||[]).map(t=>`<span class="badge badge-green">${x(t.name||t)}</span>`).join(' ')}</td>
           <td>${formatDate(l.created_at)}</td>
           <td><button class="btn btn-secondary btn-xs" onclick="window._editLead('${l.id}')">Edit</button></td>
-        </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted)">${term ? 'No lead matches that search.' : 'No leads yet — add one, or import a CSV.'}</td></tr>`}</tbody>
+        </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--muted)">${term ? 'No lead matches that search.' : 'No leads yet — add one, or import a CSV.'}</td></tr>`}</tbody>
       </table></div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px">
         <span style="font-size:13px;color:var(--muted)">Showing ${from}–${to} of ${total}${term ? ' matching "' + x(term) + '"' : ''}</span>
@@ -1391,6 +1419,26 @@ function bindLeads() {
     } finally { sel.disabled = false; }
   }));
   document.getElementById('add-lead-btn')?.addEventListener('click', () => openLeadModal());
+  // The OWNER writer (cron 2026-10-21). `POST /leads/:id/assign` has been in the router since the
+  // leads table did and nothing in this console ever called it, so a lead could not be given to a
+  // teammate from the UI at all. Same shape as the stage picker beside it: one listener, the refusal
+  // restores the previous value, and a blank option means "put it back in the shared pool".
+  document.querySelectorAll('.lead-owner-sel').forEach(sel => sel.addEventListener('change', async () => {
+    const id = sel.getAttribute('data-lead');
+    const prev = sel.getAttribute('data-current') || '';
+    const owner = sel.value || '';
+    if (!id || owner === prev) return;
+    sel.disabled = true;
+    try {
+      await api('/leads/' + id + '/assign', { method: 'POST', body: JSON.stringify({ assigned_to: owner || null }) });
+      sel.setAttribute('data-current', owner);
+      const who = owner ? (sel.options[sel.selectedIndex] || {}).text : '';
+      showToast(owner ? ('Lead assigned to ' + who) : 'Lead put back in the shared pool', 'success');
+    } catch (e) {
+      sel.value = prev;
+      showToast((e && e.message) || 'Could not change the owner', 'error');
+    } finally { sel.disabled = false; }
+  }));
   // The server has had GET /leads/export since it shipped, but nothing in this console ever
   // called it — so an operator with a few hundred leads had no way to get them out, and the
   // route answered JSON even when `format=csv` was asked for. This button is the missing caller:

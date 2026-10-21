@@ -228,6 +228,9 @@ pub fn create_router(
                 .delete(lead_handler::delete_lead),
         )
         .route("/api/v1/leads/:id/assign", post(lead_handler::assign_lead))
+        // The people in the caller's own workspace, for the lead owner picker (cron 2026-10-21).
+        // Static path, so it cannot collide with `/leads/:id`; authenticated by the global gate.
+        .route("/api/v1/team/members", get(lead_handler::team_members))
         .route(
             "/api/v1/leads/:id/stage",
             post(lead_handler::update_lead_stage),

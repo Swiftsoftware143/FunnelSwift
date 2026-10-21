@@ -108,7 +108,14 @@ pub struct LeadResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct AssignRequest {
-    pub assigned_to: Uuid,
+    /// The teammate who now owns the lead, or `null` to put it back in the shared pool.
+    ///
+    /// Optional since the owner picker (cron 2026-10-21): the route could only ever SET an owner
+    /// and nothing in the console called it, so `leads.assigned_to` was a column no human could
+    /// write. A picker needs both directions — handing a lead back is the same decision as handing
+    /// it over.
+    #[serde(default)]
+    pub assigned_to: Option<Uuid>,
 }
 
 /// `POST /api/v1/leads/:id/stage` — the PIPELINE column, not the status. `leads.stage` holds one of
