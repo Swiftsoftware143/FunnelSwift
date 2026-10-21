@@ -766,6 +766,23 @@ async function renderMyAccount() {
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsPasswordSave()">Save</button><span id="fsac-pwmsg" style="font-size:12px;margin-left:8px"></span></div>
     </div>
     <div class="card">
+      <div class="card-header"><span class="card-title">✉️ Sign-in email</span></div>
+      <!-- (cron 2026-10-20) The address printed in the Profile card below was read-only: the
+           email-change route pair existed but nothing in this console could reach it. This card only
+           ASKS - the server writes one pending row and mails the NEW address, and the account
+           address does not move until that link is opened (which is what makes a typo harmless).
+           It must never claim the change happened. -->
+      <p style="font-size:13px;color:#64748b;margin:0 0 10px">
+        Your sign-in address is <strong id="fsac-ec-cur">${x(USER.email||'')}</strong>. To move it, enter the new address
+        and we will email a confirmation link to it. Your current address keeps working until you open
+        that link, and the link expires in two hours.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="form-label">New email address</div><input class="input" id="fsac-ec" type="email" maxlength="254" autocomplete="email" placeholder="you@yourbusiness.com"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="fsac-ec-btn" onclick="window._fsEmailChangeSend()">Send confirmation link</button><span id="fsac-ecmsg" style="font-size:12px;margin-left:8px"></span></div>
+    </div>
+    <div class="card">
       <div class="card-header"><span class="card-title">👤 Profile</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><div class="form-label">Email</div><div style="font-size:14px;font-weight:500">${x(USER.email)}</div></div>
@@ -789,6 +806,16 @@ async function renderMyAccount() {
         <div><div class="form-label">Cards Limit</div><div>${fmtPlanLimit(plan.max_cards)}</div></div>
         <div><div class="form-label">Leads Limit</div><div>${fmtPlanLimit(plan.max_leads)}</div></div>
         <div><div class="form-label">Webhooks</div><div>${plan.has_webhooks?'✅':'❌'}</div></div>
+        <!-- (cron 2026-10-20) The four entitlements BELOW are paid features the customer bought and
+             could not see: `plans` carries max_forms, max_custom_domains, has_analytics and
+             has_white_label, the gates enforce them, and this card listed only cards/leads/webhooks.
+             `/auth/me` already serves the whole plans row as `current_plan` (row_to_json(p.*)), so
+             these are render-only - no route change. fmtPlanLimit maps NULL/-1 to "∞" and 0 to
+             "None", the same reading the gates use. -->
+        <div><div class="form-label">Forms</div><div>${fmtPlanLimit(plan.max_forms)}</div></div>
+        <div><div class="form-label">Custom Domains</div><div>${fmtPlanLimit(plan.max_custom_domains)}</div></div>
+        <div><div class="form-label">Analytics</div><div>${plan.has_analytics?'✅':'❌'}</div></div>
+        <div><div class="form-label">Remove our branding</div><div>${plan.has_white_label?'✅':'❌'}</div></div>
         <!-- (kanban t_726416be) "API Access" was RETIRED here with the api-key surface: POST
              /api/v1/api-keys answers 404, and the key left the plan feature registry, so a plan
              can no longer be shown as granting it. The plans.has_api COLUMN values on the three
@@ -911,6 +938,37 @@ window._fsPasswordSave = async function () {
     ['fsac-np', 'fsac-np2', 'fsac-cp'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     fsMsg('fsac-pwmsg', 'Password changed', true);
   } catch (e) { fsMsg('fsac-pwmsg', (e && e.message) || 'Could not change the password', false); }
+};
+/* Change of the operator's OWN sign-in address (cron 2026-10-20). The route pair shipped in the app
+   console with no operator surface: the address in the Profile card was read-only. This only ASKS -
+   POST /auth/email-change writes one pending row and mails the NEW address, and users.email does not
+   move until that link is opened. The two server answers are shown verbatim: a reserved test address
+   answers delivered:false ("no mail was sent, nothing has changed") and a clash arrives as a 400
+   carrying its own sentence, so a mistyped or taken address never looks like a successful save. */
+window._fsEmailChangeSend = async function () {
+  const el = document.getElementById('fsac-ec');
+  const v = ((el && el.value) || '').trim();
+  if (!v) { fsMsg('fsac-ecmsg', 'Enter the new email address first', false); return; }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { fsMsg('fsac-ecmsg', 'That does not look like an email address', false); return; }
+  const btn = document.getElementById('fsac-ec-btn');
+  if (btn) btn.disabled = true;
+  fsMsg('fsac-ecmsg', 'Sending\u2026', null);
+  try {
+    const r = await fetch(API_BASE + '/auth/email-change', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}) },
+      body: JSON.stringify({ new_email: v })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    if (d && d.delivered === false) {
+      fsMsg('fsac-ecmsg', d.message || 'That address cannot receive mail, so nothing was sent.', false);
+    } else {
+      if (el) el.value = '';
+      fsMsg('fsac-ecmsg', 'Confirmation link sent to ' + v + '. Your sign-in address stays as it is until you open it.', true);
+    }
+  } catch (e) { fsMsg('fsac-ecmsg', (e && e.message) || 'Could not start the change', false); }
+  if (btn) btn.disabled = false;
 };
 /* kanban t_9ef0b460: an inline on* attribute is compiled in GLOBAL scope and can never see this
    module's bindings. Eight of them named STATE/renderApp directly (census:
@@ -5188,7 +5246,7 @@ function paintPlanRequests() {
    which screen is open by renderView() and by the sync below. */
 window.appGuidePages = {
   "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data.", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Check My Account for your plan and profile"] },
-  "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, email, password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your password", "See the plan you are on"] },
+  "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, the address you sign in with, your password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your sign-in email (we email a confirmation link)", "Change your password", "See the plan you are on"] },
   "portfolio": { title: "Portfolio", desc: "The capture pages your account has published. Each card is a live page a visitor can open and claim.", actions: ["Open a card to edit its content and design", "Publish or unpublish a card", "Copy a card's public link"] },
   "plans": { title: "Upgrade", desc: "The plans available to this workspace and how to move to one. A plan is a bundle of limits and features (cards, templates, custom domains and more).", actions: ["Compare the plans", "Upgrade or change your plan"] },
   "planAdmin": { title: "Plans", desc: "Manage subscription plans, pricing and the feature toggles each plan grants. Every plan is a set of permissions that decides what a tenant can use.", actions: ["Create or edit a plan", "Turn features on or off per plan", "Set the monthly and yearly price"] },
