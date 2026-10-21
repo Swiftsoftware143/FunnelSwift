@@ -12,19 +12,21 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-20 by the test's own counter over `api_router.rs`)
+//! # The census (re-measured 2026-10-21 by the test's own counter over `api_router.rs`)
 //!
-//! 208 `.route(..)` mounts / 207 unique paths, classified three ways:
+//! 209 `.route(..)` mounts / 208 unique paths, classified three ways:
 //!
 //! ```text
-//!   182 mounts  /api/**            181 unique after the duplicate `/api/v1/linkedin/auth`
+//!   183 mounts  /api/**            182 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     18        public            -> PUBLIC_ROUTES below
+//!     20        public            -> PUBLIC_ROUTES below (the two card-QR image READs
+//!                                    joined them on 2026-10-21: a QR is fetched by a bare
+//!                                    `<img src>` that carries no Authorization header)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    161        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (33 of them `/api/v1/admin/**` = the operator surface,
+//!    160        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (36 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
-//!    25 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
+//!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
 //!                                    Deliberately outside the credential boundary (`is_api_path`);
 //!                                    none of them reads a credential and none returns tenant data
@@ -354,7 +356,7 @@ mod tests {
                 private,
                 served
             ),
-            (208, 207, 182, 18, 3, 161, 26),
+            (209, 208, 183, 20, 3, 160, 26),
             "the census in the module docs no longer matches the router"
         );
     }
