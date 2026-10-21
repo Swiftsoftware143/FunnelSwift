@@ -20,7 +20,7 @@ use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -287,7 +287,11 @@ pub async fn withdraw(
 }
 
 /// `GET /api/v1/admin/plan-requests` — the operator's queue. Optional `?status=open`.
-pub async fn admin_list(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+pub async fn admin_list(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> AppResult<Json<Value>> {
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
@@ -297,8 +301,16 @@ pub async fn admin_list(auth: AuthUser, State(state): State<AppState>) -> AppRes
                 pr.created_at::text AS created_at, t.name AS tenant_name, t.id AS tenant_id
            FROM plan_requests pr
            JOIN tenants t ON t.id = pr.tenant_id
+          WHERE $1::bool
+             OR COALESCE(t.probe_harness, '') = ''
           ORDER BY (pr.status = 'open') DESC, pr.created_at DESC
           LIMIT 200",
+    )
+    .bind(
+        params
+            .get("include_probe")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false),
     )
     .fetch_all(&state.pool)
     .await?;

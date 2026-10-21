@@ -265,6 +265,73 @@ pub async fn public_signup(
     )
     .await?;
 
+    // ── THE PLAN THE VISITOR ACTUALLY CHOSE (2026-10-21) ────────────────────────────────────────
+    // A visitor who picks a PAID card on /pricing is seated on that side's FREE tier (there is no
+    // payment provider yet), and until now their choice was dropped on the floor: the signup page
+    // said "you can move up any time from your dashboard", the dashboard showed Free, and the
+    // operator never learned that a hot lead had asked for Pro. Record the ask as a PLAN REQUEST —
+    // the same row the dashboard's own Upgrade button files — so it reaches the operator's queue
+    // and the customer's own "your request is with us" card immediately.
+    //
+    // Only when the slug names a PAID plan on THIS workspace's side: a missing/unknown slug, the
+    // free tier itself, or a slug belonging to the other product writes nothing. `price > 0` is the
+    // paid test (both columns are NOT NULL, the same predicate `plan_resolver` uses), and the insert
+    // is guarded by "no open ask for this workspace and plan" so a double-submit cannot duplicate.
+    // Harness signups ARE recorded — the operator's QUEUE hides harness tenants instead
+    // (`plan_request_handler::admin_list`, `?include_probe=1`), so attribution stays in the data
+    // and the list the operator reads stays clean.
+    let requested_slug = payload["plan"]
+        .as_str()
+        .map(|p| p.trim().to_lowercase())
+        .unwrap_or_default();
+    let mut plan_request: Option<Value> = None;
+    if !requested_slug.is_empty() {
+        let side_word = match side {
+            crate::plan_resolver::ProductSide::Capture => "main",
+            crate::plan_resolver::ProductSide::Kinetic => "kinetic",
+        };
+        let target: Option<(String, String)> = sqlx::query_as(
+            "SELECT slug, name FROM plans
+              WHERE slug = $1 AND price > 0 AND side IN ($2, 'both')",
+        )
+        .bind(&requested_slug)
+        .bind(side_word)
+        .fetch_optional(&state.pool)
+        .await?;
+        if let Some((slug, plan_name)) = target {
+            let row = sqlx::query(
+                "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note)
+                 SELECT $1, $2, $3, $4, $5, $6
+                  WHERE NOT EXISTS (
+                        SELECT 1 FROM plan_requests
+                         WHERE tenant_id = $1 AND plan_slug = $4 AND status IN ('open','contacted'))
+                 RETURNING id, status, created_at::text AS created_at",
+            )
+            .bind(tenant_id)
+            .bind(user_id)
+            .bind(&email)
+            .bind(&slug)
+            .bind(&plan_name)
+            .bind("Chosen on the pricing page at signup. Checkout has no payment provider yet, so the workspace starts on the free tier of the same product.")
+            .fetch_optional(&state.pool)
+            .await?;
+            if let Some(r) = row {
+                tracing::info!(
+                    email = %email,
+                    plan = %slug,
+                    "signup: the paid plan this visitor chose is recorded as a plan request"
+                );
+                plan_request = Some(json!({
+                    "id": r.get::<Uuid, _>("id"),
+                    "plan_slug": slug,
+                    "plan_name": plan_name,
+                    "status": r.get::<String, _>("status"),
+                    "created_at": r.get::<String, _>("created_at"),
+                }));
+            }
+        }
+    }
+
     // ── THE CREDENTIAL EMAIL ────────────────────────────────────────────────────────────────────
     // Sent after the user row and the plan subscription exist, so the login details are true by the
     // time they arrive. A failure here is LOGGED LOUDLY and never silently swallowed: the signup
@@ -412,6 +479,7 @@ pub async fn public_signup(
             "plan": plan.slug(),
             "plan_side": side.label(),
             "plan_assignment": plan.to_json(),
+            "plan_request": plan_request,
             "referral": referral,
             "user": {
                 "id": user_id,
