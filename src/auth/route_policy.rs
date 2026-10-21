@@ -202,6 +202,17 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // (the interest is in the product's own mobile app, not in a workspace) and the handler caps
     // every field, which is what keeps an anonymous door from storing arbitrary text.
     "/api/v1/mobile-notify",
+    // --- card QR images (cron 2026-10-21) ---------------------------------------
+    // A QR is fetched by a bare `<img src>` in the console, on a card page or in a mail client: no
+    // `Authorization` header travels with it, so a token-gated image never renders. Measured in a
+    // real browser before this entry existed — the console's QR panel answered 401 and the code
+    // showed as a broken image, which is indistinguishable from "the QR feature is broken". The
+    // route returns ONE thing: a PNG/SVG encoding the card's PUBLIC address, keyed by an
+    // unguessable uuid; it carries no tenant data and no row of customer information, and a
+    // missing or switched-off row answers 404. The WRITE twins (POST/PUT/DELETE
+    // `/api/v1/kinetic/qr`) stay private — minting a code is an authenticated action.
+    "/api/v1/kinetic/qr/:id/png",
+    "/api/v1/kinetic/qr/:id/svg",
 ];
 
 /// Internal (service-to-service) routes: reachable with the app's own shared key and nothing else.
@@ -474,6 +485,13 @@ mod tests {
         // template must not swallow a sibling path under the same prefix.
         assert!(!is_public_route("/api/v1/auth/avatar"));
         assert!(!is_public_route("/api/v1/auth/avatar/abc/extra"));
+        // A QR image is an `<img src>` like the avatar: the two READs are public, every write and
+        // every other spelling is not (cron 2026-10-21).
+        assert!(is_public_route("/api/v1/kinetic/qr/abc/png"));
+        assert!(is_public_route("/api/v1/kinetic/qr/abc/svg"));
+        assert!(!is_public_route("/api/v1/kinetic/qr"));
+        assert!(!is_public_route("/api/v1/kinetic/qr/abc/extra"));
+        assert!(!is_public_route("/api/v1/kinetic/qr/abc/png/x"));
         assert!(!is_public_route("/api/v1/auth/avatars/x"));
         // the REQUEST half of the address change writes the caller's own row and takes a session;
         // only the mailed-token confirmation may be anonymous
