@@ -17,7 +17,18 @@ pub async fn list_affiliate_links(
         .unwrap_or_default();
     let links: Vec<Value> = rows
         .iter()
-        .map(|r| json!({"id": r.0.to_string(), "affiliate_id": r.1, "tracking_code": r.3}))
+        .map(|r| {
+            json!({
+                "id": r.0.to_string(),
+                "affiliate_id": r.1,
+                // The product the link credits, the rate it pays and when it was minted: without these
+                // a caller can only show a bare code, which is why no screen ever rendered this list.
+                "target_software": r.2,
+                "tracking_code": r.3,
+                "commission_rate": r.4,
+                "created_at": r.5.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            })
+        })
         .collect();
     Ok(Json(json!(links)))
 }
@@ -37,7 +48,15 @@ pub async fn create_affiliate_link(
     .await?
     .ok_or_else(|| AppError::NotFound("Affiliate account not found".into()))?;
 
-    let target_software = payload["target_software"].as_str().unwrap_or("");
+    // A link with no product is a code that credits nothing in particular: the product name is what
+    // the affiliate and the operator both read to know what the link sells, so refuse an empty one
+    // instead of minting an anonymous code.
+    let target_software = payload["target_software"].as_str().unwrap_or("").trim();
+    if target_software.is_empty() {
+        return Err(AppError::Validation(
+            "Choose the product this link promotes.".into(),
+        ));
+    }
     let id = Uuid::new_v4();
     let code = format!("TRACK{}", &id.to_string().replace("-", "")[..12]);
     sqlx::query("INSERT INTO affiliate_links (id, affiliate_id, target_software, tracking_code, commission_rate) VALUES ($1, $2, $3, $4, $5)")
