@@ -16,7 +16,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .logo-area .title{font-weight:700;font-size:16px;color:var(--text)}
 .nav-section{margin-bottom:4px}
 .nav-section-header{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:12px 8px 4px}
-.nav-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;margin-bottom:2px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;margin-bottom:2px;background:none;border:0;font-family:inherit;box-sizing:border-box;width:100%;text-align:left}
 .nav-item:hover{background:#f1f5f9;color:var(--text)}
 .nav-item.active{background:var(--primary);color:#fff}
 .nav-item .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
@@ -519,7 +519,7 @@ function buildNav() {
   const sections = [];
 
   // My Account (both roles)
-  sections.push(`<div class="nav-item" data-view="myAccount"><span class="icon">👤</span><span class="nav-text">My Account</span></div>`);
+  sections.push(`<button type="button" class="nav-item" data-view="myAccount" aria-label="My Account"><span class="icon">👤</span><span class="nav-text">My Account</span></button>`);
   sections.push(`<div class="sidebar-section-label">MAIN</div>`);
 
   // Main nav (both roles)
@@ -531,21 +531,21 @@ function buildNav() {
     { id: 'tags', icon: '🏷️', label: 'Tags' },
   ];
   mainItems.forEach(n => {
-    sections.push(`<div class="nav-item ${STATE.view===n.id?'active':''}" data-view="${n.id}"><span class="icon">${n.icon}</span><span class="nav-text">${n.label}</span></div>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view===n.id?'active':''}" data-view="${n.id}" aria-label="${n.label}"><span class="icon">${n.icon}</span><span class="nav-text">${n.label}</span></button>`);
   });
 
   // Affiliate Section
   sections.push(`<div class="sidebar-section-label">AFFILIATE</div>`);
   if (isSuperAdmin()) {
-    sections.push(`<div class="nav-item ${STATE.view==='affiliates'?'active':''}" data-view="affiliates"><span class="icon">🤝</span><span class="nav-text">Affiliates</span></div>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='affiliates'?'active':''}" data-view="affiliates" aria-label="Affiliates"><span class="icon">🤝</span><span class="nav-text">Affiliates</span></button>`);
     // The programme's LEADS: GET /api/v1/admin/affiliate-leads had no screen (David's rule: a
     // backend route with no UI is a defect). Admin-only, because the route is.
-    sections.push(`<div class="nav-item ${STATE.view==='affiliateLeads'?'active':''}" data-view="affiliateLeads"><span class="icon">📇</span><span class="nav-text">Affiliate Leads</span></div>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='affiliateLeads'?'active':''}" data-view="affiliateLeads" aria-label="Affiliate Leads"><span class="icon">📇</span><span class="nav-text">Affiliate Leads</span></button>`);
   }
-  sections.push(`<div class="nav-item ${STATE.view==='affiliateProducts'?'active':''}" data-view="affiliateProducts"><span class="icon">📦</span><span class="nav-text">Affiliate Products</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='affiliatePayouts'?'active':''}" data-view="affiliatePayouts"><span class="icon">💰</span><span class="nav-text">${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='commissionGroups'?'active':''}" data-view="commissionGroups"><span class="icon">🧩</span><span class="nav-text">Commission Groups</span></div>`);
-  if (isSuperAdmin()) sections.push(`<div class="nav-item ${STATE.view==='rateBands'?'active':''}" data-view="rateBands"><span class="icon">📈</span><span class="nav-text">Rate Bands</span></div>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='affiliateProducts'?'active':''}" data-view="affiliateProducts" aria-label="Affiliate Products"><span class="icon">📦</span><span class="nav-text">Affiliate Products</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='affiliatePayouts'?'active':''}" data-view="affiliatePayouts" aria-label="${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}"><span class="icon">💰</span><span class="nav-text">${isSuperAdmin()?'Affiliate Payouts':'My Payouts'}</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='commissionGroups'?'active':''}" data-view="commissionGroups" aria-label="Commission Groups"><span class="icon">🧩</span><span class="nav-text">Commission Groups</span></button>`);
+  if (isSuperAdmin()) sections.push(`<button type="button" class="nav-item ${STATE.view==='rateBands'?'active':''}" data-view="rateBands" aria-label="Rate Bands"><span class="icon">📈</span><span class="nav-text">Rate Bands</span></button>`);
 
   // Tools
   sections.push(`<div class="sidebar-section-label">TOOLS</div>`);
@@ -553,42 +553,42 @@ function buildNav() {
   // /api/v1/admin/email-config, both of which answer 403 to anything but the platform admin, so a
   // non-admin was offered a screen that could never load. Same rule the ADASwift console adopted
   // (7437e34): an admin-only screen is not shown to a non-admin.
-  if (isSuperAdmin()) sections.push(`<div class="nav-item ${STATE.view==='emailTemplates'?'active':''}" data-view="emailTemplates"><span class="icon">✉️</span><span class="nav-text">Email Templates</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='campaigns'?'active':''}" data-view="campaigns"><span class="icon">📢</span><span class="nav-text">Campaigns</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></div>`);
+  if (isSuperAdmin()) sections.push(`<button type="button" class="nav-item ${STATE.view==='emailTemplates'?'active':''}" data-view="emailTemplates" aria-label="Email Templates"><span class="icon">✉️</span><span class="nav-text">Email Templates</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='campaigns'?'active':''}" data-view="campaigns" aria-label="Campaigns"><span class="icon">📢</span><span class="nav-text">Campaigns</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='cardAnalytics'?'active':''}" data-view="cardAnalytics" aria-label="Card Analytics"><span class="icon">📊</span><span class="nav-text">Card Analytics</span></button>`);
   /* kanban: `renderCardLocations` has been in the view router since the frontend baseline and had
      NO entry point anywhere in this console (the only other mentions are the map and the bind
      switch) — an implemented screen nobody could open, the same "surface with no way in" defect the
      Portfolio and Commission-Group cards fixed. Views-by-country is the report the screen renders
      from GET /analytics/overview, so it belongs beside Card Analytics. */
-  sections.push(`<div class="nav-item ${STATE.view==='cardLocations'?'active':''}" data-view="cardLocations"><span class="icon">🌍</span><span class="nav-text">Locations</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></div>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='cardLocations'?'active':''}" data-view="cardLocations" aria-label="Locations"><span class="icon">🌍</span><span class="nav-text">Locations</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks" aria-label="Webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys" aria-label="Provider Keys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></button>`);
   // Email Branding (kanban t_c06a32eb follow-up): the per-tenant email-branding backend shipped
   // with NO screen anywhere in this console. David's rule: "A backend route with no UI is a DEFECT".
-  sections.push(`<div class="nav-item ${STATE.view==='emailBranding'?'active':''}" data-view="emailBranding"><span class="icon">🎨</span><span class="nav-text">Email Branding</span></div>`);
-  sections.push(`<div class="nav-item ${STATE.view==='leadCapture'?'active':''}" data-view="leadCapture"><span class="icon">🧲</span><span class="nav-text">Lead Capture</span></div>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='emailBranding'?'active':''}" data-view="emailBranding" aria-label="Email Branding"><span class="icon">🎨</span><span class="nav-text">Email Branding</span></button>`);
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='leadCapture'?'active':''}" data-view="leadCapture" aria-label="Lead Capture"><span class="icon">🧲</span><span class="nav-text">Lead Capture</span></button>`);
 
   // Super Admin (divider + admin-only)
   if (isSuperAdmin()) {
     sections.push(`<div class="nav-divider"></div>`);
     sections.push(`<div class="sidebar-section-label">SUPER ADMIN</div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='superAdmin'?'active':''}" data-view="superAdmin"><span class="icon">⚙️</span><span class="nav-text">Super Admin</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='systemTags'?'active':''}" data-view="systemTags" style="padding-left:28px"><span class="icon">🔖</span><span class="nav-text">System Tags</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='tagGroups'?'active':''}" data-view="tagGroups" style="padding-left:28px"><span class="icon">📁</span><span class="nav-text">Tag Groups</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='mobileInterest'?'active':''}" data-view="mobileInterest" style="padding-left:28px"><span class="icon">📱</span><span class="nav-text">Mobile App Interest</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='siteSettings'?'active':''}" data-view="siteSettings"><span class="icon">🌐</span><span class="nav-text">Site Settings</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></div>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='superAdmin'?'active':''}" data-view="superAdmin" aria-label="Super Admin"><span class="icon">⚙️</span><span class="nav-text">Super Admin</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='systemTags'?'active':''}" data-view="systemTags" aria-label="System Tags" style="padding-left:28px"><span class="icon">🔖</span><span class="nav-text">System Tags</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='tagGroups'?'active':''}" data-view="tagGroups" aria-label="Tag Groups" style="padding-left:28px"><span class="icon">📁</span><span class="nav-text">Tag Groups</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='mobileInterest'?'active':''}" data-view="mobileInterest" aria-label="Mobile App Interest" style="padding-left:28px"><span class="icon">📱</span><span class="nav-text">Mobile App Interest</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='siteSettings'?'active':''}" data-view="siteSettings" aria-label="Site Settings"><span class="icon">🌐</span><span class="nav-text">Site Settings</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='tagRules'?'active':''}" data-view="tagRules" aria-label="Tag Rules"><span class="icon">⚙️</span><span class="nav-text">Tag Rules</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='checkoutSessions'?'active':''}" data-view="checkoutSessions" aria-label="Checkout Sessions"><span class="icon">🧾</span><span class="nav-text">Checkout Sessions</span></button>`);
     // kanban cron-1019: a workspace that ASKS to be moved onto a paid plan writes a `plan_requests`
     // row (the customer's Upgrade screen does this when no payment provider is configured). The
     // operator's queue route existed with NO screen here — the ask was readable only by calling the
     // API. This is that screen, and the count rides in the label so an ask is visible without
     // opening it.
-    sections.push(`<div class="nav-item ${STATE.view==='planRequests'?'active':''}" data-view="planRequests"><span class="icon">🙋</span><span class="nav-text">Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></div>`);
-    sections.push(`<div class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></div>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='planRequests'?'active':''}" data-view="planRequests" aria-label="Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}"><span class="icon">🙋</span><span class="nav-text">Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants" aria-label="Tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings" aria-label="System Settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin" aria-label="Plans &amp; Features"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></button>`);
   }
 
   return `<div class="flex-1">${sections.join('')}</div>`;
