@@ -722,7 +722,7 @@ async function renderDashboard() {
       <div class="table-wrap">
         <table class="table">
           <thead><tr><th>Action</th><th>Details</th><th>Date</th></tr></thead>
-          <tbody>${recent&&recent.length?recent.slice(0,10).map(r=>`<tr><td>${x(r.action||r.type||'Activity')}</td><td>${x(r.details||r.description||'-')}</td><td>${formatDate(r.created_at)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No recent activity</td></tr>'}</tbody>
+          <tbody>${recent&&recent.length?recent.slice(0,10).map(r=>`<tr><td>${x(r.action||r.type||'Activity')}</td><td>${x(activityDetail(r))}</td><td>${formatDate(r.created_at)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No recent activity</td></tr>'}</tbody>
         </table>
       </div>
     </div>
@@ -730,6 +730,35 @@ async function renderDashboard() {
 }
 // The waiting-requests card is painted from the list refreshPlanRequestBadge() already caches, so a
 // dashboard paint never adds a second call to the same route.
+// ── RECENT ACTIVITY: the DETAILS cell ───────────────────────────────────────────────────────────
+// GET /api/v1/dashboard/activity returns `ActivityLog` rows: action, entity_type, entity_id,
+// metadata, created_at. It has NEVER returned `details` or `description`, and this cell read exactly
+// those two names, so every row on the operator's dashboard showed a bare '-' whatever had happened
+// (measured 2026-10-22: five stage_change rows carrying {"new_stage":"Contacted"} rendered '-').
+// Render the fields that exist: the entity plus the metadata's own pairs, which is the sentence the
+// row was always meant to show. A row with no metadata still names its entity and short id, and only
+// a row with nothing at all falls back to '-'.
+function activityDetail(r){
+  if(!r) return '-';
+  const ent=String(r.entity_type||'').trim();
+  const entLabel=ent?ent.charAt(0).toUpperCase()+ent.slice(1):'';
+  const parts=[];
+  const meta=r.metadata;
+  if(meta&&typeof meta==='object'){
+    Object.keys(meta).forEach(function(k){
+      const v=meta[k];
+      if(v===null||v===undefined||v==='') return;
+      const val=(typeof v==='object')?JSON.stringify(v):String(v);
+      parts.push(k.replace(/_/g,' ')+': '+val);
+    });
+  }else if(typeof meta==='string'&&meta.trim()){
+    parts.push(meta.trim());
+  }
+  if(parts.length) return (entLabel?entLabel+' - ':'')+parts.join(', ');
+  const id=String(r.entity_id||'').trim();
+  if(entLabel) return entLabel+(id?' '+id.slice(0,8):'');
+  return '-';
+}
 function bindDashboard() { paintPlanRequests(); }
 
 // ── MY ACCOUNT ──
