@@ -1003,7 +1003,12 @@ function D(){
     // kanban t_ff948669 — these tiles are `<div class="card">` again now that `.card` has a rule
     // (they were bare stacked text), laid out in a grid so four numbers read as four tiles.
     var h='<div class="stat-grid">';
-    h+='<div class="card"><h3>Total Leads</h3><div class="val">'+(d&&d.leads_total?d.leads_total:0)+'</div></div>';
+    // The tile reads `total_leads`, the name GET /api/v1/dashboard/stats actually emits (the same
+    // key the tenant admin console's Total Leads tile reads). It used to read `leads_total`, a name
+    // that has no producer anywhere in the handler, so the `||0` fallback painted a hard zero for
+    // EVERY workspace however many leads it held — measured 2026-10-22 on a fresh account holding
+    // one real captured lead: the plan strip said "Leads 1 / 100" while this tile said 0.
+    h+='<div class="card"><h3>Total Leads</h3><div class="val">'+(d&&d.total_leads!=null?d.total_leads:0)+'</div></div>';
     h+='<div class="card"><h3>Conv. Rate</h3><div class="val">'+(d&&d.conversion_rate?(d.conversion_rate*100).toFixed(1)+"%":"0%")+'</div></div>';
     h+='<div class="card"><h3>Cards</h3><div class="val">'+(d&&d.cards_total?d.cards_total:0)+'</div></div>';
     h+='<div class="card"><h3>Plans</h3><div class="val">'+(d&&d.plans_total?d.plans_total:0)+'</div></div>';
