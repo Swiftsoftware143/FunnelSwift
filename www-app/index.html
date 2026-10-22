@@ -863,7 +863,8 @@ if(window.FSReturnPath && window.FSReturnPath()){
       .then(function(u){
         if(!u||u.error) return;
         U=u; $("ue").textContent=u.name||u.email;
-        $("rb").innerHTML='<span class="badge bb">'+X(u.plan_name||"Free")+'</span>'
+        /* Never invent a tier: no plan read, no badge (the rule coreswift follows). */
+        $("rb").innerHTML=((u.plan_name&&String(u.plan_name).trim())?'<span class="badge bb">'+X(String(u.plan_name).trim())+'</span>':'')
           +(u.is_admin?' <span class="badge bg">Admin</span>':'');
         renderAvatar();
         if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}
@@ -885,9 +886,10 @@ else if(T){
       U=u; $("ue").textContent=u.name||u.email;
       /* kanban t_ff948669 — this badge used to print the raw role word ("User"), which is the
          stray label David reported: under the account name belongs the workspace's TIER. The API
-         resolves `plan_name` from the active subscription (falling back to "Free"); "Admin" stays
+         resolves `plan_name` from the active subscription and paints ONLY what the server sent —
+         with no plan read the badge is not drawn at all, never guessed as "Free"; "Admin" stays
          as a second badge only for the platform operator. */
-      $("rb").innerHTML='<span class="badge bb">'+X(u.plan_name||"Free")+'</span>'
+      $("rb").innerHTML=((u.plan_name&&String(u.plan_name).trim())?'<span class="badge bb">'+X(String(u.plan_name).trim())+'</span>':'')
         +(u.is_admin?' <span class="badge bg">Admin</span>':'');
       renderAvatar();
       if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}

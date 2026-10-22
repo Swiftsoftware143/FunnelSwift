@@ -86,6 +86,10 @@ var PLANS = {
   'capture-starter': {label: 'Capture Starter', starts: 'Capture Free'},
   'kinetic-pro':     {label: 'Kinetic Pro',     starts: 'Kinetic Free'},
   'suite':           {label: 'Suite',           starts: 'Capture Free'},
+  // The catalogue's REAL slug is `agency` (plans table); the shipped /pricing card still carries
+  // the older `agency-scale` spelling. Both must be labelled, or a visitor arriving with the real
+  // slug sees no badge -- measured 2026-10-21 by cross-checking every slug the vhost map can emit.
+  'agency':          {label: 'Agency / Scale',  starts: 'Capture Free'},
   'agency-scale':    {label: 'Agency / Scale',  starts: 'Capture Free'}
 };
 var chosenPlan = (new URLSearchParams(location.search).get('plan') || '').trim().toLowerCase();
@@ -133,9 +137,19 @@ try{
   // NO auto-login. David's model: the server generated the login credentials and emailed them, so the
   // user confirms their address by signing in with the password we sent — a real two-step check. The
   // old code handed the session over in the URL fragment, which skipped that check entirely.
+  // The server records the PAID plan the visitor chose as a plan request (2026-10-21). Say so,
+  // because that row is what their dashboard shows and what the team acts on — a silent record
+  // would leave the customer thinking the choice was lost.
+  var ask = '';
+  if (data && data.plan_request && data.plan_request.plan_name) {
+    ask = '<div style="margin-top:10px;padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;' +
+      'border-radius:8px;font-size:13px;color:#312e81">We\u2019ve logged your interest in <strong>' +
+      data.plan_request.plan_name.replace(/[<>&]/g, '') + '</strong>. It shows on your dashboard as a ' +
+      'request, and the team moves the workspace onto it as soon as payments are open.</div>';
+  }
   loading.innerHTML = "<strong>Account created!</strong><br>Check your email — we've sent your login " +
     "details to " + body.email.replace(/[<>&]/g, '') + '.<br><br>You can change your password any time ' +
-    'in your profile settings.' +
+    'in your profile settings.' + ask +
     '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
     'Nothing in your inbox after a minute? Check your spam folder, then ' +
     '<a href="https://app.funnelswift.net/forgot-password?email=' + encodeURIComponent(body.email) + '" ' +

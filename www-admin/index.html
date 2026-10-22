@@ -477,7 +477,12 @@ function renderShell() {
   // TIER. `/auth/me` already resolves `plan_name` from the active subscription (falling back
   // to "Free"); "Admin" stays as a second badge only for the platform operator. Mirrors the
   // app-root console fix (t_ff948669) so both FunnelSwift consoles read the same way.
-  const planLabel = (u.plan_name || 'Free');
+  // kanban t_4e4695da settled the WORD (never the role word); this settles the VALUE. The badge
+  // must paint only what the server sent: `/auth/me` resolves `plan_name` from the active
+  // subscription, so an absent/blank value means "no plan read", and guessing "Free" there is how
+  // a paying workspace gets shown a tier it does not own. Same rule the app-root console follows
+  // (t_ff948669): no plan read, no badge. "Admin" stays as a second badge for the operator only.
+  const planLabel = String(u.plan_name == null ? '' : u.plan_name).trim();
 
   return `<div class="flex">
     <div class="sidebar">
