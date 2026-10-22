@@ -60,6 +60,18 @@ async fn health(
     let status = crate::db::health_schema_status(&schema);
     let degraded = state.schema.schema_missing();
 
+    // A live round-trip, so a green healthcheck means the database ANSWERS right now — the schema
+    // verdict above is a BOOT-TIME snapshot and stays "ok" for ever after the pool has gone away.
+    // Bounded so a hung database cannot hang the watchdog that reads this route.
+    let db_ok = matches!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(1500),
+            sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&state.pool),
+        )
+        .await,
+        Ok(Ok(_))
+    );
+
     let mut schema_json = serde_json::json!({
         "status": status,
         "expected_version": schema.expected_version,
@@ -81,7 +93,12 @@ async fn health(
         );
     }
 
-    let code = if degraded {
+    let code = if !db_ok {
+        tracing::warn!(
+            "GET /api/health answering 503: the database did not answer SELECT 1 within 1500ms"
+        );
+        StatusCode::SERVICE_UNAVAILABLE
+    } else if degraded {
         tracing::warn!(
             "GET /api/health answering 503: schema status={status} ledger={:?} shipped={} class={:?}",
             schema.ledger_version,
@@ -96,7 +113,14 @@ async fn health(
     (
         code,
         axum::Json(serde_json::json!({
-            "status": if degraded { "degraded" } else { "ok" },
+            "status": if !db_ok {
+                "unreachable"
+            } else if degraded {
+                "degraded"
+            } else {
+                "ok"
+            },
+            "database": if db_ok { "ok" } else { "unreachable" },
             "service": "funnelswift",
             "version": "0.1.0",
             "schema": schema_json,
