@@ -289,7 +289,14 @@ pub async fn create_checkout_session(
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(json!({
                     "error": "payment_provider_not_configured",
-                    "message": "No payment provider is configured, so checkout cannot work. The platform operator adds Stripe's keys in the admin panel (Provider Keys / Payment providers) on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own. No session was created and no charge can occur.",
+                    // BUYER-FIRST (2026-10-22). This sentence is read by the CUSTOMER on the upgrade
+                    // screen (`upgrade.js` paints the server's own `message` into the error panel), and
+                    // it used to open by telling that customer how the platform operator configures
+                    // Stripe in his admin panel — an instruction addressed to somebody else, on the one
+                    // screen where a buyer is trying to give us money. The two facts a buyer needs come
+                    // first (nothing was charged; the attempt was recorded and can be acted on), the
+                    // operator's setup detail stays, in parentheses, for whoever reads it next.
+                    "message": "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet: your request has been recorded for the platform team, who can activate this plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)",
                     "configured": false,
                     "request_recorded": true
                 })),
