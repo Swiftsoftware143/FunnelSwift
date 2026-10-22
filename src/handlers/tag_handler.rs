@@ -31,6 +31,54 @@ const TAG_NAME_CHARS: usize = 255;
 /// `tags.color` is `varchar(50)`.
 const TAG_COLOR_CHARS: usize = 50;
 
+/// The app slugs a tag's `source_app` may name. This is the SAME set `app_provision::base_url` can
+/// actually reach, plus `funnelswift` itself: a FunnelSwift lead's workspace **is** the FunnelSwift
+/// account, so the two `FunnelSwift — …` system tags name it and mint nothing (design §3.2).
+///
+/// The panel operator types this box by hand, so before 2026-10-22 a typo (`wf`, `Workflow Swift`,
+/// `ada`) stored a mapping that looked correct in the System Tags table and only failed LATER — at
+/// the moment a lead was tagged, as a `provisioning_log` refusal nobody was watching for. Refusing at
+/// write time, and naming the accepted slugs, is what turns that into an answer the operator can act
+/// on in the same second.
+const MAPPING_APPS: [&str; 6] = [
+    "coreswift",
+    "incentiveswift",
+    "workflowswift",
+    "adaswift",
+    "missedcallrespondr",
+    "funnelswift",
+];
+
+/// Check a tag → free-account mapping before it is stored, returning the CANONICAL app slug.
+///
+/// Two refusals: an app this workspace cannot sign a lead up for, and a target app with no plan slug
+/// (the account has to be seated on something). The slug is matched case-insensitively but STORED in
+/// the lowercase form `app_provision::base_url` matches — storing `WorkflowSwift` verbatim would pass
+/// this check and then miss every arm of that `match`, which is the silent failure being closed.
+/// A mapping with no target app is left alone: clearing both boxes is how an operator turns it off.
+fn check_mapping(source_app: Option<&str>, plan_slug: Option<&str>) -> AppResult<Option<String>> {
+    let Some(app) = source_app else {
+        return Ok(None);
+    };
+    let canonical = MAPPING_APPS
+        .iter()
+        .find(|a| a.eq_ignore_ascii_case(app))
+        .map(|a| a.to_string());
+    let Some(canonical) = canonical else {
+        return Err(AppError::BadRequest(format!(
+            "source_app: '{app}' is not a software this workspace can sign a lead up for — use one of {}",
+            MAPPING_APPS.join(", ")
+        )));
+    };
+    if plan_slug.is_none() {
+        return Err(AppError::BadRequest(
+            "plan_slug: a target app needs the free plan slug the new account is seated on (usually 'free')"
+                .to_string(),
+        ));
+    }
+    Ok(Some(canonical))
+}
+
 /// Validate a tag name for STORAGE, or explain why it cannot be stored. Trims, requires a
 /// non-empty value, refuses one longer than the column, and refuses control characters (the name is
 /// rendered into HTML and into mail subjects). The caller binds the RETURNED value.
@@ -112,6 +160,15 @@ pub async fn create_tag(
         ));
     }
 
+    // A mapping that names an app this workspace cannot reach, or a target app with no plan, is
+    // refused HERE instead of storing a mapping that only fails when a lead is tagged (see
+    // `check_mapping`). `source_app` is bound in its canonical lowercase form.
+    let source_app = check_mapping(
+        clean_opt(req.source_app.as_deref()).as_deref(),
+        clean_opt(req.plan_slug.as_deref()).as_deref(),
+    )?;
+    let plan_slug = clean_opt(req.plan_slug.as_deref());
+
     sqlx::query(
         "INSERT INTO tags (id, tenant_id, name, color, group_id, metadata, is_system, source_app, plan_slug, provisions_account) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
@@ -125,9 +182,10 @@ pub async fn create_tag(
     .bind(is_system)
     // kanban t_847f9d63: the tag → free account mapping is writable from the panel, not seed-only.
     // `clean_opt` folds an empty/whitespace box to NULL so a blank field stores "no mapping" rather
-    // than a zero-length slug that `app_provision` would try to call.
-    .bind(clean_opt(req.source_app.as_deref()))
-    .bind(clean_opt(req.plan_slug.as_deref()))
+    // than a zero-length slug that `app_provision` would try to call; `check_mapping` above has
+    // already refused anything this workspace cannot reach and handed back the canonical slug.
+    .bind(&source_app)
+    .bind(&plan_slug)
     .bind(req.provisions_account.unwrap_or(false))
     .execute(&state.pool)
     .await?;
@@ -214,6 +272,16 @@ pub async fn update_tag(
         Some(s) => clean_opt(Some(s)),
     };
     let provisions_account = req.provisions_account.unwrap_or(tag.provisions_account);
+
+    // A save that TOUCHES the mapping is checked exactly like a create (see `check_mapping`): an
+    // operator fixing a typo must not be able to store the next one, and the canonical slug is what
+    // gets bound. A save that leaves the mapping alone validates nothing, so editing the name of a
+    // tag whose mapping predates this check can never be blocked by it.
+    let source_app = if req.source_app.is_some() || req.plan_slug.is_some() {
+        check_mapping(source_app.as_deref(), plan_slug.as_deref())?
+    } else {
+        source_app
+    };
 
     let renamed = name != old_name;
 

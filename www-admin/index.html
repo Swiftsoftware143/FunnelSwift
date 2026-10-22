@@ -3290,7 +3290,7 @@ function openSysTagModal(id) {
            lead is tagged with this tag. Leaving either empty clears the mapping. -->
       <div class="form-row">
         <div class="form-group"><label class="form-label">Target app</label>
-          <input class="input" name="source_app" value="${x(t.source_app||'')}" placeholder="coreswift, incentiveswift, adaswift, workflowswift, missedcallrespondr, funnelswift">
+          <select class="input" name="source_app"><option value="">— none —</option>${['coreswift','incentiveswift','workflowswift','adaswift','missedcallrespondr','funnelswift'].map(s=>`<option value="${s}" ${(t.source_app||'').toLowerCase()===s?'selected':''}>${s}</option>`).join('')}</select>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">The software this tag signs a lead up for.</div></div>
         <div class="form-group"><label class="form-label">Free plan slug</label>
           <input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="free">
