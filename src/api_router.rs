@@ -1067,7 +1067,9 @@ pub fn create_router(
         )
         .route(
             "/api/v1/campaigns/:id",
-            get(campaigns_handler::get_campaign).put(campaigns_handler::update_campaign),
+            get(campaigns_handler::get_campaign)
+                .put(campaigns_handler::update_campaign)
+                .delete(campaigns_handler::delete_campaign),
         )
         .route(
             "/api/v1/incentiveswift/config",

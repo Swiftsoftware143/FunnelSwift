@@ -127,6 +127,25 @@ tr:hover{background:#f8fafc}
 .nav-accordion.open .acc-arrow{transform:rotate(-180deg)}
 .nav-acc-body{overflow:hidden;max-height:0;transition:max-height .25s ease}
 .nav-acc-body a{padding-left:36px;font-size:12px;opacity:.85}
+/* phone: the dashboard had NO breakpoint at all. body is a flex ROW with a fixed 220px
+   sidebar, and .main's children carry a min-content width, so at 390px the page laid out at
+   522px: content started at x=220 and ran 132px off the right edge (measured 2026-10-22 —
+   scrollWidth 522 vs innerWidth 390, helpBtn right edge 498). The rail becomes a horizontal
+   scroller across the top instead; every link stays reachable, including the links inside the
+   Tags / Affiliates accordions, whose bodies are shown inline rather than collapsed. */
+@media(max-width:768px){
+  body{flex-direction:column}
+  .sidebar{width:100%;max-width:none;display:flex;flex-direction:row;align-items:stretch;
+    overflow-x:auto;overflow-y:hidden;padding:0;flex-shrink:0;position:sticky;top:0;z-index:60}
+  .sidebar .brand,.sidebar .sec{display:none}
+  .sidebar a{display:inline-flex;align-items:center;white-space:nowrap;padding:12px 14px;
+    font-size:13px;border-right:none;border-bottom:3px solid transparent}
+  .sidebar a.active{background:rgba(99,102,241,.35);border-right:none;border-bottom:3px solid #fbbf24}
+  .sidebar .nav-accordion{display:flex}
+  .sidebar .nav-acc-header{display:none}
+  .sidebar .nav-acc-body{display:flex!important;max-height:none!important;flex-direction:row}
+  .main{min-width:0;width:100%;flex:1 1 auto}
+}
 .nav-accordion.open .nav-acc-body{max-height:300px}
 </style>
 </head>
@@ -443,11 +462,23 @@ function LCAM(){
           +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+X(r.campaign_type||"—")+'</td>'
           +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+badge(r.status)+'</td>'
           +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+X(String(r.created_at||"").slice(0,10))+'</td>'
-          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0"><button class="btn btn-o" data-cam-edit="'+i+'">Edit</button></td>'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0"><button class="btn btn-o" data-cam-edit="'+i+'">Edit</button> <button class="btn btn-o" data-cam-del="'+i+'" style="color:#b91c1c">Delete</button></td>'
           +'</tr>';
       });
       h+='</tbody></table></div>';
       box.innerHTML=h;
+      Array.prototype.forEach.call(box.querySelectorAll("[data-cam-del]"),function(b){
+        b.onclick=function(){
+          var r=rows[parseInt(b.getAttribute("data-cam-del"),10)];
+          if(!r) return;
+          if(!window.confirm('Delete the campaign "'+r.name+'"? This cannot be undone.')) return;
+          b.disabled=true;
+          api("/api/v1/campaigns/"+encodeURIComponent(r.id),{method:"DELETE"}).then(function(d){
+            if(d&&d.error){msg(d.message||d.error,false);b.disabled=false;return;}
+            msg("Campaign deleted.",true); load();
+          }).catch(function(e){msg("The campaign could not be deleted"+(e&&e.message?" — "+e.message:"")+".",false);b.disabled=false;});
+        };
+      });
       Array.prototype.forEach.call(box.querySelectorAll("[data-cam-edit]"),function(b){
         b.onclick=function(){form(rows[parseInt(b.getAttribute("data-cam-edit"),10)]);};
       });

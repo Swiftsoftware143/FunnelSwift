@@ -193,3 +193,41 @@ pub async fn update_campaign(
 
     Ok(Json(json!({"id": id, "message": "Campaign updated"})))
 }
+
+/// DELETE /api/v1/campaigns/:id — remove one campaign this workspace created.
+///
+/// The campaigns screen shipped with three of the four CRUD arms and no DELETE, so a campaign
+/// created by mistake (a typo, a duplicate, a trial run) could be renamed and re-statused but never
+/// taken off the list — permanent for the life of the workspace. Every other list the console
+/// offers (leads, tags, funnels) can be pruned, so this was the one screen where a mistake was
+/// forever. Measured live 2026-10-22 with a probe workspace on the served console: `DELETE
+/// /api/v1/campaigns/<id>` answered `405 Method Not Allowed`, and the row was still returned by
+/// `GET /api/v1/campaigns` afterwards.
+///
+/// Tenant-scoped exactly like its siblings: the id is matched WITH `tenant_id`, so a campaign
+/// belonging to another workspace answers `404` — it is neither deleted nor even confirmed to
+/// exist. `campaigns` has no inbound foreign keys (measured: `pg_constraint` `contype='f'` +
+/// `confrelid='campaigns'::regclass` = 0 rows), so this is a single-row delete with no children to
+/// reconsider.
+pub async fn delete_campaign(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    let res = sqlx::query("DELETE FROM campaigns WHERE id = $1 AND tenant_id = $2")
+        .bind(&id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("Campaign not found".into()));
+    }
+
+    Ok(Json(json!({"id": id, "message": "Campaign deleted"})))
+}
