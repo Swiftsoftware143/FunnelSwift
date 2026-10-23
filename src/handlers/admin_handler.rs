@@ -8,6 +8,7 @@ use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use rand::rngs::OsRng;
 use serde_json::{json, Value};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
@@ -1107,5 +1108,83 @@ pub async fn list_provisioning_log(
 
     Ok(Json(
         json!({ "count": attempts.len(), "attempts": attempts }),
+    ))
+}
+
+/// Query string for [`list_checkout_requests`]. `limit` is clamped server-side.
+#[derive(serde::Deserialize)]
+pub struct CheckoutRequestQuery {
+    pub limit: Option<i64>,
+}
+
+/// List purchase attempts that never turned into money, across every workspace (admin only).
+///
+/// `POST /api/v1/checkout/create` writes a `checkout_sessions` row for every attempt and, when the
+/// installation has no payment provider, records it as `provider_missing` and tells the customer
+/// *"your request has been recorded for the platform team, who can activate this plan for your
+/// workspace by hand"*. Until this route that promise had no screen behind it: the row was written
+/// and nothing in either console read it, so a customer asking to buy produced a record the
+/// operator could never see (measured 2026-10-23: one real tenant's refused attempt from
+/// 2026-10-21 sat in the table with no reader anywhere).
+///
+/// Cross-tenant ON PURPOSE — this is the operator's revenue view: which workspace tried to buy
+/// which plan, when, and why it did not happen. The admin console already lists every tenant
+/// (`GET /api/v1/admin/tenants`), so this adds no new reach. `status` is restricted to the states
+/// that mean "no money moved", so a completed purchase never appears here as a request.
+pub async fn list_checkout_requests(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Query(params): Query<CheckoutRequestQuery>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let limit = params.limit.unwrap_or(100).clamp(1, 500);
+
+    let rows = sqlx::query(
+        r#"SELECT cs.id, cs.tenant_id, cs.status, cs.amount::text AS amount, cs.currency,
+                  cs.created_at, cs.metadata,
+                  t.name AS tenant_name,
+                  p.name AS plan_name, p.slug AS plan_slug
+             FROM checkout_sessions cs
+             LEFT JOIN tenants t ON t.id = cs.tenant_id
+             LEFT JOIN plans p
+                    ON cs.purchasable_type = 'plan' AND p.id = cs.purchasable_id
+            WHERE cs.status IN ('provider_missing', 'failed', 'cancelled')
+            ORDER BY cs.created_at DESC
+            LIMIT $1"#,
+    )
+    .bind(limit)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let requests: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+                "tenant_id": r.try_get::<Uuid, _>("tenant_id").map(|v| v.to_string()).unwrap_or_default(),
+                // A workspace row can be gone (deletion) while its attempt survives; the screen
+                // renders that as a dash rather than dropping the record.
+                "tenant_name": r.try_get::<Option<String>, _>("tenant_name").unwrap_or(None),
+                "plan_name": r.try_get::<Option<String>, _>("plan_name").unwrap_or(None),
+                "plan_slug": r.try_get::<Option<String>, _>("plan_slug").unwrap_or(None),
+                "amount": r.try_get::<Option<String>, _>("amount").unwrap_or(None),
+                "currency": r.try_get::<Option<String>, _>("currency").unwrap_or(None),
+                "status": r.try_get::<String, _>("status").unwrap_or_default(),
+                "reason": r
+                    .try_get::<Option<Value>, _>("metadata")
+                    .unwrap_or(None)
+                    .and_then(|m| m.get("reason").and_then(|v| v.as_str()).map(|s| s.to_string())),
+                "created_at": r
+                    .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    Ok(Json(
+        json!({ "count": requests.len(), "requests": requests }),
     ))
 }

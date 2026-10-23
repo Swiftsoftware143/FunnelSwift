@@ -365,6 +365,14 @@ pub fn create_router(
             "/api/v1/admin/provisioning-log",
             get(admin_handler::list_provisioning_log),
         )
+        // The operator's revenue view: purchase attempts that never became money, across every
+        // workspace. `checkout/create` records each refused attempt (`provider_missing`) and tells
+        // the customer it has been "recorded for the platform team" — until this route nothing
+        // read those rows, so that promise had no screen behind it. Admin-only in the handler.
+        .route(
+            "/api/v1/admin/checkout-requests",
+            get(admin_handler::list_checkout_requests),
+        )
         // The operator's door onto `mobile_platform_interest` — the emails the /download-app page's
         // iOS "Notify me" form captures. Platform-admin only (the rows belong to no tenant).
         .route(
