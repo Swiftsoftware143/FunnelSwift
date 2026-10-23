@@ -28,10 +28,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
 <h1>FunnelSwift</h1>
 <p class="sub">Lead Generation &amp; Affiliate Marketing</p>
 <div id="v-li">
-<input id="e" type="email" placeholder="Email">
-<input id="p" type="password" placeholder="Password">
+<input id="e" type="email" placeholder="Email" aria-label="Email">
+<input id="p" type="password" placeholder="Password" aria-label="Password">
 <button id="b" onclick="L()">Sign In</button>
 <div id="m" class="msg"></div>
+<script>
+/* kanban cron-2310 — a customer whose session expired landed here with no reason at all, while the
+   sibling consoles say what happened. The console's 401/403 redirects carry ?expired=1. */
+(function(){try{if(!/[?&]expired=1/.test(location.search))return;var m=document.getElementById("m");
+if(m){m.className="msg i";m.textContent="Your session ended, so you were signed out. Sign in again to carry on.";}}catch(e){}})();
+</script>
 <div style="margin-top:14px;font-size:12px"><a href="#" id="fp-link" onclick="showForgot();return false" style="color:#6366f1">Forgot password?</a></div>
 <div style="margin-top:6px;font-size:12px"><a href="https://funnelswift.net/signup.html" style="color:#6366f1">New here? Create a free account</a></div>
 <div class="lk"><a href="https://admin.funnelswift.net/">Admin Portal</a></div>
@@ -43,7 +49,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
      email carries a one-hour, single-use code; this is the screen that redeems it. -->
 <div id="v-fp" style="display:none">
 <p class="sub" style="margin-bottom:16px">Enter the email on your account and we'll send you a reset code.</p>
-<input id="fe" type="email" placeholder="Email">
+<input id="fe" type="email" placeholder="Email" aria-label="Email">
 <button id="fb" onclick="R()">Send reset code</button>
 <div id="fm" class="msg"></div>
 <div class="lk"><a href="#" onclick="showLogin();return false">&larr; Back to sign in</a></div>

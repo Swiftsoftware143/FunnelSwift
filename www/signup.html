@@ -44,11 +44,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <form id="signup-form">
 <div class="form-group">
 <label>Full Name</label>
-<input type="text" id="signup-name" placeholder="Your name" required autocomplete="name" maxlength="243">
+<input type="text" id="signup-name" placeholder="Your name" required autocomplete="name" maxlength="243" aria-label="Your name">
 </div>
 <div class="form-group">
 <label>Email</label>
-<input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email">
+<input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email" aria-label="Email">
 </div>
 <!-- No password field here by design: the server generates the login credentials and emails them,
      so signup uses the SAME path as the auto-created tag accounts; the user confirms their address

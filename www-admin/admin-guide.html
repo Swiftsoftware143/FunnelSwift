@@ -71,6 +71,17 @@
     .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
     .content-area { padding: 20px; }
   }
+
+/* Phone: nothing on this page may widen the document (measured 2026-10-22, real Chromium at 390 px).
+   A route/merge-field table laid out wider than the column, and one long migration filename in
+   inline <code>, each pushed the whole guide sideways (measured 420-917 px of document width).
+   The table now scrolls inside its own box and a long token wraps, so the page itself stays 100%. */
+@media (max-width: 768px) {
+  body, .main-content, .content-area, main { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  table { display: block; width: 100%; max-width: 100%; overflow-x: auto; }
+  pre { overflow-x: auto; max-width: 100%; }
+  code { overflow-wrap: anywhere; }
+}
 </style>
 </head>
 <body>
