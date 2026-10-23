@@ -93,6 +93,13 @@ var PLANS = {
   'agency-scale':    {label: 'Agency / Scale',  starts: 'Capture Free'}
 };
 var chosenPlan = (new URLSearchParams(location.search).get('plan') || '').trim().toLowerCase();
+// LEGACY SPELLINGS (2026-10-23): the $79 card shipped `plan=agency-scale` until today while the
+// catalogue's slug is `agency`, and the app filed no request for a slug it does not know — measured
+// live: an arrival carrying `agency-scale` created the workspace with no plan request at all. A
+// saved link, an ad or a bookmark can still carry the old spelling, so normalise it HERE, on the one
+// page every signup door lands on. The badge keeps the pretty label from PLANS below.
+var PLAN_ALIAS = {'agency-scale': 'agency'};
+chosenPlan = PLAN_ALIAS[chosenPlan] || chosenPlan;
 var chosen = PLANS[chosenPlan] || null;
 if (chosen) {
   var pb = document.getElementById('plan-badge');
