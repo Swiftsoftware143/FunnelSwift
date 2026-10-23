@@ -237,6 +237,12 @@ pub fn create_router(
             "/api/v1/branding/logo/:tenant_id",
             get(branding_handler::get_logo),
         )
+        // The operator's own inbox proof that the branding above is applied (cron 2026-10-23):
+        // authenticated, no body, and the recipient is always the caller's own address.
+        .route(
+            "/api/v1/settings/branding/preview",
+            post(branding_handler::preview_email),
+        )
         .route(
             "/api/v1/leads",
             get(lead_handler::list_leads).post(lead_handler::create_lead),

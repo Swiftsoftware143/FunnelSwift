@@ -543,6 +543,28 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // The operator's own in-inbox proof of the branding above (cron 2026-10-23, parity with
+        // IncentiveSwift). `render_template` has ALREADY swapped APP_NAME for the tenant's brand
+        // name and `logo_url` for the tenant's logo, and `with_branding_header` has already put
+        // that logo at the top of the HTML part — so this arm only has to say what was applied.
+        // The recipient is always the CALLER's own address (the route takes no body), which is
+        // what makes it a preview and not a relay. A template row named `branding_preview`, if an
+        // install has one, wins; this is the fallback for an install that has none.
+        "branding_preview" => {
+            let brand = vars.get("brand_name").unwrap_or(&APP_NAME).to_string();
+            let has_logo = !vars.get("logo_url").unwrap_or(&"").trim().is_empty();
+            let subject = format!("A preview of your {brand} email");
+            let logo_line = if has_logo {
+                "The logo you uploaded sits at the top of the message above this text.\n\n"
+            } else {
+                "No logo is set yet, so this message carries the plain header. Upload a logo on the dashboard's Email branding card, save it, and send yourself another preview.\n\n"
+            };
+            let text = format!(
+                "Hi {0},\n\nThis is what the mail your customers receive looks like now.\n\n{1}The brand name on it is \"{2}\", and every message this app sends is signed the same way.\n\nNothing else about your account changed, and there is nothing to do — this message exists so you can see the result in a real inbox instead of taking it on trust.\n\n- The {2} Team",
+                name, logo_line, brand
+            );
+            (subject, Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -592,6 +614,28 @@ pub async fn send_purchase_confirmed_email(
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
     send_template_email(pool, aid, to, "purchase_confirmed", &bound_vars(vars)).await
+}
+
+/// The operator's own in-inbox proof that their branding is applied (cron 2026-10-23, parity with
+/// IncentiveSwift). Recipient is always the caller's own address — this is a preview, not a relay.
+pub async fn send_branding_preview_email(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    name: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("email", to);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "branding_preview",
+        &bound_vars(vars),
+    )
+    .await
 }
 
 pub async fn send_reset_email(

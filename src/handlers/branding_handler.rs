@@ -156,6 +156,62 @@ pub async fn delete_logo(
     Ok(Json(json!({"status": "ok", "removed": removed})))
 }
 
+/// `POST /api/v1/settings/branding/preview` — mail the CALLER a sample of their own branded email.
+///
+/// WHY (cron 2026-10-23, parity with IncentiveSwift): a customer can set a logo, a display name and
+/// a colour on the dashboard's Email branding card, but had no way to see the result in a real
+/// inbox. `render_template` already applies that branding to every template send, so this arm sends
+/// the app's own `branding_preview` sample through the normal mail path — the operator sees exactly
+/// what a customer receives.
+///
+/// The recipient is ALWAYS the caller's own address (the request has no body), so this can never be
+/// used as a relay, and an address that cannot receive mail is told so plainly instead of being
+/// shown a false "sent".
+pub async fn preview_email(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id = caller_tenant(&auth)?;
+    let to = auth.email.trim().to_string();
+    if to.is_empty() {
+        return Err(AppError::BadRequest(
+            "This account has no email address to send the preview to".into(),
+        ));
+    }
+    if let Some(domain) = crate::security::probe_addr::harness_domain(&to) {
+        return Ok(Json(json!({
+            "sent": false,
+            "to": to,
+            "detail": format!(
+                "'{domain}' is a reserved test address, so it cannot receive mail — no preview was sent."
+            )
+        })));
+    }
+    let name: String = sqlx::query_scalar("SELECT name FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("DB error: {e}")))?
+        .filter(|n: &String| !n.trim().is_empty())
+        .unwrap_or_else(|| "there".to_string());
+    match crate::email::send_branding_preview_email(&state.pool, tenant_id, &to, &name).await {
+        Ok(()) => {
+            let branded = branding::load(&state.pool, tenant_id).await.is_some();
+            Ok(Json(json!({
+                "sent": true,
+                "to": to,
+                "branded": branded,
+                "detail": if branded {
+                    "Preview sent to your own address, with your logo and brand name at the top."
+                } else {
+                    "Preview sent to your own address. Nothing is branded yet, so it carries the FunnelSwift header — set a name or a logo, save, and send it again."
+                }
+            })))
+        }
+        Err(detail) => Ok(Json(json!({ "sent": false, "to": to, "detail": detail }))),
+    }
+}
+
 /// `GET /api/v1/branding/logo/:tenant_id` — stream a tenant's logo. No credential (see the module
 /// docs); ids are unguessable uuids and no other tenant datum is reachable from here.
 pub async fn get_logo(
