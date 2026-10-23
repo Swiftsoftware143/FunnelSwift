@@ -4372,6 +4372,19 @@ function DLB(){
     })
     .catch(function(e){ LBM((e&&e.message)||"Could not remove the logo","e"); });
 }
+// The operator's own INBOX proof (cron 2026-10-23): the on-screen sample above shows the header the
+// app will build, but only a real message proves the branding survives the mail path. The route
+// takes no body and always addresses the caller, so this cannot mail anyone else; a reserved test
+// address comes back `sent:false` with the reason instead of a false "sent".
+function PBE(){
+  LBM("Sending a preview to your own address...","i");
+  api("/api/v1/settings/branding/preview",{method:"POST"})
+    .then(function(d){
+      d=d||{};
+      LBM(d.detail||(d.sent?"Preview sent to your own address":"The preview was not sent"), d.sent?"s":"e");
+    })
+    .catch(function(e){ LBM((e&&e.message)||"Could not send the preview","e"); });
+}
 
 /* === Email provider — THIS WORKSPACE's own sending identity (kanban t_7ac7ceb5) =================
    The customer-facing half of `PUT /api/v1/settings {key:"email_config"}`. Before this card that
@@ -4562,6 +4575,7 @@ function LM(){
     if(!br.logo_url) ebRm.style.display="none";
     ebRow.appendChild(ebRm);
     ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){SLB();}},"Save branding"));
+    ebRow.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"lm-brand-preview",onclick:function(){PBE();}},"Send me a preview"));
     ebRow.appendChild(El("span",{id:"lm-brand-msg",style:"font-size:11px;color:#64748b"}));
     wrap.appendChild(ebRow);
     var bpWrap=El("div",{style:"margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0"});
