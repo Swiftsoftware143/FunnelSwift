@@ -255,15 +255,16 @@ pub async fn create_checkout_session(
                 .unwrap_or("")
                 .trim()
                 .to_string();
-            let plan: Option<(Uuid, f64)> =
-                sqlx::query_as("SELECT id, COALESCE(price, 0)::float8 FROM plans WHERE slug = $1")
-                    .bind(&plan_slug)
-                    .fetch_optional(&state.pool)
-                    .await
-                    .unwrap_or(None);
+            let plan: Option<(Uuid, String, f64)> = sqlx::query_as(
+                "SELECT id, name, COALESCE(price, 0)::float8 FROM plans WHERE slug = $1",
+            )
+            .bind(&plan_slug)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
             let user_id = Uuid::parse_str(&auth.user_id).ok();
             // `amount` is NUMERIC; bind the price as text and cast, so the type is never in doubt.
-            let amount_text = plan.as_ref().map(|p| format!("{:.2}", p.1));
+            let amount_text = plan.as_ref().map(|p| format!("{:.2}", p.2));
             let recorded = sqlx::query(
                 "INSERT INTO checkout_sessions \
                    (tenant_id, user_id, provider_type, purchasable_type, purchasable_id, amount, \
@@ -281,6 +282,30 @@ pub async fn create_checkout_session(
             if let Err(e) = recorded {
                 tracing::error!("checkout/create: could not record the refused attempt: {e:?}");
             }
+            // THE ASK, WHERE THE OPERATOR CAN ACT ON IT (2026-10-23; parity with ADASwift,
+            // WorkflowSwift and IncentiveSwift). `checkout_sessions` is a HISTORY screen: it shows
+            // that a workspace pressed Upgrade, but closing the request there means hand-assigning
+            // a plan. The operator's Plan requests queue reads `plan_requests` and its Resolve arm
+            // switches the workspace onto the tier, so the ask is filed THERE, server-side, deduped
+            // on one open request per (tenant, plan_slug) -- the same key `plan_request_handler`'s
+            // customer door uses. Before this the row only existed if the console's own follow-up
+            // press ran, so a buyer who closed the tab had asked for nothing. Inserted directly
+            // rather than through that handler so no receipt mail is queued: nothing was charged.
+            let plan_request = match plan.as_ref() {
+                Some((_, name, price)) => {
+                    record_upgrade_request(
+                        &state.pool,
+                        tenant_id,
+                        user_id,
+                        &auth.email,
+                        &plan_slug,
+                        name,
+                        *price,
+                    )
+                    .await
+                }
+                None => None,
+            };
             tracing::error!(
                 "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
                  no active provider owned by a platform-operator account either"
@@ -298,7 +323,8 @@ pub async fn create_checkout_session(
                     // operator's setup detail stays, in parentheses, for whoever reads it next.
                     "message": "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet: your request has been recorded for the platform team, who can activate this plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)",
                     "configured": false,
-                    "request_recorded": true
+                    "request_recorded": true,
+                    "plan_request": plan_request
                 })),
             ))
         }
@@ -1315,4 +1341,84 @@ pub async fn test_payment_provider(
             "message": format!("Stripe refused the key: {msg}"),
         })),
     ))
+}
+
+/// File the tier a customer pressed "Upgrade" for as an OPEN plan request the operator can act on.
+///
+/// Returns `Some({"id","plan_slug","plan_name","already_open"})` when a request exists — the row just
+/// written, or the one already open for that tier — and `None` when it could not be written.
+/// BEST-EFFORT by design: the caller is already answering a 503, so a bookkeeping failure must never
+/// turn a refusal into a 500. It is logged instead.
+///
+/// The row is the SAME shape `plan_request_handler::create` writes for the customer's own "Request
+/// the plan" button (`plan_requests`, one open row per (tenant, plan_slug)), because that is what the
+/// operator's Plan requests queue lists and what its Resolve arm reads to switch the workspace onto
+/// the tier. It is inserted directly rather than through that handler so no receipt mail is queued:
+/// this path charged nothing, and a second "we got your request" mail would be noise on top of the
+/// screen the customer is already reading.
+async fn record_upgrade_request(
+    db: &sqlx::PgPool,
+    tenant_id: Uuid,
+    user_id: Option<Uuid>,
+    requested_by: &str,
+    plan_slug: &str,
+    plan_name: &str,
+    plan_price: f64,
+) -> Option<Value> {
+    let open: Option<Uuid> = match sqlx::query_scalar(
+        "SELECT id FROM plan_requests \
+          WHERE tenant_id = $1 AND plan_slug = $2 AND status IN ('open','contacted') \
+          ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(plan_slug)
+    .fetch_optional(db)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("checkout/create: could not look for an open plan request: {e:?}");
+            return None;
+        }
+    };
+
+    if let Some(id) = open {
+        return Some(json!({
+            "id": id.to_string(),
+            "plan_slug": plan_slug,
+            "plan_name": plan_name,
+            "already_open": true,
+        }));
+    }
+
+    let written: Result<Uuid, sqlx::Error> = sqlx::query_scalar(
+        "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(requested_by)
+    .bind(plan_slug)
+    .bind(plan_name)
+    .bind(format!(
+        "This workspace pressed Upgrade on the {plan_name} plan (${plan_price:.0}/month) and no \
+         payment provider is configured, so nothing was charged and nothing can be billed. Filed \
+         automatically by the checkout refusal arm, so the ask survives even if the customer closes \
+         the tab. Resolving this request seats the workspace on the plan."
+    ))
+    .fetch_one(db)
+    .await;
+
+    match written {
+        Ok(id) => Some(json!({
+            "id": id.to_string(),
+            "plan_slug": plan_slug,
+            "plan_name": plan_name,
+            "already_open": false,
+        })),
+        Err(e) => {
+            tracing::error!("checkout/create: could not file the plan request: {e:?}");
+            None
+        }
+    }
 }
