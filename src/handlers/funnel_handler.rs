@@ -140,22 +140,54 @@ pub async fn create_funnel(
         })),
     ))
 }
+/// ONE funnel, in the SAME shape `list_funnels` ships.
+///
+/// This used to select `id, name, slug, created_at` and answer a three-field stub — while
+/// `update_funnel` (migration 111) writes `headline`, `subheadline`, `cta_label` and `thank_you`
+/// and the shared page renders all four. A client that read the funnel back through THIS route
+/// therefore saw a funnel with no page copy, and a GET -> edit -> PUT round trip erased what the
+/// customer had written: the fields were accepted, stored, served publicly, and invisible here.
+/// The list route already carries them (the console's editor prefills from the row it holds); this
+/// makes the single-row route agree with it, so there is one funnel shape on the wire, not two.
 pub async fn get_funnel(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
-    let row: Option<(Uuid, String, String, chrono::NaiveDateTime)> =
-        sqlx::query_as("SELECT id, name, COALESCE(slug,''), created_at FROM funnels WHERE id = $1 AND tenant_id = $2")
-            .bind(id)
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?;
-    let r = row.ok_or_else(|| AppError::NotFound("Funnel not found".into()))?;
-    Ok(Json(
-        json!({"id": r.0.to_string(), "name": r.1, "slug": r.2}),
-    ))
+    let row: Option<(
+        Uuid,
+        String,
+        String,
+        chrono::NaiveDateTime,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you \
+         FROM funnels WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (id, name, slug, created_at, headline, subheadline, cta_label, thank_you) =
+        row.ok_or_else(|| AppError::NotFound("Funnel not found".into()))?;
+    Ok(Json(json!({
+        "id": id.to_string(),
+        "name": name,
+        "slug": slug,
+        "created_at": created_at,
+        // What the shared page says. NULL means "not set" and the renderer falls back — the same
+        // meaning it has in the list, which the editor prefills from.
+        "headline": headline,
+        "subheadline": subheadline,
+        "cta_label": cta_label,
+        "thank_you": thank_you,
+        // The page a customer shares: slug-only, no tenant in the path (see render_funnel).
+        "public_path": format!("/funnel/{slug}"),
+    })))
 }
 pub async fn update_funnel(
     auth: AuthUser,
