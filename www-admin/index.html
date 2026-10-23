@@ -2581,7 +2581,7 @@ async function bindEmailProvider() {
         } else {
           const colour = st => st === 'sent' ? '#15803d' : st === 'withheld' ? '#b45309' : '#b91c1c';
           const word = st => st === 'sent' ? 'sent' : st === 'withheld' ? 'not sent (reserved address)' : 'REFUSED';
-          hist.innerHTML = sumLine + '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ')</div>'
+          hist.innerHTML = sumLine + '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ' real attempts \u2014 reserved/test addresses are not listed)</div>'
             + '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
             + '<th style="padding:2px 6px">When</th><th style="padding:2px 6px">To</th><th style="padding:2px 6px">Subject</th>'
             + '<th style="padding:2px 6px">Result</th><th style="padding:2px 6px">Reason</th></tr></thead><tbody>'

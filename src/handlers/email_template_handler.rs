@@ -348,6 +348,13 @@ pub async fn list_template_types(
 /// The Email Provider panel's "last email" line answers only the most recent attempt; this is the
 /// history beside it, so a credentials mail that was refused at signup is still visible after later
 /// mail succeeded. `withheld` rows are reserved/harness recipients that were never attempted.
+///
+/// THOSE ROWS ARE NOT IN THE LIST (2026-10-23). The fleet's own probe signups write a `withheld` row
+/// per run, so the tail was 48/50 harness addresses when measured live on this app and 50/50 on
+/// ADASwift — the list could not answer the question its own comment says it exists for ("did that
+/// customer ever get their password?"), because real attempts had been pushed out of the window by
+/// rows that were never sends. The tail now lists only attempts that went to a real address; the
+/// harness rows are still counted in `summary.withheld` (last 7 days), so nothing is silently dropped.
 pub async fn email_log(
     user: crate::auth::middleware::AuthUser,
     State(state): State<AppState>,
@@ -356,7 +363,7 @@ pub async fn email_log(
     use sqlx::Row;
     let rows = sqlx::query(
         "SELECT to_email, subject, status, detail, created_at FROM email_send_log \
-         ORDER BY created_at DESC LIMIT 50",
+         WHERE status <> 'withheld' ORDER BY created_at DESC LIMIT 50",
     )
     .fetch_all(&state.pool)
     .await
