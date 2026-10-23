@@ -660,6 +660,14 @@ pub fn create_router(
             "/api/v1/admin/users/:id/role",
             post(crate::handlers::admin_handler::set_tenant_user_role),
         )
+        // Remove a teammate (2026-10-23). The panel could add one and correct a role but never take
+        // one out, so a duplicate invite or someone who had left kept a live login for ever - the
+        // only remedy was direct SQL. DELETE by id, guarded in the handler (self / last admin /
+        // protected addresses) and deactivating instead of deleting when the teammate owns leads.
+        .route(
+            "/api/v1/admin/users/:id",
+            delete(crate::handlers::admin_handler::delete_tenant_user),
+        )
         .route(
             "/api/v1/admin/tenants/:id/feature-overrides",
             get(crate::handlers::admin_handler::get_tenant_feature_overrides),

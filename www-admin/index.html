@@ -1226,6 +1226,13 @@ async function renderPlans() {
   const _paid = plans.filter(p => Number(p.price) > 0 && !planIsCurrent(p));
   const _target = _paid.length ? _paid[0] : null;
 
+  // Purchase requests — workspaces that pressed Upgrade while no payment provider was configured.
+  // `POST /api/v1/checkout/create` records each one (status `provider_missing`) and tells the
+  // customer it "has been recorded for the platform team, who can activate this plan by hand".
+  // Until this card nothing in the console read those rows, so the promise had no screen behind it.
+  let preq = [];
+  try { const r = await api('/admin/checkout-requests?limit=50'); preq = (r && r.requests) || []; } catch(e) { preq = []; }
+
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <h1 style="font-size:22px;font-weight:700">Plans</h1>
@@ -1261,6 +1268,27 @@ async function renderPlans() {
       <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">Ready to unlock more features?</h2>
       <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Upgrade to a paid plan to get more cards, leads, and advanced features.</p>
       <button class="btn btn-primary" data-upgrade-plan="${x(_target.slug)}" onclick="window._startUpgrade('${x(_target.slug)}')">Upgrade to ${x(_target.name)}</button>
+    </div>`:''}
+    ${preq.length > 0 ? `
+    <div class="card" style="margin-top:20px" id="purchase-requests">
+      <div style="margin-bottom:12px"><h3 style="font-size:16px;font-weight:700;margin:0">Purchase requests</h3>
+      <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Workspaces that pressed Upgrade while this installation had no payment provider connected. Nothing was charged. Switch the workspace to the plan they asked for, or connect a provider under Provider Keys, and the next attempt will charge normally.</p></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>When</th><th>Workspace</th><th>Plan they asked for</th><th>Amount</th><th>Status</th></tr></thead>
+        <tbody>${preq.map(q => {
+          const when = q.created_at ? new Date(q.created_at).toLocaleString() : '-';
+          const label = q.status === 'provider_missing' ? 'No payment provider yet'
+                      : (q.status === 'cancelled' ? 'Cancelled at checkout' : 'Checkout failed');
+          const cls = q.status === 'provider_missing' ? 'badge-yellow' : 'badge-red';
+          return `<tr>
+            <td style="white-space:nowrap;font-size:12px;color:var(--muted)">${x(when)}</td>
+            <td>${x(q.tenant_name || '—')}</td>
+            <td>${q.plan_name ? `<strong>${x(q.plan_name)}</strong>` : '—'}${q.plan_slug ? `<div style="font-size:11px;color:var(--muted)">${x(q.plan_slug)}</div>` : ''}</td>
+            <td>${q.amount ? formatCurrency(Number(q.amount)) : '—'}</td>
+            <td><span class="badge ${cls}">${x(label)}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
     </div>`:''}
   </div>`;
 }
@@ -3539,7 +3567,7 @@ async function renderTenants() {
       </div>
       ${TENANT_USERS === null ? '<div class="empty" style="padding:16px">Loading…</div>' : (TENANT_USERS.length === 0
         ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
-        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td></tr>`).join('')}</tbody></table></div>`)}
+        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td><td><button class="btn btn-ghost tu-remove" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Remove this teammate from the workspace" style="font-size:12px;padding:2px 8px">Remove</button></td></tr>`).join('')}</tbody></table></div>`)}
       <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input class="input" id="tu-name" placeholder="Their name"></div>
         <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input class="input" id="tu-email" placeholder="them@company.com"></div>
@@ -3684,6 +3712,29 @@ function bindTenants() {
       sel.value = prev;
       sel.disabled = false;
       TENANT_USERS_MSG = '<span style="color:#b91c1c">' + x((e && e.message) || 'Could not change that role') + '</span>';
+    }
+    renderApp();
+  }));
+  // Remove a teammate (2026-10-23). The pane could add one and move a role but never take one out,
+  // so a duplicate invite or a departure left a working login behind. The route answers the mode:
+  // a teammate with no history is deleted; one who owns leads or payouts is switched off instead,
+  // and the pane says which happened rather than claiming a delete that did not occur.
+  document.querySelectorAll('.tu-remove').forEach(btn => btn.addEventListener('click', async () => {
+    const uid = btn.getAttribute('data-user'), mail = btn.getAttribute('data-email') || 'that teammate';
+    if (!uid) return;
+    if (!confirm('Remove ' + mail + ' from this workspace? They will no longer be able to sign in.')) return;
+    btn.disabled = true;
+    try {
+      const r = await api('/admin/users/' + encodeURIComponent(uid), { method: 'DELETE' });
+      TENANT_USERS_MSG = (r && r.deactivated)
+        ? '<span style="color:#b45309">🔒 ' + x(mail) + ' still owns leads or payouts, so their record was kept and their sign-in is switched off.</span>'
+        : '<span style="color:#15803d">✅ ' + x(mail) + ' was removed from this workspace.</span>';
+      try {
+        const l = await api('/admin/tenants/' + encodeURIComponent(TENANT_USER_TENANT) + '/users', { method: 'POST', body: '{}' });
+        TENANT_USERS = Array.isArray(l) ? l : ((l && (l.users || l.data)) || []);
+      } catch (e) {}
+    } catch (e) {
+      TENANT_USERS_MSG = '<span style="color:#b91c1c">' + x((e && e.message) || 'Could not remove that teammate') + '</span>';
     }
     renderApp();
   }));

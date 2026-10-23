@@ -933,6 +933,114 @@ pub async fn set_tenant_user_role(
     })))
 }
 
+/// Addresses this install must never remove through the panel: the platform operator and the
+/// portfolio workspaces' owners. The removal route is destructive, so this is a hard deny-list
+/// rather than a role check — it holds even when the caller IS an admin of that workspace.
+const PROTECTED_TEAMMATE_EMAILS: &[&str] = &[
+    "swiftsoftware143@yahoo.com",
+    "david@funnelswift.net",
+    "swiftdavid@yahoo.com",
+    "swiftimpactsolutions@gmail.com",
+    "zaarhub@gmail.com",
+    "giraudycapital@yahoo.com",
+    "mcr_admin@swiftsoftware.com",
+];
+
+/// **Remove a teammate from a workspace** — `DELETE /api/v1/admin/users/:id` (Super Admin only).
+///
+/// The panel could ADD a teammate and move one between roles, but never take one out: a typo, a
+/// duplicate invite or someone who has left kept a working login for ever, and the only remedy was
+/// direct SQL. Same gap the avatar DELETE closed on the profile.
+///
+/// TWO modes, because the row alone is not the whole story for a teammate who has done work:
+///  * **no history** — the `users` row is DELETEd and `user_avatars`, `password_resets`,
+///    `email_changes` and `linkedin_auths` cascade with it (`removed: true`).
+///  * **has history** — `leads.created_by` / `leads.assigned_to` and
+///    `affiliate_payouts.affiliate_user_id` are `NO ACTION`, so a DELETE would answer 23503 and
+///    forcing it would strip those rows of their owner. The row is DEACTIVATED instead
+///    (`deactivated: true`): the login query requires `is_active = true` and every authenticated
+///    request re-reads it (`global_auth`), so the teammate's live session dies at once while their
+///    leads and payouts keep their owner.
+///
+/// Refused 400 with a sentence the pane shows verbatim: yourself, the workspace's only active
+/// admin, and [`PROTECTED_TEAMMATE_EMAILS`].
+pub async fn delete_tenant_user(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let row: Option<(Uuid, Uuid, String, String, bool)> =
+        sqlx::query_as("SELECT id, tenant_id, email, role, is_active FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (uid, tenant_id, email, role, is_active) =
+        row.ok_or_else(|| AppError::NotFound("No such teammate".into()))?;
+
+    if uid.to_string() == auth.user_id {
+        return Err(AppError::BadRequest(
+            "you cannot remove yourself from the workspace".into(),
+        ));
+    }
+    let lower = email.to_lowercase();
+    if PROTECTED_TEAMMATE_EMAILS.contains(&lower.as_str()) {
+        return Err(AppError::BadRequest(
+            "that address is protected and cannot be removed from the panel".into(),
+        ));
+    }
+    if role == "admin" && is_active {
+        let admins: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role = 'admin' AND is_active",
+        )
+        .bind(tenant_id)
+        .fetch_one(&state.pool)
+        .await?;
+        if admins <= 1 {
+            return Err(AppError::BadRequest(
+                "that is the workspace's only admin - promote someone else first".into(),
+            ));
+        }
+    }
+
+    // History decides the mode: these two FKs are NO ACTION, so a hard delete is only honest for a
+    // teammate who never owned anything in this workspace.
+    let has_history: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM leads WHERE created_by = $1 OR assigned_to = $1)
+             OR EXISTS(SELECT 1 FROM affiliate_payouts WHERE affiliate_user_id = $1)",
+    )
+    .bind(uid)
+    .fetch_one(&state.pool)
+    .await?;
+
+    if has_history {
+        sqlx::query("UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1")
+            .bind(uid)
+            .execute(&state.pool)
+            .await?;
+        return Ok(Json(json!({
+            "id": uid.to_string(),
+            "email": email,
+            "removed": false,
+            "deactivated": true,
+            "reason": "this teammate owns leads or payouts, so their record is kept - the login is switched off"
+        })));
+    }
+
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(uid)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(json!({
+        "id": uid.to_string(),
+        "email": email,
+        "removed": true,
+        "deactivated": false
+    })))
+}
+
 /// List ALL kinetic cards across all tenants (admin only)
 pub async fn admin_list_all_cards(
     auth: AuthUser,
