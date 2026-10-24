@@ -33,6 +33,15 @@ pub struct LeadQuery {
     pub stage: Option<String>,
     pub source: Option<String>,
     pub search: Option<String>,
+    // WHICH FUNNEL PRODUCED THIS LEAD (cron 2026-10-24). `submit_funnel_lead` stamps the funnel id
+    // into `custom_fields.funnel_id`, and `list_funnels` counts on exactly that key — but nothing
+    // could ASK for those rows: the Funnels screen's "Leads" number had to approximate the answer by
+    // typing the funnel's NAME into the search box, which matches any lead whose text mentions it
+    // (two funnels called "Spring Sale" and "Spring Sale 2" each showed the other's people) and only
+    // ever searched the single page the console had already loaded. This is the filter that makes
+    // the count answerable, and it is the same key the count is derived from, so the number and the
+    // list behind it cannot drift.
+    pub funnel_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -86,6 +95,14 @@ pub async fn list_leads(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
+    // The funnel attribution key is the same expression `list_funnels` counts:
+    // `custom_fields->>'funnel_id'`, compared as text so a caller cannot smuggle a non-uuid.
+    let funnel_id = query
+        .funnel_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     let total = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM leads
@@ -94,12 +111,14 @@ pub async fn list_leads(
                 OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
                 OR phone ILIKE $2 OR notes ILIKE $2)
            AND ($3::text IS NULL OR stage = $3)
-           AND ($4::text IS NULL OR source = $4)",
+           AND ($4::text IS NULL OR source = $4)
+           AND ($5::text IS NULL OR custom_fields->>'funnel_id' = $5)",
     )
     .bind(tenant_id)
     .bind(&search)
     .bind(&stage)
     .bind(&source)
+    .bind(&funnel_id)
     .fetch_one(&state.pool)
     .await?;
 
@@ -111,13 +130,15 @@ pub async fn list_leads(
                 OR phone ILIKE $2 OR notes ILIKE $2)
            AND ($3::text IS NULL OR stage = $3)
            AND ($4::text IS NULL OR source = $4)
+           AND ($5::text IS NULL OR custom_fields->>'funnel_id' = $5)
          ORDER BY created_at DESC, id DESC
-         LIMIT $5 OFFSET $6",
+         LIMIT $6 OFFSET $7",
     )
     .bind(tenant_id)
     .bind(&search)
     .bind(&stage)
     .bind(&source)
+    .bind(&funnel_id)
     .bind(per_page)
     .bind(offset)
     .fetch_all(&state.pool)

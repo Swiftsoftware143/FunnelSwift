@@ -1210,8 +1210,19 @@ function D(){
   });
 }
 
-/* === LEADS (DOM-based) === */function LD(){
-  api("/api/v1/leads").then(function(d){
+/* === LEADS (DOM-based) === */
+/* THE FUNNEL THE LEADS SCREEN IS FILTERED TO (cron 2026-10-24). NULL = the whole workspace.
+   A funnel's "Leads" number is derived server-side from `custom_fields.funnel_id`
+   (funnel_handler.rs::list_funnels), so the list behind that number asks for THE SAME KEY via
+   GET /api/v1/leads?funnel_id=...: clicking 12 shows exactly those 12, whatever the funnel is
+   called and however many other pages the workspace has. The previous version typed the funnel's
+   NAME into the search box, which matched any lead whose text mentioned it and only ever filtered
+   the single page of rows the console had already loaded. */
+var LD_FUNNEL=null, LD_FUNNEL_NAME="";
+function LD(){
+  var ldu="/api/v1/leads";
+  if(LD_FUNNEL) ldu+="?funnel_id="+encodeURIComponent(LD_FUNNEL)+"&per_page=100";
+  api(ldu).then(function(d){
     var a=(d&&d.data)?d.data:(Array.isArray(d)?d:[]);
     var total=d&&d.total?d.total:a.length;
     
@@ -1231,6 +1242,15 @@ function D(){
     
     // Search bar
     var sf=$("ld-filters");
+    /* The active funnel filter and the ONE control that clears it: the header count is the FILTERED
+       total, so without a visible way out the screen would read as if leads had gone missing. */
+    if(LD_FUNNEL&&sf){
+      var fchip=El("span",{"class":"badge",style:"background:#eef2ff;color:#3730a3;font-size:11px;padding:4px 8px"},
+        "Funnel: "+(LD_FUNNEL_NAME||"this funnel"));
+      var fclr=El("button",{"class":"btn btn-sm btn-o"},"Show all leads");
+      fclr.onclick=function(){LD_FUNNEL=null;LD_FUNNEL_NAME="";S("leads");};
+      sf.appendChild(fchip); sf.appendChild(fclr);
+    }
     var sb=El("input",{style:"padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:200px",placeholder:"Search leads..."});
     sb.oninput=function(){LDf(null)};
     sf.appendChild(sb);
@@ -3805,18 +3825,9 @@ function fnDelete(f){
    wait loop is deliberate: the Leads screen renders from the API, so the search box does not
    exist on the next tick. */
 function fnShowLeads(f){
-  if(typeof S==="function"){ S("leads"); }
-  var tries=0;
-  (function wait(){
-    var inp=document.querySelector("#ld-filters input");
-    if(!inp){
-      if(++tries<50) return setTimeout(wait,100);
-      return;
-    }
-    inp.value=f.name||"";
-    if(typeof LDf==="function") LDf();
-    try{ inp.focus(); }catch(e){}
-  })();
+  LD_FUNNEL=f.id||null;
+  LD_FUNNEL_NAME=f.name||"";
+  if(typeof S==="function"){ S("leads"); }   /* S() re-renders the screen, so LD() picks the filter up */
 }
 /* PAUSE / RESUME (migration 116). A funnel that has done its job — the campaign ended, the
    webinar is over, the list is full — must stop taking responses WITHOUT being deleted and
