@@ -31,9 +31,14 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
         Option<String>,
         Option<String>,
         bool,
+        i64,
     )> = sqlx::query_as(
-        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you, is_active \
-         FROM funnels WHERE tenant_id = $1 ORDER BY created_at DESC",
+        "SELECT f.id, f.name, COALESCE(f.slug,''), f.created_at, f.headline, f.subheadline, f.cta_label, \
+                f.thank_you, f.is_active, \
+                (SELECT count(*) FROM leads l \
+                  WHERE l.tenant_id = f.tenant_id \
+                    AND l.custom_fields->>'funnel_id' = f.id::text) \
+         FROM funnels f WHERE f.tenant_id = $1 ORDER BY f.created_at DESC",
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
@@ -57,6 +62,7 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
                 cta_label,
                 thank_you,
                 is_active,
+                lead_count,
             )| {
                 json!({
                     "id": id.to_string(),
@@ -68,6 +74,11 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
                     // they are. Shipped in the LIST so the row's own button can say Pause or Resume
                     // without a second request.
                     "is_active": is_active,
+                    // How many leads this funnel's public page has captured. A lead written by
+                    // `submit_funnel_lead` carries the funnel's id in `custom_fields.funnel_id`,
+                    // so the count is derived from the leads table rather than a second counter
+                    // that could drift from the rows it claims to count. The row is the proof.
+                    "lead_count": lead_count,
                     // What the shared page says, so the editor opens on the CUSTOMER's words rather
                     // than empty boxes. NULL means "not set" and the renderer falls back.
                     "headline": headline,
