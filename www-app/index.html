@@ -1223,6 +1223,11 @@ function D(){
     var sum="";
     Object.keys(counts).forEach(function(s){sum+='<span class="badge" style="margin-left:4px;font-size:10px;cursor:pointer" data-ld-filter="'+X(s)+'" onclick="LDf(\''+X(s)+'\')">'+X(s)+': '+counts[s]+'</span>';});
     $("ld-stats").innerHTML=sum;$("ld-add-span").appendChild(El("button",{"class":"btn btn-sm",style:"margin-left:8px",onclick:function(){MFL()}},"+ Add Lead"));
+    /* cron 2026-10-24: POST /api/v1/bulk/leads (tenant-scoped, DELETE ... AND tenant_id=$2)
+       had no caller in either console, and this table could remove nothing at all. */
+    var ldDel=El("button",{"class":"btn btn-sm btn-o",style:"margin-left:8px;color:#b91c1c"},"Delete selected");
+    ldDel.id="ld-del"; ldDel.disabled=true;
+    $("ld-add-span").appendChild(ldDel);
     
     // Search bar
     var sf=$("ld-filters");
@@ -1235,7 +1240,7 @@ function D(){
     if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px">No leads.</p>';return;}
     
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Status</th><th></th></tr>';
+    tbl.innerHTML='<tr><th style="width:30px"><input type="checkbox" id="ld-all" title="Select every lead shown"></th><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Status</th><th></th></tr>';
     a.forEach(function(l){
       var tr=El("tr",{"class":"ld-row"});
       var name=(l.first_name||"")+" "+(l.last_name||"");
@@ -1252,10 +1257,12 @@ function D(){
       
       tr.setAttribute("data-search",(name+" "+l.email+" "+l.phone+" "+status+" "+l.source).toLowerCase());
       tr.setAttribute("data-status",status);
-      tr.innerHTML='<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(l.source==="funnel"?"Funnel":(l.source||"-"))+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
+      tr.innerHTML='<td><input type="checkbox" class="ld-sel" value="'+X(l.id)+'"></td>'
+        +'<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(l.source==="funnel"?"Funnel":(l.source||"-"))+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
+    ldWireSelect();
     fnLabelSources();
   });
 }
@@ -1299,6 +1306,55 @@ function fnLabelSources(){
     });
   }).catch(function(){});
 }
+
+/* kanban cron 2026-10-24 — multi-select delete for the tenant's OWN leads.
+   The write path is the route that already existed and was never called from a browser:
+   `POST /api/v1/bulk/leads` {ids:[uuid]} -> bulk_handler::bulk_delete_leads, which deletes
+   `WHERE id=$1 AND tenant_id=$2` per id, so it can only ever remove this workspace's rows and
+   reports `deleted` as the count it actually removed. The confirm names the number, because
+   there is no undo. */
+function ldWireSelect(){
+  var all=$("ld-all"), btn=$("ld-del");
+  function ticked(){
+    return [].slice.call(document.querySelectorAll(".ld-sel")).filter(function(c){return c.checked;});
+  }
+  function visibleRows(){
+    return [].slice.call(document.querySelectorAll(".ld-row")).filter(function(r){return r.style.display!=="none";});
+  }
+  function sync(){
+    var k=ticked().length;
+    if(btn){btn.disabled=!k;btn.textContent=k?("Delete selected ("+k+")"):"Delete selected";}
+    if(all){
+      var boxes=visibleRows().map(function(r){return r.querySelector(".ld-sel");}).filter(Boolean);
+      all.checked=boxes.length>0&&boxes.every(function(c){return c.checked;});
+    }
+  }
+  if(all){
+    all.onchange=function(){
+      var on=all.checked;
+      visibleRows().forEach(function(r){var c=r.querySelector(".ld-sel");if(c)c.checked=on;});
+      sync();
+    };
+  }
+  [].slice.call(document.querySelectorAll(".ld-sel")).forEach(function(c){c.onchange=sync;});
+  if(btn){
+    btn.onclick=function(){
+      var ids=ticked().map(function(c){return c.value;});
+      if(!ids.length)return;
+      if(!window.confirm("Delete "+ids.length+" lead"+(ids.length>1?"s":"")+"? This cannot be undone."))return;
+      btn.disabled=true; btn.textContent="Deleting\u2026";
+      api("/api/v1/bulk/leads",{method:"POST",body:JSON.stringify({ids:ids})}).then(function(d){
+        showMsg((d&&d.message)||(ids.length+" leads deleted"),"ok");
+        S("leads");
+      }).catch(function(e){
+        showMsg("Could not delete: "+((e&&e.message)||"unknown error"),"me");
+        sync();
+      });
+    };
+  }
+  sync();
+}
+
 function LDf(q){
   var s=document.querySelector("#ld-filters input"); if(!s) return;
   var sq=s.value.toLowerCase();
@@ -1311,6 +1367,9 @@ function LDf(q){
     else if(sq&&ds.indexOf(sq)<0) match=false;
     r.style.display=match?"":"none";
   });
+  // a row the filter just hid must not stay ticked: the bulk delete acts on every ticked box,
+  // including one the operator can no longer see.
+  if(typeof ldWireSelect==="function"){ldWireSelect();}
 }
 /* kanban t_adf187f9 — THE CANONICAL LEAD-STATUS SPACE, DECIDED 2026-09-25. This is the ONE place
    that names a lead-status value; every other reader/writer goes through it or stores what it says.
@@ -4885,7 +4944,7 @@ window.appGuidePages = {
   analytics:   { title: "Analytics", desc: "How the cards in this workspace performed: views, clicks and shares, the visitors counted once per session, and your cards ranked by views. Analytics is part of the paid plans \u2014 on the free plan the screen says so and points at the plans.", actions: ["See which card earns the most views", "Check clicks and shares beside each card", "Upgrade if your plan does not include it"] },
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
   profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you.", actions: ["Update your name and company", "Upload a profile picture", "Change your password"] },
-  leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms.", actions: ["Filter and search", "Apply tags", "Export"] },
+  leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms. Tick a lead (or the box on the header row to take every lead currently shown) and press Delete selected to remove them for good \u2014 there is no undo, and the filter only ever ticks the rows you can see.", actions: ["Filter and search", "Tick leads and delete them in one go", "Apply tags", "Export"] },
   funnels:     { title: "Funnels", desc: "The public pages you send people to. Create one here and its link appears beside it \u2014 that link is the page's address, so renaming the funnel keeps the same link and anything you have already shared still works. Deleting it stops the link working immediately.", actions: ["Create a funnel", "Copy its public link", "Rename it without changing the link", "Delete one you no longer send people to"] },
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
   afleads:     { title: "Affiliate Leads", desc: "Every lead that came in through the affiliate programme, and which affiliate gets credited for it. Leads with nobody behind them show as system \u2014 nobody is paid for those. The last column tells you whether that lead later joined the programme themselves.", actions: ["See which affiliate a lead belongs to", "Spot leads that are not credited", "See which leads became affiliates"] },
@@ -4902,6 +4961,6 @@ window.appGuidePages = {
      (measured: cf-cache-status HIT, age 4269, and the edge body still had 0 `seenAnyGuide`). A
      versioned query string is a NEW cache key, so the fix is visible on the next load; bump it
      whenever this file changes. -->
-<script src="/inline-guide-widget.js?v=20261024a"></script>
+<script src="/inline-guide-widget.js?v=20261024b"></script>
 </body>
 </html>
