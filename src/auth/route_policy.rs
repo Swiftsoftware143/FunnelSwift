@@ -12,19 +12,24 @@
 //! blanket default-allow shape. This module is the committed list, and the middleware now reads
 //! only from it.
 //!
-//! # The census (re-measured 2026-10-21 by the test's own counter over `api_router.rs`)
+//! # The census (re-measured 2026-10-24 by the test's own counter over `api_router.rs`)
 //!
-//! 209 `.route(..)` mounts / 208 unique paths, classified three ways:
+//! The 2026-10-24 recount picked up three PRIVATE routes committed after the 2026-10-21 census
+//! and never folded in: a campaign DELETE, a teammate DELETE on the operator surface, and the
+//! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
+//! `require_auth` routes — so only the numbers changed.
+//!
+//! 212 `.route(..)` mounts / 211 unique paths, classified three ways:
 //!
 //! ```text
-//!   183 mounts  /api/**            182 unique after the duplicate `/api/v1/linkedin/auth`
+//!   186 mounts  /api/**            185 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     20        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    160        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (36 of them `/api/v1/admin/**` = the operator surface,
+//!    163        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (38 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -356,7 +361,7 @@ mod tests {
                 private,
                 served
             ),
-            (209, 208, 183, 20, 3, 160, 26),
+            (212, 211, 186, 20, 3, 163, 26),
             "the census in the module docs no longer matches the router"
         );
     }

@@ -33,6 +33,29 @@ const APP_NAME: &str = "FunnelSwift";
 const APP_URL: &str = "https://app.funnelswift.net";
 const APP_LOGIN_URL: &str = "https://app.funnelswift.net/login";
 
+/// The app's OWN wordmark on this app's own host, used for the header of every message sent by a
+/// tenant that has configured no branding (2026-10-24).
+///
+/// A mail client fetches it over the network with no session, so it must be an absolute URL on a
+/// host that answers publicly — and it must be a PNG: Gmail and Outlook do not render SVG, so the
+/// `/logo.svg` this app serves for its pages would arrive as a blank box. `/logo.png` is that
+/// file's raster twin (400x80, same drawing), served by both the app and the marketing hosts.
+const APP_LOGO_PATH: &str = "/logo.png";
+
+/// The identity every message falls back to when its tenant has configured none: the app's own
+/// name and wordmark, in the fleet's default accent.
+///
+/// Before this the header block only appeared once a tenant had uploaded a logo of their own, so
+/// the credentials mail a BRAND-NEW customer receives — the first thing this product ever shows
+/// them — arrived with no wordmark at all.
+fn app_default_branding() -> crate::branding::Branding {
+    crate::branding::Branding {
+        brand_name: APP_NAME.to_string(),
+        brand_color: String::new(),
+        logo_url: APP_LOGO_PATH.to_string(),
+    }
+}
+
 /// The variables every template type resolves: the advertised merge fields plus `app_url`.
 /// Bind these on every send path so no advertised field can ever go out as literal text.
 fn bound_vars<'a>(
@@ -317,16 +340,26 @@ async fn render_template(
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
 ) -> (String, Option<String>, Option<String>) {
-    let branding = crate::branding::load(pool, aid).await;
-    let brand_name = branding
-        .as_ref()
-        .map(|b| b.brand_name.clone())
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| APP_NAME.to_string());
-    let logo_url = branding
+    // A tenant with branding of its own wins; one without it gets the APP's header rather than no
+    // header at all. `logo_is_own` is bound so the preview arm can say truthfully whose logo the
+    // recipient is looking at instead of claiming an upload that never happened.
+    let stored = crate::branding::load(pool, aid).await;
+    let logo_is_own: &'static str = if stored
         .as_ref()
         .and_then(|b| b.resolve_logo_url(APP_URL))
-        .unwrap_or_default();
+        .is_some()
+    {
+        "yes"
+    } else {
+        "no"
+    };
+    let branding = stored.unwrap_or_else(app_default_branding);
+    let brand_name = if branding.brand_name.is_empty() {
+        APP_NAME.to_string()
+    } else {
+        branding.brand_name.clone()
+    };
+    let logo_url = branding.resolve_logo_url(APP_URL).unwrap_or_default();
 
     let mut all: std::collections::HashMap<&str, &str> =
         std::collections::HashMap::with_capacity(vars.len() + 2);
@@ -335,6 +368,7 @@ async fn render_template(
     }
     all.insert("brand_name", &brand_name);
     all.insert("logo_url", &logo_url);
+    all.insert("logo_is_own", logo_is_own);
 
     let (subject, body, html) = match get_db_template(pool, aid, template_type).await {
         Ok(Some((subject, body, html_body))) => (
@@ -345,7 +379,7 @@ async fn render_template(
         _ => get_inline(template_type, &all),
     };
 
-    let (body, html) = with_branding_header(branding.as_ref(), body, html);
+    let (body, html) = with_branding_header(Some(&branding), body, html);
     let (body, html) = with_support_footer(body, html);
     (subject, body, html)
 }
@@ -552,12 +586,14 @@ fn get_inline(
         // install has one, wins; this is the fallback for an install that has none.
         "branding_preview" => {
             let brand = vars.get("brand_name").unwrap_or(&APP_NAME).to_string();
-            let has_logo = !vars.get("logo_url").unwrap_or(&"").trim().is_empty();
+            // `logo_url` is ALWAYS set now (the app's own wordmark is the fallback), so this reads
+            // the owner flag instead: an upload the tenant never made must not be described as one.
+            let has_logo = vars.get("logo_is_own").copied() == Some("yes");
             let subject = format!("A preview of your {brand} email");
             let logo_line = if has_logo {
                 "The logo you uploaded sits at the top of the message above this text.\n\n"
             } else {
-                "No logo is set yet, so this message carries the plain header. Upload a logo on the dashboard's Email branding card, save it, and send yourself another preview.\n\n"
+                "No logo of your own is set yet, so this message carries the FunnelSwift wordmark. Upload a logo on the dashboard's Email branding card, save it, and send yourself another preview to see your own.\n\n"
             };
             let text = format!(
                 "Hi {0},\n\nThis is what the mail your customers receive looks like now.\n\n{1}The brand name on it is \"{2}\", and every message this app sends is signed the same way.\n\nNothing else about your account changed, and there is nothing to do — this message exists so you can see the result in a real inbox instead of taking it on trust.\n\n- The {2} Team",
@@ -960,6 +996,28 @@ mod tests {
         assert!(html.contains("<img"));
         assert!(html.contains("&lt;b&gt;hi&lt;/b&gt;"));
         assert!(!html.contains("<b>hi</b>"));
+    }
+
+    #[test]
+    fn an_unbranded_tenant_still_gets_the_apps_own_wordmark() {
+        // 2026-10-24. The header block used to appear only once a tenant had uploaded a logo, so the
+        // credentials mail a brand-new customer received — the first thing this product ever shows
+        // them — arrived with no wordmark at all. The app's OWN identity is the fallback, and its
+        // logo is a PNG on a public host (mail clients do not render SVG), with `alt` carrying the
+        // name so a blocked image still says whose mail this is.
+        let b = app_default_branding();
+        assert_eq!(b.brand_name, APP_NAME);
+        let url = b.resolve_logo_url(APP_URL).expect("the app logo resolves");
+        assert_eq!(url, "https://app.funnelswift.net/logo.png");
+        let header = b.header_html(Some(&url));
+        assert!(header.contains("<img"), "{header}");
+        assert!(header.contains(&url), "{header}");
+        assert!(header.contains("alt=\"FunnelSwift\""), "{header}");
+        // The colour rule still paints when the tenant chose none of their own.
+        assert!(
+            header.contains(crate::branding::DEFAULT_BRAND_COLOR),
+            "{header}"
+        );
     }
 
     #[test]
