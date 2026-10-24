@@ -284,12 +284,25 @@ function renderUpgrade(plans){
     [
       {l:'Cards',v:p.max_cards},{l:'QR Codes',v:p.max_qr_codes},
       {l:'Forms',v:p.max_forms},{l:'Leads',v:p.max_leads},
-      {l:'Tags',v:p.max_tags},{l:'Domains',v:p.max_custom_domains}
+      {l:'Card scans',v:p.max_ocr_scans},{l:'Tags',v:p.max_tags},
+      {l:'Domains',v:p.max_custom_domains},{l:'Team',v:p.max_team_members}
     ].forEach(function(x){
       // `-1` is this app's storage convention for "unlimited" (plans.max_leads / max_tags carry it
       // on kinetic-pro). Only NULL used to render as the glyph, so a -1 printed as the literal text
       // "-1" beside a price on a buying surface (measured 2026-10-17, kanban t_8724c2bf).
-      var v = (x.v === null || x.v === undefined || Number(x.v) < 0) ? String.fromCharCode(8734) : x.v;
+      //
+      // Card scans and Team joined this list because the customer's OWN dashboard names all EIGHT
+      // allowances, and this comparison named only six — so the one limit that separates Capture
+      // Free (10 scans) from Capture Starter (25 scans) was invisible on the very screen that sells
+      // it, and a shopper could not check any Card-scans or Team figure they had just read at home
+      // (measured live 2026-10-24: `plans` rows carry max_ocr_scans 10/25/NULL and max_team_members
+      // 1 on every tier, while upgrade.js listed neither).
+      //
+      // A ZERO allowance is not a quantity either. The dashboard says "not on this plan" for one, so
+      // a bare "0" here read as a count — on Capture Starter it made QR Codes look like a DOWNGRADE
+      // from the free tier's 5. Same plan row, same read, so both surfaces say "Not included".
+      var v = (x.v === null || x.v === undefined || Number(x.v) < 0) ? String.fromCharCode(8734)
+            : (Number(x.v) === 0 ? 'Not included' : x.v);
       html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">'+x.l+'</span><span style="font-weight:600">'+v+'</span></div>';
     });
     
