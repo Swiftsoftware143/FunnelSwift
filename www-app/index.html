@@ -316,7 +316,7 @@ var helpContent={
   "allcards":'<h4>All Cards</h4><p>Every Kinetic card in this workspace in one list. Open a card to edit it, copy its public link or QR code, or remove it.</p>',
   "sgroups":'<h4>System Tag Groups</h4><p>Groups an <strong>admin</strong> creates to organise the shared System Tags. Grouping changes how the tags are listed; it does not change what a tag does.</p>',
   "payouts":'<h4>Affiliate Payouts</h4><p>The payout history for your affiliate partners: what was earned and what has been paid out. <strong>Admin only.</strong></p>',
-  "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above, then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
+  "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above, then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Pause</strong> keeps the page and its link exactly where they are but stops it taking responses: a visitor sees \u201cThis form is closed\u201d, and a submission from a page that was already open is refused. Use it when a campaign ends or a list is full \u2014 <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
   "afleads":'<h4>Affiliate Leads</h4><p>The leads each affiliate has brought in, so you can see who is producing. <strong>Admin only.</strong></p>'
 };
 function toggleHelp() {
@@ -3796,6 +3796,21 @@ function fnDelete(f){
     .then(function(){LAFN();})
     .catch(function(e){window.alert((e&&e.message)||"Could not delete the funnel.");});
 }
+/* PAUSE / RESUME (migration 116). A funnel that has done its job — the campaign ended, the
+   webinar is over, the list is full — must stop taking responses WITHOUT being deleted and
+   WITHOUT its link changing: the link may be printed, in a paid ad, or in a chat nobody can
+   edit. Paused keeps the page up and shows "This form is closed"; the server refuses
+   submissions either way, so a cached copy of the open page cannot slip a lead through. */
+function fnPause(f){
+  var next=!f.is_active;
+  api("/api/v1/funnels/"+f.id,{method:"PUT",body:JSON.stringify({is_active:next})})
+    .then(function(){
+      fnSay(next?"Funnel paused — its page now says the form is closed, and the link still works."
+                :"Funnel resumed — its page takes responses again.",false);
+      LAFN();
+    })
+    .catch(function(e){window.alert((e&&e.message)||"Could not change the funnel's state.");});
+}
 /* The page editor (cron 2026-10-18). A funnel's public page now renders the customer's own
    headline, subheadline, button label and thank-you — the four strings
    `PUT /api/v1/funnels/:id` writes (migration 111). It opens on the row the list already holds
@@ -3861,7 +3876,9 @@ function LAFN(){
     FN.forEach(function(f){
       var url="https://funnelswift.net"+String(f.public_path||("/funnel/"+f.slug));
       var tr=El("tr");
-      tr.innerHTML='<td><strong>'+X(f.name)+'</strong></td>'
+      tr.innerHTML='<td><strong>'+X(f.name)+'</strong>'
+        +(f.is_active===false?' <span class="badge" style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 6px;border-radius:4px">Closed</span>':'')
+        +'</td>'
         +'<td style="font-size:12px"><a href="'+X(url)+'" target="_blank" rel="noopener">'+X(url)+'</a></td>'
         +'<td style="font-size:12px;color:#64748b">'+X(String(f.created_at||"").slice(0,10))+'</td><td></td>';
       var td=tr.querySelectorAll("td")[3];
@@ -3870,6 +3887,8 @@ function LAFN(){
       var cp=El("button",{"class":"btn btn-sm",onclick:function(){fnCopy(url,cp);}},"Copy link");
       td.appendChild(cp); td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnRename(f);}},"Rename"));
+      td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnPause(f);}},f.is_active===false?"Resume":"Pause"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){fnDelete(f);}},"Delete"));
       tbl.appendChild(tr);
