@@ -3277,6 +3277,26 @@ async function renderSystemTags() {
                 refused:'badge-yellow', invalid:'badge-red', failed:'badge-red', unknown_app:'badge-red' };
     return `<span class="badge ${m[s]||'badge-yellow'}">${x(s)}</span>`;
   };
+  // The Detail column used to print the receiver's raw reason code, which tells an operator
+  // nothing they can act on. Map the codes the receivers actually emit to a sentence that says
+  // what happened and what to do next; anything unrecognised still shows verbatim, so nothing
+  // is ever hidden.
+  const plogDetail = (a) => {
+    const names = { adaswift: 'ADASwift', coreswift: 'CoreSwift', funnelswift: 'FunnelSwift',
+                    incentiveswift: 'IncentiveSwift', missedcallrespondr: 'MissedCall Respondr',
+                    workflowswift: 'WorkflowSwift' };
+    const app = a.source_app ? (names[a.source_app] || a.source_app) : 'That app';
+    const m = {
+      placeholder_email: `${app} refused the lead's email: it is a placeholder or a reserved test address, so no account was made. Give the lead a real address, then tag it again.`,
+      provisioning_disabled: `${app} has tag-driven account creation switched off. Turn it on in ${app}'s admin console under Settings, then tag the lead again.`,
+      no_free_plan: `${app} has no free plan to hand out, so the account was not made. Choose the free plan a provisioned account starts on in ${app}'s admin console under Settings.`,
+      source_tag_disabled: `${app} is not accepting accounts from FunnelSwift tags right now. Turn the FunnelSwift source on in ${app}'s admin console, then tag the lead again.`
+    };
+    if (a.error_message && m[a.error_message]) return m[a.error_message];
+    if (a.error_message) return a.error_message;
+    if (a.http_status) return 'HTTP ' + a.http_status;
+    return '-';
+  };
   const provisionLogCard = `
     <div class="card" style="margin-top:20px">
       <div style="margin-bottom:12px"><h3 style="font-size:16px;font-weight:700;margin:0">Recent provisioning attempts</h3>
@@ -3287,7 +3307,7 @@ async function renderSystemTags() {
             <thead><tr><th>When</th><th>Target app</th><th>Plan</th><th>Result</th><th>Detail</th></tr></thead>
             <tbody>${plog.map(a => {
               const when = a.created_at ? new Date(a.created_at).toLocaleString() : '-';
-              const detail = a.error_message ? x(a.error_message) : (a.http_status ? 'HTTP '+a.http_status : '-');
+              const detail = x(plogDetail(a));
               return `<tr>
                 <td style="white-space:nowrap;font-size:12px;color:var(--muted)">${x(when)}</td>
                 <td>${x(a.source_app||'-')}</td>
