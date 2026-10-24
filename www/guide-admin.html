@@ -71,6 +71,17 @@
     .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
     .content-area { padding: 20px; }
   }
+
+/* Phone: nothing on this page may widen the document (measured 2026-10-22, real Chromium at 390 px).
+   A route/merge-field table laid out wider than the column, and one long migration filename in
+   inline <code>, each pushed the whole guide sideways (measured 420-917 px of document width).
+   The table now scrolls inside its own box and a long token wraps, so the page itself stays 100%. */
+@media (max-width: 768px) {
+  body, .main-content, .content-area, main { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  table { display: block; width: 100%; max-width: 100%; overflow-x: auto; }
+  pre { overflow-x: auto; max-width: 100%; }
+  code { overflow-wrap: anywhere; }
+}
 </style>
 </head>
 <body>
@@ -90,16 +101,20 @@
       <a href="#overview" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📋</span> Dashboard</a>
       <a href="#tenants" class="section-title" onclick="closeMobile()">Tenant Management</a>
       <a href="#tenants" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏢</span> Tenants & Plans</a>
-      <a href="#plan-requests" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🙋</span> Plan Requests</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">💳</span> Plans</a>
       <a href="#template-gating" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔒</span> Template Gating</a>
       <a href="#branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Branding Toggle</a>
+      <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Email Branding</a>
+      <a href="#my-account" class="section-title" onclick="closeMobile()">Account</a>
+      <a href="#my-account" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👤</span> My Account</a>
       <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
       <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> What System Tags Do</a>
       <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🤝</span> Affiliates</a>
       <a href="#kinetic-admin" class="section-title" onclick="closeMobile()">Kinetic Admin</a>
       <a href="#kinetic-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🃏</span> Manage Templates</a>
       <a href="#theme-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Manage Themes</a>
+      <a href="#lead-import" class="section-title" onclick="closeMobile()">Lead Import</a>
+      <a href="#lead-import" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📤</span> Import a CSV</a>
       <a href="#bulk-ops" class="section-title" onclick="closeMobile()">Bulk Operations</a>
       <a href="#bulk-ops" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🗑️</span> Bulk Delete</a>
       <a href="#api" class="section-title" onclick="closeMobile()">API Reference</a>
@@ -128,24 +143,28 @@
         <ul>
           <li><strong>Assign Plan</strong> — Click "Plan" on any tenant row to select a plan from the dropdown</li>
           <li><strong>View Details</strong> — Click a tenant name to see full info</li>
+           <li><strong>People</strong> — the <em>users</em> button on a row opens that workspace's people. You can add a teammate (their login details are emailed; a reserved test address is never mailed and the password is shown once instead), move one between roles, and <strong>Remove</strong> one. A teammate who never owned anything is deleted outright; one who owns leads or affiliate payouts is kept on record with their sign-in switched off, so their history keeps its owner — the pane says which of the two happened.</li>
           <li><strong>Disable</strong> — Toggle tenant active/inactive</li>
+          <li><strong>Select probes</strong> — ticks every workspace a test run minted (a <em>probe</em> badge: a reserved address such as <code>@example.invalid</code>, or a recorded test harness). "Delete selected" then retires exactly those rows in one call, and each row reports its own result, so a refusal never hides behind a green toast.</li>
+          <li><strong>Fixture rows cannot be deleted</strong> — the two Tenancy Canary workspaces and the fixed seed row are the monitoring fixtures this platform checks itself against. They carry a <em>fixture</em> badge, "Select probes" never ticks them, and the delete refuses them by name even if an id is sent directly. Deleting one would not be a cleanup: the canary would quietly rebuild a fresh workspace and its verdict would stop meaning anything.</li>
         </ul>
       </div>
 
-      <!-- ============ PLAN REQUESTS ============ -->
-      <h2 id="plan-requests">🙋 Plan Requests</h2>
-      <p>A workspace that wants a paid plan asks for it from its own Upgrade screen. On this install that is how a sale happens: there is no payment provider configured, so the checkout itself refuses the card and the ask becomes the buying path. The ask is stored as a row the customer can re-read, and this screen is where you answer it.</p>
-
       <div class="card">
-        <h3>Reading the queue</h3>
-        <p>Each row is one workspace's ask: the workspace, the plan it asked for, who filed it and when, and the state. Open asks sort first. The number beside <strong>Plan Requests</strong> in the sidebar is how many are still open, so a waiting customer is visible without opening the screen.</p>
+        <h3>Plan requests — where a customer's upgrade ask lands</h3>
+        <p>A customer who wants a paid plan while self-serve checkout is unavailable asks from their own
+        <strong>Upgrade</strong> screen. The ask is a stored row, not a message that disappears on reload:
+        it appears here under <strong>Plan Requests</strong> with the workspace, the plan, the date and
+        anything the customer typed. Answering it moves the state the customer reads:</p>
         <ul>
-          <li><strong>Open</strong> — filed, nobody has answered yet. The customer's own screen says "Open — with our team".</li>
-          <li><strong>Contacted</strong> — records that you have reached out. The customer's screen then reads "We have contacted you"; their plan does not change.</li>
-          <li><strong>Done</strong> — moves the workspace onto the plan it asked for <em>and</em> closes the request. The plan change is written first (the same writer the Tenants screen's plan dropdown uses); if that plan cannot be found in the catalogue nothing is changed and you are told, so a "Done" chip can never sit above a workspace that was not moved.</li>
-          <li><strong>Declined</strong> — closes the request without changing the plan.</li>
+          <li><strong>Open</strong> — filed and not yet handled. The customer's dashboard and Upgrade screen both show it, with a note that it is with our team.</li>
+          <li><strong>Contacted</strong> — you have reached out. The customer sees that too.</li>
+          <li><strong>Done</strong> — answering <em>done</em> also <strong>moves the workspace onto that plan</strong>: the old subscription is deactivated, the movement is dated, and any referrer is settled once, by the same code path the Tenants plan picker uses. A plan that cannot be resolved does not fail your save, but the row says the plan did not move.</li>
+          <li><strong>Declined</strong> — the customer reads your note explaining why, on the screen where they asked.</li>
+          <li><strong>Withdrawn</strong> — the customer took the ask back themselves while it was still open. Nothing was charged and no plan moved; the row stays as a record rather than vanishing, and the customer can ask again later.</li>
         </ul>
-        <p>Nothing is charged on either side. A request is settled between you and the customer — invoicing, a transfer, or a manual upgrade — and the state here is the record of what was agreed. The customer sees every change the next time their Upgrade screen loads; no email is sent for a state change.</p>
+        <p>Only an <em>open</em> or <em>contacted</em> ask can be withdrawn — once you have answered, the
+        decision stands and the customer's own console offers no withdraw control on it.</p>
       </div>
 
       <!-- ============ PLANS ============ -->
@@ -179,7 +198,7 @@
           <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
           <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — a dashboard counter only, and <strong>permanently inert</strong>: every workspace holds exactly one user (its owner) and no route adds a second member, so nothing can fire this cap. Measured 2026-10-02 (kanban <code>t_49e4cef9</code>): all 15 workspaces hold exactly 1 active user each (the System tenant 0) and the plan column reads 1 across the board (Agency / Scale carries a -1 = unlimited row). Reviving it means building the add-a-member surface first, then gating it.</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
-          <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead export — GET /api/v1/leads/export</td></tr>
+          <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead import and export — POST /api/v1/leads/import, GET /api/v1/leads/export</td></tr>
           <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — a plan-page marker only, with no gate of its own: multi-destination delivery is what the <strong>Webhooks</strong> engine does (POST /api/v1/webhooks, gated by <code>has_webhooks</code>). The resource this key used to switch on was retired on 2026-10-02 (kanban t_0aaf0bc5).</td></tr>
           <tr><td><code>has_mini_funnels</code></td><td>Toggle</td><td>Mini funnels — POST /api/v1/kinetic/cards (mini_funnel type)</td></tr>
           <tr><td><code>has_card_gating</code></td><td>Toggle</td><td>Card gating (password / consent / age) — PUT /api/v1/kinetic/cards/:id/password|gating</td></tr>
@@ -356,6 +375,54 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <p>Paid tenants who are also affiliates benefit from keeping branding ON — the badge links to <code>funnelswift.net/kinetic?ref={their_code}</code>, giving them referral credit for every signup that comes through their card.</p>
       </div>
 
+      <!-- ============ EMAIL BRANDING ============ -->
+      <h2 id="email-branding">🎨 Email Branding (per tenant)</h2>
+      <div class="card">
+        <h3>A different feature from the badge above</h3>
+        <p>Each tenant can put <strong>their own logo, display name and colour at the top of the transactional
+        email FunnelSwift sends for them</strong> (kanban t_c06a32eb). It is set from the
+        <strong>🎨 Email Branding</strong> item in the tenant's console; the operator sees the same screen when
+        impersonating a tenant.</p>
+        <ul>
+          <li><strong>Where it lives:</strong> <code>brand_name</code> / <code>brand_color</code> sit in the
+            tenant's <code>tenant_settings</code> row under key <code>email_branding</code> (read/written through
+            <code>GET|PUT /api/v1/settings</code>); the logo BYTES live in <code>tenant_logos</code> and are
+            streamed back by the <strong>public</strong> <code>GET /api/v1/branding/logo/:tenant_id</code> — a
+            mail client renders the <code>&lt;img&gt;</code> with no credential, so that read is deliberately
+            anonymous and narrow.</li>
+          <li><strong>Logo upload:</strong> <code>POST|DELETE /api/v1/settings/branding/logo</code>,
+            <em>multipart</em> (field name <code>logo</code>), PNG/JPEG/WebP/GIF up to 2 MB, authenticated to the
+            caller's own tenant.</li>
+          <li><strong>Where it renders:</strong> every rendered mail for that tenant opens with the branding
+            header block — welcome, login credentials, purchase confirmations and password resets.</li>
+          <li><strong>Additive by construction:</strong> a tenant with no name and no logo gets byte-identical
+            mail to before the feature existed, so it is safe for every existing account.</li>
+        </ul>
+      </div>
+
+      <!-- ============ MY ACCOUNT ============ -->
+      <h2 id="my-account">👤 My Account — the operator's own profile</h2>
+      <div class="card">
+        <h3>What it holds</h3>
+        <p>The <strong>My Account</strong> item at the foot of the sidebar is <em>your own</em> account, not a
+        tenant's: your name, company, profile picture, sign-in email, password and the plan this workspace is
+        on. What you set here is what the console shows everywhere.</p>
+        <ul>
+          <li><strong>Name &amp; Company</strong> — <code>PUT /api/v1/auth/profile</code>. A tenant's company
+            is writable from a tenant console, and from the operator's own when impersonating one.</li>
+          <li><strong>Profile picture</strong> — <code>POST /api/v1/auth/avatar</code>, <em>multipart</em>
+            (field name <code>file</code>), PNG/JPEG/GIF/WebP up to 2 MB. The bytes live in
+            <code>user_avatars</code> and are streamed back by the <strong>public</strong>
+            <code>GET /api/v1/auth/avatar/:user_id</code> — an <code>&lt;img&gt;</code> carries no credential, so
+            that read is deliberately anonymous and narrow. The sidebar chip shows the picture once one is set.</li>
+          <li><strong>Password</strong> — <code>PUT /api/v1/auth/password</code>: the new password twice, plus
+            the current one as the check. A wrong current password is answered as a field error, not a sign-out.</li>
+          <li><strong>The plan shown</strong> — the workspace's real tier from
+            <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, falling back to <em>Free</em>), never the
+            role word “User”.</li>
+        </ul>
+      </div>
+
       <!-- ============ SYSTEM TAGS ============ -->
       <h2 id="system-tags">🏷️ System Tags</h2>
 
@@ -515,11 +582,79 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <strong>Missing</strong> rather than looking complete. Payments are only ever believed when they
         arrive signed; a forged or replayed notification changes nothing. Leaving either field blank when
         you save keeps the value already stored, so you can correct one without re-pasting the other.</p>
+        <p>Before you rely on a key, press <strong>Test key</strong> beside the Save button: it asks
+        Stripe directly whether the key in the box works and answers in Stripe's own words, and it saves
+        nothing. Every saved provider row also carries a <strong>Test stored key</strong> button. The
+        answer says whether the key is a <em>live</em> key or a <em>test-mode</em> key as well, because a
+        test-mode key is accepted by Stripe and will still never charge anybody — that is the mistake
+        this button exists to catch before a customer finds it for you.</p>
         <p>What happens on a real payment: the customer's plan changes, <strong>the day is recorded</strong>,
         and the affiliate who referred them is credited on that same date &mdash; visible on both this
         console's Affiliate Leads screen and the affiliate's own dashboard. If the subscription later ends,
         the customer drops to the free plan of that same product and the affiliate's commission is reversed,
         dated.</p>
+      </div>
+
+      <div class="card">
+        <h3>Provider credentials &mdash; what the <strong>Encrypted</strong> column means</h3>
+        <p>The <strong>Provider Keys</strong> screen holds your own credentials for the third-party
+        services this app calls (today: CoreSwift CRM and IncentiveSwift), and the
+        <strong>Payment providers</strong> panel on the same screen holds your Stripe keys. Neither
+        panel ever shows a saved credential back in full &mdash; you get a mask, and the
+        <strong>Encrypted</strong> column beside it.</p>
+        <p>That column is <strong>measured, not claimed</strong>: it reports what the stored row
+        actually holds, read from the database. <strong>encrypted</strong> means a copy of the
+        database cannot yield a working key. <strong>in the clear</strong> means the row is readable
+        as it stands &mdash; it arrived from a restored backup, a hand-written query or a key-rotation
+        tool rather than from this panel &mdash; and saving that key again from the form below
+        encrypts it. A dash means nothing is saved for that half yet, and <strong>unknown</strong>
+        means the API did not report the row's state; it never means &ldquo;in the clear&rdquo;.</p>
+        <p>On this installation a plaintext credential cannot be saved at all: the database itself
+        refuses a row whose key is not enveloped &mdash; for the provider keys, and for both the
+        Stripe secret key and its webhook signing secret. The column is on the screen so you can see
+        that guarantee rather than take it on faith, and so a database restored without those rules
+        shows up as readable instead of looking fine.</p>
+      </div>
+
+      <div class="card">
+        <h3>System email &mdash; what the saved key's badge means</h3>
+        <p>The <strong>Email Provider (System Email)</strong> card is the one transport every transactional
+        message this installation sends uses &mdash; the welcome mail with a new account's password, password
+        resets, invoice notices. Beside the <strong>configured</strong> badge, a second badge reports the
+        <strong>measured</strong> state of the key stored in the database:</p>
+        <ul>
+          <li><strong>🔒 credential encrypted at rest</strong> &mdash; the saved key is encrypted in the
+          database, so a copy of a database backup cannot yield a working key.</li>
+          <li><strong>⚠ credential stored in the clear</strong> &mdash; the saved key is readable as it
+          stands. That happens when the row arrived from a restored backup, a manual database write, or a
+          key-rotation tool rather than from this panel. Saving the key again from this card, or restarting
+          the app, encrypts it; nothing else about sending changes.</li>
+        </ul>
+        <p>No badge at all means nothing is saved here yet. The badge is not decoration: it is the answer the
+        API gives (<code>sealed</code>), so the screen cannot claim a key is encrypted when it is not.</p>
+      </div>
+
+      <div class="card">
+        <h3>Recent sends &mdash; the answer to &ldquo;did that customer ever get their password?&rdquo;</h3>
+        <p>Under the same card is a <strong>Recent sends</strong> list. The one-line result above it only
+        holds the <em>last</em> message this installation attempted, so any later mail overwrites it &mdash;
+        a welcome mail the provider refused at signup would disappear from the panel the moment an invoice
+        notice went out. The list keeps the history instead: the last 50 transactional attempts, newest
+        first, each with its recipient, subject, result and &mdash; when it did not go out &mdash; the
+        provider's own reason.</p>
+        <p>Read the <strong>Result</strong> column like this:</p>
+        <ul>
+          <li><strong>sent</strong> &mdash; the mail provider accepted the message for delivery.</li>
+          <li><strong>not sent (reserved address)</strong> &mdash; the recipient was a test/reserved address
+          (<code>.invalid</code>, <code>.example</code> and similar), so the message was deliberately
+          withheld and no real inbox was touched. This is normal and is what keeps test signups from
+          mailing anyone.</li>
+          <li><strong>REFUSED</strong> &mdash; the provider would not take the message, so the customer
+          received nothing. The reason column carries the provider's own words; fix the credential or the
+          recipient and send again.</li>
+        </ul>
+        <p>If the list is empty, no transactional mail has been attempted on this installation yet. It is
+        read-only &mdash; the panel cannot alter or resend a row, it only reports what the app actually did.</p>
       </div>
 
       <div class="card">
@@ -563,6 +698,47 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <!-- ============ BULK OPS ============ -->
+      <h2 id="lead-import">📤 Importing Leads from a File</h2>
+
+      <div class="card">
+        <h3>Which plans can import</h3>
+        <p>The same switch that lets a workspace export its leads also lets it import a file: the
+        <strong>import/export</strong> plan feature (Agency / Scale carries it). On a plan without it
+        the Import button answers with the upgrade message and nothing is written — importing is not
+        a way around the plan.</p>
+
+        <h3>The file</h3>
+        <p>On <strong>Leads</strong>, press <strong>📤 Import CSV</strong> and pick a
+        <code>.csv</code> file. The first line is the header; name the columns you have, in any order,
+        and leave out the rest. These spellings are understood (case and spaces do not matter):</p>
+        <pre>Name  (or First Name + Last Name)
+Email
+Phone
+Company
+Source
+Stage   (defaults to New)
+Status  (defaults to new)
+Score   (a whole number; a value that is not a number is ignored)
+Tags    (several tags separated by ; or |)
+Notes</pre>
+        <p>A file exported from this same screen already has the right header, so an export can be
+        imported back into another workspace unchanged.</p>
+
+        <h3>What it does with the rows</h3>
+        <p>Every row is checked before anything is saved. A row needs a name or an email; a field
+        longer than its column holds, or an email that is not an address, is reported by
+        <strong>line number</strong> and that row is skipped. An address already in the workspace is
+        counted as a duplicate and skipped, so importing the same file twice does not double the
+        leads.</p>
+        <p>The file is written in <strong>one go</strong>: if the workspace's plan has room for fewer
+        leads than the file would add, the import is refused whole, with both numbers in the message,
+        and nothing is saved. One file can carry up to 2,000 data rows; split a bigger one.</p>
+        <p>The table under it pages through the whole workspace, 50 leads at a time, and the <strong>Search all leads</strong> box searches every lead — not only the page on screen.</p>
+        <p>An import does not send the per-lead "new lead" webhook or the WorkflowSwift hand-off that
+        a lead created one at a time does — a data load is not a burst of new events.</p>
+      </div>
+
+      
       <h2 id="bulk-ops">🗑️ Bulk Operations</h2>
 
       <div class="card">
@@ -576,16 +752,6 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
 
       <!-- ============ API ============ -->
       <h2 id="api">🔌 Admin API Reference</h2>
-
-      <div class="card">
-        <h3>Plan Requests</h3>
-        <table>
-          <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
-          <tr><td>GET</td><td>/api/v1/admin/plan-requests</td><td>Every workspace's ask, open ones first, with the workspace name and the plan asked for</td></tr>
-          <tr><td>PUT</td><td>/api/v1/admin/plan-requests/:id</td><td>Move one ask on — body <code>{"status":"contacted"}</code>, where the status is contacted, done or declined (the Plan Requests screen also writes the plan change for <code>done</code>)</td></tr>
-          <tr><td>POST</td><td>/api/v1/tenants/:id/plan</td><td>Move a workspace onto a plan — what the screen sends before it marks an ask done</td></tr>
-        </table>
-      </div>
 
       <div class="card">
         <h3>Plan Management</h3>
