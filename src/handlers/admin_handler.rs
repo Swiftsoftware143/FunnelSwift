@@ -1253,7 +1253,18 @@ pub async fn list_checkout_requests(
         r#"SELECT cs.id, cs.tenant_id, cs.status, cs.amount::text AS amount, cs.currency,
                   cs.created_at, cs.metadata,
                   t.name AS tenant_name,
-                  p.name AS plan_name, p.slug AS plan_slug
+                  p.name AS plan_name, p.slug AS plan_slug,
+                  -- Whether the workspace ALREADY holds the plan this attempt asked for. The
+                  -- operator's only way to sell a plan on an install with no payment provider is
+                  -- to assign it by hand (POST /api/v1/tenants/:id/plan), and until this column the
+                  -- screen kept asking for work that had already been done: the row had no state
+                  -- change, so a satisfied request looked identical to an ignored one.
+                  EXISTS (
+                      SELECT 1 FROM tenant_plan_subscriptions tps
+                       WHERE tps.tenant_id = cs.tenant_id
+                         AND tps.status = 'active'
+                         AND tps.plan_id = cs.purchasable_id
+                  ) AS plan_applied
              FROM checkout_sessions cs
              LEFT JOIN tenants t ON t.id = cs.tenant_id
              LEFT JOIN plans p
@@ -1280,6 +1291,10 @@ pub async fn list_checkout_requests(
                 "amount": r.try_get::<Option<String>, _>("amount").unwrap_or(None),
                 "currency": r.try_get::<Option<String>, _>("currency").unwrap_or(None),
                 "status": r.try_get::<String, _>("status").unwrap_or_default(),
+                // True once the workspace holds the asked-for plan. The console renders such a row
+                // as settled and hides the assign control, so the operator cannot assign the same
+                // plan twice or read an already-honoured request as outstanding work.
+                "plan_applied": r.try_get::<bool, _>("plan_applied").unwrap_or(false),
                 "reason": r
                     .try_get::<Option<Value>, _>("metadata")
                     .unwrap_or(None)
