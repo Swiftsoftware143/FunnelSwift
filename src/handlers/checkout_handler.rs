@@ -338,6 +338,23 @@ pub async fn create_checkout_session(
                 }
                 None => None,
             };
+            // A buyer must never be told their ask was recorded unless it WAS (2026-10-24). The
+            // sentence below promises the platform team will see the request, and the console reads
+            // this flag to decide whether to offer its own fallback request button — so the flag is
+            // the RECORD's outcome, never an assumption. Measured before this: an upgrade carrying a
+            // plan slug that matches no row answered `request_recorded: true, plan_request: null`
+            // while `plan_requests` gained nothing (count 1 -> 1) — a promise with no write behind
+            // it. Same invariant ADASwift already holds: "promising a row that does not exist is the
+            // same class of lie as a 200 with no write".
+            let request_recorded = plan_request.is_some();
+            // The buyer's sentence follows the same fact: the recording clause is only spoken when a
+            // row exists. The facts a buyer needs come first (nothing was charged; whether their ask
+            // was taken), the operator's setup detail stays, in parentheses, for whoever reads it next.
+            let message = if request_recorded {
+                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet: your request has been recorded for the platform team, who can activate this plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)"
+            } else {
+                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet, and the plan you picked does not match a plan on this installation, so nothing was recorded: reload the page and press Upgrade again, and the platform team can still activate a plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)"
+            };
             tracing::error!(
                 "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
                  no active provider owned by a platform-operator account either"
@@ -353,9 +370,9 @@ pub async fn create_checkout_session(
                     // screen where a buyer is trying to give us money. The two facts a buyer needs come
                     // first (nothing was charged; the attempt was recorded and can be acted on), the
                     // operator's setup detail stays, in parentheses, for whoever reads it next.
-                    "message": "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet: your request has been recorded for the platform team, who can activate this plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)",
+                    "message": message,
                     "configured": false,
-                    "request_recorded": true,
+                    "request_recorded": request_recorded,
                     "plan_request": plan_request
                 })),
             ))
