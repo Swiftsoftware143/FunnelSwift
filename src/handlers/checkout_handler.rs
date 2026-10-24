@@ -241,6 +241,28 @@ pub async fn create_checkout_session(
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
 
+    // YEARLY CHECKOUT (2026-10-24). The public pricing page sells every paid tier with an annual
+    // price ("$9/month or $89 a year (two months free)") and `plans.annual_price` has carried those
+    // numbers all along, but this handler only ever built a MONTHLY Stripe session — so the yearly
+    // offer the site advertises could not be bought anywhere in the product. `billing_cycle` is
+    // optional: absent means "month", which is byte-identical to the old behaviour, and a caller
+    // who asks for a year on a plan that has no yearly price is refused BY NAME instead of being
+    // quietly charged the monthly rate.
+    let billing_cycle = payload["billing_cycle"]
+        .as_str()
+        .unwrap_or("month")
+        .trim()
+        .to_lowercase();
+    let yearly = match billing_cycle.as_str() {
+        "" | "month" | "monthly" => false,
+        "year" | "yearly" | "annual" => true,
+        other => {
+            return Err(AppError::Validation(format!(
+                "Unknown billing_cycle '{other}' — use 'month' or 'year'."
+            )))
+        }
+    };
+
     let configured = resolve_plan_provider(&state, tenant_id).await?;
 
     match configured {
@@ -255,8 +277,9 @@ pub async fn create_checkout_session(
                 .unwrap_or("")
                 .trim()
                 .to_string();
-            let plan: Option<(Uuid, String, f64)> = sqlx::query_as(
-                "SELECT id, name, COALESCE(price, 0)::float8 FROM plans WHERE slug = $1",
+            let plan: Option<(Uuid, String, f64, f64)> = sqlx::query_as(
+                "SELECT id, name, COALESCE(price, 0)::float8, COALESCE(annual_price, 0)::float8 \
+                 FROM plans WHERE slug = $1",
             )
             .bind(&plan_slug)
             .fetch_optional(&state.pool)
@@ -264,7 +287,11 @@ pub async fn create_checkout_session(
             .unwrap_or(None);
             let user_id = Uuid::parse_str(&auth.user_id).ok();
             // `amount` is NUMERIC; bind the price as text and cast, so the type is never in doubt.
-            let amount_text = plan.as_ref().map(|p| format!("{:.2}", p.2));
+            // The figure recorded is the one the buyer ASKED for, so a refused yearly request reads
+            // back as the yearly amount rather than as the monthly rate.
+            let amount_text = plan
+                .as_ref()
+                .map(|p| format!("{:.2}", if yearly { p.3 } else { p.2 }));
             let recorded = sqlx::query(
                 "INSERT INTO checkout_sessions \
                    (tenant_id, user_id, provider_type, purchasable_type, purchasable_id, amount, \
@@ -276,7 +303,11 @@ pub async fn create_checkout_session(
             .bind(user_id)
             .bind(plan.as_ref().map(|p| p.0))
             .bind(amount_text)
-            .bind(json!({ "plan_slug": plan_slug, "reason": "payment_provider_not_configured" }))
+            .bind(json!({
+                "plan_slug": plan_slug,
+                "billing_cycle": if yearly { "year" } else { "month" },
+                "reason": "payment_provider_not_configured"
+            }))
             .execute(&state.pool)
             .await;
             if let Err(e) = recorded {
@@ -292,7 +323,8 @@ pub async fn create_checkout_session(
             // press ran, so a buyer who closed the tab had asked for nothing. Inserted directly
             // rather than through that handler so no receipt mail is queued: nothing was charged.
             let plan_request = match plan.as_ref() {
-                Some((_, name, price)) => {
+                Some((_, name, price, annual_price)) => {
+                    let asked_for = if yearly { *annual_price } else { *price };
                     record_upgrade_request(
                         &state.pool,
                         tenant_id,
@@ -300,7 +332,7 @@ pub async fn create_checkout_session(
                         &auth.email,
                         &plan_slug,
                         name,
-                        *price,
+                        asked_for,
                     )
                     .await
                 }
@@ -351,13 +383,14 @@ pub async fn create_checkout_session(
             if plan_slug.is_empty() {
                 return Err(AppError::Validation("plan_slug is required".into()));
             }
-            let plan: Option<(Uuid, String, f64)> = sqlx::query_as(
-                "SELECT id, name, COALESCE(price, 0)::float8 FROM plans WHERE slug = $1",
+            let plan: Option<(Uuid, String, f64, f64)> = sqlx::query_as(
+                "SELECT id, name, COALESCE(price, 0)::float8, COALESCE(annual_price, 0)::float8 \
+                 FROM plans WHERE slug = $1",
             )
             .bind(&plan_slug)
             .fetch_optional(&state.pool)
             .await?;
-            let Some((plan_id, plan_name, price)) = plan else {
+            let Some((plan_id, plan_name, price, annual_price)) = plan else {
                 return Err(AppError::NotFound("Unknown plan".into()));
             };
             if price <= 0.0 {
@@ -365,6 +398,15 @@ pub async fn create_checkout_session(
                     "That plan costs nothing — there is nothing to check out.".into(),
                 ));
             }
+            // A yearly ask on a tier with no yearly price is refused by name: falling back to the
+            // monthly amount would charge the buyer something they did not agree to.
+            let amount = if yearly { annual_price } else { price };
+            if amount <= 0.0 {
+                return Err(AppError::Validation(
+                    "This plan has no yearly price, so it can only be bought monthly.".into(),
+                ));
+            }
+            let interval = if yearly { "year" } else { "month" };
             // The key comes from the RESOLVED owner's row (see `resolve_plan_provider`): a workspace
             // that brought its own merchant account pays through it, everyone else through the
             // platform operator's. Logged when the two differ, so "which account was charged" is
@@ -403,7 +445,8 @@ pub async fn create_checkout_session(
                 &auth.user_id,
                 plan_id,
                 &plan_name,
-                price,
+                amount,
+                interval,
                 &secret_key,
             )
             .await
@@ -418,16 +461,24 @@ pub async fn create_checkout_session(
                     .bind(Uuid::parse_str(&auth.user_id).ok())
                     .bind(&provider_session_id)
                     .bind(plan_id)
-                    .bind(price)
-                    .bind(json!({"plan_slug": plan_slug, "tenant_id": tenant_id.to_string()}))
+                    .bind(amount)
+                    .bind(json!({
+                        "plan_slug": plan_slug,
+                        "tenant_id": tenant_id.to_string(),
+                        "billing_cycle": interval
+                    }))
                     .execute(&state.pool)
                     .await?;
                     tracing::info!(tenant = %tenant_id, plan = %plan_slug, session = %provider_session_id, "stripe checkout session created");
                     Ok((
                         StatusCode::CREATED,
-                        Json(
-                            json!({"url": url, "session_id": provider_session_id, "plan": plan_slug}),
-                        ),
+                        Json(json!({
+                            "url": url,
+                            "session_id": provider_session_id,
+                            "plan": plan_slug,
+                            "billing_cycle": interval,
+                            "amount": amount
+                        })),
                     ))
                 }
                 Err(e) => {
@@ -593,6 +644,7 @@ async fn create_stripe_session(
     plan_id: Uuid,
     plan_name: &str,
     price: f64,
+    interval: &str,
     secret_key: &str,
 ) -> Result<(String, String), String> {
     let api_base = std::env::var("STRIPE_API_BASE")
@@ -604,7 +656,9 @@ async fn create_stripe_session(
         .trim_end_matches('/')
         .to_string();
 
-    // A monthly plan, so the session is a subscription rather than a one-off charge.
+    // A RECURRING plan, so the session is a subscription rather than a one-off charge. `interval`
+    // is the term the buyer chose: "month" (the only term this app could sell before 2026-10-24) or
+    // "year", which is the annual price the public pricing page advertises.
     let form: Vec<(String, String)> = vec![
         ("mode".into(), "subscription".into()),
         ("line_items[0][quantity]".into(), "1".into()),
@@ -615,7 +669,7 @@ async fn create_stripe_session(
         ),
         (
             "line_items[0][price_data][recurring][interval]".into(),
-            "month".into(),
+            interval.to_string(),
         ),
         (
             "line_items[0][price_data][product_data][name]".into(),
