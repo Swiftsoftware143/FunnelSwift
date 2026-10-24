@@ -10,6 +10,8 @@
    (the admin arm of this screen) and moves the state on. The state shown is read from the server on
    every load, so a reload cannot lie about it. */
 var PLANS = {};        // slug -> plan object, filled by renderUpgrade
+var TERM = 'month';     // 'month' | 'year' — which term the cards are pricing
+var LAST_PLANS = [];    // the catalogue as last rendered, so a term switch can repaint
 var PREQS = [];        // this workspace's plan requests, newest first
 var PREQ_OFFER = null; // {slug,name} — set when checkout refused, offered as a request button
 var PREQ_MSG = null;   // {ok,text}
@@ -254,6 +256,12 @@ async function saveRequestReply(id, status){
   loadRequests();
 }
 
+function termButton(v,label){
+  var on = (TERM === v);
+  return '<button type="button" data-term="'+v+'" onclick="setTerm(\''+v+'\')" style="padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid '+(on?'#6366f1':'#e2e8f0')+';background:'+(on?'#eef2ff':'#fff')+';color:'+(on?'#4338ca':'#475569')+'">'+label+'</button>';
+}
+function setTerm(v){ if(v !== TERM){ TERM = v; renderUpgrade(LAST_PLANS); } }
+
 function renderUpgrade(plans){
   // Which plan is this workspace ACTUALLY on? `/auth/me` carries the plans row the account is
   // subscribed to (`current_plan`, with its real `slug`), and `plan_name` is the human label.
@@ -262,6 +270,7 @@ function renderUpgrade(plans){
   // the same time — and hid the way up from the other one. Match the SLUG when the server gave us one,
   // the NAME otherwise; if neither resolves, leave every row actionable rather than mark a wrong one.
   PLANS = {};
+  LAST_PLANS = plans || [];
   plans.forEach(function(p){ if(p && p.slug) PLANS[p.slug] = p; });
 
   var cp = (window.U && window.U.current_plan) || null;
@@ -269,6 +278,15 @@ function renderUpgrade(plans){
   var currentPlan = (cp && cp.name) || (window.U && (window.U.plan_name||window.U.plan)) || 'Free';
   var html = '<div style="max-width:900px;margin:0 auto"><h2 style="font-size:22px;font-weight:700">Upgrade Your Plan</h2>';
   html += '<p style="color:#64748b;margin-bottom:12px">Current: <strong>'+esc(currentPlan)+'</strong></p>';
+  // TERM SWITCH (2026-10-24). The public pricing page sells every paid tier with a yearly price
+  // ("$9/month or $89 a year (two months free)") and `plans.annual_price` has carried those numbers
+  // all along, but this screen only ever priced the monthly rate — so the yearly deal the site
+  // advertises could not be bought from the surface where a customer actually buys.
+  html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 16px">'
+        + '<span style="font-size:13px;color:#64748b">Billing term:</span>'
+        + termButton('month','Monthly')
+        + termButton('year','Yearly \u2014 2 months free')
+        + '</div>';
   html += '<div id="preq-admin"></div><div id="preq"></div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
   
@@ -279,7 +297,21 @@ function renderUpgrade(plans){
     html += '<div style="background:'+bg+';border:'+border+';border-radius:12px;padding:20px;display:flex;flex-direction:column">';
     html += '<div style="margin-bottom:16px"><h4 style="font-size:16px;font-weight:700;margin:0">'+esc(p.name)+'</h4>';
     html += '<span style="font-size:10px;color:#6366f1;background:#eef2ff;padding:2px 8px;border-radius:4px;font-weight:600">'+esc(String(p.side||'').toUpperCase())+'</span></div>';
-    html += '<div style="margin-bottom:12px"><span style="font-size:28px;font-weight:800">$'+esc(p.price)+'</span><span style="color:#64748b;font-size:13px">/mo</span></div>';
+    var _mo = Number(p.price === null || p.price === undefined ? 0 : p.price);
+    var _yr = Number(p.annual_price === null || p.annual_price === undefined ? 0 : p.annual_price);
+    if(TERM === 'year' && _yr > 0){
+      // The saving is computed from the two figures in the same row, so a price change can never
+      // leave a stale "2 months free" claim on the card.
+      var _freeMonths = Math.round((_mo * 12 - _yr) / (_mo > 0 ? _mo : 1));
+      var _saving = _freeMonths >= 1 ? (_freeMonths + ' month' + (_freeMonths === 1 ? '' : 's') + ' free') : ('$' + (_mo * 12 - _yr).toFixed(2) + ' off a year');
+      html += '<div style="margin-bottom:2px"><span style="font-size:28px;font-weight:800">$'+esc(String(_yr))+'</span><span style="color:#64748b;font-size:13px">/year</span></div>';
+      html += '<div style="margin-bottom:12px;font-size:12px;color:#16a34a;font-weight:600">$'+esc((_yr/12).toFixed(2))+'/mo \u2014 '+esc(_saving)+'</div>';
+    } else {
+      html += '<div style="margin-bottom:12px"><span style="font-size:28px;font-weight:800">$'+esc(p.price)+'</span><span style="color:#64748b;font-size:13px">/mo</span></div>';
+      if(TERM === 'year' && _mo > 0){
+        html += '<div style="margin:-8px 0 12px;font-size:12px;color:#64748b">Monthly only \u2014 this tier has no yearly price</div>';
+      }
+    }
     
     [
       {l:'Cards',v:p.max_cards},{l:'QR Codes',v:p.max_qr_codes},
@@ -345,15 +377,18 @@ function upgradeTo(slug){
   // so the confirmation can never disagree with the card the customer just read.
   var planObj = PLANS[slug] || (PREQ_OFFER && PREQ_OFFER.slug === slug ? PREQ_OFFER : null);
   var label = (planObj && planObj.name) ? planObj.name : slug;
-  var raw = planObj ? Number(planObj.price === null || planObj.price === undefined ? 0 : planObj.price) : 0;
-  var amount = raw > 0 ? ' \u2014 $' + (raw % 1 === 0 ? String(raw) : raw.toFixed(2)) + '/month' : '';
+  var rawMo = planObj ? Number(planObj.price === null || planObj.price === undefined ? 0 : planObj.price) : 0;
+  var rawYr = planObj ? Number(planObj.annual_price === null || planObj.annual_price === undefined ? 0 : planObj.annual_price) : 0;
+  var useYear = (TERM === 'year' && rawYr > 0);
+  var raw = useYear ? rawYr : rawMo;
+  var amount = raw > 0 ? ' \u2014 $' + (raw % 1 === 0 ? String(raw) : raw.toFixed(2)) + (useYear ? '/year' : '/month') : '';
   if(!confirm('Upgrade this workspace to ' + label + amount + '?\n\nNothing is charged until the payment provider confirms the payment.')) return;
   try {
     var token = T || '';
     fetch(window.location.origin+'/api/v1/checkout/create', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body:JSON.stringify({plan_slug:slug})
+      body:JSON.stringify({plan_slug:slug, billing_cycle:(useYear?'year':'month')})
     }).then(function(r){
       // The reply is NOT always JSON. A failed purchase can come back as a 5xx whose body the CDN
       // in front of this host has REPLACED (measured: the origin answered 502 application/json with
