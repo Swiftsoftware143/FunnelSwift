@@ -292,6 +292,92 @@ pub async fn create_checkout_session(
             let amount_text = plan
                 .as_ref()
                 .map(|p| format!("{:.2}", if yearly { p.3 } else { p.2 }));
+            // ── A PLAN CAN BE SOLD WITHOUT AN API KEY (2026-10-24) ───────────────────────────
+            // `plans.purchase_url` is a hosted payment page the OPERATOR pastes into the plan (a
+            // Stripe Payment Link, a PayPal button, anything that takes the money). The column has
+            // had a writer since the plans table shipped — `create_plan`/`update_plan` both bind it,
+            // and the console form never offered it — but NOTHING read it at the till, so on an
+            // install with no provider key (`payment_providers` is EMPTY in all five apps that hold
+            // the table, card t_50052174) every upgrade died here even when the operator already had
+            // a working way to be paid. A plan that carries a link is SELLABLE: hand the buyer to
+            // it, and STILL file the ask, because a hosted link tells this installation nothing —
+            // the workspace is seated when the operator resolves the request, never by the redirect.
+            let payment_link = match plan.as_ref() {
+                Some(_) => sqlx::query_scalar::<_, Option<String>>(
+                    "SELECT NULLIF(BTRIM(purchase_url), '') FROM plans WHERE slug = $1",
+                )
+                .bind(&plan_slug)
+                .fetch_optional(&state.pool)
+                .await
+                .unwrap_or(None)
+                .flatten()
+                .filter(|u| is_hosted_payment_url(u)),
+                None => None,
+            };
+            if let Some(url) = payment_link {
+                // The history row says what actually happened: the buyer was handed to the
+                // operator's own payment page. `provider_missing` would read as "nothing happened".
+                let handed_over = sqlx::query(
+                    "INSERT INTO checkout_sessions \
+                       (tenant_id, user_id, provider_type, purchasable_type, purchasable_id, amount, \
+                        currency, status, metadata) \
+                     VALUES ($1, $2, 'link', 'plan', $3, COALESCE($4::numeric, 0), 'USD', \
+                        'payment_link', $5)",
+                )
+                .bind(tenant_id)
+                .bind(user_id)
+                .bind(plan.as_ref().map(|p| p.0))
+                .bind(amount_text)
+                .bind(json!({
+                    "plan_slug": plan_slug,
+                    "billing_cycle": if yearly { "year" } else { "month" },
+                    "reason": "hosted_payment_link"
+                }))
+                .execute(&state.pool)
+                .await;
+                if let Err(e) = handed_over {
+                    tracing::error!(
+                        "checkout/create: could not record the payment-link hand-off: {e:?}"
+                    );
+                }
+                let plan_request = match plan.as_ref() {
+                    Some((_, name, price, annual_price)) => {
+                        let asked_for = if yearly { *annual_price } else { *price };
+                        record_upgrade_request(
+                            &state.pool,
+                            UpgradeAsk {
+                                tenant_id,
+                                user_id,
+                                requested_by: &auth.email,
+                                plan_slug: &plan_slug,
+                                plan_name: name,
+                                plan_price: asked_for,
+                                payment_link: Some(url.as_str()),
+                            },
+                        )
+                        .await
+                    }
+                    None => None,
+                };
+                return Ok((
+                    StatusCode::OK,
+                    Json(json!({
+                        "status": "payment_link",
+                        "url": url,
+                        "checkout_url": url,
+                        "plan": {
+                            "id": plan.as_ref().map(|p| p.0.to_string()),
+                            "slug": plan_slug,
+                            "billing_cycle": if yearly { "year" } else { "month" },
+                        },
+                        "request_recorded": plan_request.is_some(),
+                        "plan_request": plan_request,
+                        "message": "Opening the plan's payment page now. Nothing has been charged \
+                                    yet — once the payment lands, the platform team switches this \
+                                    workspace onto the plan."
+                    })),
+                ));
+            }
             let recorded = sqlx::query(
                 "INSERT INTO checkout_sessions \
                    (tenant_id, user_id, provider_type, purchasable_type, purchasable_id, amount, \
@@ -327,12 +413,15 @@ pub async fn create_checkout_session(
                     let asked_for = if yearly { *annual_price } else { *price };
                     record_upgrade_request(
                         &state.pool,
-                        tenant_id,
-                        user_id,
-                        &auth.email,
-                        &plan_slug,
-                        name,
-                        asked_for,
+                        UpgradeAsk {
+                            tenant_id,
+                            user_id,
+                            requested_by: &auth.email,
+                            plan_slug: &plan_slug,
+                            plan_name: name,
+                            plan_price: asked_for,
+                            payment_link: None,
+                        },
                     )
                     .await
                 }
@@ -1414,6 +1503,25 @@ pub async fn test_payment_provider(
     ))
 }
 
+/// Is this a URL a browser can be sent to in order to pay?
+///
+/// `plans.purchase_url` is typed in by an operator, so a typo must REFUSE the sale rather than send
+/// a buyer somewhere broken or insecure. https only (a payment page over plain http is a downgrade
+/// worth refusing), a host with a dot in it, and no whitespace anywhere — enough to catch the two
+/// mistakes an operator actually makes (a bare `stripe.com/pay` with no scheme, a pasted line with a
+/// trailing space or a newline in the middle) without pretending to be a URL parser.
+fn is_hosted_payment_url(raw: &str) -> bool {
+    let u = raw.trim();
+    let Some(rest) = u.strip_prefix("https://") else {
+        return false;
+    };
+    if u.contains(char::is_whitespace) {
+        return false;
+    }
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !host.is_empty() && host.contains('.')
+}
+
 /// File the tier a customer pressed "Upgrade" for as an OPEN plan request the operator can act on.
 ///
 /// Returns `Some({"id","plan_slug","plan_name","already_open"})` when a request exists — the row just
@@ -1427,15 +1535,27 @@ pub async fn test_payment_provider(
 /// the tier. It is inserted directly rather than through that handler so no receipt mail is queued:
 /// this path charged nothing, and a second "we got your request" mail would be noise on top of the
 /// screen the customer is already reading.
-async fn record_upgrade_request(
-    db: &sqlx::PgPool,
+struct UpgradeAsk<'a> {
     tenant_id: Uuid,
     user_id: Option<Uuid>,
-    requested_by: &str,
-    plan_slug: &str,
-    plan_name: &str,
+    requested_by: &'a str,
+    plan_slug: &'a str,
+    plan_name: &'a str,
     plan_price: f64,
-) -> Option<Value> {
+    /// The hosted payment page the buyer was handed to, when the plan carries one.
+    payment_link: Option<&'a str>,
+}
+
+async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Option<Value> {
+    let UpgradeAsk {
+        tenant_id,
+        user_id,
+        requested_by,
+        plan_slug,
+        plan_name,
+        plan_price,
+        payment_link,
+    } = ask;
     let open: Option<Uuid> = match sqlx::query_scalar(
         "SELECT id FROM plan_requests \
           WHERE tenant_id = $1 AND plan_slug = $2 AND status IN ('open','contacted') \
@@ -1475,7 +1595,15 @@ async fn record_upgrade_request(
         "This workspace pressed Upgrade on the {plan_name} plan (${plan_price:.0}/month) and no \
          payment provider is configured, so nothing was charged and nothing can be billed. Filed \
          automatically by the checkout refusal arm, so the ask survives even if the customer closes \
-         the tab. Resolving this request seats the workspace on the plan."
+         the tab. Resolving this request seats the workspace on the plan.{}",
+        match payment_link {
+            Some(url) => format!(
+                " A hosted payment link for this plan ({url}) was opened for the buyer, so CHECK FOR \
+                 THE PAYMENT before resolving: a hosted link tells this installation nothing, and \
+                 the workspace is only seated when this request is resolved."
+            ),
+            None => String::new(),
+        }
     ))
     .fetch_one(db)
     .await;
