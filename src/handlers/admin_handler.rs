@@ -1253,7 +1253,14 @@ pub async fn list_checkout_requests(
         r#"SELECT cs.id, cs.tenant_id, cs.status, cs.amount::text AS amount, cs.currency,
                   cs.created_at, cs.metadata,
                   t.name AS tenant_name,
-                  p.name AS plan_name, p.slug AS plan_slug,
+                  -- WHAT WAS ASKED FOR, even after the catalogue has moved on. A refused attempt
+                  -- records its slug in `metadata` and resolves `purchasable_id` only when the plan
+                  -- still exists, so a plan retired (or never present) made this row read "no plan"
+                  -- — the one field the screen exists to show. Measured 2026-10-24: a `pro` attempt
+                  -- from 2026-10-21 listed with plan_name and plan_slug both NULL while metadata
+                  -- carried {"plan_slug":"pro"}.
+                  COALESCE(p.name, cs.metadata->>'plan_slug') AS plan_name,
+                  COALESCE(p.slug, cs.metadata->>'plan_slug') AS plan_slug,
                   -- Whether the workspace ALREADY holds the plan this attempt asked for. The
                   -- operator's only way to sell a plan on an install with no payment provider is
                   -- to assign it by hand (POST /api/v1/tenants/:id/plan), and until this column the
@@ -1261,9 +1268,15 @@ pub async fn list_checkout_requests(
                   -- change, so a satisfied request looked identical to an ignored one.
                   EXISTS (
                       SELECT 1 FROM tenant_plan_subscriptions tps
+                       JOIN plans pj ON pj.id = tps.plan_id
                        WHERE tps.tenant_id = cs.tenant_id
                          AND tps.status = 'active'
-                         AND tps.plan_id = cs.purchasable_id
+                         -- A row recorded before the catalogue entry existed has no
+                         -- `purchasable_id`; match the slug it recorded instead, so a request the
+                         -- operator satisfied by hand finally reads as settled.
+                         AND (tps.plan_id = cs.purchasable_id
+                              OR (cs.purchasable_id IS NULL
+                                  AND pj.slug = cs.metadata->>'plan_slug'))
                   ) AS plan_applied
              FROM checkout_sessions cs
              LEFT JOIN tenants t ON t.id = cs.tenant_id

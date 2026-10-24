@@ -285,6 +285,25 @@ pub async fn create_checkout_session(
             .fetch_optional(&state.pool)
             .await
             .unwrap_or(None);
+            // A SLUG THAT IS NOT IN THE CATALOGUE IS NOT A REQUEST ANYONE CAN HONOUR (2026-10-24).
+            // This arm used to record the attempt and answer 200 with "your request has been
+            // recorded for the platform team, who can activate this plan by hand" — but with no
+            // plan there is no `purchasable_id`, no `plan_requests` row, and no plan the operator
+            // could grant, so the promise was unfulfillable and the buyer was left with nothing to
+            // click. Refuse by name and hand back the plans this installation actually sells, so a
+            // stale pricing link lands on something that can be bought.
+            if plan.is_none() && !plan_slug.is_empty() {
+                let available: Vec<String> =
+                    sqlx::query_scalar("SELECT slug FROM plans ORDER BY price, slug")
+                        .fetch_all(&state.pool)
+                        .await
+                        .unwrap_or_default();
+                return Err(AppError::Validation(format!(
+                    "Unknown plan '{plan_slug}' — it is not in this installation's catalogue. \
+                     Available plans: {}.",
+                    available.join(", ")
+                )));
+            }
             let user_id = Uuid::parse_str(&auth.user_id).ok();
             // `amount` is NUMERIC; bind the price as text and cast, so the type is never in doubt.
             // The figure recorded is the one the buyer ASKED for, so a refused yearly request reads
