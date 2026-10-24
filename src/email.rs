@@ -228,7 +228,7 @@ pub(crate) async fn record_withheld(pool: &PgPool, kind: &str, to: &str, reason:
 /// a transactional mail is ALWAYS `support@` the app's own main domain — never the
 /// platform's or a sibling company's. FunnelSwift mail carried none at all (no address
 /// in any body), so [`with_support_footer`] adds this to every rendered message.
-pub const SUPPORT_EMAIL: &str = "support@funnelswift.net";
+pub const SUPPORT_EMAIL: &str = "support@swiftsoftware.net";
 
 /// Append the support line to a rendered transactional message.
 ///
