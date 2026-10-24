@@ -540,8 +540,11 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
       <p>Click <strong>Save branding</strong>. From then on the welcome / login-credentials mail, purchase
         confirmations and password resets for this account open with your logo and name. The logo is stored
         against your account and served from a public URL (<code>GET /api/v1/branding/logo/{tenant_id}</code>),
-        which is what lets the recipient's mail app load it. Nothing changes until you set a name or a logo —
-        branding is per account, and an unbranded account's mail is exactly what it was before.</p>
+        which is what lets the recipient's mail app load it. Until you set a name or a logo your mail is not blank: it opens with the FunnelSwift
+        wordmark and name instead, so a brand-new customer's first message still says whose
+        it is.
+        Branding is per account: set your own name or logo and that header is replaced from the
+        next message onward.</p>
 
       <!-- ==================== EMAIL PROVIDER SECTION ==================== -->
       <h2 id="email-provider">✉️ Email Provider</h2>
