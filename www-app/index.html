@@ -169,6 +169,10 @@ tr:hover{background:#f8fafc}
   <!-- kanban t_ff948669: the account's own screen — name, company, password, picture. -->
   <a data-tab="profile" onclick="S('profile')">Profile</a>
   <a data-tab="leads" onclick="S('leads')">Leads</a>
+  <!-- cron 2026-10-24: POST /api/v1/ocr/parse-card is a SOLD, plan-gated, metered feature
+       (`max_ocr_scans`) and the browser console had NO screen for it (grep -c ocr = 0); its
+       only caller in the fleet was the mobile client. A backend route with no UI is a defect. -->
+  <a data-tab="scan" onclick="S('scan')">Card Scanner</a>
   <a data-tab="funnels" onclick="S('funnels')">Funnels</a>
   <!-- cron 2026-10-21: GET/POST /api/v1/campaigns and GET/PUT /:id are tenant-scoped in the
        handler and had NO screen in either console, so a workspace could not manage its own
@@ -382,6 +386,149 @@ var MOVED={domains:"settings"};
    rewriting that line (and every later screen keeps appending the same way). */
 TI.funnels="Funnels";
 TI.campaigns="Campaigns";
+TI.scan="Card Scanner";
+
+/* === CARD SCANNER (cron 2026-10-24) =========================================================
+   `POST /api/v1/ocr/parse-card` is a SOLD, plan-gated, metered feature: `max_ocr_scans` is a
+   plan column, `features::enforce_feature_limit` refuses an over-limit plan with the app's
+   normal 402 (which `api()` already turns into the upgrade dialog), and every attempt is
+   metered into `ocr_scans` BEFORE it leaves the box. Its only caller in the whole fleet was the
+   MOBILE client (FunnelSwift-Mobile/lib/http.ts -> ocrParseCard). In this browser console there
+   was no screen at all — `grep -c ocr www-app/index.html` answered 0 — so a customer who pays
+   for card scans had nowhere to use one. David's standing rule: a backend route with no UI is a
+   defect, so this is that screen.
+
+   The response contract is FROZEN — `{name,title,company,email,phone,parsed}` — and the handler
+   DEGRADES rather than 500-ing when the host Tesseract service is unreachable (`parsed:false`
+   with every field empty). This screen therefore always offers the manual path, which is the
+   same fallback the mobile app relies on. The picture is downscaled in the browser first: the
+   route takes base64 JSON under axum's DEFAULT body limit (this route carries no raised
+   DefaultBodyLimit), and a photo straight off a phone is several megabytes. */
+var SCAN_MAX_EDGE=1400, SCAN_QUALITY=0.8;
+var SCAN_FIELDS=["name","title","company","email","phone"];
+var SCAN_LABELS={name:"Name",title:"Job title",company:"Company",email:"Email",phone:"Phone"};
+function LSYN(){
+  var c=$("ct");
+  c.innerHTML='<div class="cc">'
+    +'<h3 style="margin:0">Card Scanner</h3>'
+    +'<p style="color:#64748b;font-size:13px;margin:6px 0 0;max-width:70ch">Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them as a lead. Check the fields before you save \u2014 a scan is a reading, not a promise.</p>'
+    +'<div id="scn-msg" style="display:none;margin-top:12px;font-size:13px"></div>'
+    +'<div class="card" style="margin-top:16px">'
+    +'<label style="font-size:12px;color:#64748b">The card</label>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin:6px 0 0;flex-wrap:wrap">'
+    +'<input type="file" id="scn-file" accept="image/*" style="display:none">'
+    +'<button class="btn" id="scn-pick">Choose a photo</button>'
+    +'<span style="color:#64748b;font-size:12px">JPG, PNG, GIF or WebP. A phone photo is fine \u2014 it is shrunk before it is sent.</span>'
+    +'</div>'
+    +'<div id="scn-prev" style="display:none;margin-top:12px"></div>'
+    +'</div>'
+    +'<div id="scn-fields" style="display:none"></div>'
+    +'</div>';
+  var msg=function(t,ok){var m=$("scn-msg");if(!m)return;m.style.display=t?"block":"none";
+    m.style.color=ok?"#166534":"#b91c1c";m.textContent=t||"";};
+  function btnIdle(){var b=$("scn-pick");if(b){b.disabled=false;b.textContent="Choose a photo";}}
+  function shrink(file,cb){
+    var fr=new FileReader();
+    fr.onerror=function(){cb("That picture could not be read from disk.");};
+    fr.onload=function(){
+      var img=new Image();
+      img.onerror=function(){cb("That file is not an image this browser can open.");};
+      img.onload=function(){
+        var w=img.width||0,h=img.height||0,m=Math.max(w,h);
+        if(!w||!h){cb("That image has no size.");return;}
+        if(m>SCAN_MAX_EDGE){var k=SCAN_MAX_EDGE/m;w=Math.round(w*k);h=Math.round(h*k);}
+        var cv=document.createElement("canvas");cv.width=w;cv.height=h;
+        cv.getContext("2d").drawImage(img,0,0,w,h);
+        var d="";
+        try{d=cv.toDataURL("image/jpeg",SCAN_QUALITY);}catch(ex){cb("That image could not be converted.");return;}
+        var i=d.indexOf(",");
+        if(i<0){cb("That image could not be converted.");return;}
+        cb(null,d.slice(i+1),d);
+      };
+      img.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+  function show(d,parsed){
+    btnIdle();
+    d=d||{};
+    var got=0;
+    SCAN_FIELDS.forEach(function(k){if(String(d[k]||"").trim())got++;});
+    var box=$("scn-fields");
+    if(!box||!box.parentNode)return;
+    box.style.display="block";
+    var h='<div class="card" style="margin-top:16px"><h3 style="margin:0 0 4px">'
+      +(got?"Check the details":"Type the details")+'</h3>'
+      +'<p style="color:#64748b;font-size:12px;margin:0 0 12px;max-width:70ch">'
+      +(got
+        ? 'Read off the card. Correct anything the scan got wrong, then save it as a lead.'
+        : 'We could not read this card, so type the details in yourself \u2014 the lead is saved exactly the same way.')
+      +'</p>';
+    SCAN_FIELDS.forEach(function(k){
+      h+='<label style="font-size:12px;color:#64748b">'+SCAN_LABELS[k]+'</label>'
+        +'<input class="input" id="scn-'+k+'" style="width:100%;margin:4px 0 10px" value="'+X(d[k]||"")+'">';
+    });
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap">'
+      +'<button class="btn" id="scn-save">Save as a lead</button>'
+      +'<button class="btn btn-o" id="scn-again">Scan another card</button></div></div>';
+    box.innerHTML=h;
+    $("scn-save").onclick=save;
+    $("scn-again").onclick=function(){
+      box.style.display="none";box.innerHTML="";
+      var p=$("scn-prev");if(p){p.style.display="none";p.innerHTML="";}
+      var f=$("scn-file");if(f)f.value="";
+      msg("");
+    };
+  }
+  function save(){
+    var v={},body={};
+    SCAN_FIELDS.forEach(function(k){v[k]=($("scn-"+k).value||"").trim();});
+    if(!v.name&&!v.email&&!v.phone){msg("A lead needs at least a name, an email or a phone number.",false);return;}
+    body.name=v.name||v.email||v.phone;
+    if(v.email)body.email=v.email;
+    if(v.phone)body.phone=v.phone;
+    if(v.company)body.company=v.company;
+    body.source="card scan";
+    body.notes="Read from a business card"+(v.title?" \u00b7 job title: "+v.title:"");
+    var b=$("scn-save");b.disabled=true;b.textContent="Saving\u2026";
+    api("/api/v1/leads",{method:"POST",body:JSON.stringify(body)}).then(function(){
+      msg("Saved to your Leads as \u201c"+body.name+"\u201d.",true);
+      var box=$("scn-fields");box.style.display="none";box.innerHTML="";
+      var p=$("scn-prev");if(p){p.style.display="none";p.innerHTML="";}
+      var f=$("scn-file");if(f)f.value="";
+      btnIdle();
+    }).catch(function(e){
+      if(e&&e.message==="upgrade_required"){btnIdle();return;}   // api() already opened the upgrade dialog
+      msg("The lead could not be saved"+(e&&e.message?" \u2014 "+e.message:"")+".",false);
+      var b2=$("scn-save");if(b2){b2.disabled=false;b2.textContent="Save as a lead";}
+    });
+  }
+  function scan(file){
+    msg("");
+    var b=$("scn-pick");b.disabled=true;b.textContent="Reading the card\u2026";
+    shrink(file,function(err,b64,dataUrl){
+      if(err){btnIdle();msg(err,false);return;}
+      var p=$("scn-prev");
+      if(p&&dataUrl){p.style.display="block";
+        p.innerHTML='<img alt="the card you chose" style="max-width:280px;max-height:180px;border-radius:8px;border:1px solid #e2e8f0" src="'+dataUrl+'">';}
+      api("/api/v1/ocr/parse-card",{method:"POST",body:JSON.stringify({image_base64:b64})}).then(function(d){
+        show(d,!!(d&&d.parsed));
+      }).catch(function(e){
+        btnIdle();
+        if(e&&e.message==="upgrade_required"){msg("Card scans are not included in your current plan.",false);return;}
+        msg("The card could not be scanned"+(e&&e.message?" \u2014 "+e.message:"")+".",false);
+      });
+    });
+  }
+  $("scn-pick").onclick=function(){$("scn-file").click();};
+  $("scn-file").onchange=function(){
+    var f=this.files&&this.files[0];
+    if(!f)return;
+    if(f.size>12*1024*1024){msg("That picture is over 12 MB \u2014 choose a smaller one.",false);return;}
+    scan(f);
+  };
+}
+
 /* === CAMPAIGNS (kanban cron 2026-10-21) =====================================================
    A whole tenant-facing feature existed with NO screen anywhere: `campaigns` (a table with
    tenant_id), `GET/POST /api/v1/campaigns` and `GET/PUT /api/v1/campaigns/:id` — every one of
@@ -507,7 +654,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL};
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN};
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -4721,6 +4868,7 @@ function SG(id,returnTab,isSystem){
 /* Inline guide content, one entry per screen. The widget shows the entry for the tab that is open;
    FunnelSwift's console switches tabs in JS, so it is told via window.inlineGuidePage(tab). */
 window.appGuidePages = {
+  scan:        { title: "Card Scanner", desc: "Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your Leads as a lead with the source 'card scan'. Every field stays editable before you save, because a scan can be wrong. If the card cannot be read, the screen says so and lets you type the details in instead \u2014 nothing is lost. Each scan counts against the card-scan allowance on your plan, and a plan without it says so and points you at the plans.", actions: ["Choose a photo of the card", "Correct any field the scan got wrong", "Save it as a lead"] },
   campaigns:   { title: "Campaigns", desc: "The campaigns this workspace runs. Give each one a name, a type, a status and a short description; edit or delete it from the list. A campaign here is a record you and your team read \u2014 this screen sends nothing, so a new one starts as a draft until you set its status to active.", actions: ["Create a campaign", "Set its status to active when it starts", "Use the status column to see what is running"] },
   upgrade:     { title: "Upgrade", desc: "Every plan this install offers, with the limits each one carries, read from the same catalogue the pricing page serves. Your current plan is marked. Pressing the button on a plan files a request for our team, and anything you have already asked for is listed underneath with its live status and a way to withdraw it; nothing is charged from this screen.", actions: ["Compare the plan limits", "Ask for the plan you want", "Track or withdraw the request below"] },
   cards:       { title: "Kinetic Cards", desc: "Your digital business cards, bio links, landing pages and mini funnels. Each card has its own public address and its own edit screen, and the number of cards your plan allows is shown on the dashboard \u2014 creating one over the limit is refused with the upgrade sentence.", actions: ["Create a card", "Copy its public link or QR code", "Check the card limit on your plan"] },
@@ -4754,6 +4902,6 @@ window.appGuidePages = {
      (measured: cf-cache-status HIT, age 4269, and the edge body still had 0 `seenAnyGuide`). A
      versioned query string is a NEW cache key, so the fix is visible on the next load; bump it
      whenever this file changes. -->
-<script src="/inline-guide-widget.js?v=20261021a"></script>
+<script src="/inline-guide-widget.js?v=20261024a"></script>
 </body>
 </html>
