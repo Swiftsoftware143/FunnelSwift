@@ -482,6 +482,14 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
     // and rendered the allowance alone ("QR codes 5") while every other counter read "used / limit".
     // One more counter on the same read, so the dashboard and the gate still come from one source.
     let qr_codes = get_usage_count(state, tenant_id, "max_qr_codes").await;
+    // CARD-SCAN COUNTER (2026-10-24, cron `default`). `max_ocr_scans` is the only SOLD metered
+    // feature whose usage was invisible to the customer: the gate enforces it on every upload
+    // (`handlers::ocr` -> `enforce_feature_limit(..., "max_ocr_scans", ...)`) and the counting arm
+    // below already existed, but this payload never carried the figure, so the plan strip could
+    // print the allowance alone ("Card scans 10") and a customer could not see how much of the
+    // allowance the Card Scanner had used. Same shape as the QR-codes fix above: one more counter
+    // on the same read, so what the strip shows and what the gate compares come from one pair.
+    let ocr_scans = get_usage_count(state, tenant_id, "max_ocr_scans").await;
 
     serde_json::json!({
         "cards": cards,
@@ -490,7 +498,8 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
         "forms": forms,
         "domains": domains,
         "team": team,
-        "qr_codes": qr_codes
+        "qr_codes": qr_codes,
+        "ocr_scans": ocr_scans
     })
 }
 

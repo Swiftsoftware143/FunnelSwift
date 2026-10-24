@@ -1111,7 +1111,7 @@ function D(){
          gate compares come from one pair of reads. Every counter this card names now has a usage
          key — QR codes joined last, once `/me/usage` grew the arm the gate already used — and an
          unread usage payload still renders the allowance exactly as before. */
-      var pairs=[["Leads","max_leads","leads"],["Cards","max_cards","cards"],["Forms","max_forms","forms"],["QR codes","max_qr_codes","qr_codes"],["Tags","max_tags","tags"],["Domains","max_custom_domains","domains"],["Team","max_team_members","team"]];
+      var pairs=[["Leads","max_leads","leads"],["Cards","max_cards","cards"],["Forms","max_forms","forms"],["QR codes","max_qr_codes","qr_codes"],["Card scans","max_ocr_scans","ocr_scans"],["Tags","max_tags","tags"],["Domains","max_custom_domains","domains"],["Team","max_team_members","team"]];
       var bits=[];
       for(var pi=0;pi<pairs.length;pi++){var lim=cp[pairs[pi][1]],uk=pairs[pi][2],uu=(uk&&USG&&USG[uk]!==undefined)?USG[uk]:null;
         // `-1` is this app's storage convention for "unlimited" (kinetic-pro's max_leads / max_tags).
