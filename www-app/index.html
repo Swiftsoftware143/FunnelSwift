@@ -3796,6 +3796,28 @@ function fnDelete(f){
     .then(function(){LAFN();})
     .catch(function(e){window.alert((e&&e.message)||"Could not delete the funnel.");});
 }
+/* WHICH FUNNEL IS ACTUALLY WORKING (cron 2026-10-24). `list_funnels` now ships `lead_count` —
+   the number of leads this funnel's public page captured, derived from the leads rows that carry
+   `custom_fields.funnel_id` (see funnel_handler.rs). The count is useless as a number alone, so
+   clicking it opens the Leads screen with its search box filled with this funnel's name: every
+   lead row already carries the funnel name in its `data-search` text (fnLabelSources), so the
+   filter shows exactly the people this page produced. `S()` is the app's own screen switch. The
+   wait loop is deliberate: the Leads screen renders from the API, so the search box does not
+   exist on the next tick. */
+function fnShowLeads(f){
+  if(typeof S==="function"){ S("leads"); }
+  var tries=0;
+  (function wait(){
+    var inp=document.querySelector("#ld-filters input");
+    if(!inp){
+      if(++tries<50) return setTimeout(wait,100);
+      return;
+    }
+    inp.value=f.name||"";
+    if(typeof LDf==="function") LDf();
+    try{ inp.focus(); }catch(e){}
+  })();
+}
 /* PAUSE / RESUME (migration 116). A funnel that has done its job — the campaign ended, the
    webinar is over, the list is full — must stop taking responses WITHOUT being deleted and
    WITHOUT its link changing: the link may be printed, in a paid ad, or in a chat nobody can
@@ -3872,7 +3894,7 @@ function LAFN(){
       return;
     }
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Funnel</th><th>Public link</th><th>Created</th><th></th></tr>';
+    tbl.innerHTML='<tr><th>Funnel</th><th>Public link</th><th>Leads</th><th>Created</th><th></th></tr>';
     FN.forEach(function(f){
       var url="https://funnelswift.net"+String(f.public_path||("/funnel/"+f.slug));
       var tr=El("tr");
@@ -3880,8 +3902,9 @@ function LAFN(){
         +(f.is_active===false?' <span class="badge" style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 6px;border-radius:4px">Closed</span>':'')
         +'</td>'
         +'<td style="font-size:12px"><a href="'+X(url)+'" target="_blank" rel="noopener">'+X(url)+'</a></td>'
+        +'<td style="font-size:12px;text-align:right" class="fn-lc"></td>'
         +'<td style="font-size:12px;color:#64748b">'+X(String(f.created_at||"").slice(0,10))+'</td><td></td>';
-      var td=tr.querySelectorAll("td")[3];
+      var td=tr.querySelectorAll("td")[4];
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnEdit(f);}},"Edit page"));
       td.appendChild(document.createTextNode(" "));
       var cp=El("button",{"class":"btn btn-sm",onclick:function(){fnCopy(url,cp);}},"Copy link");
@@ -3891,6 +3914,19 @@ function LAFN(){
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnPause(f);}},f.is_active===false?"Resume":"Pause"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){fnDelete(f);}},"Delete"));
+      var lc=tr.querySelector(".fn-lc");
+      if(lc){
+        var n=Number(f.lead_count||0);
+        if(n>0){
+          lc.appendChild(El("button",{"class":"btn btn-sm",title:"Open the Leads screen filtered to this funnel",onclick:function(){fnShowLeads(f);}},String(n)));
+        } else {
+          var z=El("span");
+          z.style.color="#94a3b8";
+          z.textContent="0";
+          z.title="No leads from this page yet.";
+          lc.appendChild(z);
+        }
+      }
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
