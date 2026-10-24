@@ -30,8 +30,9 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
         Option<String>,
         Option<String>,
         Option<String>,
+        bool,
     )> = sqlx::query_as(
-        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you \
+        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you, is_active \
          FROM funnels WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
     .bind(tenant_id)
@@ -46,12 +47,27 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
     let funnels: Vec<Value> = rows
         .into_iter()
         .map(
-            |(id, name, slug, created_at, headline, subheadline, cta_label, thank_you)| {
+            |(
+                id,
+                name,
+                slug,
+                created_at,
+                headline,
+                subheadline,
+                cta_label,
+                thank_you,
+                is_active,
+            )| {
                 json!({
                     "id": id.to_string(),
                     "name": name,
                     "slug": slug,
                     "created_at": created_at,
+                    // The pause switch (migration 116): false means the public page shows a closed
+                    // notice and refuses submissions, while the row and its link stay exactly where
+                    // they are. Shipped in the LIST so the row's own button can say Pause or Resume
+                    // without a second request.
+                    "is_active": is_active,
                     // What the shared page says, so the editor opens on the CUSTOMER's words rather
                     // than empty boxes. NULL means "not set" and the renderer falls back.
                     "headline": headline,
@@ -203,9 +219,11 @@ pub async fn update_funnel(
         && !PAGE_FIELDS
             .iter()
             .any(|(k, _, _)| payload.get(*k).is_some())
+        && payload.get("is_active").is_none()
     {
         return Err(AppError::BadRequest(
-            "No writable field: send 'name', 'headline', 'subheadline', 'cta_label' or 'thank_you'"
+            "No writable field: send 'name', 'headline', 'subheadline', 'cta_label', 'thank_you' or \
+             'is_active'"
                 .into(),
         ));
     }
@@ -216,17 +234,20 @@ pub async fn update_funnel(
         Option<String>,
         Option<String>,
         Option<String>,
+        bool,
     )> = sqlx::query_as(
-        "SELECT name, headline, subheadline, cta_label, thank_you FROM funnels WHERE id = $1 AND tenant_id = $2",
+        "SELECT name, headline, subheadline, cta_label, thank_you, is_active FROM funnels WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    let Some((mut name, mut headline, mut subheadline, mut cta_label, mut thank_you)) = existing
+    let Some((mut name, mut headline, mut subheadline, mut cta_label, mut thank_you, is_active)) =
+        existing
     else {
         return Err(AppError::NotFound("Funnel not found".into()));
     };
+    let mut is_active = is_active;
 
     // The NAME is the row's label and the page's <title>. The SLUG is the funnel's public address
     // and a customer may have shared (or printed) it, so a rename deliberately does NOT move the
@@ -237,6 +258,17 @@ pub async fn update_funnel(
         };
         name = crate::security::display_name::normalize_capped(text, 255, "funnel name")
             .map_err(AppError::BadRequest)?;
+    }
+
+    // The pause switch. A boolean is required — anything else would silently leave the row on its
+    // previous state while the console reported success.
+    if let Some(raw) = payload.get("is_active") {
+        let Some(flag) = raw.as_bool() else {
+            return Err(AppError::BadRequest(
+                "is_active must be true or false".into(),
+            ));
+        };
+        is_active = flag;
     }
 
     for (key, max_chars, label) in PAGE_FIELDS {
@@ -255,14 +287,15 @@ pub async fn update_funnel(
     }
 
     sqlx::query(
-        "UPDATE funnels SET name=$1, headline=$2, subheadline=$3, cta_label=$4, thank_you=$5 \
-         WHERE id=$6 AND tenant_id=$7",
+        "UPDATE funnels SET name=$1, headline=$2, subheadline=$3, cta_label=$4, thank_you=$5, \
+         is_active=$6 WHERE id=$7 AND tenant_id=$8",
     )
     .bind(&name)
     .bind(&headline)
     .bind(&subheadline)
     .bind(&cta_label)
     .bind(&thank_you)
+    .bind(is_active)
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
@@ -275,6 +308,7 @@ pub async fn update_funnel(
         "subheadline": subheadline,
         "cta_label": cta_label,
         "thank_you": thank_you,
+        "is_active": is_active,
     })))
 }
 pub async fn delete_funnel(
@@ -352,8 +386,9 @@ pub async fn render_funnel(
         Option<String>,
         Option<String>,
         Option<String>,
+        bool,
     )>(
-        "SELECT name, headline, subheadline, cta_label, thank_you FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
+        "SELECT name, headline, subheadline, cta_label, thank_you, is_active FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
@@ -366,12 +401,17 @@ pub async fn render_funnel(
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, None),
     };
 
+    // PAUSED (migration 116): the page and its link stay exactly where they are, but the form is
+    // replaced with a closed notice and `submit_funnel_lead` refuses — so a visitor holding a
+    // cached copy of the open page still cannot leave a lead.
+    let paused = row.as_ref().map(|r| !r.5).unwrap_or(false);
+
     // The CUSTOMER's words where they set them, a sensible default where they did not: every row
     // that existed before migration 111 keeps rendering, and it now renders a page that can take a
     // lead instead of "under construction". The RAW values are kept for the inline script (a JS
     // string must not carry HTML entities) and escaped only on the way into the markup.
     let (raw_name, raw_headline, raw_subheadline, raw_cta, raw_thanks) = match row {
-        Some((name, h, sl, c, t)) => {
+        Some((name, h, sl, c, t, _)) => {
             let headline = h
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| name.clone());
@@ -421,6 +461,27 @@ pub async fn render_funnel(
         ));
     }
 
+    // WHAT A VISITOR GETS. An OPEN funnel gets the form, exactly as before. A PAUSED one gets the
+    // same page (its headline and subheadline are the customer's words) with one plain sentence in
+    // place of the form — so a shared link never dies, never 404s, and never pretends to accept a
+    // submission it will refuse. The page script below already bails out when the form is absent.
+    let form_block = if paused {
+        "<p class=\"sub\" id=\"fn-closed\">This form is closed and is no longer accepting responses.</p>"
+            .to_string()
+    } else {
+        format!(
+            "<form id=\"fn-form\" novalidate>\n\
+<label for=\"fn-name-input\">Your name</label>\n\
+<input id=\"fn-name-input\" name=\"name\" autocomplete=\"name\" maxlength=\"120\" placeholder=\"Alex Doe\">\n\
+<label for=\"fn-email-input\">Email</label>\n\
+<input id=\"fn-email-input\" name=\"email\" type=\"email\" autocomplete=\"email\" maxlength=\"200\" placeholder=\"alex@example.com\" required>\n\
+<button id=\"fn-send\" type=\"submit\">{cta_label}</button>\n\
+<div class=\"err\" id=\"fn-err\"></div>\n\
+</form>",
+            cta_label = cta_label
+        )
+    };
+
     (
         status,
         axum::response::Html(format!(
@@ -450,14 +511,7 @@ button:disabled{{opacity:.6;cursor:default}}
 <div class="card" id="fn-card">
 <h1>{headline}</h1>
 <p class="sub">{subheadline}</p>
-<form id="fn-form" novalidate>
-<label for="fn-name-input">Your name</label>
-<input id="fn-name-input" name="name" autocomplete="name" maxlength="120" placeholder="Alex Doe">
-<label for="fn-email-input">Email</label>
-<input id="fn-email-input" name="email" type="email" autocomplete="email" maxlength="200" placeholder="alex@example.com" required>
-<button id="fn-send" type="submit">{cta_label}</button>
-<div class="err" id="fn-err"></div>
-</form>
+{form_block}
 </div>
 <script>
 (function(){{
@@ -501,7 +555,7 @@ button:disabled{{opacity:.6;cursor:default}}
         slug_attr = html_escape(&slug),
         headline = headline,
         subheadline = subheadline,
-        cta_label = cta_label,
+        form_block = form_block,
         thank_you_js = js_string(&raw_thanks),
         cta_js = js_string(&raw_cta),
         )),
@@ -522,14 +576,23 @@ pub async fn submit_funnel_lead(
     State(state): State<AppState>,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let funnel: Option<(Uuid, Uuid)> =
-        sqlx::query_as("SELECT id, tenant_id FROM funnels WHERE slug = $1 LIMIT 1")
+    let funnel: Option<(Uuid, Uuid, bool)> =
+        sqlx::query_as("SELECT id, tenant_id, is_active FROM funnels WHERE slug = $1 LIMIT 1")
             .bind(&slug)
             .fetch_optional(&state.pool)
             .await?;
-    let Some((funnel_id, tenant_id)) = funnel else {
+    let Some((funnel_id, tenant_id, is_active)) = funnel else {
         return Err(AppError::NotFound("Funnel not found".into()));
     };
+    // The operator closed this page (migration 116). A browser still holding the OPEN copy — a
+    // cached page, a tab left open, or a direct POST — must be told plainly rather than have its
+    // details stored against a form that is meant to be closed. 409 (not 404) is deliberate: the
+    // page exists and its link still works, it is the SUBMISSION that cannot proceed.
+    if !is_active {
+        return Err(AppError::Conflict(
+            "This form is closed and is no longer accepting responses.".into(),
+        ));
+    }
 
     // The EMAIL is the point of the form — the page's own field is `required`, so the server must
     // not accept a submission the browser would have refused: a lead with no address cannot be
