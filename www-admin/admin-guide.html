@@ -393,6 +393,12 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>Logo upload:</strong> <code>POST|DELETE /api/v1/settings/branding/logo</code>,
             <em>multipart</em> (field name <code>logo</code>), PNG/JPEG/WebP/GIF up to 2 MB, authenticated to the
             caller's own tenant.</li>
+          <li><strong>Send yourself a sample:</strong> <code>POST /api/v1/settings/branding/preview</code>,
+            authenticated, no body — the <strong>Send me a preview email</strong> button on the card. It mails the
+            <em>caller's own</em> address one rendered message through the platform mailer, so an operator sees the
+            real header (logo, name, colour) before a customer does. It carries no recipient field and cannot be used
+            as a relay, and it answers <code>sent: false</code> with the reason — never a false success — when the
+            account has no address or the address is on a reserved test domain.</li>
           <li><strong>Where it renders:</strong> every rendered mail for that tenant opens with the branding
             header block — welcome, login credentials, purchase confirmations and password resets.</li>
           <li><strong>Additive by construction:</strong> a tenant with no name and no logo gets byte-identical
