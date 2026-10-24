@@ -171,6 +171,8 @@
       <a href="#leads" class="section-title" onclick="closeMobile()">Lead Management</a>
       <a href="#dashboard" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📊</span> Dashboard</a>
       <a href="#leads" class="nav-item" onclick="closeMobile()"><span class="nav-icon">👤</span> Leads</a>
+      <a href="#card-scanner" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📷</span> Card Scanner</a>
+      <a href="#campaigns" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📣</span> Campaigns</a>
       <a href="#tags" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Tags</a>
       <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🤝</span> Affiliates</a>
       <a href="#tag-to-free-account" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🆓</span> Tag to free account</a>
@@ -266,6 +268,26 @@
 
       <h3>Editing Leads</h3>
       <p>Click any lead to view details. In edit mode, you can change any field, add custom fields, change tags, and update notes. Stage progression: <span class="badge badge-blue">New</span> → <span class="badge badge-indigo">Contacted</span> → <span class="badge badge-orange">Qualified</span> → <span class="badge badge-green">Converted</span> → <span class="badge badge-red">Lost</span>.</p>
+
+      <h3>Removing several leads at once</h3>
+      <p>Every row in the Leads table has a tick box, and there is a select-all box in the table header. Tick the leads you no longer need, then press <strong>Delete selected</strong>. The button stays greyed out until something is ticked and it tells you how many you are about to remove, then asks you to confirm by number.</p>
+      <div class="alert alert-warning">
+        <strong>There is no undo.</strong> A confirmed delete is permanent. Tick only what you mean to remove.
+      </div>
+      <p>Only the rows you can currently see can be ticked: if you change a filter or the search box, rows the filter hides are un-ticked for you, so you cannot delete something you stopped looking at. Deleting through this button removes the lead from your workspace only — leads already synced to CoreSwift CRM stay in the CRM.</p>
+
+      <h2 id="card-scanner">📷 Card Scanner</h2>
+      <p>The Card Scanner turns a photograph of a business card into a lead. Open <strong>Card Scanner</strong> in the sidebar, press <strong>Choose a photo</strong> and pick a picture of the card — JPG, PNG, GIF or WebP, up to 12&nbsp;MB. The picture is shrunk in your browser before it is sent, so a normal phone photo is fine.</p>
+      <p>The reader fills in five fields: <strong>Name</strong>, <strong>Job title</strong>, <strong>Company</strong>, <strong>Email</strong> and <strong>Phone</strong>. All five stay editable — check them before you save, because a scan is a reading of a photograph, not a promise. Correct anything that came out wrong, then press <strong>Save as a lead</strong> and the lead appears in your Leads list like any other. <strong>Scan another card</strong> clears the form for the next one.</p>
+      <div class="alert alert-info">
+        <strong>If the reader cannot read the card</strong>, the five fields come back empty instead of failing. Type the details in yourself and save — the screen still works, it just did not read anything.
+      </div>
+      <p>Card scans are metered against your plan. Your plan includes a number of scans; when you have used them, choosing a photo opens the upgrade dialog rather than silently doing nothing. The count is per scan attempt, so retrying a photo you already scanned uses another one.</p>
+
+      <h2 id="campaigns">📣 Campaigns</h2>
+      <p><strong>Campaigns</strong> is where this workspace keeps track of what it is running. Press <strong>New campaign</strong> and give it a <strong>name</strong>, a <strong>type</strong> (free text — <code>email</code> is the default), a <strong>status</strong> and an optional <strong>description</strong>.</p>
+      <p>Status is one of four: <span class="badge badge-blue">draft</span>, <span class="badge badge-green">active</span>, <span class="badge badge-orange">paused</span>, <span class="badge badge-indigo">completed</span>. It is a label you set, not something the software infers — move a campaign to <strong>active</strong> when it starts and <strong>completed</strong> when it ends, so the list tells you at a glance what is live and what is still being planned.</p>
+      <p>Each campaign in the list has <strong>Edit</strong> and <strong>Delete</strong> buttons of its own. <strong>Edit</strong> reopens the same form so you can change any field and save; <strong>Delete</strong> removes the campaign from the list. Deleting a campaign deletes the campaign record only — it does not touch leads, funnels or anything the campaign pointed at. A campaign belongs to your workspace only: nobody outside it can see or change it.</p>
 
       <h2 id="tags">🏷️ Tags &amp; Tag Groups</h2>
       <p>Tags help organize leads by categories: Source, Status, Events, Services, Engagement, and Custom. Tags are grouped into tag groups for structured organization. Tags auto-sync from plan mappings and are workspace-specific.</p>
