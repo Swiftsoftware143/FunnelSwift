@@ -351,8 +351,17 @@ pub async fn public_signup(
     // The account itself is still created, with its generated password, exactly as before: a probe
     // that needs the token in the response keeps getting it. Only the mail is withheld. A REAL
     // customer (no header, a domain of their own) reaches the send below byte-identically to before.
-    let probe_send_reason = probe_harness
-        .as_deref()
+    // ── WHY ARM 1 READS THE HEADER, NOT THE TENANT MARKER (measured live 2026-10-24) ───────────
+    // `probe_harness` is now ALSO set for a disposable-inbox address (`maxxspace.com`, via
+    // `probe_addr::attribution_domain`) so a probe workspace no longer appears in the operator's
+    // tenant list as a customer. That is ATTRIBUTION, and it must not silence the mail: the
+    // credential-delivery proof reads the generated password back out of that inbox, so the moment
+    // this arm keyed on the marker the browser signup was recorded `withheld` instead of sending
+    // (`email_send_log`: "signup credentials email (withheld)", 2026-10-24 22:53Z). Arm 1 therefore
+    // asks the REQUEST whether it declared itself a harness (`X-Swift-Harness`), which is the
+    // suppression decision; the derived marker stays attribution-only. Arm 2 is unchanged: a
+    // fleet-harness DOMAIN still suppresses (its mail would reach nobody).
+    let probe_send_reason = crate::probe_harness::from_headers(&headers)
         .map(|marker| format!("X-Swift-Harness: {marker}"))
         .or_else(|| {
             crate::security::probe_addr::harness_domain(&email)
