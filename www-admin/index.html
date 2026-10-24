@@ -3948,6 +3948,11 @@ async function renderEmailBranding() {
           <div style="padding:16px;color:#64748b;font-size:13px">Hello Alex,<br><br>Your account is ready. This is the header every transactional email for your account opens with.</div>
         </div>
         <div style="font-size:11px;color:#94a3b8;margin-top:8px">Shown with sample content. Leave the branding empty to send with the app's own identity.</div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline" id="brand-preview-send">Send me a preview email</button>
+          <span style="font-size:11px;color:#94a3b8">Mails this sample, with your logo and colour, to your own address.</span>
+        </div>
+        <div id="brand-preview-msg" style="font-size:12px;margin-top:8px;color:#64748b"></div>
       </div>
     </div>
   </div>`;
@@ -3972,6 +3977,7 @@ function bindEmailBranding() {
   document.getElementById('brand-logo-pick')?.addEventListener('click', () => { if (file) file.click(); });
   if (file) file.addEventListener('change', uploadBrandLogo);
   document.getElementById('brand-logo-remove')?.addEventListener('click', removeBrandLogo);
+  document.getElementById('brand-preview-send')?.addEventListener('click', sendBrandPreview);
 }
 
 window._brandPreview = function() {
@@ -3997,6 +4003,28 @@ window._brandPreview = function() {
     else { wrap.style.display = 'none'; }
   }
 };
+
+async function sendBrandPreview() {
+  /* The operator's own inbox proof: the backend mails a sample of THEIR branded mail to their own
+     address (no recipient field, so it cannot be a relay) and answers {sent, detail}. A reserved
+     test address is reported as NOT sent rather than a false success. */
+  const btn = document.getElementById('brand-preview-send');
+  const msg = document.getElementById('brand-preview-msg');
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color = '#64748b'; msg.textContent = 'Sending…'; }
+  try {
+    const res = await fetch(API_BASE + '/settings/branding/preview', {
+      method: 'POST',
+      headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
+    });
+    if (res.status === 401) { clearSession(); window.location.href = '/login'; return; }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
+    if (msg) { msg.style.color = body.sent ? '#16a34a' : '#b45309'; msg.textContent = body.detail || (body.sent ? 'Preview sent.' : 'No preview was sent.'); }
+  } catch (e) {
+    if (msg) { msg.style.color = '#dc2626'; msg.textContent = 'Preview failed: ' + e.message; }
+  } finally { if (btn) btn.disabled = false; }
+}
 
 async function saveEmailBranding() {
   const name = ((document.getElementById('brand-name') || {}).value || '').trim();
