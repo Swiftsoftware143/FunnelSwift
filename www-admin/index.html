@@ -1219,6 +1219,28 @@ window._startUpgrade = async function (slug) {
 };
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
+// Purchase requests, the missing half: the card above told the operator to "switch the workspace to
+// the plan they asked for" and gave him no control to do it — on an install with no payment provider
+// that sentence was the ONLY way a paying customer could get the plan they asked for, so the promise
+// had no button behind it. This assigns the plan through the route that already exists
+// (`POST /api/v1/tenants/:id/plan` → `set_active_plan`, the sole writer of the active subscription)
+// and then re-renders, where the row reads back `plan_applied` from the server and shows as Applied.
+window._applyRequestedPlan = async function (reqId, tenantId, slug) {
+  if (!tenantId || !slug) { showToast('This request has no workspace recorded — nothing changed.', 'error', false); return; }
+  try {
+    const raw = await api('/plans');
+    const list = Array.isArray(raw) ? raw : ((raw && (raw.plans || raw.data)) || []);
+    const plan = list.find(p => String(p.slug) === String(slug));
+    if (!plan) { showToast('That plan is no longer offered on this install — nothing changed.', 'error', false); return; }
+    if (!confirm('Put this workspace on the ' + (plan.name || slug) + ' plan?\n\nThis assigns the plan by hand: nothing is charged here, and the customer sees it on their dashboard immediately.')) return;
+    await api('/tenants/' + encodeURIComponent(tenantId) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id }) });
+    showToast('Plan assigned — the workspace is now on ' + (plan.name || slug) + '.', 'success', false);
+    renderApp();
+  } catch (e) {
+    showToast('Could not assign the plan: ' + ((e && e.message) || e) + ' — nothing changed.', 'error', false);
+  }
+};
+
 async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
@@ -1274,7 +1296,7 @@ async function renderPlans() {
       <div style="margin-bottom:12px"><h3 style="font-size:16px;font-weight:700;margin:0">Purchase requests</h3>
       <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Workspaces that pressed Upgrade while this installation had no payment provider connected. Nothing was charged. Switch the workspace to the plan they asked for, or connect a provider under Provider Keys, and the next attempt will charge normally.</p></div>
       <div class="table-wrap"><table class="table">
-        <thead><tr><th>When</th><th>Workspace</th><th>Plan they asked for</th><th>Amount</th><th>Status</th></tr></thead>
+        <thead><tr><th>When</th><th>Workspace</th><th>Plan they asked for</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
         <tbody>${preq.map(q => {
           const when = q.created_at ? new Date(q.created_at).toLocaleString() : '-';
           const label = q.status === 'provider_missing' ? 'No payment provider yet'
@@ -1286,6 +1308,11 @@ async function renderPlans() {
             <td>${q.plan_name ? `<strong>${x(q.plan_name)}</strong>` : '—'}${q.plan_slug ? `<div style="font-size:11px;color:var(--muted)">${x(q.plan_slug)}</div>` : ''}</td>
             <td>${q.amount ? formatCurrency(Number(q.amount)) : '—'}</td>
             <td><span class="badge ${cls}">${x(label)}</span></td>
+            <td>${q.plan_applied
+              ? `<span class="badge badge-green">Applied — workspace is on this plan</span>`
+              : ((plans || []).find(p => String(p.slug) === String(q.plan_slug))
+                  ? `<button class="btn btn-primary btn-xs" data-apply-request="${x(q.id)}" onclick="window._applyRequestedPlan('${x(q.id)}','${x(q.tenant_id)}','${x(q.plan_slug)}')">Apply ${x(q.plan_name || q.plan_slug)}</button>`
+                  : `<span style="color:var(--muted);font-size:12px">that plan is no longer offered</span>`)}</td>
           </tr>`;
         }).join('')}</tbody>
       </table></div>
