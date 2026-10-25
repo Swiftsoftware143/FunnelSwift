@@ -17,6 +17,25 @@ use uuid::Uuid;
 
 use crate::auth::models::Claims;
 
+/// Old card spellings that still mean a LIVE catalogue tier (cron 2026-10-25).
+///
+/// The $79 card shipped `?plan=agency-scale` until 2026-10-23 while the catalogue slug is
+/// `agency`. Two edge layers were corrected — the `?plan=` rewrite in `sites/funnelswift.conf` and
+/// `PLAN_ALIAS` in `www/funnelswift/signup.html` — but the door that WRITES the plan request did
+/// not know the mapping, so any caller arriving without passing through those two (a replayed
+/// marketing link aimed at the API host, an integration, a page added later) had its paid choice
+/// dropped in silence. Measured live 2026-10-25: `plan=agency-scale` → `plan_request: null`,
+/// `plan=agency` → request filed.
+///
+/// Anything unknown is returned unchanged, so an unrecognised slug still resolves to nothing and
+/// the caller gets the warning below instead of a wrong tier.
+pub(crate) fn legacy_plan_slug(slug: &str) -> &str {
+    match slug {
+        "agency-scale" => "agency",
+        other => other,
+    }
+}
+
 /// Does this `?ref=` code exist? (kanban t_8101edb5, arm (b)).
 ///
 /// The chosen namespace is `tenants.affiliate_code` — the code `kinetic_handler` renders into the
@@ -284,6 +303,17 @@ pub async fn public_signup(
         .as_str()
         .map(|p| p.trim().to_lowercase())
         .unwrap_or_default();
+    // ── A LEGACY SPELLING STILL NAMES ITS TIER (cron 2026-10-25) ────────────────────────────────
+    // The $79 card shipped `?plan=agency-scale` until 2026-10-23 while the catalogue's slug is
+    // `agency`. The correction lives in TWO edge layers — the `?plan=` rewrite in
+    // `sites/funnelswift.conf` and `PLAN_ALIAS` in `www/funnelswift/signup.html` — and nothing at
+    // the layer that actually owns plan resolution, so a caller that reaches THIS door directly
+    // (a replayed marketing link against the API host, an integration, a future page) still lost
+    // the ask. Measured live 2026-10-25 before this: `POST /api/v1/auth/signup` with
+    // `plan=agency-scale` answered `plan_request: null` and wrote no row, while `plan=agency`
+    // filed the request. Same request, same door, one spelling.
+    // Keep this map in sync with those two edge copies.
+    let requested_slug = legacy_plan_slug(&requested_slug).to_string();
     let mut plan_request: Option<Value> = None;
     if !requested_slug.is_empty() {
         let side_word = match side {
@@ -329,6 +359,18 @@ pub async fn public_signup(
                     "created_at": r.get::<String, _>("created_at"),
                 }));
             }
+        } else {
+            // A non-empty slug that names no live PAID tier on this side used to vanish with no
+            // trace at all — the visitor saw "you can move up any time", the operator's queue
+            // stayed empty, and nothing in the log said why. One line, naming the exact word the
+            // caller sent, is what makes the next occurrence diagnosable instead of invisible.
+            tracing::warn!(
+                email = %email,
+                plan = %requested_slug,
+                side = side_word,
+                "signup: the tier this visitor chose names no live paid plan on this side, so no \
+                 plan request was recorded"
+            );
         }
     }
 
@@ -499,4 +541,38 @@ pub async fn public_signup(
             }
         })),
     ))
+}
+
+#[cfg(test)]
+mod legacy_plan_slug_tests {
+    use super::legacy_plan_slug;
+
+    /// The spelling the $79 card shipped until 2026-10-23 must name the tier that card sold.
+    #[test]
+    fn the_retired_agency_spelling_still_names_agency() {
+        assert_eq!(legacy_plan_slug("agency-scale"), "agency");
+    }
+
+    /// Every live slug passes through untouched — the alias must not rewrite the catalogue.
+    #[test]
+    fn live_slugs_are_unchanged() {
+        for slug in [
+            "capture-free",
+            "capture-starter",
+            "kinetic-free",
+            "kinetic-pro",
+            "suite",
+            "agency",
+        ] {
+            assert_eq!(legacy_plan_slug(slug), slug);
+        }
+    }
+
+    /// An unknown word stays unknown, so the handler's warning fires instead of a wrong tier
+    /// being recorded.
+    #[test]
+    fn unknown_words_are_not_invented_into_a_tier() {
+        assert_eq!(legacy_plan_slug("notaplan"), "notaplan");
+        assert_eq!(legacy_plan_slug(""), "");
+    }
 }
