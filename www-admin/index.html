@@ -3559,6 +3559,16 @@ function probeBadgeFor(t, ownerEmail) {
 // (handlers::tenant_handler::assign_plan -> set_active_plan, the same writer the Plan Admin screen
 // uses), so the fix happens where the problem is seen instead of two screens away.
 let TENANT_PLAN_ROWS = [];
+// Show the workspaces the API holds back from this list (cron 2026-10-25).
+// `GET /api/v1/tenants` hides every row whose `tenants.probe_harness` tag is set — the authoritative
+// attribution a harness writes at signup — and offers `?include_probe=1` to see them. Until now NO
+// caller sent that parameter, so the rows the tag hides were unreachable from the operator's own
+// screen: "Select probes (n)" counted only what the address heuristic on a VISIBLE row could see, and
+// a probe workspace the panel could not list could not be reviewed or cleared from it. Measured live
+// 2026-10-25: the list carried 13 rows and the database held a 14th, tagged workspace that the panel
+// could not show at all. The switch below asks for them; the probe badge and the select-probes button
+// already know how to render a row that carries the tag.
+let TENANT_SHOW_PROBES = false;
 function tenantPlanCell(t) {
   const cur = String(t.plan_slug || '');
   const opts = ['<option value=""' + (cur ? '' : ' selected') + '>— no plan —</option>']
@@ -3575,7 +3585,7 @@ async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
 
   let items = [];
-  try { items = await api('/tenants'); } catch(e) { items = []; }
+  try { items = await api('/tenants' + (TENANT_SHOW_PROBES ? '?include_probe=1' : '')); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
   // The vocabulary the plan select offers: read once per render from the same `/plans` catalogue the
   // Plans screen uses (6 rows live), never a hard-coded list -- a new plan appears here the moment it
@@ -3587,6 +3597,9 @@ async function renderTenants() {
     <div class="card-header" style="padding:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
       <h1 style="font-size:22px;font-weight:700;margin:0">🏢 Tenants</h1>
       <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Probe workspaces a harness minted. Hidden by default: they are not customers. Ticking this lists them so they can be reviewed, selected and cleared.">
+          <input type="checkbox" id="tnShowProbes"${TENANT_SHOW_PROBES ? ' checked' : ''}> Show probe workspaces
+        </label>
         <button class="btn btn-secondary btn-sm" id="tnProbes" data-tenants="select-probes" disabled>Select probes (0)</button>
         <button class="btn btn-danger btn-sm" id="tnDel" disabled>Delete selected</button>
       </div>
@@ -3649,6 +3662,12 @@ function bindTenants() {
   // operator has to tick rows by eye. Rows the API refuses are still ticked: bulk-delete answers per
   // id and keeps the reason next to the row it kept.
   const probeBoxes = () => Array.from(document.querySelectorAll('tr[data-probe="1"] .tn-chk'));
+  // The visibility switch (cron 2026-10-25): ask the API for the rows `probe_harness` holds back,
+  // then re-render so the probe badge, the row's `data-probe` flag and the "Select probes (n)" count
+  // are all recomputed from the same listing. Un-ticking asks for the customer list again, which is
+  // the state the screen shipped in.
+  const sp = document.getElementById('tnShowProbes');
+  if (sp) sp.addEventListener('change', () => { TENANT_SHOW_PROBES = !!sp.checked; renderApp(); });
   const pb = document.getElementById('tnProbes');
   if (pb) {
     pb.textContent = 'Select probes (' + probeBoxes().length + ')';
