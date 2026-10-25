@@ -278,6 +278,24 @@ function renderUpgrade(plans){
   var currentPlan = (cp && cp.name) || (window.U && (window.U.plan_name||window.U.plan)) || 'Free';
   var html = '<div style="max-width:900px;margin:0 auto"><h2 style="font-size:22px;font-weight:700">Upgrade Your Plan</h2>';
   html += '<p style="color:#64748b;margin-bottom:12px">Current: <strong>'+esc(currentPlan)+'</strong></p>';
+  // SAY IT BEFORE THE CLICK (2026-10-25). Measured live on this installation: `payment_providers`
+  // is empty and every `plans.purchase_url` is NULL, so `POST /api/v1/checkout/create` refuses every
+  // paid tier with 503 `payment_provider_not_configured`. The screen used to let a customer pick a
+  // tier, press Upgrade and only THEN learn the till is shut — one dead-end click on the surface
+  // that takes money. The catalogue already carries `purchase_url` per plan, so the screen can tell
+  // the difference: when NO paid tier carries a hosted payment page, it says so up front and the
+  // cards below become a choice of plan rather than a promise of immediate purchase.
+  var anyBuyable = (plans || []).some(function(p){
+    return Number(p && p.price) > 0 && p.purchase_url && String(p.purchase_url).trim() !== '';
+  });
+  if (!anyBuyable && (plans || []).some(function(p){ return Number(p && p.price) > 0; })) {
+    html += '<div data-payments-closed="1" style="margin:0 0 16px;padding:12px 14px;background:#fffbeb;'
+          + 'border:1px solid #fde68a;border-radius:10px;color:#92400e;font-size:13.5px;line-height:1.45">'
+          + '<strong>Payments are not open yet.</strong> Pick the plan you want below and press '
+          + '<strong>Upgrade</strong> — your request is recorded against this workspace and the team '
+          + 'moves you onto that plan as soon as billing opens. Nothing is charged today.'
+          + '</div>';
+  }
   // TERM SWITCH (2026-10-24). The public pricing page sells every paid tier with a yearly price
   // ("$9/month or $89 a year (two months free)") and `plans.annual_price` has carried those numbers
   // all along, but this screen only ever priced the monthly rate — so the yearly deal the site
