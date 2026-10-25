@@ -7,9 +7,9 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
 <style>
   :root {
-    --indigo: #4f46e5; --indigo-light: #6366f1; --indigo-glow: rgba(79, 70, 229, 0.12);
+    --indigo: #4f46e5; --indigo-light: #818cf8; --indigo-glow: rgba(79, 70, 229, 0.12);
     --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
-    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #94A3B8;
     --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -170,6 +170,14 @@
       <!-- ============ PLANS ============ -->
       <h2 id="plans">💳 Plans & Feature Toggles</h2>
       <p>Plans define what each tenant can access. Navigate to <code>/admin/plans</code> to manage them. Each plan has a set of feature toggles stored as JSONB:</p>
+      <p><strong>Payment link (optional).</strong> Every plan in this console now carries a
+      <em>Payment link</em> box. Paste the checkout address your payment provider gives you for that
+      price (a Stripe Payment Link, for example) and a buyer who picks this plan on the public pricing
+      page is sent straight to it. Leave the box empty when the plan is free, or when you take payment
+      some other way — the plan then behaves exactly as it did before. The link is stored with the plan
+      and never used to charge anyone: it only decides <em>where the buyer is sent</em>. A link that is
+      not a proper web address is refused at the moment of sale rather than shown to a customer, so a
+      typo here cannot produce a dead Buy button.</p>
 
       <div class="card">
         <h3>Feature registry — every gated key</h3>
