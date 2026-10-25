@@ -1529,7 +1529,7 @@ pub async fn test_payment_provider(
 /// worth refusing), a host with a dot in it, and no whitespace anywhere — enough to catch the two
 /// mistakes an operator actually makes (a bare `stripe.com/pay` with no scheme, a pasted line with a
 /// trailing space or a newline in the middle) without pretending to be a URL parser.
-fn is_hosted_payment_url(raw: &str) -> bool {
+pub(crate) fn is_hosted_payment_url(raw: &str) -> bool {
     let u = raw.trim();
     let Some(rest) = u.strip_prefix("https://") else {
         return false;

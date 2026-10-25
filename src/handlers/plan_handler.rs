@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::handlers::checkout_handler::is_hosted_payment_url;
 use crate::models::plan::*;
 use crate::state::AppState;
 use crate::tag_logic;
@@ -291,6 +292,27 @@ pub async fn list_plans(State(state): State<AppState>) -> AppResult<Json<Vec<Pla
     Ok(Json(plans))
 }
 
+/// A plan's `purchase_url` is a hosted payment page an OPERATOR types in, so refuse a typo at
+/// SAVE time instead of at the till.
+///
+/// The checkout refuses a link that is not a full `https://` address
+/// (`checkout_handler::is_hosted_payment_url`), which is right for a buyer — but the operator only
+/// found out when a customer pressed Buy: measured live 2026-10-25, `PUT /api/v1/plans/{id}` stored
+/// `buy.stripe.com/not-a-url` and answered "Plan updated". An empty box stays allowed (a plan that
+/// is free, or sold another way, carries no link).
+fn require_hosted_payment_url(raw: &str) -> AppResult<()> {
+    let u = raw.trim();
+    if u.is_empty() || is_hosted_payment_url(u) {
+        return Ok(());
+    }
+    Err(AppError::BadRequest(
+        "The payment link must be a full https:// address, for example https://buy.stripe.com/abc123. \
+         It is where a buyer is sent when they pick this plan, so a link without https:// cannot take \
+         a payment. Leave the box empty if this plan is not sold by link."
+            .into(),
+    ))
+}
+
 pub async fn create_plan(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -301,6 +323,9 @@ pub async fn create_plan(
     }
     if let Some(f) = &req.features {
         reject_retired_feature_keys(f)?;
+    }
+    if let Some(url) = req.purchase_url.as_deref() {
+        require_hosted_payment_url(url)?;
     }
     let plan_id = Uuid::new_v4();
     // Column list == placeholder list == bind list, or this INSERT dies before it runs. It was
@@ -400,6 +425,18 @@ pub async fn update_plan(
         .await?
         .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
+    if let Some(url) = req.purchase_url.as_deref() {
+        require_hosted_payment_url(url)?;
+    }
+    // A plan edit that does not mention the link must KEEP the stored one, exactly as
+    // `payment_provider` next door does (`req.payment_provider.or(existing.payment_provider)`).
+    // An omitted link used to be written as NULL, so any save that left the box out silently
+    // DISARMED the plan's hosted payment page while answering "Plan updated" — measured live
+    // 2026-10-25 on a throwaway plan: create with a link, PUT {price} -> 200, link read back NULL.
+    let sync_purchase_url = req
+        .purchase_url
+        .clone()
+        .or_else(|| existing.purchase_url.clone());
     let sync_name = req.name.clone().unwrap_or_else(|| existing.name.clone());
     let sync_price = req.price.unwrap_or(existing.price);
     let sync_slug = req.slug.clone().unwrap_or_else(|| existing.slug.clone());
@@ -433,7 +470,7 @@ pub async fn update_plan(
     .bind(&sync_name)
     .bind(&sync_slug)
     .bind(sync_price)
-    .bind(&req.purchase_url)
+    .bind(&sync_purchase_url)
     .bind(req.max_leads.or(existing.max_leads))
     .bind(req.max_tags.or(existing.max_tags))
     .bind(req.has_dual_routing.unwrap_or(existing.has_dual_routing))
