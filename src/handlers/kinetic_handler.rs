@@ -743,20 +743,25 @@ pub async fn get_subdomain(
     .await?;
     Ok(Json(json!({"subdomain": row.unwrap_or_default()})))
 }
-pub async fn set_subdomain(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let tenant_id: Uuid = auth
-        .tenant_id
-        .parse()
-        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    let val = body["subdomain"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_lowercase();
+/// The ONE validator for a tenant's `kntcrd.com` card subdomain.
+///
+/// There are TWO writers of the `subdomain` setting: this module's
+/// `PUT /api/v1/kinetic/subdomain`, and the generic `PUT /api/v1/settings {key:"subdomain"}`
+/// (`settings_handler::update_settings`). Only the first one used to check anything.
+/// Measured 2026-10-25: the generic door answered `200 {"message":"Setting updated"}` for
+/// `www` — an infrastructure hostname this app reserves — and for the 2-character
+/// placeholder `ss`, while this door refused both (`409` reserved / `400` too short). So a
+/// tenant could claim another tenant's card host, or shadow `www.kntcrd.com`, by using the
+/// Settings screen instead of the Kinetic Cards screen.
+///
+/// `settings_handler` therefore calls THIS function for the `subdomain` key, so the rules
+/// (length, charset, reserved list, uniqueness) cannot drift apart again.
+pub(crate) async fn normalize_subdomain(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    raw: &str,
+) -> Result<String, AppError> {
+    let val = raw.trim().to_lowercase();
     if val.is_empty() {
         return Err(AppError::BadRequest("Subdomain is required".into()));
     }
@@ -812,11 +817,29 @@ pub async fn set_subdomain(
     )
     .bind(&val)
     .bind(tenant_id)
-    .fetch_one(&state.pool)
+    .fetch_one(pool)
     .await?;
     if taken {
         return Err(AppError::Conflict("Subdomain already in use".into()));
     }
+    Ok(val)
+}
+
+pub async fn set_subdomain(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<Value>,
+) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    let val = normalize_subdomain(
+        &state.pool,
+        tenant_id,
+        body["subdomain"].as_str().unwrap_or(""),
+    )
+    .await?;
     sqlx::query(
         "INSERT INTO tenant_settings (id, tenant_id, key, value, created_at, updated_at)
          VALUES ($1,$2,'subdomain', to_jsonb($3::text), NOW(), NOW())

@@ -4792,6 +4792,25 @@ function TEP(){
     .catch(function(e){ EPMSG((e&&e.message)||"Test failed","e"); });
 }
 
+/* Save the tenant's card subdomain through the VALIDATED door (2026-10-25).
+   This button used to PUT /api/v1/settings {key:'subdomain'}, which wrote whatever it was
+   given: it accepted `www` (a reserved hostname) and the 2-char placeholder `ss` that the
+   row above pre-filled, while the Kinetic Cards door refused both. The kinetic route is the
+   ONE writer with rules, so use it and show the server's own refusal. */
+function saveSubdomain(){
+  var el=document.getElementById('lmsd');
+  var v=((el&&el.value)||'').trim().toLowerCase();
+  if(!v){ showMsg('Type the subdomain you want first','e'); return; }
+  api('/api/v1/kinetic/subdomain',{method:'PUT',body:JSON.stringify({subdomain:v})})
+    .then(function(r){
+      var got=(r&&r.subdomain)||v;
+      var lab=document.getElementById('lmsd-label');
+      if(lab) lab.textContent=got+'.kntcrd.com';
+      showMsg('Saved — your cards are served from '+got+'.kntcrd.com','mk');
+      setTimeout(function(){ var m=document.getElementById('mm'); if(m) m.className='msg'; },2000);
+    })
+    .catch(function(e){ showMsg((e&&e.message)||'That subdomain cannot be used','e'); });
+}
 function LM(){
   api("/api/v1/settings").then(function(d){
     /* kanban t_619533e2: this screen reads and writes the CALLER'S OWN tenant_settings row, so it
@@ -4801,13 +4820,15 @@ function LM(){
     $("ct").innerHTML='<div class="cc"><h3>Settings</h3><p style="color:#64748b;font-size:12px;margin-bottom:12px">Your card subdomain, your custom domain, your lead pipeline and your email branding.</p><div id="lm-list"></div></div>';
     
     var list=$("lm-list");
-    var sd=d.find(function(s){return s.key==="subdomain"})||{value:"ss"};
+    var sd=d.find(function(s){return s.key==="subdomain"})||{value:""};
     var cd=d.find(function(s){return s.key==="custom_domain"})||{value:""};
     var ls=d.find(function(s){return s.key==="lead_stages"});
     
     // Subdomain
     var sdDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
-    sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><span style="font-size:12px;color:#6366f1">'+X(sd.value)+'.kntcrd.com</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value)+'" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="var v=document.getElementById(\'lmsd\').value.trim();if(!v)return;api(\'/api/v1/settings\',{method:\'PUT\',body:JSON.stringify({key:\'subdomain\',value:v})}).then(function(){showMsg(\'Saved\',\'mk\');setTimeout(function(){$(\'mm\').className=\'msg\'},1500)})">Save</button></div></div>';
+    var sdHas=!!String(sd.value||'').trim();
+    var sdLabel=sdHas?(X(sd.value)+'.kntcrd.com'):'Not set yet — until you choose one, your cards serve from kntcrd.com/k/your-slug';
+    sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><span id="lmsd-label" style="font-size:12px;color:#6366f1">'+sdLabel+'</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value||'')+'" placeholder="yourname" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="saveSubdomain()">Save</button></div></div>';
     list.appendChild(sdDiv);
     
     // Custom domain

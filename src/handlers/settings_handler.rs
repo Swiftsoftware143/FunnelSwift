@@ -135,6 +135,24 @@ pub async fn update_settings(
         }
     }
 
+    // A tenant's card subdomain has exactly ONE set of rules, and they live in
+    // `kinetic_handler::normalize_subdomain` (length, charset, the reserved-hostname list, and
+    // uniqueness). This generic `{key, value}` door used to write whatever the client sent —
+    // measured 2026-10-25 it answered `200 {"message":"Setting updated"}` for `www` (a reserved
+    // infrastructure hostname) and for the 2-character placeholder `ss`, while the Kinetic Cards
+    // door refused both. Two writers, one rule: validate here with the same function, and store
+    // the NORMALISED value so a mixed-case or padded input cannot create a second spelling of a
+    // claim that already exists.
+    if req.key == "subdomain" {
+        let normalized = super::kinetic_handler::normalize_subdomain(
+            &state.pool,
+            tenant_id,
+            value.as_str().unwrap_or(""),
+        )
+        .await?;
+        value = serde_json::Value::String(normalized);
+    }
+
     // tenant_settings.id is NOT NULL with no default — the insert omitted it, so every
     // settings save died with "null value in column id violates not-null constraint".
     sqlx::query(
