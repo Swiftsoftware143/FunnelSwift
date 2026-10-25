@@ -275,6 +275,12 @@ var T=localStorage.getItem("ws_fs_token")||"", U=null;
    allowances the dashboard already renders. Declared with the shell so the dashboard's
    paintPlan can repaint when either read lands. */
 var USG=null;
+/* Can this installation take money for a plan RIGHT NOW? GET /api/v1/checkout/status answers from
+   the same resolution the sale uses, so this cannot drift from the arm that charges. Measured
+   2026-10-25: `payment_providers` held 0 rows, every Upgrade press on this install was refused
+   503 `payment_provider_not_configured`, and the plan card still invited the press with no hint —
+   the customer learned the truth only after clicking. null = not read yet (say nothing). */
+var PAYCFG=null;
 /* The most bytes an image the two pickers accept may carry — the server's
    `image_store::MAX_IMAGE_BYTES` (2 MB minus a 64 KB multipart-framing reserve). Checking the SAME
    number is what makes the friendly message the one a customer sees: over it the handler refuses
@@ -1138,13 +1144,22 @@ function D(){
         var zeroAllow=(lim!==null&&lim!==undefined&&Number(lim)===0);bits.push(X(pairs[pi][0])+" "+((zeroAllow||uu===null)?limTxt:(uu+" / "+limTxt))+over);}
       h+='<div style="color:#64748b;font-size:12px;margin-top:4px">'+bits.join(" \u00b7 ")+'</div>';
     }
-    h+='</div><button class="btn" onclick="S(\'upgrade\')" style="padding:10px 16px">View plans &amp; upgrade</button></div>';
+    /* Tell the truth BEFORE the press when the install cannot take money. `configured === false` is
+       the same ladder arm that answers the sale 503, so this sentence and the refusal cannot
+       disagree; when the operator adds a provider key the sentence (and the button label) revert on
+       the next load with no deploy. */
+    var payOff=(PAYCFG&&PAYCFG.configured===false);
+    if(payOff){h+='<div style="color:#92400e;font-size:12px;margin-top:6px;max-width:52ch">Upgrades are not switched on for this installation yet — choose a plan and our team switches it on for you by hand. No charge is made.</div>';}
+    h+='</div><button class="btn" onclick="S(\'upgrade\')" style="padding:10px 16px">'+(payOff?'Choose a plan &amp; request it':'View plans &amp; upgrade')+'</button></div>';
     pl.innerHTML=h;
   };
   if(U) paintPlan(U); else api("/api/v1/auth/me").then(function(u){ if(u&&!u.error){U=u; paintPlan(u);} });
   // The usage half of the same strip: fetched on every dashboard load, and the card repaints when
   // it lands (paintPlan guards on the node still being attached, so a tab switch is safe).
   api("/api/v1/me/usage").then(function(d){ if(d&&!d.error){USG=d; paintPlan(U);} });
+  /* The money half: whether a press on this card would actually reach a provider. Read once per
+     load, repaint when it lands (paintPlan guards on the node still being attached). */
+  api("/api/v1/checkout/status").then(function(c){ if(c&&!c.error){PAYCFG=c; paintPlan(U);} });
   /* cron 2026-10-19 — the ask a workspace filed on the Upgrade screen was invisible here. A customer
      who requested a paid plan saw the SAME "Your Plan / Free" strip on their home screen, with no
      sign that anything was waiting on our side, while the row the operator acts on sat in a queue

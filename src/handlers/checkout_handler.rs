@@ -215,6 +215,68 @@ async fn resolve_plan_provider(
     .await
 }
 
+/// GET /api/v1/checkout/status — can this installation take payment for a plan, right now?
+///
+/// The dashboard's plan card asks this BEFORE it invites a customer to press Upgrade. Until it
+/// existed the panel promised an upgrade the installation could not sell: `payment_providers` can
+/// legitimately hold zero rows (measured 2026-10-25: it holds 0 rows, and so did the same table on
+/// four sibling apps), every press answered 503 `payment_provider_not_configured`, and the customer
+/// only found out after the click.
+///
+/// It resolves through the SAME ladder the sale uses ([`resolve_plan_provider`]) and then applies
+/// the SAME two further gates `create_checkout_session` applies before it creates a session — a
+/// provider this install has no integration for (it answers 501) and a Stripe row whose key cannot
+/// be read (it answers 503 `configured:false`). Skipping either gate would let this endpoint say
+/// "configured" for a press that would be refused, which is the drift the whole endpoint exists to
+/// prevent. `configured: true` therefore means exactly: a press reaches the provider.
+pub async fn checkout_status(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    let resolved = resolve_plan_provider(&state, tenant_id).await?;
+    let (configured, provider, reason) = match resolved {
+        None => (false, None, Some("payment_provider_not_configured")),
+        Some((provider_tenant, provider_type)) => {
+            if !provider_type.eq_ignore_ascii_case("stripe") {
+                (false, Some(provider_type), Some("checkout_not_implemented"))
+            } else {
+                let key: Option<String> = sqlx::query_scalar(
+                    "SELECT api_key FROM payment_providers WHERE tenant_id = $1 \
+                     AND provider_type = 'stripe' AND is_active = true LIMIT 1",
+                )
+                .bind(provider_tenant)
+                .fetch_optional(&state.pool)
+                .await?
+                .flatten();
+                let usable = crate::security::provider_key_crypto::decrypt_optional(
+                    &state.pool,
+                    key.as_deref(),
+                )
+                .await
+                .ok()
+                .flatten()
+                .filter(|k| !k.trim().is_empty())
+                .is_some();
+                if usable {
+                    (true, Some(provider_type), None)
+                } else {
+                    (
+                        false,
+                        Some(provider_type),
+                        Some("payment_provider_not_configured"),
+                    )
+                }
+            }
+        }
+    };
+    Ok(Json(json!({
+        "configured": configured,
+        "provider": provider,
+        "reason": match reason { Some(r) => json!(r), None => Value::Null },
+    })))
+}
+
 /// POST /api/v1/checkout/create
 ///
 /// A REAL Stripe checkout, or an explicit refusal. This doc comment used to say "there is no payment

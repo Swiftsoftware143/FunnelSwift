@@ -817,6 +817,12 @@ pub fn create_router(
             "/api/v1/checkout/create",
             post(checkout_handler::create_checkout_session),
         )
+        // Can this installation take money right now? The dashboard's plan card reads it before it
+        // invites a press, so a customer is never sent to a button the install cannot honour.
+        .route(
+            "/api/v1/checkout/status",
+            get(checkout_handler::checkout_status),
+        )
         .route(
             "/api/v1/checkout/sessions",
             get(checkout_handler::list_checkout_sessions),
