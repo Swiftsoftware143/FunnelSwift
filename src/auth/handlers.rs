@@ -284,8 +284,13 @@ pub async fn login(
         Some(u) => u.password_hash.clone(),
         None => dummy_password_hash().to_string(),
     };
+    // A stored hash that is not a usable PHC string is NOT a credential: no password can match
+    // it, so the caller gets the same generic 401 a wrong password gets. It must never become a
+    // 500 — that both announces that this row is broken and makes it a probe target. (The dummy
+    // hash used for an unknown address is always parseable, so this arm is only ever a corrupt
+    // real row.) Same rule WorkflowSwift's login already states for its placeholder rows.
     let parsed_hash = PasswordHash::new(&hash_to_check)
-        .map_err(|e| AppError::Internal(format!("Parse hash error: {e}")))?;
+        .map_err(|_| AppError::Unauthorized("Invalid email or password".into()))?;
     Argon2::default()
         .verify_password(req.password.as_bytes(), &parsed_hash)
         .map_err(|_| AppError::Unauthorized("Invalid email or password".into()))?;
@@ -651,8 +656,10 @@ pub async fn change_password(
 
     // Verify current password
     use argon2::{Argon2, PasswordHash, PasswordVerifier};
+    // A corrupt stored hash cannot verify ANY current password, so this is the ordinary
+    // "current password is incorrect" refusal — never a 500 naming the internal reason.
     let parsed_hash = PasswordHash::new(&user.password_hash)
-        .map_err(|e| AppError::Internal(format!("Hash parse error: {e}")))?;
+        .map_err(|_| AppError::Unauthorized("Current password is incorrect".into()))?;
     Argon2::default()
         .verify_password(req.current_password.as_bytes(), &parsed_hash)
         .map_err(|_| AppError::Unauthorized("Current password is incorrect".into()))?;
