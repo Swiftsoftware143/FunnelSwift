@@ -146,6 +146,7 @@
            <li><strong>People</strong> — the <em>users</em> button on a row opens that workspace's people. You can add a teammate (their login details are emailed; a reserved test address is never mailed and the password is shown once instead), move one between roles, and <strong>Remove</strong> one. A teammate who never owned anything is deleted outright; one who owns leads or affiliate payouts is kept on record with their sign-in switched off, so their history keeps its owner — the pane says which of the two happened.</li>
           <li><strong>Disable</strong> — Toggle tenant active/inactive</li>
           <li><strong>Select probes</strong> — ticks every workspace a test run minted (a <em>probe</em> badge: a reserved address such as <code>@example.invalid</code>, or a recorded test harness). "Delete selected" then retires exactly those rows in one call, and each row reports its own result, so a refusal never hides behind a green toast.</li>
+          <li><strong>Show probe workspaces</strong> — off by default, because a probe is not a customer and the list you read every day should not carry test runs. Tick it and the workspaces a test harness minted appear with their <em>probe</em> badge, so "Select probes" can reach them; untick it and you are back to customers only. The switch exists because those rows were previously unreachable from this screen: the list hid them and nothing offered a way to look.</li>
           <li><strong>Fixture rows cannot be deleted</strong> — the two Tenancy Canary workspaces and the fixed seed row are the monitoring fixtures this platform checks itself against. They carry a <em>fixture</em> badge, "Select probes" never ticks them, and the delete refuses them by name even if an id is sent directly. Deleting one would not be a cleanup: the canary would quietly rebuild a fresh workspace and its verdict would stop meaning anything.</li>
         </ul>
       </div>
@@ -170,6 +171,14 @@
       <!-- ============ PLANS ============ -->
       <h2 id="plans">💳 Plans & Feature Toggles</h2>
       <p>Plans define what each tenant can access. Navigate to <code>/admin/plans</code> to manage them. Each plan has a set of feature toggles stored as JSONB:</p>
+      <p><strong>Payment link (optional).</strong> Every plan in this console now carries a
+      <em>Payment link</em> box. Paste the checkout address your payment provider gives you for that
+      price (a Stripe Payment Link, for example) and a buyer who picks this plan on the public pricing
+      page is sent straight to it. Leave the box empty when the plan is free, or when you take payment
+      some other way — the plan then behaves exactly as it did before. The link is stored with the plan
+      and never used to charge anyone: it only decides <em>where the buyer is sent</em>. A link that is
+      not a proper web address is refused at the moment of sale rather than shown to a customer, so a
+      typo here cannot produce a dead Buy button.</p>
 
       <div class="card">
         <h3>Feature registry — every gated key</h3>
