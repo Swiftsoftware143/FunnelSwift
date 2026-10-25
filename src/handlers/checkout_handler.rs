@@ -456,16 +456,33 @@ pub async fn create_checkout_session(
             // same class of lie as a 200 with no write".
             let request_recorded = plan_request.is_some();
             // The buyer's sentence follows the same fact: the recording clause is only spoken when a
-            // row exists. The facts a buyer needs come first (nothing was charged; whether their ask
-            // was taken), the operator's setup detail stays, in parentheses, for whoever reads it next.
+            // row exists. What a buyer needs comes first (nothing was charged; whether their ask was
+            // taken) and NOTHING ELSE (2026-10-25). The operator's setup detail used to ride along in
+            // parentheses "for whoever reads it next" — but this body belongs to the BUYER:
+            // `upgrade.js` paints `message` into the customer's panel whenever it does not recognise
+            // the refusal, and every other client (a mobile app, a direct API caller, a buyer whose
+            // plan list is stale) has no replacement at all, so an instruction addressed to the
+            // operator was delivered to the person trying to give us money. It is logged below
+            // instead, where the operator actually reads it.
             let message = if request_recorded {
-                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet: your request has been recorded for the platform team, who can activate this plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)"
+                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. \
+                 Upgrades are not switched on for this installation yet: your request has been passed \
+                 to the team that runs it, who can activate this plan for your workspace."
+            } else if plan.is_none() {
+                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. \
+                 That plan is not one this installation sells, so nothing was recorded. Reload the \
+                 page, pick a plan from the list and try again."
             } else {
-                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. Upgrades are not switched on for this installation yet, and the plan you picked does not match a plan on this installation, so nothing was recorded: reload the page and press Upgrade again, and the platform team can still activate a plan for your workspace by hand. (Operator: add Stripe's keys in the admin panel under Provider Keys / Payment providers on the operator's own account; that key then funds every workspace's plan purchase, and a workspace that brings its own Stripe account is charged through its own.)"
+                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. \
+                 Upgrades are not switched on for this installation yet, and your request could not \
+                 be recorded this time. Press Upgrade again in a moment; if it keeps failing, contact \
+                 support and name the plan above."
             };
             tracing::error!(
                 "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
-                 no active provider owned by a platform-operator account either"
+                 no active provider owned by a platform-operator account either. OPERATOR: add a \
+                 provider key in the admin panel under Provider Keys / Payment providers on the \
+                 operator's own account; that key then funds every workspace's plan purchase."
             );
             Ok((
                 StatusCode::SERVICE_UNAVAILABLE,
