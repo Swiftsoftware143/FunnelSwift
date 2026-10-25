@@ -34,6 +34,7 @@ mod feature_registry;
 mod features;
 mod handlers;
 mod image_store;
+mod login_throttle;
 mod models;
 mod plan_movement;
 mod plan_resolver;

@@ -14,21 +14,26 @@
 //!
 //! # The census (re-measured 2026-10-24 by the test's own counter over `api_router.rs`)
 //!
+//! Re-measured 2026-10-25: ONE more private mount, `POST /api/v1/settings/branding/preview`
+//! (commit b39b9bf, the operator's branded-email preview), which was committed without bumping
+//! this census — the test below was RED on HEAD until this line and the numbers were corrected.
+//! It is a plain `require_auth` route, so nothing about the boundary moved.
+//!
 //! The 2026-10-24 recount picked up three PRIVATE routes committed after the 2026-10-21 census
 //! and never folded in: a campaign DELETE, a teammate DELETE on the operator surface, and the
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 212 `.route(..)` mounts / 211 unique paths, classified three ways:
+//! 213 `.route(..)` mounts / 212 unique paths, classified three ways:
 //!
 //! ```text
-//!   186 mounts  /api/**            185 unique after the duplicate `/api/v1/linkedin/auth`
+//!   187 mounts  /api/**            186 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     20        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    163        private           -> require_auth: app JWT, tenant-status checked
+//!    164        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (38 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -361,7 +366,7 @@ mod tests {
                 private,
                 served
             ),
-            (212, 211, 186, 20, 3, 163, 26),
+            (213, 212, 187, 20, 3, 164, 26),
             "the census in the module docs no longer matches the router"
         );
     }

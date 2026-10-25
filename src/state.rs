@@ -6,6 +6,8 @@ use crate::db::SchemaStatus;
 pub struct AppState {
     pub pool: PgPool,
     pub db: PgPool,
+    /// Failed-sign-in counter for the password route (see `crate::login_throttle`).
+    pub login_throttle: crate::login_throttle::LoginThrottle,
     /// Boot-time migration verdict (kanban t_c3823fd1). `GET /api/health` reads it so a release
     /// whose migration never applied is queryable/alertable instead of visible only in
     /// `docker logs`.
@@ -28,6 +30,7 @@ impl AppState {
         Self {
             db: pool.clone(),
             pool,
+            login_throttle: crate::login_throttle::LoginThrottle::new(),
             schema,
             jwt_secret,
             internal_sync_key,

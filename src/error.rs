@@ -65,10 +65,20 @@ pub enum AppError {
     /// Received and understood, but nothing could be done with it (no side effect happened).
     #[error("Unprocessable: {0}")]
     UnprocessableEntity(String),
+
+    /// Too many failed sign-ins from one address (see `crate::login_throttle`). **429**, with a
+    /// `Retry-After` header and the wait spelled out in the sentence the panel shows.
+    #[error("Too many sign-in attempts: retry after {retry_after_secs}s")]
+    TooManyAttempts { retry_after_secs: u64 },
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        // Read the pause budget BEFORE the match moves `self`.
+        let too_many_retry = match &self {
+            AppError::TooManyAttempts { retry_after_secs } => Some(*retry_after_secs),
+            _ => None,
+        };
         let (status, error_message) = match self {
             AppError::Database(e) => {
                 tracing::error!("Database error: {}", e);
@@ -119,7 +129,37 @@ impl IntoResponse for AppError {
             AppError::UpgradeRequired(msg) => (StatusCode::PAYMENT_REQUIRED, msg),
             AppError::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             AppError::UpstreamRefused(msg) => (StatusCode::FAILED_DEPENDENCY, msg),
+            // Too many failed sign-ins from one address — **429**, carrying the pause and (below)
+            // a `Retry-After` header. Deliberately not a 401: a paused caller is not told whether
+            // the credential was right, and a log reader can tell the two apart.
+            AppError::TooManyAttempts { retry_after_secs } => (StatusCode::TOO_MANY_REQUESTS, {
+                let minutes = (retry_after_secs.div_ceil(60)).max(1);
+                format!(
+                    "Too many failed sign-in attempts from this address. Try again in about \
+                     {minutes} minute{}. If you have forgotten your password, use \
+                     \"Forgot your password?\".",
+                    if minutes == 1 { "" } else { "s" }
+                )
+            }),
         };
+
+        // The paused-sign-in answer carries its retry budget in a header as well as in the body.
+        if let Some(retry_after_secs) = too_many_retry {
+            let body = Json(json!({
+                "error": error_message,
+                "status": StatusCode::TOO_MANY_REQUESTS.as_u16(),
+                "retry_after_seconds": retry_after_secs,
+            }));
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(
+                    axum::http::header::RETRY_AFTER,
+                    retry_after_secs.to_string(),
+                )],
+                body,
+            )
+                .into_response();
+        }
 
         let body = Json(json!({
             "error": error_message,

@@ -269,8 +269,26 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    // Brute-force throttle (cron 2026-10-25): before this, 32 consecutive wrong passwords were
+    // answered 401 with no limit of any kind — unlimited guessing against a customer sign-in, and
+    // every guess costs a full Argon2 verify. The counter is keyed on the CLIENT ADDRESS the
+    // fronting proxy reports, never on the account: a per-account lockout would hand an attacker
+    // a denial of service against any known customer. See `crate::login_throttle`.
+    let throttle_key = crate::login_throttle::client_identity(&headers);
+    if let Err(wait) = state.login_throttle.check(&throttle_key) {
+        tracing::warn!(
+            "sign-in paused for {}: failed-attempt allowance spent ({}s left)",
+            throttle_key,
+            wait
+        );
+        return Err(AppError::TooManyAttempts {
+            retry_after_secs: wait,
+        });
+    }
+
     let user = sqlx::query_as::<_, User>(
         "SELECT * FROM users WHERE lower(email) = $1 AND is_active = true",
     )
@@ -289,13 +307,21 @@ pub async fn login(
     // 500 — that both announces that this row is broken and makes it a probe target. (The dummy
     // hash used for an unknown address is always parseable, so this arm is only ever a corrupt
     // real row.) Same rule WorkflowSwift's login already states for its placeholder rows.
-    let parsed_hash = PasswordHash::new(&hash_to_check)
-        .map_err(|_| AppError::Unauthorized("Invalid email or password".into()))?;
+    let failed = |why: &str| {
+        state.login_throttle.record_failure(&throttle_key);
+        AppError::Unauthorized(why.to_string())
+    };
+    let parsed_hash =
+        PasswordHash::new(&hash_to_check).map_err(|_| failed("Invalid email or password"))?;
     Argon2::default()
         .verify_password(req.password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::Unauthorized("Invalid email or password".into()))?;
+        .map_err(|_| failed("Invalid email or password"))?;
 
-    let user = user.ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
+    let user = user.ok_or_else(|| failed("Invalid email or password"))?;
+
+    // A real sign-in clears this address's history, so a customer who mistyped a couple of times
+    // is never carried toward a pause by attempts that are behind them.
+    state.login_throttle.clear(&throttle_key);
 
     // tenants.status enforcement, part 1 of 4 (kanban t_af890bbf). A retired workspace cannot mint
     // a new session. Checked AFTER the Argon2 verification above — a WRONG password is still the
