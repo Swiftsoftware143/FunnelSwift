@@ -279,8 +279,14 @@ pub async fn delete_qr_code(
 /// card QR block all pointed at a feature that could not produce a single scannable code.
 pub async fn get_qr_svg(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(raw_id): Path<String>,
 ) -> AppResult<(StatusCode, [(HeaderName, &'static str); 2], String)> {
+    // A QR image is fetched by a SCANNER or a print job, never by a programmer: a stale, truncated
+    // or hand-typed id must answer the same clean 404 as an id with no row, not axum's `Path<Uuid>`
+    // refusal (400 "Invalid URL: UUID parsing failed…") which shows a parser sentence instead of an
+    // image. Fleet contract measured 2026-10-26; same fix as the public avatar/logo reads.
+    let id = Uuid::parse_str(raw_id.trim())
+        .map_err(|_| AppError::NotFound("QR code not found".into()))?;
     let (url, is_active) = qr_target_url(&state, id)
         .await?
         .ok_or_else(|| AppError::NotFound("QR code not found".into()))?;
@@ -304,8 +310,11 @@ pub async fn get_qr_svg(
 /// a broken image and a print shop cannot use at all.
 pub async fn get_qr_png(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(raw_id): Path<String>,
 ) -> AppResult<(StatusCode, [(HeaderName, &'static str); 2], Vec<u8>)> {
+    // Same contract as the SVG twin above: a bad id is "not found", never a 400 parser sentence.
+    let id = Uuid::parse_str(raw_id.trim())
+        .map_err(|_| AppError::NotFound("QR code not found".into()))?;
     let (url, is_active) = qr_target_url(&state, id)
         .await?
         .ok_or_else(|| AppError::NotFound("QR code not found".into()))?;
