@@ -834,7 +834,7 @@ function LMA(){
       }
       h+='<div class="card" style="margin-top:14px"><h3>What you promote</h3>'
         +'<p style="opacity:.8">Tick the products you want to promote. Each one is tied to its tag, which is what credits you when someone signs up through it.</p>'
-        +'<table class="tbl"><thead><tr><th></th><th>Product</th><th>Customer gets</th><th>Your rate</th><th>Tag</th></tr></thead><tbody>';
+        +'<table class="tbl"><thead><tr><th></th><th>Product</th><th>Customer gets</th><th>Your rate</th><th>Tag</th><th></th></tr></thead><tbody>';
       if(!ps.length){h+='<tr><td colspan="5" style="opacity:.7">No products are available to promote yet.</td></tr>';}
       ps.forEach(function(p){
         var plan=(p.plan_name||p.plan_slug||"\u2014");
@@ -842,7 +842,8 @@ function LMA(){
           +'<td>'+X(p.name)+'</td>'
           +'<td>'+X(plan)+(p.connected_to_plan?' <span class="badge bb">free</span>':' <span class="badge" style="background:#7f1d1d;color:#fff">no plan</span>')+'</td>'
           +'<td>'+(p.commission_rate!=null?X(p.commission_rate)+"%":"\u2014")+'</td>'
-          +'<td>'+(p.has_tag?X(p.tag_name||""):'<em>no tag \u2014 cannot be credited</em>')+'</td></tr>';
+          +'<td>'+(p.has_tag?X(p.tag_name||""):'<em>no tag \u2014 cannot be credited</em>')+'</td>'
+          +'<td class="aff-rm" style="text-align:right">'+(p.selected?'<button type="button" class="btn" data-aff-remove="'+X(p.id)+'">Remove</button>':'')+'</td></tr>';
       });
       h+='</tbody></table><div style="margin-top:12px"><button class="btn btn-p" onclick="affSave()">Save</button> <span id="aff-saved" style="opacity:.8"></span></div></div>';
       h+='<div class="card" style="margin-top:14px"><h3>Product links</h3>'
@@ -858,6 +859,11 @@ function LMA(){
       c.innerHTML=h;
       affEarn();
       affLinks();
+      // The deselect route had no caller: a promoted product could only be dropped by unticking
+      // and re-saving the whole form. One button per promoted row calls the route directly.
+      c.querySelectorAll('[data-aff-remove]').forEach(function(b){
+        b.onclick=function(){ affRemove(b.getAttribute('data-aff-remove'), b); };
+      });
     }).catch(function(e){ c.innerHTML='<div class="card"><p>Could not load products: '+X((e&&e.message)||"unknown")+'</p></div>'; });
   });
 }
@@ -976,6 +982,21 @@ function affCreateLink(){
       affLinks();
     })
     .catch(function(e){ if(msg) msg.textContent="Could not create: "+((e&&e.message)||"unknown"); });
+}
+
+function affRemove(id, btn){
+  if(!btn) return;
+  btn.disabled=true; var was=btn.textContent; btn.textContent="Removing...";
+  api("/api/v1/affiliate/promotable-products/"+encodeURIComponent(id)+"/deselect",{method:"POST",body:"{}"})
+    .then(function(r){
+      var cb=document.querySelector('.aff-pick[value="'+id+'"]'); if(cb) cb.checked=false;
+      btn.textContent="Removed"; btn.disabled=true;
+      var s=$("aff-saved"); if(s) s.textContent="Removed from what you promote.";
+    })
+    .catch(function(e){
+      btn.disabled=false; btn.textContent=was;
+      alert((e&&e.message)||"Could not remove that product.");
+    });
 }
 
 function affSave(){
