@@ -21,6 +21,7 @@ mod app_middleware;
 mod app_provision;
 mod auth;
 mod body_deadline;
+mod body_rejection;
 mod branding;
 mod card_blocks;
 mod card_types;

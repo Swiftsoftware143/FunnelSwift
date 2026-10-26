@@ -1217,6 +1217,15 @@ pub fn create_router(
         .layer(axum::middleware::from_fn(
             crate::path_rejection::path_rejection_is_not_found,
         ))
+        // Malformed request BODIES answer the app's JSON too, not axum's deserializer sentence.
+        // `error::json_rejection` fixed the three doors that call it by hand; every other handler
+        // still takes a plain `Json<T>`, whose refusal is text/plain and makes the console's
+        // `await r.json()` throw. Measured live 2026-10-26: `/auth/login` with
+        // `{"email": 12345, …}` answered "invalid type: integer `12345`, expected a string".
+        // Structural sibling of the id rewrite above; prefix-gated, so the two never collide.
+        .layer(axum::middleware::from_fn(
+            crate::body_rejection::body_rejection_is_app_json,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

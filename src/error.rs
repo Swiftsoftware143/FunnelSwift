@@ -204,5 +204,76 @@ pub(crate) fn json_rejection(rej: axum::extract::rejection::JsonRejection) -> Ap
         .trim_start_matches("Failed to deserialize the JSON body into the target type: ")
         .trim_start_matches("Failed to parse the request body as JSON: ");
     let msg = msg.split(" at line ").next().unwrap_or(msg).trim();
-    AppError::BadRequest(format!("The request body was not accepted: {msg}"))
+    AppError::BadRequest(plain_english(msg))
+}
+
+/// Turn the deserializer's words into a sentence a customer can act on.
+///
+/// Stripping the framing and the byte offset was not enough: the remainder is still the JSON
+/// parser's own grammar, and the marketing signup page shows it verbatim. Measured LIVE
+/// 2026-10-26 — `POST /api/v1/auth/login` with `{"email": 12345, "password": 99}` answered
+/// `The request body was not accepted: email: invalid type: integer `12345`, expected a string`,
+/// and an empty `{}` answered `The request body was not accepted: missing field `email``. A
+/// person reading that learns the name of our Rust type, not what to do. Every sibling app in
+/// the fleet now answers the plain sentence below; this closes the last one.
+pub(crate) fn plain_english(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+
+    if lower.contains("length limit") {
+        return "That upload is too large. Choose a smaller file.".to_string();
+    }
+    if lower.contains("content-type") || lower.contains("unsupported media") {
+        return "Send this request as JSON (Content-Type: application/json).".to_string();
+    }
+
+    if let Some(rest) = lower.split("missing field").nth(1) {
+        let field = rest
+            .trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_')
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        return match field.as_str() {
+            "email" => "Enter your email address.".to_string(),
+            "password" => "Enter your password.".to_string(),
+            "name" => "Enter your name.".to_string(),
+            "new_password" => "Choose a new password.".to_string(),
+            "token" | "code" => "Paste the code from your email.".to_string(),
+            "" => "A required field is missing from this form.".to_string(),
+            other => format!("The form is missing {other}."),
+        };
+    }
+
+    if lower.contains("invalid type")
+        || lower.contains("invalid value")
+        || lower.contains("invalid length")
+    {
+        let shape = lower.contains("expected struct")
+            || lower.starts_with("invalid type: null")
+            || lower.contains("invalid length");
+        return match leading_field(raw) {
+            Some(field) => format!("{field}: that value is not valid for this form."),
+            None if shape => "Send the form's fields as a JSON object.".to_string(),
+            None => "One of the values in this form is not valid.".to_string(),
+        };
+    }
+
+    if let Some(field) = leading_field(raw) {
+        return format!("{field}: that value is not valid for this form.");
+    }
+
+    "The request body could not be read.".to_string()
+}
+
+/// The deserializer prefixes a field-scoped complaint with `field: `. Only take a token that looks
+/// like a field name, so an unrecognised sentence never becomes `Failed to: that value is not…`.
+fn leading_field(raw: &str) -> Option<String> {
+    let (head, _) = raw.split_once(':')?;
+    let head = head.trim();
+    let looks_like_field = !head.is_empty()
+        && head.len() <= 40
+        && head
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    looks_like_field.then(|| head.replace('_', " "))
 }
