@@ -3282,8 +3282,8 @@ function LN(){
       var pn=""; if(t.plan&&typeof t.plan==="object") pn=t.plan.plan_name||""; else if(t.plan) pn=String(t.plan);
       var tr=El("tr",{"class":"ln-row"});
       tr.setAttribute("data-name",t.name||"");
-      tr.setAttribute("data-email",t.email||"");
-      tr.innerHTML='<td><strong>'+X(t.name||"Unnamed")+'</strong></td><td>'+X(t.email||"-")+'</td><td>'+X(pn)+'</td><td><span style="color:'+(t.status==="active"?"#16a34a":"#64748b")+'">'+X(t.status||"active")+'</span></td><td style="white-space:nowrap"></td>';
+      tr.setAttribute("data-email",t.owner_email||t.email||"");
+      tr.innerHTML='<td><strong>'+X(t.name||"Unnamed")+'</strong></td><td>'+X(t.owner_email||t.email||"-")+'</td><td>'+X(pn)+'</td><td><span style="color:'+(t.status==="active"?"#16a34a":"#64748b")+'">'+X(t.status||"active")+'</span></td><td style="white-space:nowrap"></td>';
       var td=tr.querySelectorAll("td")[4];
       td.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){impersonateTenant(t.id,X(t.name||"Unnamed"))}},"\u{1F464} Login As"));
       td.appendChild(document.createTextNode(" "));
@@ -5155,6 +5155,13 @@ function SG(id,returnTab,isSystem){
    the form's tag on every lead it captures, and that tag is what credits the affiliate.
    `fields` / `form_title` live in the config's field_mapping jsonb; `tag_ids` is a uuid array. */
 var WTL=[], WTLTAGS=null;
+/* The tag a form stamps, in words. Falls back to a short id rather than "No tag", because a form
+   that HAS a tag must never look unbranded. */
+function tagLabel(id){
+  if(!id)return "\u2014";
+  var hit=(WTLTAGS||[]).filter(function(t){return String(t.id)===String(id);})[0];
+  return hit?String(hit.name||""):("tag "+String(id).slice(0,8));
+}
 function LWTL(){
   api("/api/v1/web-to-lead/configs").then(function(d){
     var a=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
@@ -5163,19 +5170,37 @@ function LWTL(){
       +'<p style="color:#64748b;font-size:13px;margin-bottom:10px">A lead form is a small form you paste onto <strong>your own website</strong>. Every visitor who fills it in arrives in <strong>Leads</strong>, stamped with the tag you choose here &mdash; that tag is also what credits the affiliate whose form it is. Press <strong>Get code</strong> for the snippet to paste.</p>'
       +'<div id="wtl-list"></div></div>';
     $("wtl-add").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MWTL(null)}},"+ New form"));
-    api("/api/v1/tags").then(function(t){WTLTAGS=Array.isArray(t)?t:((t&&t.data)?t.data:[]);})
-      .catch(function(){WTLTAGS=[];});
+    api("/api/v1/tags").then(function(t){
+      WTLTAGS=Array.isArray(t)?t:((t&&t.data)?t.data:[]);
+      Array.prototype.forEach.call(document.querySelectorAll("[data-wtltag]"),function(td){
+        td.textContent=tagLabel(td.getAttribute("data-wtltag"));
+      });
+    }).catch(function(){WTLTAGS=[];});
     var list=$("wtl-list");
     if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px;text-align:center">No lead forms yet &mdash; press <strong>+ New form</strong> to build your first one.</p>';return;}
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Name</th><th>Form title</th><th>Fields</th><th>Status</th><th>Created</th><th></th></tr>';
+    tbl.innerHTML='<tr><th>Name</th><th>Form title</th><th>Fields</th><th>Tag</th><th>Status</th><th>Created</th><th></th></tr>';
     a.forEach(function(f){
       var fs=(Array.isArray(f.fields)&&f.fields.length)?f.fields.join(", "):"name, email";
+      /* The tag IS the attribution (David: a lead from this form is permanently assigned to the
+         affiliate whose form it is), so the screen has to name it. The name arrives with
+         /api/v1/tags a moment later, hence data-wtltag + the repaint below. */
+      var tid=(Array.isArray(f.tag_ids)&&f.tag_ids.length)?String(f.tag_ids[0]):"";
       var tr=El("tr");
       tr.innerHTML='<td><strong>'+X(f.name||"-")+'</strong></td><td>'+X(f.form_title||"-")+'</td><td>'+X(fs)+'</td>'
+        +'<td data-wtltag="'+X(tid)+'">'+X(tagLabel(tid))+'</td>'
         +'<td><span class="badge '+(f.is_active===false?"br":"bg")+'">'+(f.is_active===false?"Off":"Live")+'</span></td>'
         +'<td>'+(f.created_at?String(f.created_at).slice(0,10):"-")+'</td><td style="white-space:nowrap"></td>';
-      var td=tr.querySelectorAll("td")[5];
+      var td=tr.querySelectorAll("td")[6];
+      /* Edit was written (MWTL) and never wired to a row: the only buttons were Get code and Del, so
+         an operator could not rebind the tag or set the thank-you text on a form that already
+         existed — measured in the browser 2026-10-26. */
+      /* Stop / restart a form without deleting it (2026-10-26). `is_active` is honoured by the public
+         handler ("This form is switched off") and was settable only by Delete-and-recreate. */
+      td.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){TWTL(f)}},(f.is_active===false?"Turn on":"Turn off")));
+      td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){MWTL(f.id)}},"Edit"));
+      td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){WWTL(f.id)}},"Get code"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DWTL(f.id,f.name)}},"Del"));
@@ -5213,13 +5238,30 @@ function MWTL(id){
     var sel=El("select",{id:"wtl-tag"});
     sel.appendChild(El("option",{value:""},"No tag"));
     (WTLTAGS||[]).forEach(function(t){sel.appendChild(El("option",{value:t.id},X(t.name)));});
+    /* Preselect the tag this form already stamps. Without this, Edit always opened on "No tag" over
+       a live, credited form and the operator could not tell what it was bound to. */
+    var curtag=(f&&Array.isArray(f.tag_ids)&&f.tag_ids.length)?String(f.tag_ids[0]):"";
+    if(curtag){
+      var known=[].some.call(sel.options,function(o){return o.value===curtag;});
+      if(!known)sel.appendChild(El("option",{value:curtag},curtag.slice(0,8)+"\u2026"));
+      sel.value=curtag;
+    }
     mb.appendChild(ff("Tag every lead from this form",sel));
     mb.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin:2px 0 10px"},"The tag is what credits the affiliate who hands the form out, so pick one when this form belongs to an affiliate."));
-    mb.appendChild(ff("Thank-you message",El("input",{id:"wtl-thanks",value:"",placeholder:"Thanks - we got your details."})));
-    mb.appendChild(ff("Redirect after submit (optional)",El("input",{id:"wtl-redir",value:"",placeholder:"https://your-site.com/thanks"})));
+    mb.appendChild(ff("Thank-you message",El("input",{id:"wtl-thanks",value:(f&&f.thank_you_message)||"",placeholder:"Thanks - we got your details."})));
+    mb.appendChild(ff("Redirect after submit (optional)",El("input",{id:"wtl-redir",value:(f&&f.redirect_url)||"",placeholder:"https://your-site.com/thanks"})));
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
     $("mf").appendChild(El("button",{"class":"btn",onclick:function(){SWTL(id)}},(id?"Save":"Create")));
   });
+}
+/* Flip is_active only. The PUT COALESCEs every other column, so a form keeps its tag, its fields
+   and its words while it is switched off and comes back exactly as it was. */
+function TWTL(f){
+  var on=!(f.is_active===false);
+  showMsg(on?"Switching the form off...":"Switching the form back on...","mi");
+  api("/api/v1/web-to-lead/configs/"+f.id,{method:"PUT",body:JSON.stringify({is_active:!on})})
+    .then(function(){showMsg(on?"Form switched off - its snippet stops capturing.":"Form is live again.","ms");S("wtl");})
+    .catch(function(e){showMsg((e&&e.message)||"Could not change the form","me");});
 }
 function SWTL(id){
   var nameEl=$("wtl-name"), name=nameEl?String(nameEl.value||"").trim():"";
@@ -5230,10 +5272,10 @@ function SWTL(id){
     if(k==="email"||(cb&&cb.checked))fields.push(k);
   });
   var d={name:name,form_title:(($("wtl-title")||{}).value||"").trim()||"Get Started",fields:fields};
-  var th=($("wtl-thanks")||{}).value||"";
-  if(th.trim())d.thank_you_message=th.trim();
-  var rd=($("wtl-redir")||{}).value||"";
-  if(rd.trim())d.redirect_url=rd.trim();
+  /* Sent unconditionally (2026-10-26): an omitted key is "leave it alone" and an empty string is
+     "clear it", so a field the operator empties has to reach the server. */
+  d.thank_you_message=(($("wtl-thanks")||{}).value||"").trim();
+  d.redirect_url=(($("wtl-redir")||{}).value||"").trim();
   var tag=($("wtl-tag")||{}).value||"";
   if(tag)d.tag_ids=[tag];
   var m=id?"PUT":"POST", u=id?("/api/v1/web-to-lead/configs/"+id):"/api/v1/web-to-lead/configs";
