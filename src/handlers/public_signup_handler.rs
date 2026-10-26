@@ -410,7 +410,15 @@ pub async fn public_signup(
             crate::security::probe_addr::harness_domain(&email)
                 .map(|domain| format!("fleet harness domain {domain}"))
         });
-    match probe_send_reason {
+    // The OUTCOME is reported to the caller (`credentials_emailed` in the response). The page used
+    // to promise "Check your email — we've sent your login details" unconditionally, so a genuine
+    // send failure (measured on this app 2026-10-24: `email_send_log` carries a real
+    // `failed … STARTTLS is not supported on this server` row) left a customer with a live account
+    // and a password nobody could ever receive, hunting an inbox that would stay empty. Precedent
+    // copied, not invented: ADASwift's register has answered `credentials_emailed` since 2026-10-24.
+    // A withheld probe address is `false` too — for that recipient the truth is also "nothing was
+    // sent", and the page must not claim otherwise.
+    let credentials_emailed = match probe_send_reason {
         Some(reason) => {
             tracing::info!(
                 email = %email,
@@ -422,6 +430,7 @@ pub async fn public_signup(
             // visible on the operator's line instead of leaving an older "accepted" send standing.
             crate::email::record_withheld(&state.pool, "signup credentials email", &email, &reason)
                 .await;
+            false
         }
         None => match crate::email::send_credentials_email(
             &state.pool,
@@ -432,15 +441,21 @@ pub async fn public_signup(
         )
         .await
         {
-            Ok(()) => tracing::info!(email = %email, "signup: login credentials emailed"),
-            Err(e) => tracing::error!(
-                email = %email,
-                error = %e,
-                "signup: account created but the CREDENTIAL EMAIL FAILED — the customer has no password. \
-                 Check Admin > Settings > Email Provider."
-            ),
+            Ok(()) => {
+                tracing::info!(email = %email, "signup: login credentials emailed");
+                true
+            }
+            Err(e) => {
+                tracing::error!(
+                    email = %email,
+                    error = %e,
+                    "signup: account created but the CREDENTIAL EMAIL FAILED — the customer has no password. \
+                     Check Admin > Settings > Email Provider."
+                );
+                false
+            }
         },
-    }
+    };
 
     // Log source if provided
     if !source.is_empty() {
@@ -525,6 +540,10 @@ pub async fn public_signup(
         StatusCode::CREATED,
         Json(json!({
             "message": "Account created successfully",
+            // Did the login mail actually leave? `false` means the customer has an account and NO
+            // password in their inbox (a send failure, or a probe address the sender withholds).
+            // The page must say so instead of promising mail that never left.
+            "credentials_emailed": credentials_emailed,
             "token": token,
             // The flat slug this response always carried (null only when the install has no free
             // plan at all) plus the structured assignment that can never be silent.
