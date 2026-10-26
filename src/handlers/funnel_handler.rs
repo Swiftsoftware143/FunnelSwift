@@ -31,10 +31,11 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
         Option<String>,
         Option<String>,
         bool,
+        bool,
         i64,
     )> = sqlx::query_as(
         "SELECT f.id, f.name, COALESCE(f.slug,''), f.created_at, f.headline, f.subheadline, f.cta_label, \
-                f.thank_you, f.is_active, \
+                f.thank_you, f.is_active, f.ask_phone, \
                 (SELECT count(*) FROM leads l \
                   WHERE l.tenant_id = f.tenant_id \
                     AND l.custom_fields->>'funnel_id' = f.id::text) \
@@ -62,6 +63,7 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
                 cta_label,
                 thank_you,
                 is_active,
+                ask_phone,
                 lead_count,
             )| {
                 json!({
@@ -74,6 +76,9 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
                     // they are. Shipped in the LIST so the row's own button can say Pause or Resume
                     // without a second request.
                     "is_active": is_active,
+                    // Does the shared page ask for a phone number (migration 117)? Shipped so the
+                    // page editor opens on the customer's own choice instead of a blank checkbox.
+                    "ask_phone": ask_phone,
                     // How many leads this funnel's public page has captured. A lead written by
                     // `submit_funnel_lead` carries the funnel's id in `custom_fields.funnel_id`,
                     // so the count is derived from the leads table rather than a second counter
@@ -191,15 +196,16 @@ pub async fn get_funnel(
         Option<String>,
         Option<String>,
         Option<String>,
+        bool,
     )> = sqlx::query_as(
-        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you \
+        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you, ask_phone \
          FROM funnels WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (id, name, slug, created_at, headline, subheadline, cta_label, thank_you) =
+    let (id, name, slug, created_at, headline, subheadline, cta_label, thank_you, ask_phone) =
         row.ok_or_else(|| AppError::NotFound("Funnel not found".into()))?;
     Ok(Json(json!({
         "id": id.to_string(),
@@ -212,6 +218,7 @@ pub async fn get_funnel(
         "subheadline": subheadline,
         "cta_label": cta_label,
         "thank_you": thank_you,
+        "ask_phone": ask_phone,
         // The page a customer shares: slug-only, no tenant in the path (see render_funnel).
         "public_path": format!("/funnel/{slug}"),
     })))
@@ -231,10 +238,11 @@ pub async fn update_funnel(
             .iter()
             .any(|(k, _, _)| payload.get(*k).is_some())
         && payload.get("is_active").is_none()
+        && payload.get("ask_phone").is_none()
     {
         return Err(AppError::BadRequest(
             "No writable field: send 'name', 'headline', 'subheadline', 'cta_label', 'thank_you' or \
-             'is_active'"
+             'is_active', or 'ask_phone'"
                 .into(),
         ));
     }
@@ -246,19 +254,28 @@ pub async fn update_funnel(
         Option<String>,
         Option<String>,
         bool,
+        bool,
     )> = sqlx::query_as(
-        "SELECT name, headline, subheadline, cta_label, thank_you, is_active FROM funnels WHERE id = $1 AND tenant_id = $2",
+        "SELECT name, headline, subheadline, cta_label, thank_you, is_active, ask_phone FROM funnels WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    let Some((mut name, mut headline, mut subheadline, mut cta_label, mut thank_you, is_active)) =
-        existing
+    let Some((
+        mut name,
+        mut headline,
+        mut subheadline,
+        mut cta_label,
+        mut thank_you,
+        is_active,
+        ask_phone,
+    )) = existing
     else {
         return Err(AppError::NotFound("Funnel not found".into()));
     };
     let mut is_active = is_active;
+    let mut ask_phone = ask_phone;
 
     // The NAME is the row's label and the page's <title>. The SLUG is the funnel's public address
     // and a customer may have shared (or printed) it, so a rename deliberately does NOT move the
@@ -282,6 +299,18 @@ pub async fn update_funnel(
         is_active = flag;
     }
 
+    // The phone switch (migration 117). Same rule as the pause switch: a NON-boolean is refused,
+    // because silently keeping the old value while answering "updated" is a lie the customer would
+    // only discover on their public page.
+    if let Some(raw) = payload.get("ask_phone") {
+        let Some(flag) = raw.as_bool() else {
+            return Err(AppError::BadRequest(
+                "ask_phone must be true or false".into(),
+            ));
+        };
+        ask_phone = flag;
+    }
+
     for (key, max_chars, label) in PAGE_FIELDS {
         let edit = field_edit(&payload, key, max_chars, label)?;
         let slot = match key {
@@ -299,7 +328,7 @@ pub async fn update_funnel(
 
     sqlx::query(
         "UPDATE funnels SET name=$1, headline=$2, subheadline=$3, cta_label=$4, thank_you=$5, \
-         is_active=$6 WHERE id=$7 AND tenant_id=$8",
+         is_active=$6, ask_phone=$7 WHERE id=$8 AND tenant_id=$9",
     )
     .bind(&name)
     .bind(&headline)
@@ -307,6 +336,7 @@ pub async fn update_funnel(
     .bind(&cta_label)
     .bind(&thank_you)
     .bind(is_active)
+    .bind(ask_phone)
     .bind(id)
     .bind(tenant_id)
     .execute(&state.pool)
@@ -320,6 +350,7 @@ pub async fn update_funnel(
         "cta_label": cta_label,
         "thank_you": thank_you,
         "is_active": is_active,
+        "ask_phone": ask_phone,
     })))
 }
 pub async fn delete_funnel(
@@ -398,8 +429,9 @@ pub async fn render_funnel(
         Option<String>,
         Option<String>,
         bool,
+        bool,
     )>(
-        "SELECT name, headline, subheadline, cta_label, thank_you, is_active FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
+        "SELECT name, headline, subheadline, cta_label, thank_you, is_active, ask_phone FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
@@ -416,13 +448,16 @@ pub async fn render_funnel(
     // replaced with a closed notice and `submit_funnel_lead` refuses — so a visitor holding a
     // cached copy of the open page still cannot leave a lead.
     let paused = row.as_ref().map(|r| !r.5).unwrap_or(false);
+    // Does this funnel's page ask for a phone number (migration 117)? Read before the row is
+    // destructured below, so the page's shape is decided by the row and nothing else.
+    let ask_phone = row.as_ref().map(|r| r.6).unwrap_or(false);
 
     // The CUSTOMER's words where they set them, a sensible default where they did not: every row
     // that existed before migration 111 keeps rendering, and it now renders a page that can take a
     // lead instead of "under construction". The RAW values are kept for the inline script (a JS
     // string must not carry HTML entities) and escaped only on the way into the markup.
     let (raw_name, raw_headline, raw_subheadline, raw_cta, raw_thanks) = match row {
-        Some((name, h, sl, c, t, _)) => {
+        Some((name, h, sl, c, t, _, _)) => {
             let headline = h
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| name.clone());
@@ -476,6 +511,14 @@ pub async fn render_funnel(
     // same page (its headline and subheadline are the customer's words) with one plain sentence in
     // place of the form — so a shared link never dies, never 404s, and never pretends to accept a
     // submission it will refuse. The page script below already bails out when the form is absent.
+    // The phone field is OPTIONAL PER FUNNEL: a page whose owner never asked for a number renders
+    // byte-for-byte as it did before migration 117 (the block is an empty string).
+    let phone_field = if ask_phone {
+        "<label for=\"fn-phone-input\">Phone number</label>\n\
+<input id=\"fn-phone-input\" name=\"phone\" type=\"tel\" autocomplete=\"tel\" maxlength=\"50\" placeholder=\"+1 305 555 0100\">\n"
+    } else {
+        ""
+    };
     let form_block = if paused {
         "<p class=\"sub\" id=\"fn-closed\">This form is closed and is no longer accepting responses.</p>"
             .to_string()
@@ -486,10 +529,12 @@ pub async fn render_funnel(
 <input id=\"fn-name-input\" name=\"name\" autocomplete=\"name\" maxlength=\"120\" placeholder=\"Alex Doe\">\n\
 <label for=\"fn-email-input\">Email</label>\n\
 <input id=\"fn-email-input\" name=\"email\" type=\"email\" autocomplete=\"email\" maxlength=\"200\" placeholder=\"alex@example.com\" required>\n\
+{phone_field}\
 <button id=\"fn-send\" type=\"submit\">{cta_label}</button>\n\
 <div class=\"err\" id=\"fn-err\"></div>\n\
 </form>",
-            cta_label = cta_label
+            cta_label = cta_label,
+            phone_field = phone_field
         )
     };
 
@@ -537,6 +582,8 @@ button:disabled{{opacity:.6;cursor:default}}
     ev.preventDefault();
     var name  = document.getElementById('fn-name-input').value.trim();
     var email = document.getElementById('fn-email-input').value.trim();
+    var phoneEl = document.getElementById('fn-phone-input');
+    var phone = phoneEl ? phoneEl.value.trim() : '';
     err.textContent = '';
     if(!email || email.indexOf('@') < 1){{ err.textContent = 'Please enter your email address.'; return; }}
     send.disabled = true;
@@ -544,7 +591,7 @@ button:disabled{{opacity:.6;cursor:default}}
     fetch('/funnel/' + encodeURIComponent(slug) + '/submit', {{
       method: 'POST',
       headers: {{ 'Content-Type': 'application/json' }},
-      body: JSON.stringify({{ name: name, email: email }})
+      body: JSON.stringify({{ name: name, email: email, phone: phone }})
     }}).then(function(r){{
       return r.json().then(function(j){{ return {{ ok: r.ok, j: j }}; }});
     }}).then(function(o){{
@@ -629,10 +676,23 @@ pub async fn submit_funnel_lead(
     // sentence as the panel's create and the Kinetic card's form.
     crate::features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
 
+    // THE PHONE (migration 117). Optional everywhere: a funnel only shows the field when its owner
+    // asked for one, and a visitor who leaves it blank is still a complete lead. A value that is not
+    // a phone number is DROPPED, not refused — this is a public capture door and the lead is the
+    // product (the same rule `lead_fields::fit` documents for every other stranger-facing path), so
+    // one fat-fingered field must never cost the capture. `None` means "no number we can dial".
+    let phone = public_field(&body, "phone")
+        .as_deref()
+        .and_then(clean_phone_number);
+
     let name = crate::security::lead_fields::fit(&name, crate::security::lead_fields::TEXT_CHARS);
     let email = crate::security::lead_fields::fit_opt(
         Some(email.as_str()),
         crate::security::lead_fields::TEXT_CHARS,
+    );
+    let phone = crate::security::lead_fields::fit_opt(
+        phone.as_deref(),
+        crate::security::lead_fields::PHONE_CHARS,
     );
     let custom_fields = json!({
         "funnel_id": funnel_id.to_string(),
@@ -641,13 +701,14 @@ pub async fn submit_funnel_lead(
 
     let lead_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO leads (id, tenant_id, name, email, source, status, custom_fields)
-           VALUES ($1, $2, $3, $4, 'funnel', 'new', $5)"#,
+        r#"INSERT INTO leads (id, tenant_id, name, email, phone, source, status, custom_fields)
+           VALUES ($1, $2, $3, $4, $5, 'funnel', 'new', $6)"#,
     )
     .bind(lead_id)
     .bind(tenant_id)
     .bind(&name)
     .bind(&email)
+    .bind(&phone)
     .bind(&custom_fields)
     .execute(&state.pool)
     .await?;
@@ -662,7 +723,7 @@ pub async fn submit_funnel_lead(
             lead_id,
             Some(name.as_str()),
             email.as_deref(),
-            None,
+            phone.as_deref(),
             None,
             Some("funnel"),
             &[],
@@ -712,6 +773,37 @@ fn public_field(body: &Value, key: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// A visitor's phone number, kept only if it is one.
+///
+/// The form field is free text on a page a stranger fills in, so this accepts the shapes people
+/// actually type — `+1 (305) 555-0100`, `305.555.0100`, `3055550100` — and normalises the
+/// separators to single spaces while keeping a leading `+`. Anything with FEWER than 7 digits
+/// (a stray letter, a lone "1") or MORE than 15 (beyond E.164) is `None`: the lead is still
+/// captured, it simply carries no number the panel could dial and mis-dial.
+fn clean_phone_number(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let digits = trimmed.chars().filter(|c| c.is_ascii_digit()).count();
+    if !(7..=15).contains(&digits) {
+        return None;
+    }
+    let mut out = String::with_capacity(trimmed.len());
+    for ch in trimmed.chars() {
+        match ch {
+            '+' if out.is_empty() => out.push('+'),
+            c if c.is_ascii_digit() => out.push(c),
+            // Separators collapse to ONE space: "305 . 555" must not become two.
+            ' ' | '-' | '(' | ')' | '.' | '/' if !out.ends_with(' ') => out.push(' '),
+            _ => {}
+        }
+    }
+    let cleaned = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
+    }
 }
 
 /// A Rust string as a JavaScript string LITERAL, safe inside an inline `<script>`: JSON quoting
