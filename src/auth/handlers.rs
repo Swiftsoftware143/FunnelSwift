@@ -951,6 +951,34 @@ pub async fn request_email_change(
         ));
     }
 
+    // NOTHING IS WRITTEN FOR AN ADDRESS THAT CANNOT BE MAILED (measured live 2026-10-26).
+    // This handler used to insert the pending row FIRST and notice the reserved/harness class
+    // afterwards, so a reserved address (a probe, or a typo into `example.invalid`) RETIRED the
+    // customer's genuine pending change (`used = true`) and left a live, 2-hour row nobody could
+    // ever confirm — while the response said "Nothing has been changed". The sentence was right
+    // and the code was wrong. Check the address BEFORE the retire/insert: same answer, no writes,
+    // and the real request the customer already had stays confirmable.
+    if let Some(domain) = crate::security::probe_addr::harness_domain(&new_email) {
+        tracing::info!(
+            email = %new_email,
+            domain = %domain,
+            "email-change: reserved/harness address refused before any write; nothing sent, nothing stored"
+        );
+        crate::email::record_withheld(
+            &state.pool,
+            "sign-in address change",
+            &new_email,
+            &format!("'{domain}' is a fleet-harness / reserved address"),
+        )
+        .await;
+        return Ok(Json(json!({
+            "status": "pending",
+            "delivered": false,
+            "new_email": new_email,
+            "message": "This address is a reserved test address, so no mail was sent. Nothing has been changed."
+        })));
+    }
+
     let token = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + chrono::Duration::hours(2);
 
@@ -973,21 +1001,9 @@ pub async fn request_email_change(
 
     let link = format!("https://app.funnelswift.net/confirm-email-change.html?token={token}");
 
-    let withheld = crate::security::probe_addr::harness_domain(&new_email);
-    if let Some(domain) = withheld {
-        tracing::info!(
-            email = %new_email,
-            domain = %domain,
-            "email-change: confirmation mail SUPPRESSED — reserved/harness address; a send could only bounce"
-        );
-        crate::email::record_withheld(
-            &state.pool,
-            "sign-in address change",
-            &new_email,
-            &format!("'{domain}' is a fleet-harness / reserved address"),
-        )
-        .await;
-    } else {
+    // Every recipient that reaches this point is a real address: the reserved/harness class was
+    // refused ABOVE, before the pending row existed, so this is the only send path left.
+    {
         let mut vars: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
         vars.insert("name", current.1.as_str());
         vars.insert("new_email", new_email.as_str());
@@ -1023,13 +1039,9 @@ pub async fn request_email_change(
 
     Ok(Json(json!({
         "status": "pending",
-        "delivered": withheld.is_none(),
+        "delivered": true,
         "new_email": new_email,
-        "message": if withheld.is_none() {
-            "Check the new address for a confirmation link. Your sign-in email stays the same until you open it."
-        } else {
-            "This address is a reserved test address, so no mail was sent. Nothing has been changed."
-        },
+        "message": "Check the new address for a confirmation link. Your sign-in email stays the same until you open it.",
     })))
 }
 
