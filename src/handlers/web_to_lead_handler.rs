@@ -33,8 +33,18 @@ pub async fn list_web_to_lead_configs(
     // This SELECTed a form_title column that does not exist (and read a timestamptz into a
     // NaiveDateTime) then hid the failure behind `.unwrap_or_default()`, so the list came
     // back empty for every tenant no matter how many forms they had.
-    let rows: Vec<(Uuid, String, Value, bool, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT id, name, COALESCE(field_mapping, '{}'::jsonb) AS field_mapping, is_active, created_at FROM web_to_lead_configs \
+    // `tag_ids` is read here (2026-10-26): it is the form's ATTRIBUTION, and until the list
+    // carried it the console could neither show which tag a live form stamps nor preselect it on
+    // Edit — the operator had to remember an invisible binding.
+    let rows: Vec<(
+        Uuid,
+        String,
+        Value,
+        bool,
+        chrono::DateTime<chrono::Utc>,
+        Option<Vec<Uuid>>,
+    )> = sqlx::query_as(
+        "SELECT id, name, COALESCE(field_mapping, '{}'::jsonb) AS field_mapping, is_active, created_at, tag_ids FROM web_to_lead_configs \
          WHERE tenant_id = $1 ORDER BY created_at DESC",
     )
     .bind(tenant_id)
@@ -42,12 +52,28 @@ pub async fn list_web_to_lead_configs(
     .await?;
     let out: Vec<Value> = rows
         .into_iter()
-        .map(|(id, name, mapping, is_active, created_at)| {
+        .map(|(id, name, mapping, is_active, created_at, tag_ids)| {
             json!({
                 "id": id.to_string(),
                 "name": name,
                 "form_title": mapping.get("form_title").cloned().unwrap_or(json!("")),
                 "fields": mapping.get("fields").cloned().unwrap_or(json!([])),
+                // The panel's own thank-you / redirect inputs (2026-10-26). They were accepted
+                // by the editor and stored nowhere, so a saved form always said the default and
+                // never redirected.
+                "thank_you_message": mapping
+                    .get("thank_you_message")
+                    .cloned()
+                    .unwrap_or(json!("")),
+                "redirect_url": mapping
+                    .get("redirect_url")
+                    .cloned()
+                    .unwrap_or(json!("")),
+                "tag_ids": tag_ids
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<String>>(),
                 "is_active": is_active,
                 "created_at": created_at,
             })
@@ -99,9 +125,16 @@ pub async fn create_web_to_lead_config(
     // `web_to_lead_configs` has no form_title/fields columns and mints its own uuid
     // public_key — the previous INSERT named two phantom columns and bound a String into
     // a uuid, so every create returned 500 and the product never worked once.
+    // The two fields the panel has always offered and this INSERT always threw away (measured
+    // 2026-10-26: created with both, read back neither). Trimmed and bounded, because they land
+    // in a jsonb document and are echoed into the public snippet.
+    let clip =
+        |v: Option<&str>| -> String { v.map(str::trim).unwrap_or("").chars().take(500).collect() };
     let field_mapping = json!({
         "form_title": payload.form_title.as_deref().unwrap_or("Get Started"),
         "fields": fields,
+        "thank_you_message": clip(payload.thank_you_message.as_deref()),
+        "redirect_url": clip(payload.redirect_url.as_deref()),
     });
     let public_key: Option<Uuid> = sqlx::query_scalar(
         "INSERT INTO web_to_lead_configs (id, tenant_id, name, default_source, field_mapping, tag_ids) \
@@ -147,6 +180,13 @@ pub async fn update_web_to_lead_config(
     }
     if let Some(fields) = payload.get("fields") {
         mapping["fields"] = fields.clone();
+    }
+    // Edit path for the same two fields (2026-10-26). `field_mapping || $6::jsonb` merges, so a
+    // key the caller omits keeps its stored value; an explicit "" clears it.
+    for key in ["thank_you_message", "redirect_url"] {
+        if let Some(v) = payload.get(key).and_then(|v| v.as_str()) {
+            mapping[key] = json!(v.trim().chars().take(500).collect::<String>());
+        }
     }
     let affected = sqlx::query(
         "UPDATE web_to_lead_configs SET \
@@ -203,15 +243,41 @@ pub async fn get_web_to_lead_embed(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
-    let public_key: Option<Uuid> = sqlx::query_scalar(
-        "SELECT public_key FROM web_to_lead_configs WHERE id = $1 AND tenant_id = $2",
+    let row: Option<(Option<Uuid>, Value)> = sqlx::query_as(
+        "SELECT public_key, COALESCE(field_mapping, '{}'::jsonb) FROM web_to_lead_configs \
+         WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
     .fetch_optional(&state.pool)
-    .await?
-    .flatten();
+    .await?;
+    let (public_key, mapping) = row.unwrap_or((None, json!({})));
     let public_key = public_key.ok_or_else(|| AppError::NotFound("Config not found".into()))?;
+    // The snippet is the ONLY place a captured visitor is answered, so the form's own thank-you
+    // text and redirect belong in it (2026-10-26). Both were stored nowhere before, and the
+    // snippet hardcoded one sentence and never redirected.
+    let thanks = mapping
+        .get("thank_you_message")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    let redirect = mapping
+        .get("redirect_url")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    let thanks_js = if thanks.is_empty() {
+        "\"Thanks - we got your details.\"".to_string()
+    } else {
+        serde_json::to_string(thanks).unwrap_or_else(|_| "\"Thanks - we got your details.\"".into())
+    };
+    // A real redirect only for an absolute http(s) URL: the text is operator-supplied.
+    let redirect_js = if redirect.starts_with("http://") || redirect.starts_with("https://") {
+        let q = serde_json::to_string(redirect).unwrap_or_default();
+        "setTimeout(function(){location.href=".to_string() + &q + ";},1200);"
+    } else {
+        String::new()
+    };
     // The public endpoint resolves the tenant from public_key, so a snippet without the key
     // (and pointing at a /embed.js that does not exist) could never capture a lead.
     let embed_code = format!(
@@ -224,12 +290,15 @@ function fswWtl(e,f,k){
   fetch('https://funnelswift.net/api/v1/web-to-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({public_key:k,name:f.name.value,email:f.email.value})})
   .then(function(r){return r.json().catch(function(){return{};}).then(function(j){
     if(!r.ok){throw new Error(j.error||('Error '+r.status));}
-    f.reset();m.style.color='#15803d';m.textContent='Thanks - we got your details.';
+    f.reset();m.style.color='#15803d';m.textContent=__THANKS__;__REDIRECT__
   });})
   .catch(function(err){m.style.color='#b91c1c';m.textContent='Sorry, that did not send: '+err.message;});
   return false;
 }
 </script>"#;
+    let embed_code = embed_code
+        .replace("__THANKS__", &thanks_js)
+        .replace("__REDIRECT__", &redirect_js);
     Ok(Json(json!({
         "embed_code": embed_code,
         "public_key": public_key.to_string(),
