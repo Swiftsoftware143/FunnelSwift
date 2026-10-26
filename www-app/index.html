@@ -4023,6 +4023,11 @@ function fnEdit(f){
     +'<input id="fn-cta" maxlength="60" value="'+(f.cta_label?X(f.cta_label):"")+'" placeholder="Get started" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;margin:4px 0 10px">'
     +'<label style="font-size:12px;color:#475569">Thank-you message (shown after someone signs up)</label>'
     +'<input id="fn-thx" maxlength="300" value="'+(f.thank_you?X(f.thank_you):"")+'" placeholder="Thanks — you\'re on the list." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;margin:4px 0 12px">'
+    /* The phone switch (migration 117). Off by default, so a page whose owner never asks for a
+       number keeps exactly the two fields it has always had; a tick here adds the field to the
+       PUBLIC page and the number lands in the lead's own Phone column. */
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#334155;margin:0 0 12px;cursor:pointer">'
+      +'<input type="checkbox" id="fn-askphone" '+(f.ask_phone?'checked':'')+'> Ask visitors for a phone number</label>'
     +'<button class="btn btn-p" id="fn-save">Save page</button> '
     +'<button class="btn" id="fn-close">Close</button>'
     +'<div id="fn-edit-msg" style="font-size:13px;margin-top:8px"></div></div>';
@@ -4030,7 +4035,8 @@ function fnEdit(f){
   $("fn-save").onclick=function(){
     var b=$("fn-save"); b.disabled=true; b.textContent="Saving...";
     var body={headline:$("fn-hl").value.trim(),subheadline:$("fn-sub").value.trim(),
-              cta_label:$("fn-cta").value.trim(),thank_you:$("fn-thx").value.trim()};
+              cta_label:$("fn-cta").value.trim(),thank_you:$("fn-thx").value.trim(),
+              ask_phone:$("fn-askphone").checked};
     api("/api/v1/funnels/"+f.id,{method:"PUT",body:JSON.stringify(body)})
       .then(function(){fnSay("Page saved — open its link to see it.",false);LAFN();})
       .catch(function(e){b.disabled=false;b.textContent="Save page";
@@ -5357,7 +5363,7 @@ window.appGuidePages = {
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
   profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you.", actions: ["Update your name and company", "Upload a profile picture", "Change your password"] },
   leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms. Tick a lead (or the box on the header row to take every lead currently shown) and press Delete selected to remove them for good \u2014 there is no undo, and the filter only ever ticks the rows you can see.", actions: ["Filter and search", "Tick leads and delete them in one go", "Apply tags", "Export"] },
-  funnels:     { title: "Funnels", desc: "The public pages you send people to. Create one here and its link appears beside it \u2014 that link is the page's address, so renaming the funnel keeps the same link and anything you have already shared still works. Deleting it stops the link working immediately.", actions: ["Create a funnel", "Copy its public link", "Rename it without changing the link", "Delete one you no longer send people to"] },
+  funnels:     { title: "Funnels", desc: "The public pages you send people to. Create one here and its link appears beside it \u2014 that link is the page's address, so renaming the funnel keeps the same link and anything you have already shared still works. Deleting it stops the link working immediately. A page asks for a name and an email; tick \"Ask visitors for a phone number\" in its editor and the page adds a phone field, whose answer lands in that lead's Phone column (leave it unticked and the page stays exactly as it is).", actions: ["Create a funnel", "Copy its public link", "Rename it without changing the link", "Ask for a phone number on the page", "Delete one you no longer send people to"] },
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },
   afleads:     { title: "Affiliate Leads", desc: "Every lead that came in through the affiliate programme, and which affiliate gets credited for it. Leads with nobody behind them show as system \u2014 nobody is paid for those. The last column tells you whether that lead later joined the programme themselves.", actions: ["See which affiliate a lead belongs to", "Spot leads that are not credited", "See which leads became affiliates"] },
   affiliates:  { title: "Affiliates", desc: "Your referral programme — your shareable referral link and every signup it has produced. A platform admin also manages the roster of affiliates here. One affiliate account per customer: there is no downline to manage.", actions: ["Copy your referral link", "See the signups your link produced", "Share the link everywhere"] },
