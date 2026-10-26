@@ -689,7 +689,20 @@ pub async fn get_card_tracking_url(
         url.push_str(&params.join("&"));
     }
 
-    Ok(Json(serde_json::json!({"tracking_url": url, "slug": slug})))
+    // The labels are returned WITH the link (2026-10-26). This is the only read that carries the
+    // card's stored UTM fields — the card list does not include them — and without them the console
+    // editor opened blank and its first Save overwrote four stored labels with nulls (measured: a
+    // blank form wiped utm_source/medium/campaign/content in one press). The SELECT above already
+    // fetches them; they were simply not in the answer.
+    Ok(Json(serde_json::json!({
+        "tracking_url": url,
+        "slug": slug,
+        "utm_source": utm_source,
+        "utm_medium": utm_medium,
+        "utm_campaign": utm_campaign,
+        "utm_content": utm_content,
+        "utm_term": utm_term
+    })))
 }
 
 // ── Helpers ──

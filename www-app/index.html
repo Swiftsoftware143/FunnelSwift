@@ -310,7 +310,8 @@ initAccordions();
 /* ═══ INLINE HELP SYSTEM — slide-out panel with per-section tips ═══ */
 var helpContent={
   "campaigns":'<h4>Campaigns</h4><p>The campaigns this workspace runs, newest first. Each row carries a name, a type (for example <code>email</code>), a status and an optional description.</p><ul><li><strong>+ New campaign</strong> &mdash; name it, pick a type and a status, then <strong>Create campaign</strong>.</li><li><strong>Edit</strong> changes any of those fields; <strong>Delete</strong> removes the campaign for good and asks first.</li><li>Status is yours to set: <code>draft</code>, <code>active</code>, <code>paused</code> or <code>completed</code>. This screen records what your team is running &mdash; it does not send anything.</li></ul>',
-  "analytics":'<h4>Analytics</h4><p>Views, clicks and shares for every card in this workspace, plus the visitors counted once per session. The table ranks your cards by views, so you can see which one earns the traffic. A card with no traffic yet does not appear until it is viewed. <strong>Analytics is part of the paid plans</strong> — on the free plan this screen shows the plans instead.',
+  "analytics":'<h4>Analytics</h4><p>Views, clicks and shares for every card in this workspace, plus the visitors counted once per session. The table ranks your cards by views, so you can see which one earns the traffic. A card with no traffic yet does not appear until it is viewed. <strong>Analytics is part of the paid plans</strong> — on the free plan this screen shows the plans instead.'
+  +'<p><strong>One card at a time.</strong> Every card has an <strong>Analytics</strong> button. It opens that card\'s own numbers: views, clicks, shares, unique visitors, views today and this week, a day-by-day table, where the views came from, and what visitors did. The same panel holds the <strong>campaign labels</strong> (source, medium, campaign, content, term) that are saved on the card, and the <strong>tracking link</strong> to share \u2014 the labels ride in that link\'s query string, so each visit it brings is filed under them and shows up in the labelled-visits list. Saving re-reads the link from the server, so the link shown is the one stored.</p>',
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
   "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — admin-managed system tags are shared with every account</li><li><strong>Status</strong> tracks progress (the leads list badge and the Edit modal both edit it): new → contacted → qualified → converted → lost. The tenant pipeline on the <strong>Lead Stages</strong> screen is a separate field (Stage).</li></ul>',
   "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Each card type has its own URL route:</p><ul><li><code>/k/slug</code> — Kinetic Card (original)</li><li><code>/b/slug</code> — Bio Link</li><li><code>/c/slug</code> — Digital Business Card</li><li><code>/m/slug</code> — Micro Page</li><li><code>/f/slug</code> — Mini Funnel</li><li><code>/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
@@ -1741,6 +1742,103 @@ function LCR(){
 }
 
 /* === My Cards === */
+/* ── Per-card analytics, campaign labels and the tracking link (2026-10-26) ──────────────────
+   Three routes had NO caller in any console: GET /api/v1/card-analytics/:card_id,
+   PUT /api/v1/card-analytics/:card_id/utm and GET /api/v1/card-analytics/:card_id/tracking-url.
+   The Analytics tab reads the TENANT-WIDE /api/v1/analytics/overview, so a customer could see a
+   workspace total and never one card's numbers, could not label a campaign, and had no way to get
+   the link that carries the label. This panel is the caller for all three.
+   Every figure is the API's own; saving re-reads the tracking URL from the server, so what the
+   screen shows is what the database holds. A refusal (the analytics feature is a paid-plan
+   entitlement) is shown in the server's own words rather than hidden behind an empty panel. */
+function CARDAN(c){
+  var id=encodeURIComponent(c.id);
+  var mb=$("mb"); mb.innerHTML=""; $("mf").innerHTML="";
+  $("mm").className="msg"; $("mm").textContent="";
+  $("mt").textContent="Analytics \u2014 "+(c.title||c.slug||"card");
+  $("mod").classList.add("sh");
+  mb.innerHTML='<p style="color:#64748b;font-size:13px">Loading this card\u2019s numbers\u2026</p>';
+
+  function say(t,bad){ $("mm").className=bad?"msg me":"msg ms"; $("mm").textContent=t; }
+
+  function paint(a,tr){
+    function stat(l,v){return '<div style="text-align:center;min-width:74px"><div style="font-size:20px;font-weight:700;color:#0f172a">'+X(String(v))+'</div><div style="font-size:11px;color:#64748b">'+X(l)+'</div></div>';}
+    var h='<div style="display:flex;gap:14px;justify-content:space-between;flex-wrap:wrap;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;margin-bottom:14px">'
+      +stat("Views",a.total_views||0)+stat("Clicks",a.total_clicks||0)+stat("Shares",a.total_shares||0)
+      +stat("Unique visitors",a.unique_visitors||0)+stat("Today",a.today_views||0)+stat("This week",a.this_week_views||0)+'</div>';
+
+    var d=a.daily_stats||[];
+    h+='<h4 style="font-size:13px;margin:0 0 6px">Recent days</h4>';
+    if(!d.length){h+='<p style="font-size:12px;color:#94a3b8;margin:0 0 12px">Nothing recorded yet \u2014 this fills in as the card is viewed.</p>';}
+    else{
+      h+='<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:12px"><tr style="color:#64748b;text-align:left"><th style="padding:3px 6px;font-weight:600">Day</th><th style="font-weight:600">Views</th><th style="font-weight:600">Clicks</th></tr>';
+      d.slice(0,14).forEach(function(r){h+='<tr style="border-top:1px solid #f1f5f9"><td style="padding:3px 6px">'+X(String(r.date||""))+'</td><td>'+X(String(r.views||0))+'</td><td>'+X(String(r.clicks||0))+'</td></tr>';});
+      h+='</table>';
+    }
+
+    var L=a.top_locations||[];
+    h+='<h4 style="font-size:13px;margin:8px 0 6px">Where the views come from</h4>';
+    if(!L.length){h+='<p style="font-size:12px;color:#94a3b8;margin:0 0 12px">No geography recorded yet.</p>';}
+    else{h+='<div style="font-size:12px;color:#334155;margin-bottom:12px">'+L.slice(0,8).map(function(r){return X([r.city,r.region,r.country].filter(Boolean).join(", ")||"\u2014")+' \u2014 '+X(String(r.count||0));}).join("<br>")+'</div>';}
+
+    var E=a.events_by_type||[];
+    if(E.length){h+='<h4 style="font-size:13px;margin:8px 0 6px">What visitors did</h4><div style="font-size:12px;color:#334155;margin-bottom:12px">'+E.map(function(r){return X(String(r.event_type||"\u2014"))+' \u2014 '+X(String(r.count||0));}).join("<br>")+'</div>';}
+
+    var US=a.utm_sources||[];
+    h+='<h4 style="font-size:13px;margin:8px 0 6px">Campaign labels that brought visits</h4>';
+    if(!US.length){h+='<p style="font-size:12px;color:#94a3b8;margin:0 0 12px">No labelled visits yet. Fill the labels in below and share the tracking link.</p>';}
+    else{h+='<div style="font-size:12px;color:#334155;margin-bottom:12px">'+US.map(function(r){return X([r.utm_source,r.utm_medium,r.utm_campaign].filter(Boolean).join(" / ")||"\u2014")+' \u2014 '+X(String(r.count||0));}).join("<br>")+'</div>';}
+
+    h+='<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0">'
+      +'<h4 style="font-size:13px;margin:0 0 4px">Campaign labels</h4>'
+      +'<p style="font-size:12px;color:#64748b;margin:0 0 6px">Saved on this card. Every visit through the tracking link below is filed under these labels, which is what fills the list above.</p>';
+    [["utm_source","Source","e.g. newsletter"],["utm_medium","Medium","e.g. email"],["utm_campaign","Campaign","e.g. spring-launch"],["utm_content","Content","optional"],["utm_term","Term","optional"]].forEach(function(x){
+      h+='<label style="display:block;font-size:11px;color:#64748b;margin:6px 0 2px">'+X(x[1])+'</label>'
+        +'<input id="utm-'+x[0]+'" type="text" placeholder="'+X(x[2])+'" value="'+X((tr&&tr[x[0]])||"")+'" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">';
+    });
+    h+='<button class="btn" id="utm-save" style="margin-top:10px">Save campaign labels</button>'
+      +'<div style="margin-top:14px"><label style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Tracking link for this card</label>'
+      +'<div style="display:flex;gap:6px"><input id="utm-url" type="text" readonly value="'+X((tr&&(tr.tracking_url||tr.url))||"")+'" style="flex:1;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:#f8fafc">'
+      +'<button class="btn btn-o" id="utm-copy">Copy</button></div>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">Share this link. The labels ride in its query string, so each visit is counted under them.</p></div>';
+    mb.innerHTML=h;
+
+    $("utm-save").onclick=function(){
+      var body={};
+      ["utm_source","utm_medium","utm_campaign","utm_content","utm_term"].forEach(function(k){
+        var el=$("utm-"+k); var v=el?String(el.value||"").trim():""; body[k]=v?v:null;
+      });
+      $("utm-save").disabled=true; say("Saving\u2026",false);
+      api("/api/v1/card-analytics/"+id+"/utm",{method:"PUT",body:JSON.stringify(body)})
+        .then(function(){
+          return api("/api/v1/card-analytics/"+id+"/tracking-url").then(function(t2){
+            var el=$("utm-url"); if(el){var nu=(t2&&(t2.tracking_url||t2.url))||""; if(nu) el.value=nu;}
+            say("Campaign labels saved \u2014 the tracking link above now carries them.",false);
+          });
+        })
+        .catch(function(e){say((e&&e.message)||"The server did not accept those labels.",true);})
+        .then(function(){ $("utm-save").disabled=false; });
+    };
+    $("utm-copy").onclick=function(){
+      var el=$("utm-url"); if(!el||!el.value) return;
+      el.select();
+      var done=function(){say("Tracking link copied.",false);};
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(el.value).then(done,function(){try{document.execCommand("copy");done();}catch(e){}});}
+      else{try{document.execCommand("copy");done();}catch(e){say("Select the link above and copy it.",true);}}
+    };
+  }
+
+  Promise.all([
+    api("/api/v1/card-analytics/"+id),
+    api("/api/v1/card-analytics/"+id+"/tracking-url").catch(function(){return null;})
+  ]).then(function(r){ paint(r[0]||{},r[1]||null); })
+    .catch(function(e){
+      var m=(e&&e.message)||"Could not load this card\u2019s analytics";
+      mb.innerHTML='<p style="font-size:13px;color:#991b1b">'+X(m)+'</p>'
+        +'<p style="font-size:12px;color:#64748b">Analytics is part of the paid plans. The screen shows the server\u2019s own answer, so nothing here is guessed.</p>';
+    });
+}
+
 function LCM(){
   var b=$("lc-body"); b.innerHTML="";
   var cards=KCB.cards;
@@ -1772,6 +1870,7 @@ function LCM(){
       act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){window.open(kurl+(c.slug||"")+"?preview=1","_blank")}},"Preview"));
       act.appendChild(El("a",{"class":"btn btn-sm btn-o",style:"text-decoration:none",href:kurl+(c.slug||""),target:"_blank"},"View"));
       act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){QRC(c)}},"QR"));
+      act.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){CARDAN(c)}},"Analytics"));
       act.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DC(c.id)}},"Del"));
       it.appendChild(act);
       grd.appendChild(it);
