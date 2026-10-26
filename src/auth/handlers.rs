@@ -37,8 +37,9 @@ fn dummy_password_hash() -> &'static str {
 pub async fn register(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(req): Json<RegisterRequest>,
+    body: Result<Json<RegisterRequest>, axum::extract::rejection::JsonRejection>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
     // Check if email already exists
     // Normalise and validate the address BEFORE the first SELECT (kanban t_38017305): the value
     // that is checked for a duplicate is the exact value that gets stored, put into the JWT claims
@@ -270,8 +271,9 @@ pub async fn register(
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(req): Json<LoginRequest>,
+    body: Result<Json<LoginRequest>, axum::extract::rejection::JsonRejection>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
     // Brute-force throttle (cron 2026-10-25): before this, 32 consecutive wrong passwords were
     // answered 401 with no limit of any kind — unlimited guessing against a customer sign-in, and
     // every guess costs a full Argon2 verify. The counter is keyed on the CLIENT ADDRESS the
@@ -718,8 +720,9 @@ pub async fn change_password(
 
 pub async fn forgot_password(
     State(state): State<AppState>,
-    Json(req): Json<ForgotPasswordRequest>,
+    body: Result<Json<ForgotPasswordRequest>, axum::extract::rejection::JsonRejection>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
     if let Some(user) = sqlx::query_as::<_, User>(
         "SELECT * FROM users WHERE lower(email) = $1 AND is_active = true",
     )
@@ -804,8 +807,9 @@ pub async fn forgot_password(
 
 pub async fn reset_password(
     State(state): State<AppState>,
-    Json(req): Json<ResetPasswordRequest>,
+    body: Result<Json<ResetPasswordRequest>, axum::extract::rejection::JsonRejection>,
 ) -> AppResult<Json<serde_json::Value>> {
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
     if req.new_password.len() < 8 {
         return Err(AppError::BadRequest(
             "New password must be at least 8 characters".into(),

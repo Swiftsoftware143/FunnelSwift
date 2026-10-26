@@ -169,3 +169,31 @@ impl IntoResponse for AppError {
         (status, body).into_response()
     }
 }
+
+/// The app's own answer for a request body axum could not read as JSON.
+///
+/// Measured LIVE 2026-10-26 (cron `default`): the PUBLIC doors answered with axum's own
+/// Rust sentence in a shape no client of this app reads —
+/// `POST /api/v1/auth/signup` with a non-JSON body → `400 "Failed to parse the request body
+/// as JSON: expected value at line 1 column 1"`, and `POST /api/v1/auth/register` with no
+/// password → `422 "Failed to deserialize the JSON body into the target type: missing field
+/// `password` at line 1 column 71"`. Every other refusal from these handlers is
+/// `{"error": …, "status": …}`, and the marketing signup page parses that shape: handed the
+/// raw sentence it shows the customer a message about "the target type" and a byte offset.
+///
+/// Handlers take the extractor's own `Result` and pass the rejection through here, so the
+/// refusal names the offending FIELD (which is useful) in the app's shape, and drops the
+/// Rust prefix and the line/column tail (which are not).
+pub(crate) fn json_rejection(rej: axum::extract::rejection::JsonRejection) -> AppError {
+    let raw = rej.body_text();
+    let msg = raw
+        .trim_start_matches("Failed to deserialize the JSON body into the target type: ")
+        .trim_start_matches("Failed to parse the request body as JSON: ");
+    let msg = msg.split(" at line ").next().unwrap_or(msg).trim();
+    if msg.starts_with("Expected request with") {
+        return AppError::BadRequest(
+            "Send this request as JSON (Content-Type: application/json).".to_string(),
+        );
+    }
+    AppError::BadRequest(format!("The request body was not accepted: {msg}"))
+}

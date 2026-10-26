@@ -71,8 +71,9 @@ fn generate_initial_password() -> String {
 pub async fn public_signup(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(payload): Json<Value>,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    let Json(payload) = body.map_err(crate::error::json_rejection)?;
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
     let password = payload["password"].as_str().unwrap_or("").to_string();
     let name = payload["name"].as_str().unwrap_or("").trim().to_string();
