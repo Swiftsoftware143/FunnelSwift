@@ -1208,6 +1208,15 @@ pub fn create_router(
             state.clone(),
             crate::auth::global_auth::require_auth,
         ))
+        // Malformed path ids answer the app's JSON 404, not axum's parser sentence (measured
+        // 2026-10-26: nine authenticated id reads still said `Invalid URL: UUID parsing failed…`).
+        // Placed here — outside `require_auth` and outside every handler — because the `Path<Uuid>`
+        // refusal is raised by the handler's own extractor; writing this per handler would mean
+        // editing ~70 signatures and any new handler would reintroduce the leak. See
+        // `src/path_rejection.rs`.
+        .layer(axum::middleware::from_fn(
+            crate::path_rejection::path_rejection_is_not_found,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

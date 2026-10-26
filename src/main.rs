@@ -36,6 +36,7 @@ mod handlers;
 mod image_store;
 mod login_throttle;
 mod models;
+mod path_rejection;
 mod plan_movement;
 mod plan_resolver;
 mod probe_harness;
