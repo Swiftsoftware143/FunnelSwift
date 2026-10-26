@@ -192,6 +192,13 @@ tr:hover{background:#f8fafc}
        handler and had NO screen in either console, so a workspace could not manage its own
        campaigns. A backend route with no UI is a defect. -->
   <a data-tab="campaigns" onclick="S('campaigns')">Campaigns</a>
+  <!-- cron 2026-10-26: GET/POST /api/v1/web-to-lead/configs, PUT/DELETE /:id and GET /:id/embed
+       have been live and tenant-scoped since the handler was written, and NO console had a screen
+       for any of them (grep -c web-to-lead on this file = 0) while the dashboard already shows the
+       plan's "Forms 0 / 1" allowance. A backend route with no UI is a defect — and this one carries
+       the affiliate programme: the public_key in the snippet is what stamps the form's tag on every
+       lead it captures, which is what credits the affiliate whose page the form sits on. -->
+  <a data-tab="wtl" onclick="S('wtl')">Lead Forms</a>
   <a data-tab="upgrade" onclick="S('upgrade')" style="color:#fbbf24;font-weight:600">⭐ Upgrade</a>
   <a data-tab="cards" onclick="S('cards')">Kinetic Cards</a>
   <!-- the workspace's OWN card performance: GET /api/v1/analytics/overview
@@ -387,7 +394,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",analytics:"Analytics",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads"};
+var TI={dashboard:"Dashboard",analytics:"Analytics",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -676,7 +683,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN};
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,wtl:LWTL,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN};
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -5137,6 +5144,130 @@ function SG(id,returnTab,isSystem){
     scripts.forEach(function(s){ s.remove(); });
   };
 })();
+
+/* === LEAD FORMS (web-to-lead) — cron 2026-10-26 ================================================
+   The whole route family was live and tenant-scoped with NO screen in either console:
+     GET/POST /api/v1/web-to-lead/configs, PUT/DELETE /api/v1/web-to-lead/configs/:id,
+     GET /api/v1/web-to-lead/configs/:id/embed, and the PUBLIC POST /api/v1/web-to-lead.
+   The dashboard already advertises the plan's "Forms 0 / 1" allowance, so the product was
+   charging for a feature a customer could not reach. A backend route with no UI is a defect —
+   and this one carries the affiliate programme: the public_key inside the snippet is what stamps
+   the form's tag on every lead it captures, and that tag is what credits the affiliate.
+   `fields` / `form_title` live in the config's field_mapping jsonb; `tag_ids` is a uuid array. */
+var WTL=[], WTLTAGS=null;
+function LWTL(){
+  api("/api/v1/web-to-lead/configs").then(function(d){
+    var a=Array.isArray(d)?d:((d&&d.data)?d.data:[]);
+    WTL=a;
+    $("ct").innerHTML='<div class="cc"><h3>Lead Forms ('+a.length+') <span id="wtl-add"></span></h3>'
+      +'<p style="color:#64748b;font-size:13px;margin-bottom:10px">A lead form is a small form you paste onto <strong>your own website</strong>. Every visitor who fills it in arrives in <strong>Leads</strong>, stamped with the tag you choose here &mdash; that tag is also what credits the affiliate whose form it is. Press <strong>Get code</strong> for the snippet to paste.</p>'
+      +'<div id="wtl-list"></div></div>';
+    $("wtl-add").appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MWTL(null)}},"+ New form"));
+    api("/api/v1/tags").then(function(t){WTLTAGS=Array.isArray(t)?t:((t&&t.data)?t.data:[]);})
+      .catch(function(){WTLTAGS=[];});
+    var list=$("wtl-list");
+    if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px;text-align:center">No lead forms yet &mdash; press <strong>+ New form</strong> to build your first one.</p>';return;}
+    var tbl=El("table");
+    tbl.innerHTML='<tr><th>Name</th><th>Form title</th><th>Fields</th><th>Status</th><th>Created</th><th></th></tr>';
+    a.forEach(function(f){
+      var fs=(Array.isArray(f.fields)&&f.fields.length)?f.fields.join(", "):"name, email";
+      var tr=El("tr");
+      tr.innerHTML='<td><strong>'+X(f.name||"-")+'</strong></td><td>'+X(f.form_title||"-")+'</td><td>'+X(fs)+'</td>'
+        +'<td><span class="badge '+(f.is_active===false?"br":"bg")+'">'+(f.is_active===false?"Off":"Live")+'</span></td>'
+        +'<td>'+(f.created_at?String(f.created_at).slice(0,10):"-")+'</td><td style="white-space:nowrap"></td>';
+      var td=tr.querySelectorAll("td")[5];
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){WWTL(f.id)}},"Get code"));
+      td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm btn-r",onclick:function(){DWTL(f.id,f.name)}},"Del"));
+      tbl.appendChild(tr);
+    });
+    list.appendChild(tbl);
+  }).catch(function(e){
+    if(e&&e.message==="upgrade_required")return;
+    showMsg((e&&e.message)||"Failed to load lead forms","me");
+  });
+}
+function MWTL(id){
+  var f=null;
+  if(id){
+    f=(WTL||[]).filter(function(x){return String(x.id)===String(id);})[0]||null;
+    /* a row that is not in the list opens NO editor: a blank form over a live PUT is how a no-touch
+       Save silently blanks a record (same rule the webhook screen enforces). */
+    if(!f){showMsg("That form is not in the list any more.","me");return;}
+  }
+  var cur=(f&&Array.isArray(f.fields)&&f.fields.length)?f.fields:["name","email"];
+  O(id?"Edit lead form":"New lead form",function(){
+    var mb=$("mb");
+    mb.appendChild(ff("Name",El("input",{id:"wtl-name",value:(f&&f.name)||"",placeholder:"Newsletter signup",maxlength:"120"})));
+    mb.appendChild(ff("Form title",El("input",{id:"wtl-title",value:(f&&f.form_title)||"Get Started",placeholder:"Get Started"})));
+    var wrap=El("div",{style:"margin:10px 0"});
+    wrap.appendChild(El("div",{style:"font-size:12px;font-weight:600;color:#475569;margin-bottom:4px"},"Fields"));
+    [["name","Name"],["email","Email"],["phone","Phone"],["company","Company"],["message","Message"]].forEach(function(p){
+      var cb=El("input",{type:"checkbox",value:p[0],id:"wtl-f-"+p[0],checked:cur.indexOf(p[0])>=0?"checked":null});
+      /* email is always collected: the lead has to be reachable, and the public handler reads it. */
+      if(p[0]==="email"){cb.checked=true;cb.setAttribute("disabled","disabled");}
+      var lbl=El("label",{style:"display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:13px;color:#334155"},[cb,document.createTextNode(p[1])]);
+      wrap.appendChild(lbl);
+    });
+    mb.appendChild(wrap);
+    var sel=El("select",{id:"wtl-tag"});
+    sel.appendChild(El("option",{value:""},"No tag"));
+    (WTLTAGS||[]).forEach(function(t){sel.appendChild(El("option",{value:t.id},X(t.name)));});
+    mb.appendChild(ff("Tag every lead from this form",sel));
+    mb.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin:2px 0 10px"},"The tag is what credits the affiliate who hands the form out, so pick one when this form belongs to an affiliate."));
+    mb.appendChild(ff("Thank-you message",El("input",{id:"wtl-thanks",value:"",placeholder:"Thanks - we got your details."})));
+    mb.appendChild(ff("Redirect after submit (optional)",El("input",{id:"wtl-redir",value:"",placeholder:"https://your-site.com/thanks"})));
+    $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
+    $("mf").appendChild(El("button",{"class":"btn",onclick:function(){SWTL(id)}},(id?"Save":"Create")));
+  });
+}
+function SWTL(id){
+  var nameEl=$("wtl-name"), name=nameEl?String(nameEl.value||"").trim():"";
+  if(!name){showMsg("Give the form a name.","me");return;}
+  var fields=[];
+  ["name","email","phone","company","message"].forEach(function(k){
+    var cb=$("wtl-f-"+k);
+    if(k==="email"||(cb&&cb.checked))fields.push(k);
+  });
+  var d={name:name,form_title:(($("wtl-title")||{}).value||"").trim()||"Get Started",fields:fields};
+  var th=($("wtl-thanks")||{}).value||"";
+  if(th.trim())d.thank_you_message=th.trim();
+  var rd=($("wtl-redir")||{}).value||"";
+  if(rd.trim())d.redirect_url=rd.trim();
+  var tag=($("wtl-tag")||{}).value||"";
+  if(tag)d.tag_ids=[tag];
+  var m=id?"PUT":"POST", u=id?("/api/v1/web-to-lead/configs/"+id):"/api/v1/web-to-lead/configs";
+  showMsg("Saving...","mi");
+  api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("wtl");})
+    .catch(function(e){showMsg((e&&e.message)||"Could not save the form","me");});
+}
+function WWTL(id){
+  api("/api/v1/web-to-lead/configs/"+id+"/embed").then(function(d){
+    var code=(d&&d.embed_code)||"";
+    O("Embed code",function(){
+      var mb=$("mb");
+      mb.appendChild(El("p",{style:"color:#64748b;font-size:13px;margin:0 0 8px"},"Paste this where the form should appear on your own page. It posts straight to FunnelSwift, so nothing else needs connecting."));
+      var ta=El("textarea",{id:"wtl-code",readonly:"readonly",style:"width:100%;height:190px;font:12px/1.4 ui-monospace,Menlo,monospace;padding:8px;border:1px solid #cbd5e1;border-radius:6px"});
+      ta.value=code;
+      mb.appendChild(ta);
+      $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Close"));
+      $("mf").appendChild(El("button",{"class":"btn",onclick:function(){
+        var t=$("wtl-code");
+        if(!t) return;
+        try{
+          if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t.value);}
+          else{t.select();document.execCommand("copy");}
+        }catch(ex){t.select();document.execCommand("copy");}
+        showMsg("Copied","mk");
+      }},"Copy"));
+    });
+  }).catch(function(e){showMsg((e&&e.message)||"Could not load the code","me");});
+}
+function DWTL(id,name){
+  if(!confirm('Delete the form "'+(name||"")+'" ? The embed on your page stops working immediately.')) return;
+  api("/api/v1/web-to-lead/configs/"+id,{method:"DELETE"}).then(function(){S("wtl");})
+    .catch(function(e){showMsg((e&&e.message)||"Delete failed","me");});
+}
 </script>
 
 <script>
@@ -5150,6 +5281,7 @@ window.appGuidePages = {
   tags:        { title: "My Tags", desc: "Tags label your leads so you can filter and export them. Create your own here and apply them from the Leads screen. System Tags are created by an admin once and shared with every workspace, so they appear in this list but you cannot rename them.", actions: ["Create a tag", "Apply it from the Leads screen", "Filter Leads by tag"] },
   tg:          { title: "My Tag Groups", desc: "A tag group bundles related tags so a long tag list stays readable. Create a group, then pick which of your tags belong to it; grouping changes how tags are listed, not what a tag does to a lead.", actions: ["Create a group", "Add your tags to it"] },
   apr:         { title: "Products to Promote", desc: "The products you can promote as an affiliate, each with its price and the commission you earn per sale. A product points at the FREE plan the referred customer starts on, so they arrive free and upgrade themselves; the catalogue is maintained by the platform, so a product you cannot see has not been opened to affiliates yet.", actions: ["Join from My Affiliate first", "Pick a product to promote", "Copy your referral link"] },
+  wtl:         { title: "Lead Forms", desc: "A lead form is a small form you paste onto your own website. Every visitor who fills it in arrives in Leads, stamped with the tag you chose when you made the form \u2014 and that tag is what credits the affiliate whose form it is. Get code gives you the exact snippet to paste; deleting a form stops every copy of that snippet capturing immediately.", actions: ["Press + New form and give it a name", "Pick the tag it stamps on every lead", "Press Get code and paste the snippet on your page"] },
   webhooks:    { title: "Webhooks", desc: "Your own endpoints, so another system can be told what happens here. Each webhook keeps a name, a URL and the events it wants \u2014 the event list is published by the app, so it is the same vocabulary the sender matches on. A row shows its status, and Test sends one delivery now while Log shows what was sent.", actions: ["Add a webhook", "Choose its events", "Press Test, then read the Log"] },
   "lead-stages": { title: "Lead Stages", desc: "The stages a lead moves through in your pipeline, for example New, Contacted and Won. Rename a stage, reorder with the arrows and add one, then Save Order. The Leads screen groups and filters by these stages, so the order you save here is the order they appear there.", actions: ["Rename a stage", "Reorder with the arrows", "Press Save Order"] },
   allcards:    { title: "All Cards", desc: "Every Kinetic card on this install, across all workspaces, in one list. Open a card to edit it, copy its public link or QR code, or remove it; removing a card here takes it away for the workspace that owns it.", actions: ["Search the list across workspaces", "Open a card to edit it", "Copy its public link or QR code"] },
