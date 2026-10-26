@@ -185,15 +185,24 @@ impl IntoResponse for AppError {
 /// refusal names the offending FIELD (which is useful) in the app's shape, and drops the
 /// Rust prefix and the line/column tail (which are not).
 pub(crate) fn json_rejection(rej: axum::extract::rejection::JsonRejection) -> AppError {
+    use axum::extract::rejection::JsonRejection;
+    // Syntax/no-content-type are the caller's framing errors: say that in one plain sentence.
+    // A DATA error is worth naming the field for, because the caller can fix it from the message.
+    match &rej {
+        JsonRejection::MissingJsonContentType(_) => {
+            return AppError::BadRequest(
+                "Send this request as JSON (Content-Type: application/json).".to_string(),
+            )
+        }
+        JsonRejection::JsonSyntaxError(_) => {
+            return AppError::BadRequest("The request body is not valid JSON.".to_string())
+        }
+        _ => {}
+    }
     let raw = rej.body_text();
     let msg = raw
         .trim_start_matches("Failed to deserialize the JSON body into the target type: ")
         .trim_start_matches("Failed to parse the request body as JSON: ");
     let msg = msg.split(" at line ").next().unwrap_or(msg).trim();
-    if msg.starts_with("Expected request with") {
-        return AppError::BadRequest(
-            "Send this request as JSON (Content-Type: application/json).".to_string(),
-        );
-    }
     AppError::BadRequest(format!("The request body was not accepted: {msg}"))
 }
