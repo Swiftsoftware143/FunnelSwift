@@ -204,7 +204,7 @@ function showToast(msg, type='info', reRender=true) {
 }
 
 // ── Helpers ──
-function x(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function x(s) { return String(s === 0 ? '0' : (s || '')).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function $(id) { return document.getElementById(id); }
 /* kanban t_02f8fd6d: this gate asked for a vocabulary the app never issues. /api/v1/auth/me
    (src/auth/handlers.rs) returns `role` straight from the JWT and `is_admin` (= role === "admin"),
@@ -471,7 +471,7 @@ function bindLogin() {
 function renderShell() {
   const nav = buildNav();
   const u = USER || {};
-  const initials = (u.email||'U')[0].toUpperCase();
+  const initials = ((u.name||u.email)||'U')[0].toUpperCase();
   // kanban t_4e4695da — this badge used to print the raw role word ("User"/"Super Admin"),
   // which is the stray label David reported: under the account name belongs the workspace's
   // TIER. `/auth/me` already resolves `plan_name` from the active subscription (falling back
@@ -496,7 +496,7 @@ function renderShell() {
         <div class="nav-user">
           <div class="avatar"${u.avatar_url?` style="background-image:url('${x(u.avatar_url)}');background-size:cover;background-position:center"`:''}>${u.avatar_url?'':initials}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(u.email)}</div>
+            <div style="font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${x(u.email)}">${x(u.name || u.email)}</div>
             <div class="role-badge">${x(planLabel)}</div>${isSuperAdmin() ? '<div class="role-badge admin">Admin</div>' : ''}
           </div>
           <span class="logout" onclick="window._logout()" title="Sign Out">⏻</span>
