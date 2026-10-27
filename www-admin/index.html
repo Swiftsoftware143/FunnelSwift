@@ -3569,6 +3569,12 @@ let TENANT_PLAN_ROWS = [];
 // could not show at all. The switch below asks for them; the probe badge and the select-probes button
 // already know how to render a row that carries the tag.
 let TENANT_SHOW_PROBES = false;
+// The hunt for dead credentials (2026-10-27). A workspace whose credentials mail went out and whose
+// owner never came back sits in the list beside daily users and is invisible, because the list is
+// sorted by creation date. This flag filters WHAT IS DRAWN only: the bulk delete still acts on the
+// ticked ids, so a filter can never widen a destructive action. `last_sign_in` is null when the app
+// has recorded no sign-in at all, which is exactly the row being hunted.
+let TENANT_ONLY_NEVER = false;
 function tenantPlanCell(t) {
   const cur = String(t.plan_slug || '');
   const opts = ['<option value=""' + (cur ? '' : ' selected') + '>— no plan —</option>']
@@ -3587,6 +3593,9 @@ async function renderTenants() {
   let items = [];
   try { items = await api('/tenants' + (TENANT_SHOW_PROBES ? '?include_probe=1' : '')); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
+  // Drawn rows only. Select-all and Select-probes both read this list, so they can only ever act on
+  // rows the operator can see.
+  if (TENANT_ONLY_NEVER) items = items.filter(t => !t.last_sign_in);
   // The vocabulary the plan select offers: read once per render from the same `/plans` catalogue the
   // Plans screen uses (6 rows live), never a hard-coded list -- a new plan appears here the moment it
   // is created.
@@ -3597,6 +3606,9 @@ async function renderTenants() {
     <div class="card-header" style="padding:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
       <h1 style="font-size:22px;font-weight:700;margin:0">🏢 Tenants</h1>
       <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Only the workspaces where no sign-in has ever been recorded — the ones whose credentials mail went out and whose owner never came back.">
+          <input type="checkbox" id="tnOnlyNever"${TENANT_ONLY_NEVER ? ' checked' : ''}> Only never signed in
+        </label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Probe workspaces a harness minted. Hidden by default: they are not customers. Ticking this lists them so they can be reviewed, selected and cleared.">
           <input type="checkbox" id="tnShowProbes"${TENANT_SHOW_PROBES ? ' checked' : ''}> Show probe workspaces
         </label>
@@ -3605,13 +3617,14 @@ async function renderTenants() {
       </div>
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
+      <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th title="When anyone in this workspace last signed in. 'not recorded' means the app has no sign-in for it — the column started empty, so an older workspace can read that way even if its owner has used it.">Last sign-in</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
       <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}">
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td>${tenantPlanCell(t)}</td>
+        <td style="font-size:12px">${t.last_sign_in ? x(new Date(asUtc(t.last_sign_in)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '<span style="color:var(--muted)" title="No sign-in recorded for this workspace. The app only began recording sign-ins on 27 Oct 2026, so this can read that way for a workspace whose owner has in fact used it.">not recorded</span>'}</td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
         <td><button class="btn btn-secondary btn-xs tu-open" data-tenant="${x(t.id)}" data-name="${x(t.name||t.company_name||'')}" title="See this workspace's people, and add one">${t.user_count||0} user${(t.user_count||0)===1?'':'s'}</button></td>
         <td>${formatDate(t.created_at)}</td>
@@ -3668,6 +3681,8 @@ function bindTenants() {
   // the state the screen shipped in.
   const sp = document.getElementById('tnShowProbes');
   if (sp) sp.addEventListener('change', () => { TENANT_SHOW_PROBES = !!sp.checked; renderApp(); });
+  const on = document.getElementById('tnOnlyNever');
+  if (on) on.addEventListener('change', () => { TENANT_ONLY_NEVER = !!on.checked; renderApp(); });
   const pb = document.getElementById('tnProbes');
   if (pb) {
     pb.textContent = 'Select probes (' + probeBoxes().length + ')';
