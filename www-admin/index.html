@@ -4947,14 +4947,19 @@ function mountWiredPanels(view) {
   } catch (e) { /* a panel must never break the view it is attached to */ }
 }
 
-// ── GET /api/v1/insights ─────────────────────────────────────────────────────
+// ── GET /api/v1/dashboard/stats — the two figures the stat row above does NOT show ───────────
+// This panel used to repeat the "Total Leads" stat card above it: same number, second label. It now
+// carries the week count and the conversion share, both already computed for /dashboard/stats (no
+// new request, no new endpoint), so the dashboard says something it did not say twice.
 async function wiredInsights() {
-  const body = wiredPanel('dashboard', '📈 Tenant insights', 'How many leads this workspace has captured.');
+  const body = wiredPanel('dashboard', '📈 Tenant insights', 'This week, and what share of leads converted.');
   if (!body) return;
   try {
-    const d = await api('/insights');
-    body.innerHTML = '<div class="stats-grid"><div class="stat-card"><div class="stat-value">' + x(d.total_leads || 0) +
-      '</div><div class="stat-label">Total leads (this tenant)</div></div></div>';
+    const d = await api('/dashboard/stats');
+    body.innerHTML = '<div class="stats-grid">' +
+      '<div class="stat-card"><div class="stat-value">' + x(d.leads_this_week || 0) + '</div><div class="stat-label">Leads this week</div></div>' +
+      '<div class="stat-card"><div class="stat-value">' + x(d.conversion_rate || 0) + '%</div><div class="stat-label">Conversion rate</div></div>' +
+      '</div>';
   } catch (e) { wiredErr(body, e); }
 }
 
