@@ -4616,6 +4616,7 @@ function LPROF(){
     var av=(U&&U.avatar_url)||"";
     var nm=(U&&U.name)||"";
     var co=(U&&U.company)||"";
+    var un=(U&&U.username)||"";
     var initial=(((nm||(U&&U.email)||"?")+"?").charAt(0)).toUpperCase();
     var h='<div class="cc"><h3>Profile</h3>';
     h+='<p style="color:#64748b;font-size:12px;margin-bottom:14px">Your name, company, picture and sign-in password.</p>';
@@ -4633,6 +4634,7 @@ function LPROF(){
     h+='<div class="card" style="margin-bottom:14px"><h3>Your details</h3>';
     h+='<div class="fld"><label>Name</label><input id="pf-name" maxlength="243" value="'+X(nm)+'" placeholder="Your name"></div>';
     h+='<div class="fld"><label>Company</label><input id="pf-co" maxlength="255" value="'+X(co)+'" placeholder="Your company"></div>';
+h+='<div class="fld"><label>Username</label><input id="pf-user" maxlength="255" value="'+X(un)+'" placeholder="Optional"><p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Optional. A short name the console can show in place of your full name. Clear it to remove it.</p></div>';
     h+='<div class="fld"><label>Sign-in email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">This is the address you sign in with, and where every message from us goes.</p></div>';
     h+='<button class="btn" onclick="SPF()">Save</button><span id="pf-msg" class="msg" style="margin-left:8px"></span>';
     /* Change of sign-in address (cron 2026-10-18). Before this the line above read "cannot be
@@ -4655,12 +4657,12 @@ function LPROF(){
   });
 }
 function SPF(){
-  var n=(($("pf-name")||{}).value||"").trim(), c=(($("pf-co")||{}).value||"").trim();
+  var n=(($("pf-name")||{}).value||"").trim(), c=(($("pf-co")||{}).value||"").trim(), un=(($("pf-user")||{}).value||"").trim();
   if(!n){ pfMsg("pf-msg","Enter your name","me"); return; }
   pfMsg("pf-msg","Saving...","mi");
-  api("/api/v1/auth/profile",{method:"PUT",body:JSON.stringify({name:n,company:c})})
+  api("/api/v1/auth/profile",{method:"PUT",body:JSON.stringify({name:n,company:c,username:un})})
     .then(function(){
-      U.name=n; U.company=c;
+      U.name=n; U.company=c; U.username=un;
       $("ue").textContent=n||U.email;
       renderAvatar();
       pfMsg("pf-msg","Saved","ms");
