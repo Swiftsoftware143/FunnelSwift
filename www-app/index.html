@@ -1135,8 +1135,41 @@ else if(T){
 }
 
 /* === DASHBOARD === */
+var ST=null;
+/* cron 2026-10-27 — a brand-new workspace landed on a dashboard of zeros with no next step:
+   Total Leads 0, Cards 0, Recent Activity empty, and the three things a customer has to do first
+   only discoverable by reading the sidebar. This card names them and links each to the screen that
+   does it. It paints ONLY for a workspace with no cards, no leads and no lead forms — BOTH reads
+   it depends on (/dashboard/stats and /me/usage) must have answered, so a failed read cannot make a
+   busy workspace look new — and it removes itself the moment any of the three exists, so it never
+   becomes permanent furniture. */
+var paintStart=function(){
+  var gs=$("gs"); if(!gs||!gs.parentNode) return;
+  if(!ST) return;
+  var forms=(USG&&USG.forms!=null)?Number(USG.forms):null;
+  if(forms===null) return;                       /* /me/usage has not answered yet */
+  var leads=Number(ST.total_leads||0), cards=Number(ST.cards_total||0);
+  if(leads>0||cards>0||forms>0){ gs.innerHTML=''; return; }
+  var steps=[
+    ["Create a Kinetic Card","One shareable page for your business — the fastest way to have a link to send people.","cards"],
+    ["Build a funnel page","A single page with a form; everyone who submits it becomes a lead in this workspace.","funnels"],
+    ["Put a lead form on your own site","Paste the snippet from Lead Forms into your website; every form fill arrives in Leads with the tag you pick.","wtl"]
+  ];
+  var h='<div class="card" data-first-steps="1" style="margin-bottom:16px">';
+  h+='<h3 style="margin:0 0 2px">Get started</h3>';
+  h+='<p style="color:#64748b;font-size:13px;margin:0 0 12px">Three steps and this workspace is collecting leads. This card goes away once you have done any one of them.</p>';
+  for(var i=0;i<steps.length;i++){
+    h+='<div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0'+(i?';border-top:1px solid #e2e8f0':'')+'">';
+    h+='<div style="flex:0 0 24px;height:24px;border-radius:50%;background:#eef2ff;color:#4338ca;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center">'+(i+1)+'</div>';
+    h+='<div style="flex:1"><div style="font-weight:600;font-size:14px">'+X(steps[i][0])+'</div>';
+    h+='<div style="color:#64748b;font-size:12px;margin:2px 0 6px;max-width:60ch">'+X(steps[i][1])+'</div>';
+    h+='<button type="button" class="btn btn-sm" data-first-step="'+X(steps[i][2])+'" onclick="S(\''+steps[i][2]+'\')">'+X(steps[i][0])+'</button></div></div>';
+  }
+  h+='</div>';
+  gs.innerHTML=h;
+};
 function D(){
-  $("ct").innerHTML='<div id="pl"></div><div id="prq"></div><div id="sr"></div><div id="da"></div>';
+  $("ct").innerHTML='<div id="pl"></div><div id="gs"></div><div id="prq"></div><div id="sr"></div><div id="da"></div>';
   /* kanban cron-1015 — this console's own help text promises "Your current plan is shown on the
      dashboard", and the dashboard showed only lead/card counts (the "Plans" tile is the tenant's
      own funnel-plan count, `d.plans_total`). The subscription plan is already in this page: the
@@ -1186,7 +1219,7 @@ function D(){
   if(U) paintPlan(U); else api("/api/v1/auth/me").then(function(u){ if(u&&!u.error){U=u; paintPlan(u);} });
   // The usage half of the same strip: fetched on every dashboard load, and the card repaints when
   // it lands (paintPlan guards on the node still being attached, so a tab switch is safe).
-  api("/api/v1/me/usage").then(function(d){ if(d&&!d.error){USG=d; paintPlan(U);} });
+  api("/api/v1/me/usage").then(function(d){ if(d&&!d.error){USG=d; paintPlan(U); paintStart();} });
   /* The money half: whether a press on this card would actually reach a provider. Read once per
      load, repaint when it lands (paintPlan guards on the node still being attached). */
   api("/api/v1/checkout/status").then(function(c){ if(c&&!c.error){PAYCFG=c; paintPlan(U);} });
@@ -1248,12 +1281,13 @@ function D(){
     // EVERY workspace however many leads it held — measured 2026-10-22 on a fresh account holding
     // one real captured lead: the plan strip said "Leads 1 / 100" while this tile said 0.
     h+='<div class="card"><h3>Total Leads</h3><div class="val">'+(d&&d.total_leads!=null?d.total_leads:0)+'</div></div>';
-    h+='<div class="card"><h3>Conv. Rate</h3><div class="val">'+(d&&d.conversion_rate?(d.conversion_rate*100).toFixed(1)+"%":"0%")+'</div></div>';
+    h+='<div class="card"><h3>Conv. Rate</h3><div class="val">'+((d&&Number(d.total_leads)>0)?(((Number(d.conversion_rate)||0)*100).toFixed(1)+"%"):"\u2014")+'</div></div>';
     h+='<div class="card"><h3>Cards</h3><div class="val">'+(d&&d.cards_total?d.cards_total:0)+'</div></div>';
     h+='<div class="card"><h3>Plans</h3><div class="val">'+(d&&d.plans_total?d.plans_total:0)+'</div></div>';
     h+='</div>';
     if(!sr||!sr.parentNode) return;
     sr.innerHTML=h;
+    ST=d; paintStart();
   });
   api("/api/v1/dashboard/activity").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
