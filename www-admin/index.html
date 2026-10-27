@@ -5295,8 +5295,27 @@ async function renderCheckoutSessions() {
     <!-- route: GET /api/v1/checkout/sessions -->
     <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Every payment session this workspace has started, with its provider, amount and status.</div>
     <div class="card">
-      ${wiredTable(['Session', 'Provider', 'Amount', 'Status', 'Created'],
-        list.map(s => `<tr><td style="font-size:12px">${x(s.id)}</td><td>${x(s.provider_type)}</td><td>${formatCurrency(s.amount || 0)} ${x(s.currency || '')}</td><td><span class="badge badge-blue">${x(s.status)}</span></td><td>${formatDate(s.created_at)}</td></tr>`),
+      ${wiredTable(['Session', 'Plan', 'Provider', 'Amount', 'Status', 'Created'],
+        list.map(s => {
+          // The API already names the plan and lifts the refusal reason out of `metadata`
+          // (checkout_handler::list_checkout_sessions). Render both: the screen's question is
+          // "which plan did this workspace try to buy, and what happened".
+          const ref = String(s.id || '').slice(0, 8);
+          const plan = s.plan_name
+            || (s.purchasable_type && s.purchasable_type !== 'plan'
+                ? String(s.purchasable_type).replace(/_/g, ' ')
+                : '\u2014');
+          const reason = s.reason ? String(s.reason).replace(/_/g, ' ') : '';
+          const reasonHtml = reason
+            ? '<div style="font-size:11px;color:var(--muted)">' + x(reason) + '</div>'
+            : '';
+          return '<tr><td style="font-size:12px" title="' + x(s.id) + '">' + x(ref || '\u2014') + '</td>'
+            + '<td>' + x(plan) + reasonHtml + '</td>'
+            + '<td>' + x(s.provider_type) + '</td>'
+            + '<td>' + formatCurrency(s.amount || 0) + ' ' + x(s.currency || '') + '</td>'
+            + '<td><span class="badge badge-blue">' + x(s.status) + '</span></td>'
+            + '<td>' + formatDate(s.created_at) + '</td></tr>';
+        }),
         'No checkout sessions')}
     </div>
   </div>`;
