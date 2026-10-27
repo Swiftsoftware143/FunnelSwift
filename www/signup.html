@@ -157,17 +157,34 @@ try{
       data.plan_request.plan_name.replace(/[<>&]/g, '') + '</strong>. It shows on your dashboard as a ' +
       'request, and the team moves the workspace onto it as soon as payments are open.</div>';
   }
-  loading.innerHTML = "<strong>Account created!</strong><br>Check your email — we've sent your login " +
-    "details to " + body.email.replace(/[<>&]/g, '') + '.<br><br>You can change your password any time ' +
-    'in your profile settings.' + ask +
-    '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
-    'Nothing in your inbox after a minute? Check your spam folder, then ' +
-    '<a href="https://app.funnelswift.net/forgot-password?email=' + encodeURIComponent(body.email) + '" ' +
-    'style="color:#2563eb;font-weight:600">send yourself a reset code</a>' +
-    ' or <a href="https://app.funnelswift.net/login.html" style="color:#2563eb;font-weight:600">sign in</a>.' +
-    '</div>';
+  // The server now answers whether the login mail actually LEFT (`credentials_emailed`). It is
+  // false when the send failed, and false for a reserved test address the sender withholds — so a
+  // page that printed "Check your email" unconditionally sent real customers hunting an inbox that
+  // would stay empty, holding an account whose password nobody could ever read. Say the truth.
+  var emailed = !(data && data.credentials_emailed === false);
+  var resetLink = '<a href="https://app.funnelswift.net/forgot-password?email=' +
+    encodeURIComponent(body.email) + '" style="color:#2563eb;font-weight:600">send yourself a reset code</a>';
+  if (emailed) {
+    loading.innerHTML = "<strong>Account created!</strong><br>Check your email — we've sent your login " +
+      "details to " + body.email.replace(/[<>&]/g, '') + '.<br><br>You can change your password any time ' +
+      'in your profile settings.' + ask +
+      '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
+      'Nothing in your inbox after a minute? Check your spam folder, then ' + resetLink +
+      ' or <a href="https://app.funnelswift.net/login.html" style="color:#2563eb;font-weight:600">sign in</a>.' +
+      '</div>';
+    btn.innerHTML = 'Check your email';
+  } else {
+    loading.innerHTML = "<strong>Account created!</strong><br>We could not send your login details to " +
+      body.email.replace(/[<>&]/g, '') + ' — so there is nothing waiting in your inbox, and we will not ' +
+      'pretend otherwise. Set your own password instead: ' + resetLink + ' and sign in with it.' + ask +
+      '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
+      'If that code does not arrive either, the mail service for this site is having trouble — please ' +
+      'try again in a few minutes, or write to ' +
+      '<a href="mailto:support@swiftsoftware.net" style="color:#2563eb;font-weight:600">support@swiftsoftware.net</a> ' +
+      'and we will set you up by hand.</div>';
+    btn.innerHTML = 'Set your password';
+  }
   loading.style.display = 'block';
-  btn.innerHTML = 'Check your email';
 } catch(ex) {
   err.textContent = ex.message;
   err.classList.add('show');

@@ -77,6 +77,31 @@
  @keyframes spin { to { transform: rotate(360deg); } }
  .error-msg { color: #ef4444; font-size: 12px; margin-top: 6px; display: none; }
  </style>
+<style>
+/* WCAG 2.1 AA contrast — measured on the served page 2026-10-24 with pa11y (htmlcs). Scoped to the
+   containers each finding was measured in, so the light mockups and the dark sections each get the
+   value that is readable on THEIR background; no markup changed. */
+section.bg-brandDark .text-slate-500 { color:#94a3b8; }
+section.bg-slate-950 .text-slate-500 { color:#94a3b8; }
+section.bg-slate-950 .text-brandBlue,
+section.bg-slate-900 .text-brandBlue { color:#60a5fa; }
+section.bg-slate-950 .text-3xl { color:#f8fafc; }
+footer.bg-slate-950 { color:#94a3b8; }
+footer.bg-slate-950 .text-slate-600,
+footer.bg-slate-950 p.text-xs { color:#94a3b8; }
+.bg-white .text-slate-400, .bg-white .text-slate-500 { color:#64748b; }
+tbody.bg-white .text-slate-400 { color:#475569; }
+/* the preview mockups: a caption must be readable against the chip it sits on, in both directions */
+.bg-slate-300 .text-slate-400, .bg-slate-300 .text-slate-500, .bg-slate-200 .text-slate-400 { color:#334155; }
+.bg-slate-100 .text-slate-500 { color:#475569; }
+.bg-slate-700 .text-slate-400 { color:#cbd5e1; }
+div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
+/* the chips carry the caption themselves, so they set their own colour (measured: the chip's text was
+   slate-400/slate-500 inherited from the mockup, 2.1-4.4:1 on the chip's own background) */
+.bg-slate-300.rounded-full, .bg-slate-200.rounded-full { color:#334155 !important; }
+.bg-slate-700.rounded { color:#cbd5e1 !important; }
+.bg-slate-100.rounded-lg, .bg-slate-100.rounded { color:#475569 !important; }
+</style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans flex flex-col min-h-screen">
 
@@ -686,11 +711,11 @@
  <form onsubmit="handleSignup(event)">
  <div style="margin-bottom:14px">
  <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Your Name</label>
- <input type="text" id="signupName" placeholder="John Smith" required>
+ <input type="text" id="signupName" placeholder="John Smith" required maxlength="243" aria-label="Your name" autocomplete="name">
  </div>
  <div style="margin-bottom:14px">
  <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Work Email</label>
- <input type="email" id="signupEmail" placeholder="you@company.com" required>
+ <input type="email" id="signupEmail" placeholder="you@company.com" required aria-label="Your email" autocomplete="email">
  </div>
  <!-- No password field: the server generates the login credentials and emails them. -->
  <div class="error-msg" id="signupError">Error message</div>
@@ -786,12 +811,25 @@
  // David's signup model: the marketing form collects NAME + EMAIL only. The server generated
  // the login credentials and emailed them, so there is NO auto-login here - the user confirms
  // their address by signing in with the password we sent (a real two-step check).
- document.getElementById('signupBtnText').textContent = 'Check your email';
+ // The server says whether the login mail actually LEFT (`credentials_emailed`): false on a send
+ // failure, false for a reserved test address. Claiming "Check your email" regardless left real
+ // customers with an account and a password they could never receive.
+ var emailed = !(data && data.credentials_emailed === false);
+ document.getElementById('signupBtnText').textContent = emailed ? 'Check your email' : 'Set your password';
  var okBox = document.createElement('p');
- okBox.setAttribute('style','text-align:center;font-size:13px;color:#16a34a;margin-top:14px;line-height:1.55');
- okBox.innerHTML = '<strong>Account created!</strong><br>Check your email. We sent your login '
-   + 'details to ' + email.replace(/[<>&]/g, '') + '.<br>You can change your password any time in '
-   + 'your profile settings.';
+ okBox.setAttribute('style','text-align:center;font-size:13px;color:' + (emailed ? '#16a34a' : '#b45309') + ';margin-top:14px;line-height:1.55');
+ if (emailed) {
+   okBox.innerHTML = '<strong>Account created!</strong><br>Check your email. We sent your login '
+     + 'details to ' + email.replace(/[<>&]/g, '') + '.<br>You can change your password any time in '
+     + 'your profile settings.';
+ } else {
+   okBox.innerHTML = '<strong>Account created!</strong><br>We could not send your login details to '
+     + email.replace(/[<>&]/g, '') + ', so there is nothing in your inbox. '
+     + '<a href="https://app.funnelswift.net/forgot-password?email=' + encodeURIComponent(email)
+     + '" style="color:#2563eb;font-weight:600">Set your own password here</a> and sign in with it.'
+     + '<br><span style="font-size:12px;color:#64748b">If the code does not arrive either, write to '
+     + 'support@swiftsoftware.net and we will set you up by hand.</span>';
+ }
  document.getElementById('signupBtn').parentNode.appendChild(okBox);
 
  } catch(err) {
