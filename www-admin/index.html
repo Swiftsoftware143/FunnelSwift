@@ -3593,6 +3593,22 @@ async function renderTenants() {
   let items = [];
   try { items = await api('/tenants' + (TENANT_SHOW_PROBES ? '?include_probe=1' : '')); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
+  // HIDDEN PROBES (cron 2026-10-27). The list holds probe workspaces back unless `?include_probe=1`
+  // is asked for, which is right — but nothing on this screen said they EXISTED, so an operator
+  // reading "13 workspaces" had no way to know a harness had left three more behind, and the sweep
+  // only happened if someone remembered to tick the box. This counts the difference between the two
+  // answers to the SAME listing (a set difference on the ids the server returned, no second
+  // predicate that could drift from the badge) and offers one press to show them. Both calls are
+  // the app's own route; a failure on either leaves the count at 0 and the screen exactly as before.
+  let hiddenProbes = 0;
+  if (!TENANT_SHOW_PROBES) {
+    try {
+      const withP = await api('/tenants?include_probe=1');
+      const arrP = Array.isArray(withP) ? withP : (withP.data || withP.tenants || []);
+      const seen = new Set((Array.isArray(items) ? items : []).map(t => String(t && t.id)));
+      hiddenProbes = (Array.isArray(arrP) ? arrP : []).filter(t => !seen.has(String(t && t.id))).length;
+    } catch(e) { hiddenProbes = 0; }
+  }
   // Drawn rows only. Select-all and Select-probes both read this list, so they can only ever act on
   // rows the operator can see.
   if (TENANT_ONLY_NEVER) items = items.filter(t => !t.last_sign_in);
@@ -3609,6 +3625,7 @@ async function renderTenants() {
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Only the workspaces where no sign-in has ever been recorded — the ones whose credentials mail went out and whose owner never came back.">
           <input type="checkbox" id="tnOnlyNever"${TENANT_ONLY_NEVER ? ' checked' : ''}> Only never signed in
         </label>
+        <button class="btn btn-secondary btn-xs" id="tnHidden" style="${hiddenProbes ? '' : 'display:none'}" title="Probe workspaces a test harness minted. They are not customers, so the list holds them back — this says how many are being held and shows them in one press.">${hiddenProbes} test workspace${hiddenProbes===1?'':'s'} hidden — show</button>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Probe workspaces a harness minted. Hidden by default: they are not customers. Ticking this lists them so they can be reviewed, selected and cleared.">
           <input type="checkbox" id="tnShowProbes"${TENANT_SHOW_PROBES ? ' checked' : ''}> Show probe workspaces
         </label>
@@ -3681,6 +3698,10 @@ function bindTenants() {
   // the state the screen shipped in.
   const sp = document.getElementById('tnShowProbes');
   if (sp) sp.addEventListener('change', () => { TENANT_SHOW_PROBES = !!sp.checked; renderApp(); });
+  // The count beside it is only a promise if pressing it works: it flips the SAME switch, so the
+  // number the operator read and the rows that appear come from one listing.
+  const hp = document.getElementById('tnHidden');
+  if (hp) hp.addEventListener('click', () => { TENANT_SHOW_PROBES = true; renderApp(); });
   const on = document.getElementById('tnOnlyNever');
   if (on) on.addEventListener('change', () => { TENANT_ONLY_NEVER = !!on.checked; renderApp(); });
   const pb = document.getElementById('tnProbes');
