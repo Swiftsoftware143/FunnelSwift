@@ -1241,6 +1241,21 @@ window._applyRequestedPlan = async function (reqId, tenantId, slug) {
   }
 };
 
+// Withdraw the customer's OWN open ask. One write path: `DELETE /api/v1/plan-requests/:id`, the
+// same route the app-root console calls, so the two screens cannot disagree. The server refuses a
+// `done`/`declined` ask with 409 and a sentence, which is shown as-is (rewriting an answer is not a
+// customer action); every other failure says plainly that nothing changed.
+window._withdrawPlanRequest = async function (id) {
+  if (!id) return;
+  if (!confirm('Withdraw this plan request?\n\nNothing has been charged, and you can ask again later.')) return;
+  try {
+    await api('/plan-requests/' + encodeURIComponent(id), { method: 'DELETE' });
+    showToast('Request withdrawn — nothing is pending on your side.', 'success', false);
+    renderApp();
+  } catch (e) {
+    showToast(String((e && e.message) || 'Could not withdraw the request'), 'error', false);
+  }
+};
 async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
@@ -1252,8 +1267,23 @@ async function renderPlans() {
   // `POST /api/v1/checkout/create` records each one (status `provider_missing`) and tells the
   // customer it "has been recorded for the platform team, who can activate this plan by hand".
   // Until this card nothing in the console read those rows, so the promise had no screen behind it.
+  // PLATFORM-ONLY QUEUE, GATED (2026-10-27). This fetch used to run for EVERY caller, so a
+  // customer opening Plans fired a request the token can never be allowed to make — measured live
+  // on a fresh signup: `403 /api/v1/admin/checkout-requests` in the console on every visit, and a
+  // block of operator prose they could not use. Gate it on the operator role.
   let preq = [];
-  try { const r = await api('/admin/checkout-requests?limit=50'); preq = (r && r.requests) || []; } catch(e) { preq = []; }
+  if (isSuperAdmin()) {
+    try { const r = await api('/admin/checkout-requests?limit=50'); preq = (r && r.requests) || []; } catch(e) { preq = []; }
+  }
+  // THE CUSTOMER'S OWN ASKS (2026-10-27). `GET /api/v1/plan-requests` (list_mine) and its withdraw
+  // twin `DELETE /api/v1/plan-requests/:id` shipped for the app-root console but had no control in
+  // THIS console, so the panel David calls "the panel" showed a customer the plan cards and nothing
+  // about the ask they had already filed — a backend route with no UI. Same rows, same vocabulary
+  // and the same one write path as the app-root card, so the two screens cannot disagree.
+  let mine = [];
+  if (!isSuperAdmin()) {
+    try { const r = await api('/plan-requests'); mine = (r && r.requests) || []; } catch(e) { mine = []; }
+  }
 
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
@@ -1290,6 +1320,29 @@ async function renderPlans() {
       <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">Ready to unlock more features?</h2>
       <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Upgrade to a paid plan to get more cards, leads, and advanced features.</p>
       <button class="btn btn-primary" data-upgrade-plan="${x(_target.slug)}" onclick="window._startUpgrade('${x(_target.slug)}')">Upgrade to ${x(_target.name)}</button>
+    </div>`:''}
+    ${!isSuperAdmin() && mine.length ? `
+    <div class="card" style="margin-top:20px" id="my-plan-requests">
+      <div style="margin-bottom:12px"><h3 style="font-size:16px;font-weight:700;margin:0">Your plan requests</h3>
+      <p style="font-size:12px;color:var(--muted);margin:4px 0 0">What this workspace asked for and where it stands. Nothing has been charged. An open request can be taken back; an answered one cannot.</p></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>When</th><th>Plan you asked for</th><th>Status</th><th>Note from our team</th><th>Action</th></tr></thead>
+        <tbody>${mine.map(q => {
+          const when = q.created_at ? String(q.created_at).slice(0, 10) : '—';
+          const st = String(q.status || 'open');
+          const label = { open: 'With our team', contacted: 'We have contacted you', done: 'Done — moved to this plan', declined: 'Declined', withdrawn: 'Withdrawn by you' }[st] || st;
+          const cls = st === 'done' ? 'badge-green' : (st === 'declined' ? 'badge-red' : (st === 'contacted' ? 'badge-blue' : (st === 'withdrawn' ? '' : 'badge-yellow')));
+          return `<tr data-plan-request="${x(q.id)}">
+            <td style="white-space:nowrap;font-size:12px;color:var(--muted)">${x(when)}</td>
+            <td><strong>${x(q.plan_name || q.plan_slug || '—')}</strong>${q.plan_slug ? `<div style="font-size:11px;color:var(--muted)">${x(q.plan_slug)}</div>` : ''}</td>
+            <td><span class="badge ${cls}" data-request-state="${x(st)}">${x(label)}</span></td>
+            <td style="font-size:12px;max-width:280px">${q.reply ? x(q.reply) : '<span style="color:var(--muted)">—</span>'}</td>
+            <td>${(st === 'open' || st === 'contacted')
+              ? `<button class="btn btn-secondary btn-xs" data-withdraw-request="${x(q.id)}" onclick="window._withdrawPlanRequest('${x(q.id)}')">Withdraw</button>`
+              : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
     </div>`:''}
     ${preq.length > 0 ? `
     <div class="card" style="margin-top:20px" id="purchase-requests">
