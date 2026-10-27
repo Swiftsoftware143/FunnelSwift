@@ -45,6 +45,12 @@ pub struct Claims {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterRequest {
     pub email: String,
+    /// OPTIONAL: the fleet's signup model is NAME + EMAIL only, and the four sibling apps mint a
+    /// password when this is absent (kanban cron 2026-10-27). This door used to require it, so an
+    /// integration or the native app's fallback posting the documented shape was refused 422
+    /// "Enter your password." while /api/v1/auth/signup the same second answered 201. Absent or
+    /// empty now mints one and mails it; a SUPPLIED password keeps the 6-character policy below.
+    #[serde(default)]
     pub password: String,
     pub name: String,
     pub tenant_name: Option<String>,

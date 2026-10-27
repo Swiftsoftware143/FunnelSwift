@@ -59,7 +59,7 @@ SELECT (SELECT t.id   FROM tenants t WHERE t.affiliate_code = $1 ORDER BY t.crea
 /// A first password the user is expected to replace. 16 characters of UUID-derived entropy from the
 /// OS RNG — long enough that the emailed value is not the weak link, short enough to retype on a
 /// phone. Never logged.
-fn generate_initial_password() -> String {
+pub(crate) fn generate_initial_password() -> String {
     let mut out = String::with_capacity(16);
     while out.len() < 16 {
         out.push_str(&Uuid::new_v4().simple().to_string());

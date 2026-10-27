@@ -64,7 +64,22 @@ pub async fn register(
     // account whose login is the empty string. The four sibling apps either mint a temporary
     // password when the field is empty (and mail it) or refuse anything under 6 characters; this
     // door did neither. Apply the fleet rule here, before anything is hashed and before any row.
-    if req.password.len() < 6 {
+    // ── THE FLEET RULE: EMPTY MINTS, SUPPLIED IS CHECKED (cron 2026-10-27) ────────────────────
+    // The paragraph above has described the fleet rule since 2026-10-16 — "The four sibling apps
+    // either mint a temporary password when the field is empty (and mail it) or refuse anything
+    // under 6 characters" — and then applied only the second half, so a caller posting the
+    // documented NAME + EMAIL shape was refused 422 "Enter your password." while
+    // POST /api/v1/auth/signup answered 201 the same second. The empty value is no longer a weak
+    // password: it means "mint one", from the SAME generator and the SAME credentials mailer the
+    // public door uses, so the two doors cannot drift. An empty-or-absent password can therefore
+    // never become an empty-string credential again (the defect this block was written for).
+    let minted_password = req.password.trim().is_empty();
+    let password = if minted_password {
+        crate::handlers::public_signup_handler::generate_initial_password()
+    } else {
+        req.password.clone()
+    };
+    if !minted_password && password.len() < 6 {
         return Err(AppError::UnprocessableEntity(
             "Password must be at least 6 characters".to_string(),
         ));
@@ -96,7 +111,7 @@ pub async fn register(
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
-        .hash_password(req.password.as_bytes(), &salt)
+        .hash_password(password.as_bytes(), &salt)
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
         .to_string();
 
@@ -248,6 +263,61 @@ pub async fn register(
     )
     .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))?;
 
+    // A minted password exists nowhere else, so it MUST reach the customer or the account is
+    // unreachable. Same two suppression reasons as the public door (an `X-Swift-Harness` request, or
+    // a fleet harness domain) — a probe account is still created and still gets its token, only the
+    // mail is withheld. `credentials_emailed` tells the caller the truth either way, which is the
+    // field the sibling apps' doors already answer (ADASwift 2026-10-24, public door here 2026-10-24).
+    let credentials_emailed = if !minted_password {
+        None
+    } else {
+        let suppressed = crate::probe_harness::from_headers(&headers)
+            .map(|marker| format!("X-Swift-Harness: {marker}"))
+            .or_else(|| {
+                crate::security::probe_addr::harness_domain(&email)
+                    .map(|domain| format!("fleet harness domain {domain}"))
+            });
+        Some(match suppressed {
+            Some(reason) => {
+                tracing::info!(
+                    email = %email,
+                    reason = %reason,
+                    "register: credentials email SUPPRESSED — probe/harness account; the account is real"
+                );
+                crate::email::record_withheld(
+                    &state.pool,
+                    "signup credentials email",
+                    &email,
+                    &reason,
+                )
+                .await;
+                false
+            }
+            None => match crate::email::send_credentials_email(
+                &state.pool,
+                tenant_id,
+                &email,
+                &req.name,
+                &password,
+            )
+            .await
+            {
+                Ok(()) => {
+                    tracing::info!(email = %email, "register: minted login credentials emailed");
+                    true
+                }
+                Err(e) => {
+                    tracing::error!(
+                        email = %email,
+                        error = %e,
+                        "register: account created but the CREDENTIAL EMAIL FAILED — the caller has no password"
+                    );
+                    false
+                }
+            },
+        })
+    };
+
     Ok((
         StatusCode::CREATED,
         Json(json!({
@@ -257,6 +327,9 @@ pub async fn register(
             // all), `plan_assignment` is the structured form that can never be silent.
             "plan": plan.slug(),
             "plan_assignment": plan.to_json(),
+            // `true` only when this door MINTED the password (the caller sent none) AND the mail
+            // left; `null` when the caller supplied their own password, where no mail is owed.
+            "credentials_emailed": credentials_emailed,
             "user": {
                 "id": user_id,
                 "email": email,
