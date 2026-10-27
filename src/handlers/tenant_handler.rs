@@ -148,6 +148,7 @@ pub async fn list_tenants(
             i64,
             Option<String>,
             String,
+            Option<chrono::DateTime<chrono::Utc>>,
         ),
     >(
         r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status,
@@ -156,7 +157,8 @@ pub async fn list_tenants(
                    ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
                             u.created_at ASC
                    LIMIT 1) AS owner_email,
-                  COALESCE(t.probe_harness, '') AS probe_harness
+                  COALESCE(t.probe_harness, '') AS probe_harness,
+                  (SELECT MAX(u.last_login_at) FROM users u WHERE u.tenant_id = t.id) AS last_sign_in
            FROM tenants t
            LEFT JOIN LATERAL (
                SELECT plan_id FROM tenant_plan_subscriptions s
@@ -184,7 +186,14 @@ pub async fn list_tenants(
                 // badge a harness row instead of GUESSING from the owner address: a harness that
                 // used an ordinary-looking address read as a customer. COALESCEd to '' above so a
                 // row minted before the column existed is empty, never null.
-                "probe_harness": r.10
+                "probe_harness": r.10,
+                // When anyone in this workspace last signed in (kanban 2026-10-27): the newest
+                // `users.last_login_at` across its people. The operator's list had no way to tell a
+                // workspace whose credentials mail went out and whose owner never came back from one
+                // that is in daily use. NULL means "nothing recorded" and is published as null — the
+                // screen says so in words rather than inventing a date, exactly like ADASwift's
+                // last-sign-in column (`65700fb`).
+                "last_sign_in": r.11
             })
         })
         .collect();
