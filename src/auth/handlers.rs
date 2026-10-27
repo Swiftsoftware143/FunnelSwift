@@ -415,6 +415,20 @@ pub async fn login(
         ));
     }
 
+    // Stamp the sign-in (migration 118). The operator's workspace people table is the only place
+    // that can answer "did this customer ever actually get in?" — the credentials mail is the one
+    // thing between a self-serve signup and a usable account, and without this stamp a workspace
+    // whose welcome mail never arrived looks exactly like a quiet one. Best-effort on purpose: the
+    // caller has already proved the password, so a failed stamp must never turn a good login into
+    // an error — it only leaves the timestamp as it was.
+    if let Err(e) = sqlx::query("UPDATE users SET last_login_at = NOW() WHERE id = $1")
+        .bind(user.id)
+        .execute(&state.pool)
+        .await
+    {
+        tracing::warn!(user = %user.id, "sign-in not stamped: {e}");
+    }
+
     let now = Utc::now().timestamp() as usize;
     let claims = Claims {
         sub: user.id.to_string(),

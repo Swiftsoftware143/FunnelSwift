@@ -688,9 +688,13 @@ pub async fn list_tenant_users(
             String,
             bool,
             String,
+            Option<chrono::DateTime<chrono::Utc>>,
         ),
     >(
-        r#"SELECT id, email, first_name, last_name, role, is_active, name
+        // `last_login_at` (migration 118) is what tells an operator the difference between a
+        // customer who never got in (the welcome mail with their password never arrived) and one
+        // who signed in and went quiet. NULL = never signed in; it is never backfilled.
+        r#"SELECT id, email, first_name, last_name, role, is_active, name, last_login_at
            FROM users WHERE tenant_id = $1
            ORDER BY created_at DESC"#,
     )
@@ -701,7 +705,7 @@ pub async fn list_tenant_users(
     let result: Vec<Value> = users
         .into_iter()
         .map(
-            |(id, email, first_name, last_name, role, is_active, name)| {
+            |(id, email, first_name, last_name, role, is_active, name, last_login_at)| {
                 json!({
                     "id": id.to_string(),
                     "email": email,
@@ -710,6 +714,7 @@ pub async fn list_tenant_users(
                     "last_name": last_name,
                     "role": role,
                     "is_active": is_active,
+                    "last_login_at": last_login_at.map(|t| t.to_rfc3339()),
                 })
             },
         )

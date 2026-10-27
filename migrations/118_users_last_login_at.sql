@@ -1,0 +1,12 @@
+-- FunnelSwift: when did this person last actually sign in?
+--
+-- The operator's recurring question about a self-serve customer is "did they ever get in?" — the
+-- welcome mail carries the login password, and when that mail does not arrive NOTHING in the panel
+-- distinguished "never logged in" from "logged in once, never came back". `users.last_login_at` is
+-- stamped by a SUCCESSFUL sign-in (handlers::auth::login) and rendered in the operator's workspace
+-- people table.
+--
+-- Nullable on purpose: every existing row keeps NULL, which the panel renders as "never". That is
+-- honest for accounts minted before this column existed — the alternative (backfilling created_at)
+-- would invent a sign-in that never happened.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
