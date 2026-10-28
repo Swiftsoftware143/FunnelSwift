@@ -1182,11 +1182,19 @@ function D(){
     if(!pl||!pl.parentNode) return;
     var cp=(u&&u.current_plan)||null;
     var pn=(u&&u.plan_name)||(cp&&cp.name)||'';
-    if(!pn) return;
+    /* A workspace with NO active subscription used to be told it was on a tier called "Free" — a
+       name this install's catalogue does not contain (its price-0 rows are Capture Free and Kinetic
+       Free), and one the gates do not enforce either. `/auth/me` now answers plan_name:null plus
+       plan_assigned:false for that state, and this card says so in the same words the operator's
+       Tenants list uses, instead of inventing a level (measured live 2026-10-28: 7 of 13
+       workspaces were in that state). A workspace on a real free tier still reads its own tier. */
+    var unassigned=(!pn && !!u && u.plan_assigned===false);
+    if(!pn && !unassigned) return;
     var q=function(v){return (v===null||v===undefined)?"\u221e":v;};
     var h='<div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
     h+='<div><h3 style="margin:0 0 2px">Your Plan</h3>';
-    h+='<div style="font-size:20px;font-weight:800">'+X(pn)+'</div>';
+    h+='<div style="font-size:20px;font-weight:800">'+X(unassigned?"No plan assigned":pn)+'</div>';
+    if(unassigned){h+='<div style="color:#92400e;font-size:12px;margin-top:4px;max-width:52ch">This workspace has no plan on record yet, so its limits are not set. Choose a plan and our team puts it on your workspace \u2014 nothing is charged until you ask.</div>';}
     if(cp){
       /* kanban cron-1016 — GET /api/v1/me/usage answered this workspace's own live counts and had
          NO caller on any served page (measured 2026-10-16, grep over every served root), while this
