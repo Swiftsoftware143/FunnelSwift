@@ -426,8 +426,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>Password</strong> — <code>PUT /api/v1/auth/password</code>: the new password twice, plus
             the current one as the check. A wrong current password is answered as a field error, not a sign-out.</li>
           <li><strong>The plan shown</strong> — the workspace's real tier from
-            <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, falling back to <em>Free</em>), never the
-            role word “User”.</li>
+            <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, the catalogue name of the active subscription),
+            never the role word “User”. A workspace with no subscription on record reads
+            <em>No plan assigned</em> there and in the admin panel’s tenant list — the app
+            no longer invents a tier name for a workspace that has none.</li>
         </ul>
       </div>
 
