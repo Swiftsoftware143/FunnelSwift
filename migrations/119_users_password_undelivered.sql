@@ -1,0 +1,15 @@
+-- FunnelSwift: mark an account whose FIRST password never reached the customer.
+--
+-- Signup asks for a name and an email and mints the first password, then mails it: the mail is the
+-- only way in. When that send does not leave — provider failure, withheld harness address, spam
+-- filter — the customer holds an account whose password nobody has ever read, and "send yourself a
+-- reset code" is no help because it travels the same mail path that just failed.
+--
+-- `password_undelivered` marks exactly that state. It is set by the register door when it minted the
+-- password and the credentials mail did NOT go out, and is cleared either by a successful password
+-- sign-in (the customer knew it after all) or by POST /api/v1/auth/initial-password, which lets the
+-- signup session choose the password it will ever need. Both closes are in the one UPDATE, so the
+-- door admits a given account exactly once.
+--
+-- Default FALSE on purpose: every existing row keeps an ordinary account, which is what it is.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_undelivered BOOLEAN NOT NULL DEFAULT FALSE;

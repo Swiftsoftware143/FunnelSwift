@@ -103,6 +103,9 @@ pub async fn public_signup(
     if email.is_empty() || name.is_empty() {
         return Err(AppError::BadRequest("Name and email are required".into()));
     }
+    // Whether this door MINTED the password, as opposed to honouring one the caller supplied. Only
+    // a minted credential can be one nobody has read, so only that arm arms the recovery door below.
+    let password_was_minted = password.is_empty();
     let password = if password.is_empty() {
         generate_initial_password()
     } else {
@@ -456,6 +459,20 @@ pub async fn public_signup(
             }
         },
     };
+
+    // The state the signup page and `POST /api/v1/auth/initial-password` key on: this door MINTED
+    // the first password and the mail carrying it did not go out, so the customer holds an account
+    // whose password nobody has ever read. Best-effort — the account is real either way, and the
+    // recovery door is what makes that state fixable instead of terminal.
+    if password_was_minted && !credentials_emailed {
+        if let Err(e) = sqlx::query("UPDATE users SET password_undelivered = TRUE WHERE id = $1")
+            .bind(user_id)
+            .execute(&state.pool)
+            .await
+        {
+            tracing::warn!("signup: could not mark the undelivered credential for {email}: {e}");
+        }
+    }
 
     // Log source if provided
     if !source.is_empty() {

@@ -93,6 +93,16 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
+/// `POST /api/v1/auth/initial-password` — the signup session's OWN choice of first password.
+///
+/// Only meaningful for an account whose minted first password never left the building; the door is
+/// gated in SQL on `users.password_undelivered`, so this body can never overwrite a password the
+/// customer already knows.
+#[derive(Debug, Deserialize)]
+pub struct InitialPasswordRequest {
+    pub password: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ForgotPasswordRequest {
     pub email: String,

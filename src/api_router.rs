@@ -203,6 +203,13 @@ pub fn create_router(
         .route("/api/v1/auth/me", get(me))
         .route("/api/v1/me/usage", get(get_usage))
         .route("/api/v1/auth/password", put(change_password))
+        // The signup session's own choice of first password, for an account whose credentials mail
+        // never left (migration 119). Authenticated on purpose: the caller must already hold the
+        // token signup returned, and the SQL gate admits each account exactly once.
+        .route(
+            "/api/v1/auth/initial-password",
+            post(crate::auth::handlers::set_initial_password),
+        )
         // Change of sign-in address (cron 2026-10-18): the request is authenticated and acts on the
         // caller's OWN row; the confirmation is public because the mailed token IS the credential.
         .route("/api/v1/auth/email-change", post(request_email_change))

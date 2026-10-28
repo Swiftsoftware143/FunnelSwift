@@ -318,6 +318,24 @@ pub async fn register(
         })
     };
 
+    // The state both the signup page and `POST /api/v1/auth/initial-password` key on: this door
+    // MINTED the first password and the mail carrying it did not go out, so the customer holds an
+    // account whose password nobody has ever read. Only the minted arm can set this — a caller who
+    // brought their own password already knows it, whatever the welcome mail did. Best-effort: the
+    // account is already minted, and refusing the signup here would be worse than the state it
+    // describes (the door below is what makes that state recoverable).
+    if minted_password && credentials_emailed == Some(false) {
+        if let Err(e) = sqlx::query(
+            "UPDATE users SET password_undelivered = TRUE WHERE id = $1 AND is_active = true",
+        )
+        .bind(user_id)
+        .execute(&state.pool)
+        .await
+        {
+            tracing::warn!("register: could not mark the undelivered credential for {email}: {e}");
+        }
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({
@@ -429,6 +447,19 @@ pub async fn login(
         tracing::warn!(user = %user.id, "sign-in not stamped: {e}");
     }
 
+    // A sign-in that WORKED is proof the customer knows their password, whatever the signup mail
+    // did — so the "choose your own first password" door closes here too. Best-effort, like the
+    // stamp above: the caller has already proved the password and must never see an error for it.
+    if let Err(e) = sqlx::query(
+        "UPDATE users SET password_undelivered = FALSE WHERE id = $1 AND password_undelivered",
+    )
+    .bind(user.id)
+    .execute(&state.pool)
+    .await
+    {
+        tracing::warn!(user = %user.id, "initial-password latch not cleared on sign-in: {e}");
+    }
+
     let now = Utc::now().timestamp() as usize;
     let claims = Claims {
         sub: user.id.to_string(),
@@ -470,6 +501,57 @@ pub async fn login(
             "tenant_id": user.tenant_id
         }
     })))
+}
+
+/// `POST /api/v1/auth/initial-password` — `{password}`.
+///
+/// The recovery the signup page owes a customer whose credentials mail did not leave: they hold a
+/// session (signup returns one) but no password, and "send yourself a reset code" travels the same
+/// mail path that just failed. This sets the first password they will ever know, ONCE.
+///
+/// The gate is in the UPDATE, not in a claim: `AND password_undelivered` means an account whose mail
+/// DID arrive (or which already used this door) matches no row and gets a 409 — the door can never
+/// overwrite a password the customer already knows. `sessions_valid_from` is bumped with the same
+/// statement, so any session minted before this choice stops being valid.
+pub async fn set_initial_password(
+    state: State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<InitialPasswordRequest>,
+) -> AppResult<Json<serde_json::Value>> {
+    if req.password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "Password must be at least 8 characters".into(),
+        ));
+    }
+    let user_id = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
+
+    let salt = SaltString::generate(&mut OsRng);
+    let new_hash = Argon2::default()
+        .hash_password(req.password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+        .to_string();
+
+    let updated = sqlx::query(
+        "UPDATE users SET password_hash = $1, password_undelivered = FALSE, \
+                sessions_valid_from = NOW(), updated_at = NOW() \
+           WHERE id = $2 AND password_undelivered AND is_active = true",
+    )
+    .bind(&new_hash)
+    .bind(user_id)
+    .execute(&state.pool)
+    .await?;
+
+    if updated.rows_affected() == 0 {
+        return Err(AppError::Conflict(
+            "A password has already been set for this account. Sign in with it, or send yourself a \
+             reset code."
+                .into(),
+        ));
+    }
+
+    tracing::info!(user = %user_id, "initial password chosen by the signup session");
+    Ok(Json(json!({"status": "ok"})))
 }
 
 pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Value> {
