@@ -1705,7 +1705,6 @@ function TGSV(lid,sentences){
   host.appendChild(El("div",{style:"font-weight:700;color:#166534;margin-bottom:3px"},"Saved."));
   host.appendChild(El("div",null,sentences.join(" ")));
   host.appendChild(El("div",{style:"margin-top:8px"},El("button",{"class":"btn btn-sm",onclick:function(){C();S("leads");}},"Done")));
-  if(lid) setTimeout(function(){ TGPV(lid); },0);
 }
 function TGCR(lid,tags){
   var host=$("tg-current"); if(!host) return;
