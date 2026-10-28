@@ -220,7 +220,15 @@ pub async fn create_card(
     check_card_text(&body)?;
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let id = Uuid::new_v4();
-    let title = body["title"].as_str().unwrap_or("New Card");
+    // A card needs a TITLE. This defaulted a missing one to "New Card", so an empty body minted a
+    // real card (measured live 2026-10-28: `POST /api/v1/kinetic/cards {}` -> 201, row "New Card",
+    // a live page at /k/<slug>), exactly like the funnel create. The editor already refuses a blank
+    // title; refuse here too instead of inventing a customer's page.
+    let title = body["title"]
+        .as_str()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| AppError::BadRequest("A card needs a title".into()))?;
     let id_str = id.to_string();
     let slug = body["slug"].as_str().unwrap_or(&id_str[..8]);
     let bio = body["bio"].as_str().unwrap_or("");
