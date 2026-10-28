@@ -250,6 +250,14 @@ pub fn create_router(
             "/api/v1/settings/branding/preview",
             post(branding_handler::preview_email),
         )
+        // The same sample RENDERED and returned instead of mailed (cron 2026-10-28, parity with
+        // MissedCall Respondr): the pane's own mirror could drift from the renderer, and this is the
+        // only way to prove an uploaded logo reaches the outgoing body without a real send. Reads
+        // the caller's own branding, takes no body, and mails nothing.
+        .route(
+            "/api/v1/settings/branding/preview-body",
+            get(branding_handler::preview_body),
+        )
         .route(
             "/api/v1/leads",
             get(lead_handler::list_leads).post(lead_handler::create_lead),

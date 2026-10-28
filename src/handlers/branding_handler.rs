@@ -212,6 +212,42 @@ pub async fn preview_email(
     }
 }
 
+/// `GET /api/v1/settings/branding/preview-body` — the email this account's branding produces,
+/// rendered and returned, NOT sent (cron 2026-10-28, parity with MissedCall Respondr).
+///
+/// The pane's "How it looks in a mail" block used to be a hand-drawn mirror of the renderer, so it
+/// could drift from the mail a customer receives. This answers it with the bytes the mail path would
+/// emit, so an operator judges the REAL header (logo, display name, colour rule) without waiting for
+/// an inbox and without a send. It is also the only arm that can prove an UPLOADED logo reached the
+/// rendered body: `send_branding_preview_email` mails a sample but nothing reads the result back.
+///
+/// Nothing is mailed (`sent:false`), and no address is ever taken from the request — the recipient
+/// fields describe the CALLER, so this cannot be used as a relay.
+pub async fn preview_body(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id = caller_tenant(&auth)?;
+    let to = auth.email.trim().to_string();
+    let name: String = sqlx::query_scalar("SELECT name FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("DB error: {e}")))?
+        .filter(|n: &String| !n.trim().is_empty())
+        .unwrap_or_else(|| "there".to_string());
+    let r = crate::email::render_branding_preview(&state.pool, tenant_id, &name, &to).await;
+    Ok(Json(json!({
+        "sent": false,
+        "to": to,
+        "subject": r.subject,
+        "html": r.html,
+        "text": r.text,
+        "branded": r.branded,
+        "logo_is_own": r.own_logo
+    })))
+}
+
 /// `GET /api/v1/branding/logo/:tenant_id` — stream a tenant's logo. No credential (see the module
 /// docs); ids are unguessable uuids and no other tenant datum is reachable from here.
 pub async fn get_logo(

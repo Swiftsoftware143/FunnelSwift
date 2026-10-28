@@ -4112,6 +4112,14 @@ async function renderEmailBranding() {
           <button type="button" class="btn btn-outline" id="brand-preview-send">Send me a preview email</button>
           <span style="font-size:11px;color:#94a3b8">Mails this sample, with your logo and colour, to your own address.</span>
         </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn btn-secondary" id="brand-exact">Show the exact email</button>
+          <span style="font-size:11px;color:#94a3b8">Renders the real mail body here, straight from the server. Nothing is mailed.</span>
+        </div>
+        <div id="brand-exact-wrap" style="display:none;margin-top:10px">
+          <div id="brand-exact-subject" style="font-size:12px;font-weight:600;color:#334155;margin-bottom:6px"></div>
+          <iframe id="brand-exact-frame" title="The exact email your customers receive" style="width:100%;max-width:560px;height:420px;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe>
+        </div>
         <div id="brand-preview-msg" style="font-size:12px;margin-top:8px;color:#64748b"></div>
       </div>
     </div>
@@ -4138,6 +4146,7 @@ function bindEmailBranding() {
   if (file) file.addEventListener('change', uploadBrandLogo);
   document.getElementById('brand-logo-remove')?.addEventListener('click', removeBrandLogo);
   document.getElementById('brand-preview-send')?.addEventListener('click', sendBrandPreview);
+  document.getElementById('brand-exact')?.addEventListener('click', showExactEmail);
 }
 
 window._brandPreview = function() {
@@ -4163,6 +4172,43 @@ window._brandPreview = function() {
     else { wrap.style.display = 'none'; }
   }
 };
+
+async function showExactEmail() {
+  /* The sketch on this card is drawn by the browser, so it can drift from the server's renderer.
+     This asks the backend for the REAL bytes its mail path would emit for this account
+     (GET /settings/branding/preview-body) and shows them in place. Nothing is mailed: the answer
+     carries sent:false, and the recipient is always the caller, so it is not a relay. */
+  const btn = document.getElementById('brand-exact');
+  const wrap = document.getElementById('brand-exact-wrap');
+  const frame = document.getElementById('brand-exact-frame');
+  const subj = document.getElementById('brand-exact-subject');
+  const msg = document.getElementById('brand-preview-msg');
+  if (btn) btn.disabled = true;
+  if (msg) { msg.style.color = '#64748b'; msg.textContent = 'Rendering the exact email…'; }
+  try {
+    const res = await fetch(API_BASE + '/settings/branding/preview-body', {
+      headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
+    });
+    if (res.status === 401) { clearSession(); window.location.href = '/login'; return; }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
+    const esc = s => String(s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    if (subj) subj.textContent = 'Subject: ' + (body.subject || '');
+    if (frame) frame.srcdoc = body.html
+      || ('<pre style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;white-space:pre-wrap;padding:16px;color:#111827">' + esc(body.text) + '</pre>');
+    if (wrap) wrap.style.display = 'block';
+    if (msg) {
+      msg.style.color = body.logo_is_own ? '#16a34a' : '#64748b';
+      msg.textContent = body.logo_is_own
+        ? 'This is the exact mail, with YOUR logo and name at the top of it.'
+        : (body.branded
+          ? 'This is the exact mail. Your branding has no logo yet, so the header carries the FunnelSwift wordmark.'
+          : 'This is the exact mail with nothing branded yet — it carries the FunnelSwift identity.');
+    }
+  } catch (e) {
+    if (msg) { msg.style.color = '#dc2626'; msg.textContent = 'Could not render the exact email: ' + e.message; }
+  } finally { if (btn) btn.disabled = false; }
+}
 
 async function sendBrandPreview() {
   /* The operator's own inbox proof: the backend mails a sample of THEIR branded mail to their own

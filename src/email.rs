@@ -674,6 +674,52 @@ pub async fn send_branding_preview_email(
     .await
 }
 
+/// One rendered `branding_preview` sample, ready to judge — never delivered.
+pub struct RenderedPreview {
+    pub subject: String,
+    pub html: String,
+    pub text: String,
+    /// True when the header above the body is THIS account's own logo, not the app's wordmark.
+    pub own_logo: bool,
+    /// True when the account has saved branding at all (a name or a logo).
+    pub branded: bool,
+}
+
+/// The EXACT parts a `branding_preview` sample would carry, rendered but NOT sent.
+///
+/// WHY (cron 2026-10-28, parity with MissedCall Respondr): the console's "How it looks in a mail"
+/// block draws its OWN mirror of [`crate::branding::Branding::header_html`], so it can drift from
+/// the renderer — an operator then approves a header that is not the one their customers receive.
+/// It also meant the fleet could never prove an UPLOADED logo reaches the outgoing body without
+/// mailing a real inbox. This answers the panel with the bytes the mail path would emit — same merge
+/// fields, same template lookup, same header, same support footer, in the same order as
+/// [`send_template_email_for_tenant`] — and delivers nothing.
+pub async fn render_branding_preview(
+    pool: &PgPool,
+    aid: Uuid,
+    name: &str,
+    to: &str,
+) -> RenderedPreview {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("email", to);
+    let vars = bound_vars(vars);
+    let (subject, body, html) = render_template(pool, aid, "branding_preview", &vars).await;
+    // Read AFTER the render so the flags describe the same branding rows the render used.
+    let stored = crate::branding::load(pool, aid).await;
+    let own_logo = stored
+        .as_ref()
+        .and_then(|b| b.resolve_logo_url(APP_URL))
+        .is_some();
+    RenderedPreview {
+        subject,
+        html: html.unwrap_or_default(),
+        text: body.unwrap_or_default(),
+        own_logo,
+        branded: stored.is_some(),
+    }
+}
+
 pub async fn send_reset_email(
     pool: &PgPool,
     tenant_id: Uuid,
