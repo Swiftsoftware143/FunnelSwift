@@ -1,26 +1,26 @@
 {
   "app": "FunnelSwift Mobile",
   "platform": "android",
-  "version": "1.0.21",
-  "version_source": "versionName read out of the APK's own AndroidManifest.xml (2026-09-25)",
-  "size": 110939869,
-  "sha256": "29727fe7aec8b355f2febaa5715b63b95df9667a76f23c6996517ff0f47e7756",
-  "md5": "1e573a0b8d433eba53155d7aadae784d",
+  "version": "1.0.22",
+  "version_source": "versionName 1.0.22 / versionCode 2, the values this build was compiled with (android/app/build.gradle, mirrored in app.json); re-read out of the APK's own AndroidManifest.xml on 2026-09-25 for the previous build",
+  "size": 110959701,
+  "sha256": "35be2bf0898f2e132e8b0756b48913aea917a09950844472d8648fbd4c5cb085",
+  "md5": "4b36d55af1d34f53713b11156bd40d19",
   "live_routes": [
-    "https://funnelswift.net/funnelswift-1e573a0b.apk",
+    "https://funnelswift.net/funnelswift-4b36d55a.apk",
     "https://funnelswift.net/funnelswift.apk"
   ],
   "mirrors_byte_identical": true,
   "naming": "funnelswift-<md5[0:8]>.apk is the immutable versioned mirror; funnelswift.apk is the stable alias (same bytes)",
   "binary_in_git": false,
-  "binary_location": "/opt/swift/nginx/www/funnelswift/{funnelswift.apk,funnelswift-1e573a0b.apk} (served by nginx, 110 MB each)",
+  "binary_location": "/opt/swift/nginx/www/funnelswift/{funnelswift.apk,funnelswift-4b36d55a.apk} (served by nginx, 110959701 bytes each)",
   "guard_class": "ARTIFACT-MIRROR",
   "why_not_in_git": "110 MB served-only binary: guard class ARTIFACT-MIRROR, reported not hazardous (/opt/swift/docs/fleet-marketing-www.md). This record is the tracked provenance; the bytes stay out of both repos.",
   "recorded_by": "kanban t_d7606e96",
   "known_mismatch_resolved": {
     "file": "www/download-app.html",
-    "was": "advertised v1.0.22, 'Built: Jul 26, 2026 14:10 EDT', 106 MB - the version was measurably wrong (the linked APK declares versionName 1.0.21) and the build date was unverifiable: every zip entry in the APK carries the 1981 zero sentinel, so the artifact states no build time at all",
-    "now": "v1.0.21 - build 1e573a0b - 106 MB - Android 8.0+ (version = this file's version, build = md5[0:8] of the served mirror, size = this file's size as MiB)",
-    "fixed_by": "kanban t_6ccf6563: one-line replacement in apps/FunnelSwift/www/download-app.html, published through fleet/marketing-www-parity.py --publish and recorded in the frontends repo"
+    "was": "the page advertised v1.0.21 while the repo's newest mobile commit (2d70744, 2026-10-18, 'fix(mobile signup): ask NAME + EMAIL only') was in NO published APK: both the served file and the local artifact were built 2026-09-20, so every customer downloading the app got a signup that demanded a password",
+    "now": "v1.0.22 - build 4b36d55a - the APK carries 'Name and email are required' and posts to /auth/signup (the door that mints and mails the first password); the password field is gone from the register form",
+    "fixed_by": "2026-10-28 cron `default`: rebuild from committed source (scripts/build-mobile-apk.sh), publish (scripts/publish-apk.py), version-bust (scripts/apk-version-bust.sh) and a 6-leg live proof of the downloaded bytes"
   }
 }
