@@ -2,6 +2,10 @@
 //! Reads plan limits from the plans table (max_cards, max_leads, etc.).
 //! Falls back to feature_limits table for any custom limits defined there.
 //!
+//! A workspace with NO active `tenant_plan_subscriptions` row is bounded by the install's FREE
+//! tier (the price-0 plan a new signup is seated on) — never left unlimited (kanban t_c5eedbd0).
+//! See [`effective_plan`].
+//!
 //! Plan-gating is enforced through three helpers:
 //!   - `enforce_feature_limit`  — numeric limits (max_cards, max_leads, ...)
 //!   - `enforce_feature_flag`   — boolean flags (has_api, has_dual_routing, ...)
@@ -100,31 +104,109 @@ pub fn limit_column(feature_key: &str) -> Option<&'static str> {
     })
 }
 
-/// Numeric limit for the tenant's active plan: `feature_limits` first (custom override), then
-/// the plan's own column through [`limit_column`]. `Ok(None)` when the tenant has no active
-/// plan, the key has neither a row nor a column, or the column is NULL — all of which mean
-/// "not configured", which the house rule treats as allow.
+/// A workspace's governing plan, resolved ONCE for every gate (kanban t_c5eedbd0).
 ///
-/// The column is read out of the serialised plan row (`to_jsonb(p)`), so the statement stays a
-/// fixed literal — the key never reaches the SQL text.
-async fn plan_limit(
-    state: &AppState,
-    tenant_id: Uuid,
-    feature_key: &str,
-) -> AppResult<Option<i32>> {
-    let Some(column) = limit_column(feature_key) else {
+/// `plan_id` is the plan the gates read `feature_limits` rows from; `row` is that plan serialised
+/// (`to_jsonb(p)`), so a column and a jsonb flag are read out of the same bytes; `defaulted` is
+/// `true` when the workspace holds NO active `tenant_plan_subscriptions` row and the install's
+/// free tier was applied instead.
+struct EffectivePlan {
+    plan_id: Uuid,
+    row: Value,
+    defaulted: bool,
+}
+
+/// The workspace's own active subscription — the only plan a customer is actually paying for.
+const ACTIVE_PLAN_SQL: &str = "SELECT p.id, to_jsonb(p) FROM plans p \
+     JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id \
+     WHERE tps.tenant_id = $1 AND tps.status = 'active' \
+     ORDER BY tps.start_date DESC LIMIT 1";
+
+/// The install's FREE tier for THIS workspace's product side — the fail-CLOSED fallback for a
+/// workspace with no active subscription.
+///
+/// `plans.price` is `double precision NOT NULL DEFAULT 0` and `plans.side` is
+/// `character varying(20) NOT NULL DEFAULT 'main'`, so unlike a slug this predicate resolves on
+/// any install — it is the same pair `plan_resolver::assign_free_plan` seats every signup on, so a
+/// plan-less workspace is bounded exactly as the workspace a new signup gets. The side follows the
+/// workspace's own product: one that already owns a kinetic card is the Kinetic product, anything
+/// else is the Capture product this app's own signup page serves (`main`, the same default the two
+/// signup handlers use when the request carries no product marker).
+const FREE_PLAN_SQL: &str = "SELECT p.id, to_jsonb(p) FROM plans p WHERE p.price = 0 \
+     ORDER BY (p.side = CASE WHEN EXISTS \
+         (SELECT 1 FROM kinetic_cards k WHERE k.tenant_id = $1) THEN 'kinetic' ELSE 'main' END) DESC, \
+       (p.side = 'both') DESC, p.slug LIMIT 1";
+
+/// Resolve the plan every gate below reads, failing CLOSED to the free tier.
+///
+/// BEFORE t_c5eedbd0 a workspace with no active plan was treated as UNLIMITED by every gate — a
+/// lapsed, deleted or never-written subscription row bought the whole paid product. `None` is now
+/// returned only when this install carries NO price-0 plan at all (nothing exists to bound the
+/// tenant by); callers keep the house rule for that case and log it loudly.
+async fn effective_plan(state: &AppState, tenant_id: Uuid) -> AppResult<Option<EffectivePlan>> {
+    if let Some((plan_id, row)) = sqlx::query_as::<_, (Uuid, Value)>(ACTIVE_PLAN_SQL)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?
+    {
+        return Ok(Some(EffectivePlan {
+            plan_id,
+            row,
+            defaulted: false,
+        }));
+    }
+
+    let free = sqlx::query_as::<_, (Uuid, Value)>(FREE_PLAN_SQL)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let Some((plan_id, row)) = free else {
+        tracing::error!(
+            tenant = %tenant_id,
+            "gates: workspace has NO active plan and this install carries NO price-0 plan — \
+             nothing can bound it, so it is allowed (create a free plan in Admin > Plans)"
+        );
         return Ok(None);
     };
-    let row: Option<serde_json::Value> = sqlx::query_scalar(
-        "SELECT to_jsonb(p) FROM plans p JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id WHERE tps.tenant_id = $1 AND tps.status = 'active' ORDER BY tps.start_date DESC LIMIT 1",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
 
-    Ok(row
-        .and_then(|r| r.get(column).and_then(|v| v.as_i64()))
-        .map(|n| n as i32))
+    warn_defaulted_once(tenant_id, &row);
+    Ok(Some(EffectivePlan {
+        plan_id,
+        row,
+        defaulted: true,
+    }))
+}
+
+/// One WARN per plan-less workspace per process, not one per gate evaluation: the fallback is
+/// correct but the operator should still see which workspaces have no subscription.
+fn warn_defaulted_once(tenant_id: Uuid, row: &Value) {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+
+    static WARNED: OnceLock<Mutex<HashSet<Uuid>>> = OnceLock::new();
+    let seen = WARNED.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut seen = match seen.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if seen.insert(tenant_id) {
+        let slug = row.get("slug").and_then(Value::as_str).unwrap_or("?");
+        tracing::warn!(
+            tenant = %tenant_id,
+            plan = %slug,
+            "gates: workspace has NO active plan — the install's free tier applies (fail-closed)"
+        );
+    }
+}
+
+/// Read a numeric limit column out of a serialised plan row. `None` = the key has no column, or
+/// the column is NULL — both "not configured", which the house rule treats as allow.
+fn plan_column_limit(row: &Value, feature_key: &str) -> Option<i32> {
+    limit_column(feature_key)
+        .and_then(|column| row.get(column))
+        .and_then(Value::as_i64)
+        .map(|n| n as i32)
 }
 
 /// Evaluate a raw numeric limit against current usage. `limit` values follow the
@@ -155,7 +237,11 @@ pub async fn enforce_feature_limit(
     label: &str,
 ) -> AppResult<()> {
     match resolved_limit(state, tenant_id, feature_key).await? {
-        None => Ok(()), // No plan assigned, no row and no column — allow
+        // No plan to read at all (this install has no price-0 plan to fall back to), or the key is
+        // configured nowhere on the effective plan — both "not configured", which the house rule
+        // treats as allow. A plan-less workspace is NOT this case: `effective_plan` gives it the
+        // install's free tier, whose own numbers decide.
+        None => Ok(()),
         Some(limit) => {
             let usage = get_usage_count(state, tenant_id, feature_key).await;
             check_numeric_limit(limit, usage, label)
@@ -205,28 +291,30 @@ async fn resolved_limit(
     // no active plan — an explicit per-tenant decision is the operator's strongest statement about
     // that tenant. When it decides, the plan reads are skipped: a tenant without an override pays
     // exactly what it paid before the override existed.
-    let tenant = tenant_override_value(state, tenant_id, feature_key).await?;
-    let plan_row: Option<i32> = if tenant.is_some() {
-        None
-    } else {
-        sqlx::query_scalar(
-            "SELECT fl.limit_value FROM feature_limits fl
-             JOIN tenant_plan_subscriptions tps ON tps.plan_id = fl.plan_id
-             WHERE tps.tenant_id = $1 AND tps.status = 'active' AND fl.feature_key = $2
-             ORDER BY tps.start_date DESC LIMIT 1",
-        )
-        .bind(tenant_id)
-        .bind(feature_key)
-        .fetch_optional(&state.pool)
-        .await?
-        .flatten()
+    if let Some(value) = tenant_override_value(state, tenant_id, feature_key).await? {
+        return Ok(Some(value));
+    }
+
+    // ONE resolver, so a workspace with no active subscription is bounded by the install's free
+    // tier at BOTH levels (`feature_limits` rows and the plan's own column) — kanban t_c5eedbd0.
+    let Some(plan) = effective_plan(state, tenant_id).await? else {
+        return Ok(None);
     };
-    let plan_column = if tenant.is_none() && plan_row.is_none() {
-        plan_limit(state, tenant_id, feature_key).await?
-    } else {
-        None
-    };
-    Ok(pick_limit(tenant, plan_row, plan_column))
+
+    let plan_row: Option<i32> = sqlx::query_scalar(
+        "SELECT fl.limit_value FROM feature_limits fl WHERE fl.plan_id = $1 AND fl.feature_key = $2",
+    )
+    .bind(plan.plan_id)
+    .bind(feature_key)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
+
+    Ok(pick_limit(
+        None,
+        plan_row,
+        plan_column_limit(&plan.row, feature_key),
+    ))
 }
 
 /// Map a `has_*` column name to the corresponding `features` jsonb key.
@@ -275,10 +363,9 @@ pub fn plan_row_flag(row: &serde_json::Value, feature_key: &str) -> Option<bool>
 /// Single source of truth, in precedence order: the tenant's own override FIRST (see [`pick_limit`]
 /// — `1` grants, `0` refuses), then the `features` jsonb key when present, else the `has_*` column
 /// on the active plan. `true` -> Ok; `false` -> UpgradeRequired.
-/// A tenant with no active plan is allowed (matching `enforce_feature_limit`'s
-/// "no plan -> allow" behaviour so tenants without a subscription are not locked out) — unless the
-/// operator stored an override for this tenant, which is honoured precisely because it is the only
-/// lever that speaks about this tenant alone.
+/// A tenant with no active plan is bounded by the install's FREE tier — the same plan a new signup
+/// is seated on (kanban t_c5eedbd0) — unless the operator stored an override for this tenant,
+/// which is honoured precisely because it is the only lever that speaks about this tenant alone.
 pub async fn enforce_feature_flag(
     state: &AppState,
     tenant_id: Uuid,
@@ -298,21 +385,13 @@ pub async fn enforce_feature_flag(
         }
     }
 
-    let row: Option<serde_json::Value> = sqlx::query_scalar(
-        "SELECT to_jsonb(p) FROM plans p
-         JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
-         WHERE tps.tenant_id = $1 AND tps.status = 'active'
-         ORDER BY tps.start_date DESC LIMIT 1",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let Some(row) = row else {
-        return Ok(()); // no active plan — allow (consistent with numeric gating)
+    // An install carrying no price-0 plan at all has nothing to bound the tenant by: the house
+    // rule (allow) stays, and `effective_plan` has already logged the ERROR.
+    let Some(plan) = effective_plan(state, tenant_id).await? else {
+        return Ok(());
     };
 
-    if plan_row_flag(&row, feature_key).unwrap_or(false) {
+    if plan_row_flag(&plan.row, feature_key).unwrap_or(false) {
         Ok(())
     } else {
         Err(AppError::UpgradeRequired(format!(
@@ -511,8 +590,9 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
 //   * free themes     — midnight, ocean, rose
 //   * free templates  — the `bio_*` family
 //   * everything else — requires `premium_themes` on `plans.features`
-// Semantics, matching `enforce_feature_flag`: no active plan -> allow;
-// key absent/FALSE -> locked (402 UpgradeRequired); key TRUE -> allow.
+// Semantics, matching `enforce_feature_flag`: the effective plan (the active subscription, else
+// the install's free tier) decides — key absent/FALSE -> locked (402 UpgradeRequired);
+// key TRUE -> allow; this install carries no price-0 plan at all -> allow (nothing bounds it).
 
 /// jsonb key on `plans.features` that grants premium themes and templates.
 pub const PREMIUM_THEMES_KEY: &str = "premium_themes";
@@ -553,23 +633,18 @@ pub fn is_catalogue_template(id: &str) -> bool {
     TEMPLATE_NAMESPACES.iter().any(|p| id.starts_with(p)) || TEMPLATE_STANDALONE_IDS.contains(&id)
 }
 
-/// Does the tenant's active plan grant `premium_themes`?
-/// `true` when there is no active plan (fail-open, consistent with the other
-/// helpers here) or when the jsonb key is literally `true`; `false` when the
-/// key is absent, `null`, or `false`.
+/// Does the workspace's effective plan grant `premium_themes`?
+/// Resolved through [`plan_row_flag`] (the same rule every other boolean uses) on the plan
+/// [`effective_plan`] resolves — so a workspace with no active subscription is answered by the
+/// install's FREE tier, not granted premium themes by default (kanban t_c5eedbd0).
+/// `true` only when the plan literally carries the key as `true`; `false` when it is absent,
+/// `null` or `false`, and when this install carries no price-0 plan to fall back to (nothing
+/// bounds the tenant, so the house rule stays).
 pub async fn premium_themes_granted(state: &AppState, tenant_id: Uuid) -> AppResult<bool> {
-    let granted: Option<bool> = sqlx::query_scalar(
-        "SELECT (COALESCE(p.features->>$2, 'false') = 'true')
-         FROM plans p
-         JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
-         WHERE tps.tenant_id = $1 AND tps.status = 'active'
-         ORDER BY tps.start_date DESC LIMIT 1",
-    )
-    .bind(tenant_id)
-    .bind(PREMIUM_THEMES_KEY)
-    .fetch_optional(&state.pool)
-    .await?;
-    Ok(granted.unwrap_or(true))
+    let Some(plan) = effective_plan(state, tenant_id).await? else {
+        return Ok(true);
+    };
+    Ok(plan_row_flag(&plan.row, PREMIUM_THEMES_KEY).unwrap_or(false))
 }
 
 /// Reject a premium `theme` with 402 when the caller's plan lacks
@@ -666,6 +741,27 @@ mod resolution_rules {
         // feature_limits-only keys have no column: absence must stay "not configured"
         assert_eq!(limit_column("max_webhooks"), None);
         assert_eq!(limit_column("max_affiliates"), None);
+    }
+
+    /// kanban t_c5eedbd0: a plan row (the active subscription OR the free-tier fallback) is the
+    /// only place a numeric cap comes from, so the reader must give the same answers for both.
+    #[test]
+    fn a_numeric_cap_is_read_out_of_the_serialised_plan_row() {
+        let row = serde_json::json!({
+            "max_cards": 0,
+            "max_leads": 100,
+            "max_forms": null
+        });
+        // the capture-free free tier really does cap cards at 0 — the value that now refuses a
+        // plan-less workspace instead of the old fail-open allowance
+        assert_eq!(plan_column_limit(&row, "max_cards"), Some(0));
+        assert_eq!(plan_column_limit(&row, "max_kinetic_cards"), Some(0));
+        assert_eq!(plan_column_limit(&row, "max_leads"), Some(100));
+        // NULL means "not configured", never 0
+        assert_eq!(plan_column_limit(&row, "max_forms"), None);
+        // absent column, and a key with no column at all
+        assert_eq!(plan_column_limit(&row, "max_qr_codes"), None);
+        assert_eq!(plan_column_limit(&row, "max_webhooks"), None);
     }
 
     // ── the per-tenant override precedence (kanban t_0a139e57) ────────────────────────────────

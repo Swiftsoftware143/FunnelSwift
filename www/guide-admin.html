@@ -429,7 +429,11 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, the catalogue name of the active subscription),
             never the role word “User”. A workspace with no subscription on record reads
             <em>No plan assigned</em> there and in the admin panel’s tenant list — the app
-            no longer invents a tier name for a workspace that has none.</li>
+            no longer invents a tier name for a workspace that has none, and it does not treat that
+            state as unlimited either: every limit and feature gate applies the install’s own free
+            tier (the price-0 plan a new signup is seated on — Capture Free for a workspace that owns
+            no card, Kinetic Free for one that already owns one), and the server logs a warning naming
+            the workspace. Seat a plan on it to grant more.</li>
         </ul>
       </div>
 
