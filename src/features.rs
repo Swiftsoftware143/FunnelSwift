@@ -178,6 +178,29 @@ async fn effective_plan(state: &AppState, tenant_id: Uuid) -> AppResult<Option<E
     }))
 }
 
+/// The tier the GATES enforce for this workspace, as `(name, defaulted)`.
+///
+/// Published by `auth::handlers::me` so the customer's own "Your Plan" card can name the level it
+/// is actually being held to. Measured defect, 2026-10-28: after t_c5eedbd0 made a plan-less
+/// workspace fail CLOSED to the install's free tier, the dashboard still told the customer "its
+/// limits are not set" — the panel and the gate disagreed about the same workspace, which is the
+/// divergence `features.rs` exists to prevent (missedcallrespondr's Tenants list already publishes
+/// `plan_effective_name` + `plan_is_default` for exactly this state).
+///
+/// `None` means nothing could be resolved (this install carries no price-0 plan); the caller then
+/// says nothing about a level rather than inventing one.
+pub async fn effective_plan_label(
+    state: &AppState,
+    tenant_id: Uuid,
+) -> AppResult<Option<(String, bool)>> {
+    Ok(effective_plan(state, tenant_id).await?.and_then(|e| {
+        e.row
+            .get("name")
+            .and_then(Value::as_str)
+            .map(|name| (name.to_string(), e.defaulted))
+    }))
+}
+
 /// One WARN per plan-less workspace per process, not one per gate evaluation: the fallback is
 /// correct but the operator should still see which workspaces have no subscription.
 fn warn_defaulted_once(tenant_id: Uuid, row: &Value) {

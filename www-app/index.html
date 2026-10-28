@@ -1194,7 +1194,7 @@ function D(){
     var h='<div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
     h+='<div><h3 style="margin:0 0 2px">Your Plan</h3>';
     h+='<div style="font-size:20px;font-weight:800">'+X(unassigned?"No plan assigned":pn)+'</div>';
-    if(unassigned){h+='<div style="color:#92400e;font-size:12px;margin-top:4px;max-width:52ch">This workspace has no plan on record yet, so its limits are not set. Choose a plan and our team puts it on your workspace \u2014 nothing is charged until you ask.</div>';}
+    if(unassigned){h+='<div style="color:#92400e;font-size:12px;margin-top:4px;max-width:52ch">'+(u&&u.plan_effective_name?('This workspace has no plan chosen yet, so it runs on '+X(u.plan_effective_name)+' \u2014 the tier this app applies to a workspace without a plan. '):('This workspace has no plan chosen yet, so its limits are not set. '))+'Choose a plan and our team puts it on your workspace \u2014 nothing is charged until you ask.</div>';}
     if(cp){
       /* kanban cron-1016 — GET /api/v1/me/usage answered this workspace's own live counts and had
          NO caller on any served page (measured 2026-10-16, grep over every served root), while this

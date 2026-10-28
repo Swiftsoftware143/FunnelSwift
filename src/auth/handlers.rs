@@ -549,19 +549,38 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
     //
     // WHAT WAS WRONG (measured LIVE 2026-10-28): a workspace with NO active subscription answered
     // the literal string "Free". This install's catalogue contains no such tier — its price-0 rows
-    // are "Capture Free" and "Kinetic Free" — so the console painted a level that exists in no row,
-    // and one the gates do not enforce either (`features::enforce_feature_limit` reads "no active
-    // plan -> allow"). Measured: 7 of 13 workspaces were in that state. The app must not invent a
-    // level: with no subscription the answer is `plan_name: null` plus `plan_assigned: false`, and
-    // the console says "No plan assigned" — the same wording the operator's Tenants list already
-    // uses for exactly this state. A workspace that really is on a free tier still reads that
-    // tier's own catalogue name, so nothing changes for it.
+    // are "Capture Free" and "Kinetic Free" — so the console painted a level that exists in no row.
+    // Measured: 7 of 13 workspaces were in that state. The app must not invent a level: with no
+    // subscription the answer is `plan_name: null` plus `plan_assigned: false`, and the console says
+    // "No plan assigned". What the gates DO enforce for that workspace is a real row, though
+    // (`features::effective_plan` fails CLOSED to this install's price-0 tier, t_c5eedbd0), so the
+    // same response publishes it as `plan_effective_name` + `plan_is_default` — the dashboard may
+    // name the tier the workspace is held to, never claim a tier it does not hold. A workspace that
+    // really is on a free tier still reads that tier's own catalogue name under `plan_name`.
     let plan_name: Option<String> = current_plan
         .as_ref()
         .and_then(|p| p.get("name"))
         .and_then(|n| n.as_str())
         .map(str::to_string);
     let plan_assigned = plan_name.is_some();
+
+    // The level the GATES enforce when no plan row is assigned (`features::effective_plan`, the one
+    // resolver every limit now reads). Without this the dashboard told a plan-less workspace "its
+    // limits are not set" while every gate compared it against the install's free tier — the panel
+    // and the gate disagreeing about the same workspace, which is the exact divergence features.rs
+    // exists to prevent. `plan_is_default` marks the level as the install's fallback rather than a
+    // plan the customer holds, so the console can say "no plan chosen yet — running on <name>" and
+    // still never claim a paid tier was bought (missedcallrespondr's Tenants list publishes the same
+    // pair — `plan_effective_name` + `plan_is_default` — for the operator's view of this state).
+    let tenant_uuid = auth.tenant_id.parse::<Uuid>().ok();
+    let (plan_effective_name, plan_is_default) = match (plan_assigned, tenant_uuid) {
+        (true, _) | (false, None) => (None, false),
+        (false, Some(tid)) => match crate::features::effective_plan_label(&state, tid).await {
+            Ok(Some((name, defaulted))) => (Some(name), defaulted),
+            // No price-0 plan on this install: nothing to name, so name nothing.
+            _ => (None, false),
+        },
+    };
 
     Json(json!({
         "user_id": auth.user_id,
@@ -582,7 +601,13 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         // false => this workspace holds NO active subscription. The console says "No plan
         // assigned" instead of guessing a tier; the operator's Tenants list prints the same state,
         // and the operator fixes it with POST /api/v1/tenants/:id/plan.
-        "plan_assigned": plan_assigned
+        "plan_assigned": plan_assigned,
+        // The tier this workspace is ACTUALLY held to, published only when that tier came from the
+        // install's fallback (`plan_is_default`). A customer can then read "no plan chosen yet —
+        // running on Capture Free" instead of being told its limits are unset while the gates are
+        // enforcing them.
+        "plan_effective_name": plan_effective_name,
+        "plan_is_default": plan_is_default
     }))
 }
 
