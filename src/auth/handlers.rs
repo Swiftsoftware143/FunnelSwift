@@ -545,13 +545,23 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
     // The workspace's actual TIER, as one display string. The console used to paint a raw role word
     // ("User"/"Admin") under the account name, which is where the tier belongs (David 2026-10-08):
     // a customer reads "Kinetic Free", not "User". `current_plan` is the plans row (jsonb) of the
-    // active subscription; a workspace with none answers "Free" rather than an empty badge.
-    let plan_name = current_plan
+    // active subscription.
+    //
+    // WHAT WAS WRONG (measured LIVE 2026-10-28): a workspace with NO active subscription answered
+    // the literal string "Free". This install's catalogue contains no such tier — its price-0 rows
+    // are "Capture Free" and "Kinetic Free" — so the console painted a level that exists in no row,
+    // and one the gates do not enforce either (`features::enforce_feature_limit` reads "no active
+    // plan -> allow"). Measured: 7 of 13 workspaces were in that state. The app must not invent a
+    // level: with no subscription the answer is `plan_name: null` plus `plan_assigned: false`, and
+    // the console says "No plan assigned" — the same wording the operator's Tenants list already
+    // uses for exactly this state. A workspace that really is on a free tier still reads that
+    // tier's own catalogue name, so nothing changes for it.
+    let plan_name: Option<String> = current_plan
         .as_ref()
         .and_then(|p| p.get("name"))
         .and_then(|n| n.as_str())
-        .unwrap_or("Free")
-        .to_string();
+        .map(str::to_string);
+    let plan_assigned = plan_name.is_some();
 
     Json(json!({
         "user_id": auth.user_id,
@@ -568,7 +578,11 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "is_admin": auth.is_admin,
         "impersonating": auth.impersonating,
         "current_plan": current_plan,
-        "plan_name": plan_name
+        "plan_name": plan_name,
+        // false => this workspace holds NO active subscription. The console says "No plan
+        // assigned" instead of guessing a tier; the operator's Tenants list prints the same state,
+        // and the operator fixes it with POST /api/v1/tenants/:id/plan.
+        "plan_assigned": plan_assigned
     }))
 }
 
