@@ -525,8 +525,9 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
       <!-- ==================== EMAIL BRANDING SECTION ==================== -->
       <h2 id="email-branding">🎨 Email Branding</h2>
       <p>Separate from the card badge above: your account can put <strong>its own logo, display name and colour
-        at the top of every transactional email</strong> FunnelSwift sends for you. Open the
-        <strong>🎨 Email Branding</strong> item in the console and set:</p>
+        at the top of every transactional email</strong> FunnelSwift sends for you. Open
+        <strong>Settings</strong> in the console and find the <strong>Email branding</strong> card — it sits
+        below the card-domain and lead-stage settings — then set:</p>
       <ul>
         <li><strong>Logo</strong> — upload a PNG, JPEG, WebP or GIF up to 2 MB. A <strong>Remove logo</strong>
           button appears once one is set.</li>
@@ -537,6 +538,14 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
         puts at the top of the email — your logo up to 56 px high and 240 px wide, otherwise the display
         name, then a 3 px rule in your colour — and it follows the fields as you type, so a name or a colour
         can be judged before saving. The preview sends nothing and saves nothing.</p>
+      <p>Next to <strong>Save branding</strong> there are two buttons, and they answer two different
+        questions. <strong>Send me a preview</strong> mails the sample to your own sign-in address — the
+        message names no recipient, so it can never reach anyone else. <strong>Show the exact email</strong>
+        answers the other question without sending anything at all: a frame opens with the message
+        <em>the server</em> renders for your account — your header at the top, every merge field filled in,
+        the exact wording a customer receives. The box above it is drawn by your browser; the frame is the
+        real thing, so if the two ever disagree, the frame is what people get. Save your branding first, or
+        the frame still shows the previous header.</p>
       <p>Click <strong>Save branding</strong>. From then on the welcome / login-credentials mail, purchase
         confirmations and password resets for this account open with your logo and name. The logo is stored
         against your account and served from a public URL (<code>GET /api/v1/branding/logo/{tenant_id}</code>),
