@@ -117,6 +117,17 @@
       <a href="#lead-import" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📤</span> Import a CSV</a>
       <a href="#bulk-ops" class="section-title" onclick="closeMobile()">Bulk Operations</a>
       <a href="#bulk-ops" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🗑️</span> Bulk Delete</a>
+      <a href="#tools-screens" class="section-title" onclick="closeMobile()">Tools Screens</a>
+      <a href="#tools-screens" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🧰</span> Templates &amp; Tools</a>
+      <a href="#guide-email-templates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">✉️</span> Email Templates</a>
+      <a href="#guide-campaigns" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📢</span> Campaigns</a>
+      <a href="#guide-locations" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🌍</span> Location Tracking</a>
+      <a href="#guide-lead-capture" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🧲</span> Lead Capture</a>
+      <a href="#guide-mobile-interest" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">📱</span> Mobile App Interest</a>
+      <a href="#guide-site-settings" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🌐</span> Site Settings</a>
+      <a href="#guide-tag-rules" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">⚙️</span> Tag Rules</a>
+      <a href="#guide-checkout-sessions" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🧾</span> Checkout Sessions</a>
+      <a href="#guide-plans-features" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎚️</span> Plans &amp; Features</a>
       <a href="#api" class="section-title" onclick="closeMobile()">API Reference</a>
       <a href="#api" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔌</span> Admin API Endpoints</a>
       <a href="#faq" class="section-title" onclick="closeMobile()">Support</a>
@@ -435,8 +446,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>Password</strong> — <code>PUT /api/v1/auth/password</code>: the new password twice, plus
             the current one as the check. A wrong current password is answered as a field error, not a sign-out.</li>
           <li><strong>The plan shown</strong> — the workspace's real tier from
-            <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, falling back to <em>Free</em>), never the
-            role word “User”.</li>
+            <code>GET /api/v1/auth/me</code> (<code>plan_name</code>, the catalogue name of the active
+            subscription), never the role word “User”. A workspace with no subscription on record reads
+            <em>No plan assigned</em> there and in this panel's tenant list — the app no longer invents a
+            tier name for a workspace that has none.</li>
         </ul>
       </div>
 
@@ -765,6 +778,133 @@ POST /api/v1/bulk/affiliates   — Delete multiple affiliates
 POST /api/v1/bulk/users        — Delete multiple users
 POST /api/v1/bulk/products     — Delete multiple products</pre>
         <p>Each accepts: <code>{"ids": ["uuid1", "uuid2", ...]}</code>. Returns count of deleted records.</p>
+      </div>
+
+      <!-- ============ TOOLS SCREENS (added 2026-10-28, cron `default`) ============ -->
+      <h2 id="tools-screens">🧰 The tools screens</h2>
+      <p>Nine screens in the admin sidebar had no page in this guide, so an operator had to work them
+      out from the screen alone. Each one below was opened live and described from what it actually
+      renders. None of them can break a customer's data: they read what the app has already recorded,
+      and the only writes are ones you make with a form on the screen.</p>
+
+      <div class="card">
+        <h3 id="guide-email-templates">✉️ Email Templates</h3>
+        <p>The system-mail screen. It shows which provider this installation sends through — the line
+        above the list reads, for example, <strong>“Email Provider (System Email) configured ·
+        mailgun”</strong> — and states that the provider and its credential are stored in this
+        installation's database, encrypted at rest, never read from a server file.</p>
+        <p><strong>Add Template</strong> creates a template of your own. The provider dropdown offers
+        <code>smtp</code>, <code>mailgun</code>, <code>sendgrid</code> and <code>sendiio</code>, and the
+        list of choices comes from the API rather than from the page, so a provider the app does not
+        support cannot be selected.</p>
+        <p>Two banners answer the question “did that person actually get their mail?” without you
+        opening a log:</p>
+        <ul>
+          <li><strong>Last email</strong> — the most recent send attempt, with its time and subject.
+          When the recipient is a reserved test address (anything on <code>example.invalid</code>,
+          <code>example.com</code> and the other reserved names) the banner says it was
+          <em>withheld</em>, and that nothing went to the provider at all. That is the harness
+          suppression working: a test signup can never mail a person.</li>
+          <li><strong>Refused in the last seven days</strong> — the count that matters. A refusal means
+          a real send failed at the provider and that customer received nothing. The banner names the
+          last refusal, the recipient and the provider's own sentence, so you can tell “the address was
+          suppressed on purpose” (a reserved address) apart from “the mail service is misconfigured”
+          (a live customer).</li>
+        </ul>
+        <p>The totals under it split sent from not-sent, and the not-sent side is almost always the
+        reserved test addresses as above.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-campaigns">📢 Campaigns</h3>
+        <p>Broadcast mail for this workspace: a list of campaigns with <strong>Add Campaign</strong>
+        and, until you make one, the empty state “No campaigns yet”.</p>
+        <p>A campaign is written and sent from here rather than from the email-template screen, so a
+        one-off message to a list never edits the templates the app uses for signup and password
+        mail.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-locations">🌍 Location Tracking</h3>
+        <p>Where your cards were opened from. Two counters sit at the top — <strong>unique
+        visitors</strong> and <strong>countries reached</strong> — over a map of the visits the app has
+        recorded.</p>
+        <p>Until a card has been opened somewhere the screen says “No location data yet. Share your
+        cards…” — an empty reading here means nobody has visited, not that tracking is broken. Only
+        visits that arrive with a location attached are counted; a visitor who blocks the lookup is
+        counted as a visit with no place, never invented.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-lead-capture">🧲 Lead Capture</h3>
+        <p>Forms you build here are embedded on any website: the screen's own words are “Every form you
+        make here gets a snippet you paste on any website. A visitor who fills…” — the rest of that
+        sentence is the promise that the submission lands in this workspace's leads.</p>
+        <p>Each form carries its own embed snippet. Paste it into the page you want the form on; every
+        submission arrives as a lead with the form's own source, so the leads list can tell you which
+        page produced which enquiry.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-mobile-interest">📱 Mobile App Interest</h3>
+        <p>The waiting list for the mobile app: “Everyone who asked to be told when the mobile app
+        ships, newest first.” Nothing is sent from this screen — it is the list you export or read when
+        there is something to announce.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-site-settings">🌐 Site Settings</h3>
+        <p>Whole-site settings — the screen says they include the <code>seo_*</code> values injected
+        into every card, funnel and public page. <strong>Add or update a setting</strong> writes one
+        key: type the key, type the value, save. Saving an existing key changes it rather than adding a
+        second row.</p>
+        <p><strong>SEO injection preview</strong> shows exactly what a public page receives — the meta
+        tags and the script tags — so you can see the effect of a key before you publish a page with
+        it. It reads “meta tags (none) · script tags (none)” when nothing is set, which is the honest
+        empty answer rather than a blank box.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-tag-rules">⚙️ Tag Rules</h3>
+        <p>Automatic work triggered by a tag: “When the trigger tag is applied to a lead, the chosen
+        action runs automatically.” Pick a trigger tag, pick an action, optionally name the tag the
+        action applies, and save the rule.</p>
+        <ul>
+          <li><strong>add_tag</strong> — put another tag on the lead.</li>
+          <li><strong>remove_tag</strong> — take a tag off.</li>
+          <li><strong>route_lead</strong> — hand the lead to another app in the fleet. The list is the
+          cross-app free tags (<em>ADASwift — Free</em>, <em>WorkflowSwift — Free</em>, and so on), so
+          the account that gets created on the other side is the tier that tag names.</li>
+          <li><strong>notify</strong> — tell someone the tag was applied.</li>
+        </ul>
+        <p>Under the rules sits the <strong>tag change log</strong>: “Every tag this workspace added to
+        or took off a lead, newest first (200 most recent)”, with when, the lead, the tag, and whether
+        it was added or removed and by whom. A tag that appears in a lead's history but not in a rule
+        was applied by hand — the log is how you tell those apart.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-checkout-sessions">🧾 Checkout Sessions</h3>
+        <p>Every payment session this workspace has started: the provider, the amount and the status.
+        A session is created when a customer begins a checkout, so this screen is the record of what
+        was attempted — an unfinished session is an attempt, not a sale.</p>
+        <p>Until the first checkout it reads “No checkout sessions”. Nothing on this screen charges
+        anyone; it reports what the payment provider was asked for.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-plans-features">🎚️ Plans &amp; Features</h3>
+        <p>The operator's control room for the catalogue: “plan catalogue, feature flags, per-tenant
+        feature overrides, plan assignment.” It is the screen behind the <code>planAdmin</code> view
+        and the reason a plan edit reaches customers without a deploy.</p>
+        <p>The catalogue table lists every plan this app offers with its name, slug, price, lead cap,
+        tag cap, provider and its feature flags as stored, plus an <strong>Edit Features</strong>
+        action per row. <strong>↻ Reload</strong> re-reads the catalogue after an edit, so what you see
+        is the database's answer rather than the page's memory of it.</p>
+        <p>Because the flags are per plan <em>and</em> per tenant, a single customer can be given a
+        capability without moving them to a new tier — that is what the override is for. The plan
+        requests your customers file appear on their own screen and are approved from the Tenants
+        list above.</p>
       </div>
 
       <!-- ============ API ============ -->

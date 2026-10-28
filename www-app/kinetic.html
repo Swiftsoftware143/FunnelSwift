@@ -815,6 +815,9 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  // failure, false for a reserved test address. Claiming "Check your email" regardless left real
  // customers with an account and a password they could never receive.
  var emailed = !(data && data.credentials_emailed === false);
+ // The session signup just returned: what the password chooser below authenticates with.
+ window.__signupToken = (data && data.token) || '';
+ window.__signupEmail = email;
  document.getElementById('signupBtnText').textContent = emailed ? 'Check your email' : 'Set your password';
  var okBox = document.createElement('p');
  okBox.setAttribute('style','text-align:center;font-size:13px;color:' + (emailed ? '#16a34a' : '#b45309') + ';margin-top:14px;line-height:1.55');
@@ -825,10 +828,13 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  } else {
    okBox.innerHTML = '<strong>Account created!</strong><br>We could not send your login details to '
      + email.replace(/[<>&]/g, '') + ', so there is nothing in your inbox. '
+     + 'Choose your password in the box below and sign in with it.'
+     + '<br><span style="font-size:12px;color:#64748b">If you would rather use a reset code, '
      + '<a href="https://app.funnelswift.net/forgot-password?email=' + encodeURIComponent(email)
-     + '" style="color:#2563eb;font-weight:600">Set your own password here</a> and sign in with it.'
-     + '<br><span style="font-size:12px;color:#64748b">If the code does not arrive either, write to '
+     + '" style="color:#2563eb;font-weight:600">send yourself one</a> — though while the '
+     + 'mail service is having trouble it will not arrive either. In that case write to '
      + 'support@swiftsoftware.net and we will set you up by hand.</span>';
+   okBox.insertAdjacentHTML('beforeend', initialPwBoxHtml());
  }
  document.getElementById('signupBtn').parentNode.appendChild(okBox);
 
@@ -844,7 +850,30 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  document.addEventListener('keydown', function(e){
  if(e.key === 'Escape') closeSignupModal();
  });
- </script>
+   // The mail-independent half of the "we could not send your login details" arm. Signup already
+  // returned a session, so the customer can choose the password they will sign in with instead of
+  // waiting for a mail that is not coming (POST /api/v1/auth/initial-password, migration 119).
+  function initialPwBoxHtml() {
+    return '<div style="margin-top:12px;padding:12px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;text-align:left">'
+      + '<strong style="font-size:14px">Choose your password now</strong>'
+      + '<div style="font-size:13px;color:#334155;margin:6px 0">You are already signed up \u2014 set the password you will use to sign in:</div>'
+      + '<input id="initPw" type="password" minlength="8" placeholder="At least 8 characters" style="width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px">'
+      + '<button type="button" onclick="saveInitialPassword()" style="margin-top:8px;width:100%;padding:9px 10px;border:0;border-radius:6px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer">Save password</button>'
+      + '<div id="initPwMsg" style="font-size:13px;margin-top:8px"></div></div>';
+  }
+  async function saveInitialPassword() {
+    var box = document.getElementById('initPwMsg');
+    var pw = (document.getElementById('initPw') || {}).value || '';
+    if (pw.length < 8) { box.innerHTML = '<span style="color:#b91c1c">That is shorter than 8 characters \u2014 try again.</span>'; return; }
+    try {
+      var r = await fetch('/api/v1/auth/initial-password', {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer ' + window.__signupToken}, body: JSON.stringify({password: pw})});
+      var d = await r.json().catch(function(){ return {}; });
+      if (!r.ok) throw new Error(d.message || d.error || 'Could not save that password.');
+      box.innerHTML = '<span style="color:#15803d"><strong>Password saved.</strong> Taking you to sign in\u2026</span>';
+      setTimeout(function(){ window.location = 'https://app.funnelswift.net/login.html' + (window.__signupEmail ? '?email=' + encodeURIComponent(window.__signupEmail) : ''); }, 900);
+    } catch (e) { box.innerHTML = '<span style="color:#b91c1c">' + String(e.message).replace(/[<>&]/g, '') + '</span>'; }
+  }
+</script>
 
 </body>
 </html>
