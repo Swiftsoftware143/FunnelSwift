@@ -4888,6 +4888,38 @@ function DLB(){
 // app will build, but only a real message proves the branding survives the mail path. The route
 // takes no body and always addresses the caller, so this cannot mail anyone else; a reserved test
 // address comes back `sent:false` with the reason instead of a false "sent".
+// The exact bytes the mail path emits, RENDERED BY THE SERVER and returned (cron 2026-10-28, the
+// same arm WorkflowSwift / ADASwift / IncentiveSwift carry). The box above is drawn by this
+// browser, so it can describe a header the mailer never emits; this shows the real message -- same
+// template, same merge fields, same branding header. Nothing is mailed and nowhere else can it go:
+// the recipient is the caller's own row. NO ledger row is written by a render, so this cannot be
+// mistaken for a send.
+function PBEX(){
+  var box=$("lm-exact");
+  if(!box) return;
+  box.style.display="block";
+  box.innerHTML='<div style="font-size:12px;color:#64748b;padding:6px 0">Rendering the exact email...</div>';
+  api("/api/v1/settings/branding/preview-body")
+    .then(function(d){
+      d=d||{};
+      var esc=function(t){ return String(t||"").replace(/[&<>]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); };
+      box.innerHTML="";
+      var sub=El("div",{style:"font:600 12px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#334155;padding:8px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-bottom:0;border-radius:8px 8px 0 0"},"Subject: "+(d.subject||"(no subject)"));
+      var fr=El("iframe",{title:"The exact email this workspace sends",style:"width:100%;height:440px;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;background:#fff"});
+      fr.setAttribute("sandbox","");
+      fr.setAttribute("srcdoc", d.html || ('<pre style="font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;white-space:pre-wrap;padding:16px;color:#111827">'+esc(d.text)+"</pre>"));
+      box.appendChild(sub);
+      box.appendChild(fr);
+      LBM(d.logo_is_own
+        ? "That is the exact mail, with your own logo and name at the top of it."
+        : (d.branded
+          ? "That is the exact mail. Your branding has no logo yet, so the header carries the FunnelSwift wordmark."
+          : "That is the exact mail. Nothing is branded yet, so it carries the FunnelSwift identity."),"i");
+    })
+    .catch(function(e){
+      box.innerHTML='<div style="font-size:12px;color:#dc2626">Could not render the exact email: '+((e&&e.message)||"unknown error")+'</div>';
+    });
+}
 function PBE(){
   LBM("Sending a preview to your own address...","i");
   api("/api/v1/settings/branding/preview",{method:"POST"})
@@ -5109,6 +5141,7 @@ function LM(){
     ebRow.appendChild(ebRm);
     ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){SLB();}},"Save branding"));
     ebRow.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"lm-brand-preview",onclick:function(){PBE();}},"Send me a preview"));
+    ebRow.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"lm-brand-exact",onclick:function(){PBEX();}},"Show the exact email"));
     ebRow.appendChild(El("span",{id:"lm-brand-msg",style:"font-size:11px;color:#64748b"}));
     wrap.appendChild(ebRow);
     var bpWrap=El("div",{style:"margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0"});
@@ -5117,6 +5150,9 @@ function LM(){
     bpWrap.appendChild(El("div",{id:"lm-bp",style:"border:1px solid #e2e8f0;border-radius:10px;padding:20px;background:#fff;max-width:520px"}));
     bpWrap.appendChild(El("div",{id:"lm-bp-blank",style:"font-size:11px;color:#94a3b8;margin-top:6px"}));
     ebDiv.appendChild(bpWrap);
+    // The server-rendered message lives here. Hidden until asked for: rendering costs a round trip
+    // and the customer asked for the exact mail only when they pressed the button.
+    ebDiv.appendChild(El("div",{id:"lm-exact",style:"display:none;margin-top:12px"}));
     var bpName=$("lm-bn"), bpColor=$("lm-bc");
     if(bpName) bpName.addEventListener("input",function(){ LBP(br.logo_url); });
     if(bpColor) bpColor.addEventListener("input",function(){ LBP(br.logo_url); });
