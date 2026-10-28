@@ -106,12 +106,17 @@ pub async fn create_funnel(
     let id = Uuid::new_v4();
     // The name is customer text that reaches an HTML <title> and a public URL, so it is normalised
     // (trimmed, non-empty, no control characters) BEFORE the slug is derived from it.
-    let name = crate::security::display_name::normalize_capped(
-        payload["name"].as_str().unwrap_or("New Funnel"),
-        255,
-        "funnel name",
-    )
-    .map_err(AppError::BadRequest)?;
+    // A funnel needs a NAME. This used to default a missing one to "New Funnel", so any client
+    // (a scanner, a double-submit, a mistyped script) could mint a LIVE public page at
+    // `/funnel/new-funnel` from an empty body — measured live 2026-10-28: `POST /api/v1/funnels {}`
+    // answered 201 and wrote a real row. The console already refuses a blank name, so this only
+    // closes the API hole: refuse BEFORE the write instead of inventing a customer's page.
+    let raw_name = payload["name"].as_str().unwrap_or("").trim().to_string();
+    if raw_name.is_empty() {
+        return Err(AppError::BadRequest("A funnel needs a name".into()));
+    }
+    let name = crate::security::display_name::normalize_capped(&raw_name, 255, "funnel name")
+        .map_err(AppError::BadRequest)?;
     // `funnels.tenant_id` REFERENCES `tenants(id)`. The reads above may take the nil-UUID fallback
     // (they return no rows), but a CREATE must not: an admin session whose workspace row is gone is
     // exempt from `global_auth`'s existence gate, so the INSERT used to answer the foreign-key
