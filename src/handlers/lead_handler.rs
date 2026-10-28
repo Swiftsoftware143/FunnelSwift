@@ -358,9 +358,16 @@ pub async fn create_lead(
         },
     );
 
+    // The tag→free-account outcome, in the answer the console's Save already reads. The tag write
+    // answers 201 whether the sibling minted a workspace or refused the address, so without this
+    // the person who clicked the tag saw "Lead created" and could not tell which had happened.
+    let provisioning = provisioning_sentences(&state.pool, tenant_id, lead_id)
+        .await
+        .unwrap_or_default();
+
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id": lead_id, "message": "Lead created"})),
+        Json(json!({"id": lead_id, "message": "Lead created", "provisioning": provisioning})),
     ))
 }
 
@@ -382,6 +389,170 @@ pub async fn get_lead(
         .ok_or_else(|| AppError::NotFound("Lead not found".into()))?;
 
     Ok(Json(lead))
+}
+
+/// What the tag-driven free-account flow did for THIS lead.
+///
+/// `POST /api/v1/leads/:id/tags` runs the mapping in `src/app_provision.rs` AFTER the tag write
+/// (fire-and-forget, so a failed sibling call can never fail the tag) and records one
+/// `provisioning_log` row per attempt. The only door onto those rows was
+/// `GET /api/v1/admin/provisioning-log` — ADMIN-ONLY and tenant-wide — so the person who actually
+/// clicks the tag, who is usually not an admin, was told "Tags updated" and nothing else: no way to
+/// learn that a workspace had just been minted in another app, or that the target refused the
+/// address. Measured 2026-10-28: the tag answered `200 Tags updated` while WorkflowSwift minted an
+/// account (status `provisioned`, http 201) — visible only by reading SQL afterwards.
+///
+/// Scoped to the caller's OWN tenant AND to a lead in it, so another workspace's lead id answers
+/// 404 rather than its history. Newest first; `count: 0` is the honest answer for a lead whose tags
+/// carry no mapping, never an error.
+/// The operator-readable name of a provisioner target (`provisioning_log.source_app`).
+fn provision_app_label(slug: &str) -> &str {
+    match slug {
+        "workflowswift" => "WorkflowSwift",
+        "incentiveswift" => "IncentiveSwift",
+        "adaswift" => "ADASwift",
+        "missedcallrespondr" => "MissedCall",
+        "funnelswift" => "FunnelSwift",
+        "coreswiftcrm" | "coreswift-crm" | "coreswift" => "CoreSwift CRM",
+        other => other,
+    }
+}
+
+/// One plain-English sentence per provisioning attempt for this lead, newest first.
+///
+/// The tag write answers `200`/`201` whether the sibling app minted a workspace, refused the
+/// address or could not be reached — every outcome is a `provisioning_log` row and nothing else —
+/// so a caller that reads only the status code is told "saved" for all three. This is the sentence
+/// the console shows and the lead-write response carries (`provisioning`).
+///
+/// Tenant-scoped on `provisioning_log.tenant_id` as well as `lead_id`: another workspace's attempt
+/// must never be readable through a lead id. A read failure answers an empty list instead of
+/// failing the lead write — a lead that saved must not be reported as failed because its log is
+/// unreadable.
+async fn provisioning_sentences(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    lead_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String, Option<String>, String, Option<String>)> = sqlx::query_as(
+        "SELECT source_app, plan_slug, status, error_message FROM provisioning_log \
+          WHERE lead_id = $1 AND tenant_id = $2 ORDER BY created_at DESC",
+    )
+    .bind(lead_id)
+    .bind(tenant_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(source_app, plan_slug, status, error_message)| {
+            let app = provision_app_label(&source_app);
+            let plan_owned = plan_slug.unwrap_or_default();
+            let plan = plan_owned.trim();
+            let why_owned = error_message.unwrap_or_default();
+            let why = why_owned.trim();
+            match status.as_str() {
+                "provisioned" => {
+                    if plan.is_empty() {
+                        format!("A free {app} account was created for this lead.")
+                    } else {
+                        format!("A free {app} account was created for this lead (plan: {plan}).")
+                    }
+                }
+                "already_exists" => format!(
+                    "{app} already had an account for this address, so nothing new was created."
+                ),
+                "refused" => {
+                    if why.is_empty() {
+                        format!("{app} refused to create the free account.")
+                    } else {
+                        format!("{app} refused to create the free account: {why}.")
+                    }
+                }
+                "invalid" => {
+                    if why.is_empty() {
+                        format!("{app} rejected this lead's address as invalid.")
+                    } else {
+                        format!("{app} rejected this lead's address as invalid: {why}.")
+                    }
+                }
+                _ => {
+                    if why.is_empty() {
+                        format!("{app} could not be reached, so no account was created.")
+                    } else {
+                        format!("{app} could not create the account: {why}.")
+                    }
+                }
+            }
+        })
+        .collect())
+}
+
+pub async fn lead_provisioning_history(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    // Own the lead BEFORE reading its trail: an id from another workspace must answer 404, never
+    // another tenant's provisioning history.
+    let owned: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM leads WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    if owned.is_none() {
+        return Err(AppError::NotFound("Lead not found".into()));
+    }
+
+    let rows: Vec<(
+        Uuid,
+        String,
+        Option<String>,
+        String,
+        Option<i32>,
+        Option<String>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT id, source_app, plan_slug, status, http_status, error_message, created_at \
+         FROM provisioning_log WHERE lead_id = $1 AND tenant_id = $2 ORDER BY created_at DESC",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let attempts: Vec<serde_json::Value> = rows
+        .iter()
+        .map(
+            |(id, source_app, plan_slug, status, http_status, error_message, created_at)| {
+                json!({
+                    "id": id.to_string(),
+                    "source_app": source_app,
+                    "plan_slug": plan_slug,
+                    "status": status,
+                    "http_status": http_status,
+                    "error_message": error_message,
+                    "created_at": created_at.to_rfc3339(),
+                })
+            },
+        )
+        .collect();
+
+    let sentences = provisioning_sentences(&state.pool, tenant_id, id)
+        .await
+        .unwrap_or_default();
+
+    Ok(Json(json!({
+        "count": attempts.len(),
+        "attempts": attempts,
+        "sentences": sentences,
+    })))
 }
 
 pub async fn update_lead(
@@ -516,7 +687,15 @@ pub async fn update_lead(
         .await?;
     }
 
-    Ok(Json(json!({"message": "Lead updated"})))
+    // Same contract as `create_lead`: the lead write's answer carries what the tag-driven
+    // free-account flow did, so the modal can tell the operator instead of closing on "saved".
+    let provisioning = provisioning_sentences(&state.pool, tenant_id, id)
+        .await
+        .unwrap_or_default();
+
+    Ok(Json(
+        json!({"message": "Lead updated", "lead_id": id, "provisioning": provisioning}),
+    ))
 }
 
 pub async fn delete_lead(

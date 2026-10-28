@@ -269,6 +269,15 @@ pub fn create_router(
             "/api/v1/leads/:id/tags",
             post(lead_handler::assign_lead_tags),
         )
+        // The tag→free-account trail, for the person who CLICKED the tag: the tag write runs the
+        // mapping in `src/app_provision.rs` after the fact and records one row per attempt, but the
+        // only door onto those rows was the ADMIN-only, tenant-wide /admin/provisioning-log — so a
+        // non-admin operator saw "Tags updated" and could not tell whether a workspace had been
+        // minted in another app or the target had refused the address (measured 2026-10-28).
+        .route(
+            "/api/v1/leads/:id/provisioning",
+            get(lead_handler::lead_provisioning_history),
+        )
         // kanban t_2f2c184b: the leads row badge's "Change Status" quick change saved to this path
         // and the router never served it (empty-bodied 404, the modal was display-only). STATUS only
         // — `stage` is a different column with its own route above.

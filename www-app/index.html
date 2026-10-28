@@ -1634,7 +1634,8 @@ function RF(id,l){
     // not be undone in-app at all, so it stayed a mis-attribution too.
     // The line is rendered even when the lead has NO tags, so the element's absence can never be
     // read as "the modal cannot show tags" (the t_d4ce013c defect).
-    if(id){ mb.appendChild(El("div",{id:"tg-current",style:"font-size:11px;color:#64748b;margin-bottom:6px"})); TGCR(id,l.tags||[]); }
+    if(id){ mb.appendChild(El("div",{id:"tg-current",style:"font-size:11px;color:#64748b;margin-bottom:6px"})); TGCR(id,l.tags||[]);
+      mb.appendChild(El("div",{id:"tg-prov",style:"font-size:11px;color:#475569;margin:0 0 8px 0;line-height:1.5"})); TGPV(id); }
     mb.appendChild(El("div",{},[El("label",{style:"font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"Assign Tags"),El("div",{id:"tg-select",style:"display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow-y:auto;padding:6px;border:1px solid #e2e8f0;border-radius:6px;min-height:36px"},El("span",{style:"color:#94a3b8;font-size:11px"},"Loading tags..."))]));
     api("/api/v1/tags").then(function(td){var all=Array.isArray(td)?td:(td&&td.data?td.data:[]);$("tg-select").innerHTML="";if(!all.length)$("tg-select").innerHTML='<span style="color:#94a3b8;font-size:11px">No tags available</span>';all.forEach(function(t){var tg=El("span",{style:"padding:3px 8px;border-radius:100px;font-size:10px;margin:2px;background:"+X(t.color||"#6366f1")+"20;color:"+X(t.color||"#6366f1")+";border:1px solid "+X(t.color||"#6366f1")+"40;cursor:pointer;user-select:none",onclick:function(){tg.classList.toggle("ts");if(tg.classList.contains("ts")){tg.style.background=t.color||"#6366f1";tg.style.color="#fff";tg.setAttribute("data-tid",t.id)}else{tg.style.background=(t.color||"#6366f1")+"20";tg.style.color=t.color||"#6366f1";tg.removeAttribute("data-tid")}}},t.name);$("tg-select").appendChild(tg)});});
     // Custom fields + Add button
@@ -1666,7 +1667,11 @@ function SL(id){
   d.custom_fields=cs;
   var m=id?"PUT":"POST", u=id?"/api/v1/leads/"+id:"/api/v1/leads";
   showMsg("Saving...","mi");
-  api(u,{method:m,body:JSON.stringify(d)}).then(function(){C();S("leads")}).catch(function(e){showMsg(e.message||"Save failed","me")});
+  api(u,{method:m,body:JSON.stringify(d)}).then(function(r){
+    var prov=(r&&r.provisioning)||[];
+    var lid=(r&&(r.lead_id||r.id))||id;
+    if(prov.length){ TGSV(lid,prov); } else { C(); S("leads"); }
+  }).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
 /* ─── the lead modal's stored-tag line: SHOW + REMOVE (kanban t_769b93ba) ─────────────────────────
    TGCR renders the lead's stored tags, each with its own "x". TGRX posts {"remove":[<name>]} to
@@ -1675,6 +1680,33 @@ function SL(id){
    affiliate_commissions row a product-linked tag produced. The route returns the lead's resulting
    tag list, so the line re-renders from the server's answer rather than from what we hoped.
    The confirm is deliberate: removing a product-linked tag retracts money that was attributed. */
+/* What the tag→free-account flow DID for this lead (backend: GET /api/v1/leads/:id/provisioning).
+   POST /leads/:id/tags and the modal's own Save both answer success whether the sibling app minted
+   a workspace, refused the address or could not be reached — the outcome only exists as a
+   provisioning_log row — so the modal has to say it. Measured 2026-10-28: a tag answered "Tags
+   updated" while WorkflowSwift minted an account, and a second lead was refused as
+   placeholder_email, both invisible in the console. */
+function TGPV(lid){
+  var host=$("tg-prov"); if(!host||!lid) return;
+  api("/api/v1/leads/"+lid+"/provisioning").then(function(r){
+    var n=(r&&r.count)||0; if(!n){ host.innerHTML=""; return; }
+    var s=(r&&r.sentences)||[];
+    host.innerHTML="";
+    host.appendChild(El("span",{style:"font-weight:600;color:#3730a3"},"Free software accounts: "));
+    host.appendChild(El("span",null,s.length?s.join(" "):(n+" attempt(s) recorded — see the provisioning log.")));
+  }).catch(function(){ /* no history is the normal case for most leads: stay silent */ });
+}
+/* The same sentence, in the SAVE's own answer, when the save just provisioned something. The lead
+   IS saved at this point, so the modal stops on what happened instead of closing on "Saved". */
+function TGSV(lid,sentences){
+  var host=$("tg-prov");
+  if(!host){ C(); S("leads"); return; }
+  host.innerHTML="";
+  host.appendChild(El("div",{style:"font-weight:700;color:#166534;margin-bottom:3px"},"Saved."));
+  host.appendChild(El("div",null,sentences.join(" ")));
+  host.appendChild(El("div",{style:"margin-top:8px"},El("button",{"class":"btn btn-sm",onclick:function(){C();S("leads");}},"Done")));
+  if(lid) setTimeout(function(){ TGPV(lid); },0);
+}
 function TGCR(lid,tags){
   var host=$("tg-current"); if(!host) return;
   host.innerHTML="";
