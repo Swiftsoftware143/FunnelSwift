@@ -786,6 +786,7 @@ async function renderMyAccount() {
       <div class="card-header"><span class="card-title">✏️ Your details</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><div class="form-label">Name</div><input class="input" id="fsac-name" maxlength="243" value="${x(USER.name||'')}" placeholder="Your name"></div>
+        <div><div class="form-label">Username</div><input class="input" id="fsac-user" maxlength="255" value="${x(USER.username||'')}" placeholder="Optional"></div>
         <div><div class="form-label">Company</div><input class="input" id="fsac-co" maxlength="255" value="${x(USER.company||'')}" placeholder="Your company"></div>
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsProfileSave()">Save</button><span id="fsac-pmsg" style="font-size:12px;margin-left:8px"></span></div>
@@ -942,13 +943,16 @@ window._fsAvatarRemove = async function () {
   } catch (e) { fsMsg('fsac-avmsg', (e && e.message) || 'Remove failed', false); }
 };
 window._fsProfileSave = async function () {
-  const nEl = document.getElementById('fsac-name'), cEl = document.getElementById('fsac-co');
-  const n = nEl ? nEl.value : '', c = cEl ? cEl.value : '';
+  const nEl = document.getElementById('fsac-name'), cEl = document.getElementById('fsac-co'),
+        uEl = document.getElementById('fsac-user');
+  const n = nEl ? nEl.value : '', c = cEl ? cEl.value : '', un = uEl ? uEl.value : '';
   if (!n.trim()) { fsMsg('fsac-pmsg', 'Enter your name', false); return; }
   fsMsg('fsac-pmsg', 'Saving\u2026', null);
   try {
-    await api('/auth/profile', { method: 'PUT', body: JSON.stringify({ name: n.trim(), company: c.trim() }) });
-    USER.name = n.trim(); USER.company = c.trim();
+    // Username rides with the same PUT (the backend has accepted it, COALESCE'd so a blank CLEARS
+    // it, since the fleet profile contract; /auth/me returns it). The console had no field for it.
+    await api('/auth/profile', { method: 'PUT', body: JSON.stringify({ name: n.trim(), company: c.trim(), username: un.trim() }) });
+    USER.name = n.trim(); USER.company = c.trim(); USER.username = un.trim();
     fsMsg('fsac-pmsg', 'Saved', true);
   } catch (e) { fsMsg('fsac-pmsg', (e && e.message) || 'Could not save', false); }
 };

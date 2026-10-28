@@ -416,8 +416,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         tenant's: your name, company, profile picture, sign-in email, password and the plan this workspace is
         on. What you set here is what the console shows everywhere.</p>
         <ul>
-          <li><strong>Name &amp; Company</strong> — <code>PUT /api/v1/auth/profile</code>. A tenant's company
-            is writable from a tenant console, and from the operator's own when impersonating one.</li>
+          <li><strong>Name, Username &amp; Company</strong> — <code>PUT /api/v1/auth/profile</code>. Name is
+            required; Username and Company are optional, and clearing either box and saving removes it.
+            A tenant's company is writable from a tenant console, and from the operator's own when
+            impersonating one.</li>
           <li><strong>Profile picture</strong> — <code>POST /api/v1/auth/avatar</code>, <em>multipart</em>
             (field name <code>file</code>), PNG/JPEG/GIF/WebP up to 2 MB. The bytes live in
             <code>user_avatars</code> and are streamed back by the <strong>public</strong>
