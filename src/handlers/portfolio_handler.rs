@@ -100,6 +100,13 @@ pub async fn create_portfolio_company(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_portfolios", "Portfolio companies")
         .await?;
+    // The address on a portfolio company is a CONTACT this install mails and the value
+    // portfolio-sync copies into another app's `tenants.email`, so a string that is not an address
+    // is a permanently unreachable contact. Absent (or empty) stays legal, exactly as on a lead.
+    if let Some(raw) = req.email.as_deref() {
+        crate::security::email_addr::check_lead_address(raw)
+            .map_err(AppError::UnprocessableEntity)?;
+    }
     let company_id = Uuid::new_v4();
     let settings = req.settings.unwrap_or(json!({}));
     let now = chrono::Utc::now();
@@ -179,6 +186,10 @@ pub async fn update_portfolio_company(
     // Contact fields are preserved when the caller omits them, exactly like name/slug: the edit
     // form always sends all four, so an absent field means "not part of this edit", not "clear it".
     let email = req.email.or(current.email);
+    if let Some(raw) = email.as_deref() {
+        crate::security::email_addr::check_lead_address(raw)
+            .map_err(AppError::UnprocessableEntity)?;
+    }
     let description = req.description.or(current.description);
 
     sqlx::query(

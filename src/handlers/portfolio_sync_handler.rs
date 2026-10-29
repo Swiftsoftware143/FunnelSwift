@@ -167,6 +167,12 @@ pub async fn portfolio_sync_internal(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    // The sync door writes this value into BOTH `portfolio_companies.email` and the mirrored
+    // `tenants.email`, so a malformed one becomes a permanently unreachable contact on this app —
+    // the same rule the panel door carries (`select_portfolio_company` neighbours in
+    // `portfolio_handler.rs`). Absent stays legal. Precedent: ADASwift `portfolio_handler.rs`
+    // (kanban t_5230513b), fleet-wide lead guard 2026-10-29.
+    crate::security::email_addr::check_lead_address(&email).map_err(AppError::Validation)?;
 
     match action {
         "create" => {

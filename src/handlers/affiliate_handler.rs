@@ -12,6 +12,28 @@ use crate::features;
 use crate::models::affiliate::*;
 use crate::state::AppState;
 
+/// Stored form of an affiliate's address, or a sentence naming the field.
+///
+/// `affiliates.email` is not a detail: it is the KEY this person is found by. The portal resolves
+/// the signed-in user's affiliate row with `WHERE email = $1` (`affiliate_portal_handler`), and a
+/// commission is credited by matching the referring customer's login against it
+/// (`affiliate_tracking_handler`). So a value that is not an address, or one stored with capitals
+/// no lookup will ever produce, is an affiliate who can never sign in to their portal and can never
+/// be credited. Measured live 2026-10-29 before this guard: `POST /api/v1/affiliates` with
+/// `{"name":"…","email":"not-an-email"}` answered **201** and stored the row, and the console's own
+/// `<input type=email>` is the only thing that ever refused it — an API caller was not refused at
+/// all. Same class and same module as the leads door (`email_addr::check_lead_address`, 2026-10-29).
+///
+/// An EMPTY address stays legal: the console's Email field is optional, and an affiliate record with
+/// no address is a separate (visible) state, not a typo. Anything non-empty is trimmed and
+/// lowercased, because every read of this column is an exact match.
+fn affiliate_email_for_storage(raw: &str) -> AppResult<String> {
+    if raw.trim().is_empty() {
+        return Ok(String::new());
+    }
+    crate::security::email_addr::normalize(raw).map_err(AppError::UnprocessableEntity)
+}
+
 fn generate_affiliate_id() -> String {
     let now = chrono::Utc::now();
     let date_part = now.format("%m%d%Y").to_string();
@@ -107,12 +129,16 @@ pub async fn create_affiliate(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_affiliates", "Affiliates").await?;
 
+    // Refuse a value that is not an address BEFORE the duplicate check, so the caller is told
+    // about the typo itself instead of being told a malformed string "already exists".
+    let email = affiliate_email_for_storage(&req.email)?;
+
     // Check for duplicate email within tenant
-    if !req.email.trim().is_empty() {
+    if !email.is_empty() {
         let existing: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM affiliates WHERE email = $1 AND tenant_id = $2)",
         )
-        .bind(&req.email)
+        .bind(&email)
         .bind(tenant_id)
         .fetch_one(&state.pool)
         .await
@@ -121,7 +147,7 @@ pub async fn create_affiliate(
         if existing {
             return Err(AppError::BadRequest(format!(
                 "An affiliate with email '{}' already exists in this workspace",
-                req.email
+                email
             )));
         }
     }
@@ -134,7 +160,7 @@ pub async fn create_affiliate(
     .bind(&aff_id)
     .bind(tenant_id)
     .bind(&req.name)
-    .bind(&req.email)
+    .bind(&email)
     .bind(&req.industry)
     .bind(req.commission_rate)
     .bind(req.override_commission_rate)
@@ -189,6 +215,13 @@ pub async fn update_affiliate(
         .await?
         .ok_or_else(|| AppError::NotFound("Affiliate not found".into()))?;
 
+    // The same rule at the edit door: a typo, or capitals the portal lookup can never produce,
+    // is the same dead affiliate. An ABSENT email still means "leave the stored one alone".
+    let email_val = match req.email.as_deref() {
+        Some(raw) => affiliate_email_for_storage(raw)?,
+        None => existing.email.clone(),
+    };
+
     let tags_val = req.tags.or(existing.tags);
     let visible_val = req.is_visible.or(existing.is_visible);
 
@@ -196,7 +229,7 @@ pub async fn update_affiliate(
         "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, override_commission_rate=CASE WHEN $9 THEN NULL ELSE COALESCE($10, override_commission_rate) END, override_note=CASE WHEN $9 THEN NULL ELSE COALESCE($11, override_note) END, updated_at=NOW() WHERE id=$12 AND tenant_id=$13",
     )
     .bind(req.name.unwrap_or(existing.name))
-    .bind(req.email.unwrap_or(existing.email))
+    .bind(&email_val)
     .bind(req.industry.or(existing.industry))
     .bind(req.commission_rate.or(existing.commission_rate))
     .bind(req.tax_docs.or(existing.tax_docs))
