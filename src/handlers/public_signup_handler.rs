@@ -36,6 +36,97 @@ pub(crate) fn legacy_plan_slug(slug: &str) -> &str {
     }
 }
 
+/// File the PAID plan a signup named, and describe it for the caller.
+///
+/// ONE implementation for BOTH doors (cron 2026-10-29). The public page
+/// (`POST /api/v1/auth/signup`) has recorded the chosen tier since 2026-10-21; the register door
+/// (`POST /api/v1/auth/register`) read the slug only to pick the product SIDE and then dropped the
+/// ask, so a caller saying `plan_slug: "kinetic-pro"` was seated on Kinetic Free and NOBODY — not
+/// the operator's Plan Requests queue, not the customer — learned a paid tier had been asked for.
+/// Measured live on that door: 201, no `plan_request` in the body, zero `plan_requests` rows, for
+/// BOTH spellings (`plan` and `plan_slug`), while the same app's public door filed the request for
+/// the identical ask.
+///
+/// Writes only when the slug names a live PAID plan on this workspace's side (`price > 0`, the
+/// same predicate `plan_resolver` uses), and never twice for the same open ask. A harness signup is
+/// still recorded — the operator's QUEUE hides harness tenants at read time
+/// (`plan_request_handler::admin_list`, `?include_probe=1`), so attribution stays in the data
+/// while the list the operator reads stays clean.
+pub async fn file_chosen_plan_request(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    requested_by: &str,
+    requested_plan: &str,
+    side: crate::plan_resolver::ProductSide,
+    door: &str,
+) -> AppResult<Option<Value>> {
+    let normalised = requested_plan.trim().to_lowercase();
+    let requested_slug = legacy_plan_slug(&normalised).to_string();
+    if requested_slug.is_empty() {
+        return Ok(None);
+    }
+    let side_word = match side {
+        crate::plan_resolver::ProductSide::Capture => "main",
+        crate::plan_resolver::ProductSide::Kinetic => "kinetic",
+    };
+    let target: Option<(String, String)> = sqlx::query_as(
+        "SELECT slug, name FROM plans
+          WHERE slug = $1 AND price > 0 AND side IN ($2, 'both')",
+    )
+    .bind(&requested_slug)
+    .bind(side_word)
+    .fetch_optional(pool)
+    .await?;
+    let Some((slug, plan_name)) = target else {
+        // A non-empty slug that names no live PAID tier on this side used to vanish with no trace.
+        // One line, naming the door and the exact word the caller sent, makes the next occurrence
+        // diagnosable instead of invisible.
+        tracing::warn!(
+            requested_by = %requested_by,
+            plan = %requested_slug,
+            side = side_word,
+            door = door,
+            "signup: the tier this caller chose names no live paid plan on this side, so no plan \
+             request was recorded"
+        );
+        return Ok(None);
+    };
+    let row = sqlx::query(
+        "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note)
+         SELECT $1, $2, $3, $4, $5, $6
+          WHERE NOT EXISTS (
+                SELECT 1 FROM plan_requests
+                 WHERE tenant_id = $1 AND plan_slug = $4 AND status IN ('open','contacted'))
+         RETURNING id, status, created_at::text AS created_at",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(requested_by)
+    .bind(&slug)
+    .bind(&plan_name)
+    .bind(
+        "Chosen on the pricing page at signup. Checkout has no payment provider yet, so the \
+         workspace starts on the free tier of the same product.",
+    )
+    .fetch_optional(pool)
+    .await?;
+    let Some(r) = row else { return Ok(None) };
+    tracing::info!(
+        requested_by = %requested_by,
+        plan = %slug,
+        door = door,
+        "signup: the paid plan this caller chose is recorded as a plan request"
+    );
+    Ok(Some(json!({
+        "id": r.get::<Uuid, _>("id"),
+        "plan_slug": slug,
+        "plan_name": plan_name,
+        "status": r.get::<String, _>("status"),
+        "created_at": r.get::<String, _>("created_at"),
+    })))
+}
+
 /// Does this `?ref=` code exist? (kanban t_8101edb5, arm (b)).
 ///
 /// The chosen namespace is `tenants.affiliate_code` — the code `kinetic_handler` renders into the
@@ -297,92 +388,32 @@ pub async fn public_signup(
     )
     .await?;
 
-    // ── THE PLAN THE VISITOR ACTUALLY CHOSE (2026-10-21) ────────────────────────────────────────
+    // ── THE PLAN THE VISITOR ACTUALLY CHOSE (2026-10-21; ONE writer since 2026-10-29) ──────────
     // A visitor who picks a PAID card on /pricing is seated on that side's FREE tier (there is no
-    // payment provider yet), and until now their choice was dropped on the floor: the signup page
-    // said "you can move up any time from your dashboard", the dashboard showed Free, and the
-    // operator never learned that a hot lead had asked for Pro. Record the ask as a PLAN REQUEST —
-    // the same row the dashboard's own Upgrade button files — so it reaches the operator's queue
-    // and the customer's own "your request is with us" card immediately.
+    // payment provider yet), so the ask must not be dropped on the floor: it is recorded as a PLAN
+    // REQUEST — the same row the dashboard's own Upgrade button files — and reaches the operator's
+    // queue and the customer's "your request is with us" card immediately.
     //
     // Only when the slug names a PAID plan on THIS workspace's side: a missing/unknown slug, the
-    // free tier itself, or a slug belonging to the other product writes nothing. `price > 0` is the
-    // paid test (both columns are NOT NULL, the same predicate `plan_resolver` uses), and the insert
-    // is guarded by "no open ask for this workspace and plan" so a double-submit cannot duplicate.
-    // Harness signups ARE recorded — the operator's QUEUE hides harness tenants instead
-    // (`plan_request_handler::admin_list`, `?include_probe=1`), so attribution stays in the data
-    // and the list the operator reads stays clean.
-    let requested_slug = requested_plan.clone();
-    // ── A LEGACY SPELLING STILL NAMES ITS TIER (cron 2026-10-25) ────────────────────────────────
-    // The $79 card shipped `?plan=agency-scale` until 2026-10-23 while the catalogue's slug is
-    // `agency`. The correction lives in TWO edge layers — the `?plan=` rewrite in
-    // `sites/funnelswift.conf` and `PLAN_ALIAS` in `www/funnelswift/signup.html` — and nothing at
-    // the layer that actually owns plan resolution, so a caller that reaches THIS door directly
-    // (a replayed marketing link against the API host, an integration, a future page) still lost
-    // the ask. Measured live 2026-10-25 before this: `POST /api/v1/auth/signup` with
-    // `plan=agency-scale` answered `plan_request: null` and wrote no row, while `plan=agency`
-    // filed the request. Same request, same door, one spelling.
-    // Keep this map in sync with those two edge copies.
-    let requested_slug = legacy_plan_slug(&requested_slug).to_string();
-    let mut plan_request: Option<Value> = None;
-    if !requested_slug.is_empty() {
-        let side_word = match side {
-            crate::plan_resolver::ProductSide::Capture => "main",
-            crate::plan_resolver::ProductSide::Kinetic => "kinetic",
-        };
-        let target: Option<(String, String)> = sqlx::query_as(
-            "SELECT slug, name FROM plans
-              WHERE slug = $1 AND price > 0 AND side IN ($2, 'both')",
-        )
-        .bind(&requested_slug)
-        .bind(side_word)
-        .fetch_optional(&state.pool)
-        .await?;
-        if let Some((slug, plan_name)) = target {
-            let row = sqlx::query(
-                "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note)
-                 SELECT $1, $2, $3, $4, $5, $6
-                  WHERE NOT EXISTS (
-                        SELECT 1 FROM plan_requests
-                         WHERE tenant_id = $1 AND plan_slug = $4 AND status IN ('open','contacted'))
-                 RETURNING id, status, created_at::text AS created_at",
-            )
-            .bind(tenant_id)
-            .bind(user_id)
-            .bind(&email)
-            .bind(&slug)
-            .bind(&plan_name)
-            .bind("Chosen on the pricing page at signup. Checkout has no payment provider yet, so the workspace starts on the free tier of the same product.")
-            .fetch_optional(&state.pool)
-            .await?;
-            if let Some(r) = row {
-                tracing::info!(
-                    email = %email,
-                    plan = %slug,
-                    "signup: the paid plan this visitor chose is recorded as a plan request"
-                );
-                plan_request = Some(json!({
-                    "id": r.get::<Uuid, _>("id"),
-                    "plan_slug": slug,
-                    "plan_name": plan_name,
-                    "status": r.get::<String, _>("status"),
-                    "created_at": r.get::<String, _>("created_at"),
-                }));
-            }
-        } else {
-            // A non-empty slug that names no live PAID tier on this side used to vanish with no
-            // trace at all — the visitor saw "you can move up any time", the operator's queue
-            // stayed empty, and nothing in the log said why. One line, naming the exact word the
-            // caller sent, is what makes the next occurrence diagnosable instead of invisible.
-            tracing::warn!(
-                email = %email,
-                plan = %requested_slug,
-                side = side_word,
-                "signup: the tier this visitor chose names no live paid plan on this side, so no \
-                 plan request was recorded"
-            );
-        }
-    }
+    // free tier itself, or a slug belonging to the other product writes nothing (`price > 0` is the
+    // paid test, the same predicate `plan_resolver` uses), and the insert is guarded by "no open ask
+    // for this workspace and plan" so a double-submit cannot duplicate. Harness signups ARE
+    // recorded — the operator's QUEUE hides harness tenants at read time, so attribution stays in
+    // the data while the list the operator reads stays clean.
+    //
+    // The lookup, the legacy-spelling alias and the dedupe guard live in ONE place,
+    // `file_chosen_plan_request`, because the register door needs the identical behaviour (it used
+    // to drop the ask entirely — measured live 2026-10-29).
+    let plan_request = file_chosen_plan_request(
+        &state.pool,
+        tenant_id,
+        user_id,
+        &email,
+        &requested_plan,
+        side,
+        "POST /api/v1/auth/signup",
+    )
+    .await?;
 
     // ── THE CREDENTIAL EMAIL ────────────────────────────────────────────────────────────────────
     // Sent after the user row and the plan subscription exist, so the login details are true by the

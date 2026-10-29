@@ -242,6 +242,24 @@ pub async fn register(
     )
     .await?;
 
+    // ── THE PLAN THE CALLER CHOSE ON THE PRICING PAGE ───────────────────────────────────────────
+    // This door read `plan_slug` ONLY to pick the product side and then dropped the ask: measured
+    // live 2026-10-29, `{"plan_slug":"kinetic-pro"}` and `{"plan":"kinetic-pro"}` both answered 201
+    // with the account on Kinetic Free, no `plan_request` in the body and ZERO `plan_requests` rows
+    // — while this app's public door filed the request for the identical ask. Integrations and the
+    // native app's fallback use THIS route, so a caller who asked for a paid plan was seated on
+    // free with nobody told. One shared writer now records it, exactly as the public page does.
+    let plan_request = crate::handlers::public_signup_handler::file_chosen_plan_request(
+        &state.pool,
+        tenant_id,
+        user_id,
+        &email,
+        req.plan_slug.as_deref().unwrap_or(""),
+        side,
+        "POST /api/v1/auth/register",
+    )
+    .await?;
+
     // Generate JWT
     let now = Utc::now().timestamp() as usize;
     let claims = Claims {
@@ -345,6 +363,9 @@ pub async fn register(
             // all), `plan_assignment` is the structured form that can never be silent.
             "plan": plan.slug(),
             "plan_assignment": plan.to_json(),
+            // What came of the tier the caller chose, in the shape the signup pages read
+            // (`plan_request.plan_name`); `null` when no paid tier was named or none matched.
+            "plan_request": plan_request,
             // `true` only when this door MINTED the password (the caller sent none) AND the mail
             // left; `null` when the caller supplied their own password, where no mail is owed.
             "credentials_emailed": credentials_emailed,
