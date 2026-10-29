@@ -15,6 +15,7 @@ use crate::error::{AppError, AppResult};
 use crate::features;
 use crate::handlers::workflowswift_push::{deliver_lead, LeadPush, PushOutcome};
 use crate::models::lead::*;
+use crate::security::email_addr;
 use crate::security::lead_fields;
 use crate::state::AppState;
 
@@ -24,6 +25,13 @@ use crate::state::AppState;
 /// live column widths (see `security::lead_fields`).
 fn check_storable(field: &str, value: Option<&str>, cap: usize) -> AppResult<()> {
     lead_fields::check(field, value, cap).map_err(AppError::UnprocessableEntity)
+}
+
+/// An address no mail system could deliver is refused with the field named, BEFORE any write: the
+/// row's email is what a campaign or the customer's own mail step later sends to, so storing
+/// `not-an-email` is a guaranteed bounce. A lead with no address at all stays legal.
+fn check_email_address(value: Option<&str>) -> AppResult<()> {
+    email_addr::check_lead_address(value.unwrap_or("")).map_err(AppError::UnprocessableEntity)
 }
 
 #[derive(Deserialize)]
@@ -175,6 +183,7 @@ pub async fn create_lead(
         lead_fields::TEXT_CHARS,
     )?;
     check_storable("email", req.email.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_email_address(req.email.as_deref())?;
     check_storable("phone", req.phone.as_deref(), lead_fields::PHONE_CHARS)?;
     check_storable("company", req.company.as_deref(), lead_fields::TEXT_CHARS)?;
     check_storable("source", req.source.as_deref(), lead_fields::SOURCE_CHARS)?;
@@ -580,6 +589,7 @@ pub async fn update_lead(
         lead_fields::TEXT_CHARS,
     )?;
     check_storable("email", req.email.as_deref(), lead_fields::TEXT_CHARS)?;
+    check_email_address(req.email.as_deref())?;
     check_storable("phone", req.phone.as_deref(), lead_fields::PHONE_CHARS)?;
     check_storable("company", req.company.as_deref(), lead_fields::TEXT_CHARS)?;
     check_storable("source", req.source.as_deref(), lead_fields::SOURCE_CHARS)?;

@@ -82,6 +82,26 @@ pub fn lookup_key(raw: &str) -> String {
     raw.trim().to_lowercase()
 }
 
+/// Is this a usable address on a LEAD row? The same syntax rules as [`normalize`], answering
+/// `Ok(())` or a caller-safe reason so a capture handler can refuse a typo while the person is
+/// still on the page.
+///
+/// An EMPTY value is allowed on purpose: a lead may legitimately arrive with only a name and a
+/// phone, and not every capture form asks for an address. What is refused is a NON-empty value no
+/// mail system could deliver — `leads.email` is what campaigns and the customer's own mail steps
+/// later send TO, so a stored `not-an-email` is not a lead detail, it is a guaranteed bounce that
+/// spends the sending domain's reputation. Measured live 2026-10-29 before this guard:
+/// `POST /api/v1/leads` with `{"email":"not-an-email"}` answered **201** and wrote the row (same on
+/// IncentiveSwift and ADASwift).
+///
+/// No normalisation: the value is stored exactly as typed, so this only decides acceptance.
+pub fn check_lead_address(raw: &str) -> Result<(), String> {
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    normalize(raw).map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,5 +177,24 @@ mod tests {
         assert_eq!(lookup_key("  Zaarhub@gmail.com "), "zaarhub@gmail.com");
         // A malformed value has no failure arm here — it just matches nothing.
         assert_eq!(lookup_key("bad"), "bad");
+    }
+
+    #[test]
+    fn a_lead_may_carry_no_address_but_not_an_impossible_one() {
+        // A lead with only a name and a phone is a complete lead.
+        assert!(check_lead_address("").is_ok());
+        assert!(check_lead_address("   ").is_ok());
+        assert!(check_lead_address("ada@example.com").is_ok());
+        // Acceptance only — the stored value is never rewritten by this check.
+        assert!(check_lead_address("Ada@Example.COM").is_ok());
+        for bad in [
+            "not-an-email",
+            "no-at-sign",
+            "@x.com",
+            "user@nodot",
+            "a b@x.com",
+        ] {
+            assert!(check_lead_address(bad).is_err(), "{bad:?} must be refused");
+        }
     }
 }

@@ -1737,6 +1737,12 @@ pub async fn submit_lead(
     };
 
     let email = card_lead_field(&body, "email");
+    // An address no mail system could deliver is refused while the visitor is still on the page:
+    // `leads.email` is what the customer's later mail steps send to, so a stored typo is a
+    // guaranteed bounce against the sending domain (measured 2026-10-29: this form took
+    // `"email":"not-an-email"` and wrote the row).
+    crate::security::email_addr::check_lead_address(email.as_deref().unwrap_or(""))
+        .map_err(AppError::Validation)?;
     let Some(name) = card_lead_name(&body, email.as_deref()) else {
         return Err(AppError::Validation(
             "A card lead needs a name or an email".into(),

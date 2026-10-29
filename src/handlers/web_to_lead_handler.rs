@@ -321,6 +321,11 @@ pub async fn handle_web_to_lead(
             .fetch_optional(&state.pool)
             .await?;
     let tenant_id = tenant_id.ok_or_else(|| AppError::BadRequest("Unknown public_key".into()))?;
+    // FIRST, before any write: an address no mail system could deliver is refused while the
+    // visitor is on the page. The form is embedded on a customer's own landing page, and a stored
+    // `not-an-email` is a guaranteed bounce against the sending domain.
+    crate::security::email_addr::check_lead_address(payload["email"].as_str().unwrap_or(""))
+        .map_err(AppError::Validation)?;
     // ── THE FORM IS THE ATTRIBUTION (David, 2026-10-01) ─────────────────────────────────────────
     // David: *"that lead form that snippet of code or lead form gets assigned to a tag when it's
     // created so that way they can connect it to their own personal landing page"* and *"they are

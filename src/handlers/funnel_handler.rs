@@ -690,7 +690,11 @@ pub async fn submit_funnel_lead(
         .as_deref()
         .and_then(clean_phone_number);
 
-    let name = crate::security::lead_fields::fit(&name, crate::security::lead_fields::TEXT_CHARS);
+    let name = crate::security::lead_fields::fit(&name, crate::security::lead_fields::TEXT_CHARS); // The same rule the panel and the other capture doors apply: an address no mail system could
+                                                                                                   // deliver is refused now, while the visitor can still fix it, instead of being stored and
+                                                                                                   // bounced by every later step.
+    crate::security::email_addr::check_lead_address(&email).map_err(AppError::Validation)?;
+
     let email = crate::security::lead_fields::fit_opt(
         Some(email.as_str()),
         crate::security::lead_fields::TEXT_CHARS,
