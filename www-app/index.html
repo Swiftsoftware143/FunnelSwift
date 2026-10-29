@@ -348,7 +348,7 @@ var helpContent={
   "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above, then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Pause</strong> keeps the page and its link exactly where they are but stops it taking responses: a visitor sees \u201cThis form is closed\u201d, and a submission from a page that was already open is refused. Use it when a campaign ends or a list is full \u2014 <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
   "afleads":'<h4>Affiliate Leads</h4><p>The leads each affiliate has brought in, so you can see who is producing. <strong>Admin only.</strong></p>'
 ,
-  "scan":'<h4>Card Scanner</h4><p>Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your <strong>Leads</strong> with the source <strong>card scan</strong>. Every field stays editable before you save, because a scan can be wrong; if the card cannot be read, the screen says so and lets you type the details in instead, so nothing is lost.</p><ul><li><strong>Choose a photo</strong> of the card (up to 12 MB).</li><li><strong>Correct any field</strong> the scan got wrong.</li><li><strong>Save it as a lead</strong> - each scan counts against the card-scan allowance on your plan, and a plan that does not include scanning points you at the plans.</li></ul>'};
+  "scan":'<h4>Card Scanner</h4><p>Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your <strong>Leads</strong> with the source <strong>card scan</strong>. Every field stays editable before you save, because a scan can be wrong; if the card cannot be read, the screen says so and lets you type the details in instead, so nothing is lost.</p><ul><li><strong>Choose a photo</strong> of the card (up to 12 MB).</li><li><strong>Correct any field</strong> the scan got wrong.</li><li><strong>Save it as a lead</strong> - each scan counts against the card-scan allowance on your plan, and a plan that does not include scanning points you at the plans.</li><li><strong>Recent scans</strong> under the scanner keeps your last 20 readings, so a card you scanned but did not save is not lost - press <strong>Save as a lead</strong> on the entry.</li></ul>'};
 function toggleHelp() {
   var p=document.getElementById("helpPanel"), f=document.getElementById("helpFab");
   var ct=document.querySelector(".help-overlay"), isOpen=p.classList.contains("open");
@@ -581,16 +581,49 @@ function LSYN(){
         var f=(r&&r.fields)||{};
         var who=f.name||f.company||(r.ocr_ok?"a card with no readable name":"no text read");
         var sub=[(f.name&&f.company)?f.company:"",f.email||"",f.phone||""].filter(Boolean).join(" \u00b7 ");
+        var canSave=!!(f.name||f.email||f.phone);
         html+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px">'
           +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">'
           +'<span style="font-weight:600;font-size:13px">'+X(who)+'</span>'
           +'<span style="color:#64748b;font-size:12px">'+X(scnWhen(r.created_at))+'</span></div>'
           +(r.ocr_ok?'':'<div style="color:#b45309;font-size:12px;margin-top:3px">Nothing readable came back \u2014 this one counted as a scan.</div>')
           +(sub?'<div style="color:#64748b;font-size:12px;margin-top:3px">'+X(sub)+'</div>':'')
+          +(canSave?'<div style="margin-top:8px"><button class="btn btn-o" data-scn-save="'+X(String(r.id))+'" style="padding:4px 10px;font-size:12px">Save as a lead</button></div>':'')
           +'</div>';
       });
       box2.innerHTML=html+'</div></div></div>';
+      /* Each row's button re-reads ITS OWN stored reading. The map is built from the rows
+         this call fetched, so a button can never post another workspace's scan or a stale one. */
+      var byId={}; rows.forEach(function(r){ if(r&&r.id) byId[String(r.id)]=r; });
+      Array.prototype.forEach.call(box2.querySelectorAll('[data-scn-save]'),function(btn){
+        var row=byId[btn.getAttribute('data-scn-save')]; if(!row) return;
+        btn.onclick=function(){ scnSaveReading(row,btn); };
+      });
     }).catch(function(){ var b3=$("scn-recent"); if(b3) b3.innerHTML=''; });
+  }
+  /* Save a STORED reading as a lead. Same write the scan card makes (POST /api/v1/leads, source
+     'card scan', job title in the notes), so the two paths cannot drift apart; the difference is
+     only where the fields come from. Guarded against a double press, and a plan limit / upgrade
+     refusal restores the button instead of leaving the customer with a dead control. */
+  function scnSaveReading(r,btn){
+    var f=(r&&r.fields)||{};
+    if(!f.name&&!f.email&&!f.phone) return;
+    var body={};
+    body.name=f.name||f.email||f.phone;
+    if(f.email)body.email=f.email;
+    if(f.phone)body.phone=f.phone;
+    if(f.company)body.company=f.company;
+    body.source="card scan";
+    body.notes="Read from a business card"+(f.title?" \u00b7 job title: "+f.title:"");
+    btn.disabled=true; btn.textContent="Saving\u2026";
+    api("/api/v1/leads",{method:"POST",body:JSON.stringify(body)}).then(function(){
+      btn.textContent="Saved to Leads";
+      msg("Saved \u201c"+body.name+"\u201d to your Leads.",true);
+    }).catch(function(e){
+      if(e&&e.message==="upgrade_required"){return;}   // api() already opened the upgrade dialog
+      btn.disabled=false; btn.textContent="Save as a lead";
+      msg("The lead could not be saved"+(e&&e.message?" \u2014 "+e.message:"")+".",false);
+    });
   }
   scnRecent();
 }
@@ -5491,7 +5524,7 @@ function DWTL(id,name){
 /* Inline guide content, one entry per screen. The widget shows the entry for the tab that is open;
    FunnelSwift's console switches tabs in JS, so it is told via window.inlineGuidePage(tab). */
 window.appGuidePages = {
-  scan:        { title: "Card Scanner", desc: "Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your Leads as a lead with the source 'card scan'. Every field stays editable before you save, because a scan can be wrong. If the card cannot be read, the screen says so and lets you type the details in instead \u2014 nothing is lost. Each scan counts against the card-scan allowance on your plan, and a plan without it says so and points you at the plans.", actions: ["Choose a photo of the card", "Correct any field the scan got wrong", "Save it as a lead"] },
+  scan:        { title: "Card Scanner", desc: "Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your Leads as a lead with the source 'card scan'. Every field stays editable before you save, because a scan can be wrong. Each reading is also kept in Recent scans under the scanner, where one you did not save can still be saved as a lead. If the card cannot be read, the screen says so and lets you type the details in instead \u2014 nothing is lost. Each scan counts against the card-scan allowance on your plan, and a plan without it says so and points you at the plans.", actions: ["Choose a photo of the card", "Correct any field the scan got wrong", "Save it as a lead"] },
   campaigns:   { title: "Campaigns", desc: "The campaigns this workspace runs. Give each one a name, a type, a status and a short description; edit or delete it from the list. A campaign here is a record you and your team read \u2014 this screen sends nothing, so a new one starts as a draft until you set its status to active.", actions: ["Create a campaign", "Set its status to active when it starts", "Use the status column to see what is running"] },
   upgrade:     { title: "Upgrade", desc: "Every plan this install offers, with the limits each one carries, read from the same catalogue the pricing page serves. Your current plan is marked. Pressing the button on a plan files a request for our team, and anything you have already asked for is listed underneath with its live status and a way to withdraw it; nothing is charged from this screen.", actions: ["Compare the plan limits", "Ask for the plan you want", "Track or withdraw the request below"] },
   cards:       { title: "Kinetic Cards", desc: "Your digital business cards, bio links, landing pages and mini funnels. Each card has its own public address and its own edit screen, and the number of cards your plan allows is shown on the dashboard \u2014 creating one over the limit is refused with the upgrade sentence.", actions: ["Create a card", "Copy its public link or QR code", "Check the card limit on your plan"] },
