@@ -590,7 +590,15 @@ button:disabled{{opacity:.6;cursor:default}}
     var phoneEl = document.getElementById('fn-phone-input');
     var phone = phoneEl ? phoneEl.value.trim() : '';
     err.textContent = '';
-    if(!email || email.indexOf('@') < 1){{ err.textContent = 'Please enter your email address.'; return; }}
+    // A visitor on a CUSTOMER's public funnel is not our user: they get a plain sentence, never the
+    // server's validation string. This page used to check only for an '@', send, and print the API's
+    // own reply -- `email: domain must contain a dot (e.g. example.com)` -- in red under the form.
+    // The check below catches the same class the server does (name@domain.tld) before a round-trip.
+    // No regex: this snippet is a Rust string literal, and one mis-escaped backslash would silently
+    // become a different expression in the served page. `indexOf` cannot be mis-escaped.
+    var at = email.indexOf('@');
+    var dot = email.lastIndexOf('.');
+    if(!email || at < 1 || dot < at + 2 || dot === email.length - 1){{ err.textContent = 'Please check the email address — it needs a name, an @, and a domain, like name@example.com.'; return; }}
     send.disabled = true;
     send.textContent = 'Sending…';
     fetch('/funnel/' + encodeURIComponent(slug) + '/submit', {{
@@ -600,7 +608,14 @@ button:disabled{{opacity:.6;cursor:default}}
     }}).then(function(r){{
       return r.json().then(function(j){{ return {{ ok: r.ok, j: j }}; }});
     }}).then(function(o){{
-      if(!o.ok) throw new Error((o.j && (o.j.message || o.j.error)) || 'Could not send that.');
+      if(!o.ok){{
+        var raw = (o.j && (o.j.message || o.j.error)) || '';
+        var addrProblem = raw.indexOf('email:') === 0 || raw.indexOf('email ') === 0
+          || raw.toLowerCase().indexOf('domain must contain a dot') >= 0;
+        throw new Error(addrProblem
+          ? 'That email address does not look right — please check the part after the @, like name@example.com.'
+          : (raw || 'Could not send that.'));
+      }}
       document.getElementById('fn-card').innerHTML = '<h1>' + thanks + '</h1>';
     }}).catch(function(e){{
       send.disabled = false;

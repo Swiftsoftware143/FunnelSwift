@@ -289,10 +289,23 @@ function fswWtl(e,f,k){
   m.textContent='Sending...';m.style.color='#475569';
   fetch('https://funnelswift.net/api/v1/web-to-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({public_key:k,name:f.name.value,email:f.email.value})})
   .then(function(r){return r.json().catch(function(){return{};}).then(function(j){
-    if(!r.ok){throw new Error(j.error||('Error '+r.status));}
+    if(!r.ok){
+      var raw = j.error || ('Error ' + r.status);
+      var addrProblem = raw.indexOf('email:') === 0 || raw.indexOf('email ') === 0
+        || raw.toLowerCase().indexOf('domain must contain a dot') >= 0;
+      throw new Error(addrProblem
+        ? 'That email address does not look right — please check the part after the @, like name@example.com.'
+        : raw);
+    }
     f.reset();m.style.color='#15803d';m.textContent=__THANKS__;__REDIRECT__
   });})
-  .catch(function(err){m.style.color='#b91c1c';m.textContent='Sorry, that did not send: '+err.message;});
+  .catch(function(err){
+    m.style.color='#b91c1c';
+    var msg = String((err && err.message) || '');
+    // The friendly address sentence reads badly behind "Sorry, that did not send:" -- every other
+    // reply (a closed form, a server fault) keeps the prefix so the visitor knows nothing was stored.
+    m.textContent = /does not look right/.test(msg) ? msg : 'Sorry, that did not send: ' + msg;
+  });
   return false;
 }
 </script>"#;
