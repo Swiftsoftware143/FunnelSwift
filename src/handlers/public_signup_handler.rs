@@ -77,9 +77,23 @@ pub async fn public_signup(
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
     let password = payload["password"].as_str().unwrap_or("").to_string();
     let name = payload["name"].as_str().unwrap_or("").trim().to_string();
-    // A `plan` in the body is IGNORED — a public signup only ever starts on the free tier, and
-    // WHICH free tier is resolved from `plans.price`/`plans.side` at the assignment site below,
-    // never from a slug literal (kanban t_3641f326).
+    // A plan slug in the body is never the plan itself — a public signup only ever starts on the
+    // free tier, and WHICH free tier is resolved from `plans.price`/`plans.side` at the assignment
+    // site below, never from a slug literal (kanban t_3641f326). The slug is still READ, for the two
+    // things it legitimately decides: the product SIDE and the paid-plan REQUEST. It arrives under
+    // two names — `plan` from the marketing pages and the embedded kinetic landing page, `plan_slug`
+    // from anything written against the fleet's own API shape (this app's `POST /auth/register`
+    // accepts both through a serde alias, and all four sibling apps' register doors take
+    // `plan_slug`). Measured live 2026-10-29: `{"plan_slug":"kinetic-pro"}` was dropped on the
+    // floor — the account was seated on CAPTURE free, the other product (max_forms 0), and no plan
+    // request was filed, while the same body spelled `plan` filed the request. A field that only
+    // one of the two callers can fill is a field that silently does nothing, so BOTH are read.
+    let requested_plan = payload["plan"]
+        .as_str()
+        .or_else(|| payload["plan_slug"].as_str())
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
     let source = payload["source"].as_str().unwrap_or("").to_string();
     // (b) VALIDATE THE WRITE — decided arm: STILL-RECORD-AND-FLAG (kanban t_8101edb5).
     //
@@ -270,12 +284,7 @@ pub async fn public_signup(
     // affiliate-only carve-out in `web_to_lead_handler` hid the rest). The side now follows the
     // `source` marker the two pages already send, defaulting to the MAIN product this route's own
     // page serves.
-    let side = if source == "kinetic-landing"
-        || payload["plan"]
-            .as_str()
-            .map(|p| p.starts_with("kinetic"))
-            .unwrap_or(false)
-    {
+    let side = if source == "kinetic-landing" || requested_plan.starts_with("kinetic") {
         crate::plan_resolver::ProductSide::Kinetic
     } else {
         crate::plan_resolver::ProductSide::Capture
@@ -303,10 +312,7 @@ pub async fn public_signup(
     // Harness signups ARE recorded — the operator's QUEUE hides harness tenants instead
     // (`plan_request_handler::admin_list`, `?include_probe=1`), so attribution stays in the data
     // and the list the operator reads stays clean.
-    let requested_slug = payload["plan"]
-        .as_str()
-        .map(|p| p.trim().to_lowercase())
-        .unwrap_or_default();
+    let requested_slug = requested_plan.clone();
     // ── A LEGACY SPELLING STILL NAMES ITS TIER (cron 2026-10-25) ────────────────────────────────
     // The $79 card shipped `?plan=agency-scale` until 2026-10-23 while the catalogue's slug is
     // `agency`. The correction lives in TWO edge layers — the `?plan=` rewrite in
