@@ -1741,8 +1741,15 @@ pub async fn import_leads(
         }
         if reason.is_none() {
             if let Some(e) = &email {
-                if !e.contains('@') || e.chars().any(char::is_whitespace) {
-                    reason = Some(format!("'{e}' is not an email address"));
+                // The fleet's ONE address rule, not a hand-rolled `contains('@')`. Measured live
+                // 2026-10-29: this file's own check accepted `a@b` — an '@' with no dot in the
+                // domain, which no mail system can deliver to — and the import answered
+                // `{"imported":2,"invalid":0}` with that row stored, i.e. a lead the workspace could
+                // never mail (the exact class `create_lead` already refuses). A row that is not an
+                // address is reported by line like every other per-row refusal here, and nothing is
+                // written for it. ABSENT is still allowed: a lead captured by phone alone is whole.
+                if let Err(msg) = email_addr::check_lead_address(e) {
+                    reason = Some(msg);
                 }
             }
         }
