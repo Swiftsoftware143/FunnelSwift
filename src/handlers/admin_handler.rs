@@ -773,17 +773,17 @@ pub async fn create_tenant_user(
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("tenant_id must be a uuid".into()))?;
-    let email = req
-        .get("email")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_lowercase();
-    if email.is_empty() || !email.contains('@') {
-        return Err(AppError::BadRequest(
-            "a valid email address is required".into(),
-        ));
-    }
+    // The fleet's ONE address rule — the same `normalize` the public signup uses, and the same one
+    // the account-provisioning door 700 lines above already applies. Measured live 2026-10-29: this
+    // door's own `contains('@')` test accepted `a@b` (an '@' with no dot in the domain) and let the
+    // request reach the INSERT, where `users_email_format_check` refused it — so the operator adding
+    // a teammate with a mistyped address got a bare 500 "Database error" instead of being told the
+    // address is not an address. The database is the last line of defence, not the messenger:
+    // refused here, with the reason, before anything is attempted. ABSENT is refused too (unlike a
+    // capture door): this address IS the login.
+    let raw_email = req.get("email").and_then(|v| v.as_str()).unwrap_or("");
+    let email =
+        crate::security::email_addr::normalize(raw_email).map_err(AppError::UnprocessableEntity)?;
     let given = req
         .get("name")
         .and_then(|v| v.as_str())
