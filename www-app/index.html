@@ -453,6 +453,7 @@ function LSYN(){
     +'<div id="scn-prev" style="display:none;margin-top:12px"></div>'
     +'</div>'
     +'<div id="scn-fields" style="display:none"></div>'
+    +'<div id="scn-recent" style="margin-top:16px"></div>'
     +'</div>';
   var msg=function(t,ok){var m=$("scn-msg");if(!m)return;m.style.display=t?"block":"none";
     m.style.color=ok?"#166534":"#b91c1c";m.textContent=t||"";};
@@ -543,6 +544,7 @@ function LSYN(){
         p.innerHTML='<img alt="the card you chose" style="max-width:280px;max-height:180px;border-radius:8px;border:1px solid #e2e8f0" src="'+dataUrl+'">';}
       api("/api/v1/ocr/parse-card",{method:"POST",body:JSON.stringify({image_base64:b64})}).then(function(d){
         show(d,!!(d&&d.parsed));
+        scnRecent();
       }).catch(function(e){
         btnIdle();
         if(e&&e.message==="upgrade_required"){msg("Card scans are not included in your current plan.",false);return;}
@@ -557,6 +559,40 @@ function LSYN(){
     if(f.size>12*1024*1024){msg("That picture is over 12 MB \u2014 choose a smaller one.",false);return;}
     scan(f);
   };
+  /* Recent scans (cron 2026-10-29). A scan is a SOLD, metered unit: without this list the plan
+     strip could say "Card scans 7/10" and nothing anywhere explained the seven, and a scan whose
+     reading was lost still cost a unit. The route is tenant-scoped on the server; this list can
+     only ever show this workspace's own scans. */
+  function scnWhen(iso){
+    try{ var d=new Date(iso); return isNaN(d.getTime())?String(iso||""):d.toLocaleString(); }
+    catch(e){ return String(iso||""); }
+  }
+  function scnRecent(){
+    var box=$("scn-recent"); if(!box) return;
+    api("/api/v1/ocr/scans").then(function(d){
+      var rows=(d&&d.scans)||[];
+      var box2=$("scn-recent"); if(!box2) return;
+      if(!rows.length){
+        box2.innerHTML='<div class="card"><div style="padding:14px;color:#64748b;font-size:13px">No card scans yet. Every scan you run appears here with the reading it returned.</div></div>';
+        return;
+      }
+      var html='<div class="card"><div style="padding:14px"><div style="font-size:13px;font-weight:600;color:#334155;margin-bottom:8px">Recent scans</div><div style="display:flex;flex-direction:column;gap:8px">';
+      rows.forEach(function(r){
+        var f=(r&&r.fields)||{};
+        var who=f.name||f.company||(r.ocr_ok?"a card with no readable name":"no text read");
+        var sub=[(f.name&&f.company)?f.company:"",f.email||"",f.phone||""].filter(Boolean).join(" \u00b7 ");
+        html+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px">'
+          +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">'
+          +'<span style="font-weight:600;font-size:13px">'+X(who)+'</span>'
+          +'<span style="color:#64748b;font-size:12px">'+X(scnWhen(r.created_at))+'</span></div>'
+          +(r.ocr_ok?'':'<div style="color:#b45309;font-size:12px;margin-top:3px">Nothing readable came back \u2014 this one counted as a scan.</div>')
+          +(sub?'<div style="color:#64748b;font-size:12px;margin-top:3px">'+X(sub)+'</div>':'')
+          +'</div>';
+      });
+      box2.innerHTML=html+'</div></div></div>';
+    }).catch(function(){ var b3=$("scn-recent"); if(b3) b3.innerHTML=''; });
+  }
+  scnRecent();
 }
 
 /* === CAMPAIGNS (kanban cron 2026-10-21) =====================================================

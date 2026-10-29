@@ -387,14 +387,21 @@ pub async fn handle_parse_card(
     }
 
     // Meter the attempt before it leaves the box, so the counter reflects the
-    // work asked of the host service (see 045_create_ocr_scans.sql).
-    if let Err(e) = sqlx::query("INSERT INTO ocr_scans (tenant_id) VALUES ($1)")
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await
-    {
-        tracing::error!(%tenant_id, "failed to record ocr_scan usage: {e}");
-    }
+    // work asked of the host service (see 045_create_ocr_scans.sql). The row's id
+    // is kept so the reading can be written onto the SAME row (migration 120) —
+    // the customer's allowance and the list behind it then come from one place.
+    let scan_id: Option<Uuid> =
+        match sqlx::query_scalar("INSERT INTO ocr_scans (tenant_id) VALUES ($1) RETURNING id")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await
+        {
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::error!(%tenant_id, "failed to record ocr_scan usage: {e}");
+                None
+            }
+        };
 
     match call_ocr_service(&image_base64).await {
         Ok(text) => {
@@ -404,13 +411,83 @@ pub async fn handle_parse_card(
                 chars = text.chars().count(),
                 "parse-card ocr ok"
             );
+            // `ocr_ok` means a READING came back, not merely that the service answered: the host
+            // can return an empty/garbage page and `extract_card_fields` then yields nothing. This
+            // is the same predicate `card_response` publishes as `parsed`, so the list the customer
+            // sees and the `parsed` flag they were shown can never disagree.
+            let parsed =
+                !(fields.name.is_empty() && fields.email.is_empty() && fields.phone.is_empty());
+            record_scan_outcome(&state, scan_id, &fields, parsed).await;
             Ok(Json(card_response(&fields)))
         }
         Err(reason) => {
             tracing::warn!(%tenant_id, "parse-card degraded to manual entry: {reason}");
+            record_scan_outcome(&state, scan_id, &CardFields::default(), false).await;
             Ok(Json(empty_card_response()))
         }
     }
+}
+
+/// Write what a scan produced onto the metered row it already created.
+///
+/// A failure here is logged and swallowed: the attempt is metered either way, and the scan itself
+/// has already succeeded or degraded. Never a 500 — the same rule as the OCR call above.
+async fn record_scan_outcome(
+    state: &AppState,
+    scan_id: Option<Uuid>,
+    fields: &CardFields,
+    ok: bool,
+) {
+    let Some(id) = scan_id else { return };
+    let payload = card_response(fields);
+    if let Err(e) = sqlx::query("UPDATE ocr_scans SET fields = $2, ocr_ok = $3 WHERE id = $1")
+        .bind(id)
+        .bind(sqlx::types::Json(payload))
+        .bind(ok)
+        .execute(&state.pool)
+        .await
+    {
+        tracing::error!(scan_id = %id, "failed to record ocr_scan outcome: {e}");
+    }
+}
+
+/// `GET /api/v1/ocr/scans` — the caller's own card-scan history, newest first.
+///
+/// Tenant-scoped by `auth.tenant_id` with no path id to spoof, so a workspace sees only its own
+/// scans. Bounded to the last 20: the screen shows a recent list, and `GET /api/v1/me/usage`
+/// remains the single source of truth for the allowance itself.
+pub async fn list_scans(State(state): State<AppState>, auth: AuthUser) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::BadRequest("Invalid tenant_id in token".into()))?;
+    let rows: Vec<(
+        Uuid,
+        chrono::DateTime<chrono::Utc>,
+        bool,
+        Option<sqlx::types::Json<Value>>,
+    )> = sqlx::query_as(
+        "SELECT id, created_at, ocr_ok, fields FROM ocr_scans \
+             WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let scans: Vec<Value> = rows
+        .into_iter()
+        .map(|(id, created_at, ok, fields)| {
+            let reading = fields
+                .map(|sqlx::types::Json(v)| v)
+                .unwrap_or_else(|| json!({}));
+            json!({
+                "id": id,
+                "created_at": created_at.to_rfc3339(),
+                "ocr_ok": ok,
+                "fields": reading,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "scans": scans })))
 }
 
 // ──────────────────────────────── tests ─────────────────────────────────────

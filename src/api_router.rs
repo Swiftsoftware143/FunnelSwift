@@ -982,6 +982,10 @@ pub fn create_router(
         )
         // OCR - business card parsing
         .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
+        // The caller's own scan history (migration 120, cron 2026-10-29). A metered, sold
+        // feature whose allowance the plan strip shows must be auditable by the customer; the
+        // read is tenant-scoped in the handler, so there is no id in the path to spoof.
+        .route("/api/v1/ocr/scans", get(ocr::list_scans))
         // LinkedIn - profile lookup
         .route(
             "/api/v1/leads/linkedin-lookup",
