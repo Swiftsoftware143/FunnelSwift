@@ -55,12 +55,26 @@ pub async fn affiliate_signup(
     let affiliate_id = Uuid::new_v4().to_string().replace('-', "")[..8].to_uppercase();
     // Link the affiliate record to the user account (commission is tracked on the user account).
     let user_id = Uuid::parse_str(&auth.user_id).ok();
+    // The operator's Affiliates table renders a Name column and an Email column side by side, so
+    // defaulting a self-service affiliate's `name` to their ADDRESS put the same string in both and
+    // the person's name nowhere (measured live 2026-10-30: `name = email` on the self-service row).
+    // Take the account's own display name and keep the address only as the fallback for an account
+    // that never set one.
+    let display_name: Option<String> = match user_id {
+        Some(uid) => sqlx::query_scalar("SELECT NULLIF(TRIM(name), '') FROM users WHERE id = $1")
+            .bind(uid)
+            .fetch_optional(&state.pool)
+            .await?
+            .flatten(),
+        None => None,
+    };
+    let affiliate_name = display_name.unwrap_or_else(|| auth.email.clone());
     sqlx::query(
         "INSERT INTO affiliates (id, tenant_id, name, email, commission_rate, is_active, user_id) VALUES ($1, $2, $3, $4, $5, true, $6)",
     )
     .bind(&affiliate_id)
     .bind(tenant_id)
-    .bind(&auth.email)
+    .bind(&affiliate_name)
     .bind(&auth.email)
     .bind(commission_rate)
     .bind(user_id)
