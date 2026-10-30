@@ -3445,10 +3445,20 @@ function LN(){
     tbl.innerHTML='<tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th></th></tr>';
     all.forEach(function(t){
       var pn=""; if(t.plan&&typeof t.plan==="object") pn=t.plan.plan_name||""; else if(t.plan) pn=String(t.plan);
+      pn=String(pn||"").trim();
+      /* A workspace with NO active subscription has no plan name to read, and this cell used to
+         paint EMPTY — so the operator could not tell "no plan chosen yet" from "this column is
+         broken". The tenant's OWN dashboard already says "No plan assigned" (paintPlan above) and
+         the Plan dialog below already falls back to "None"; the operator's list was the one surface
+         that said nothing (measured live 2026-10-30: 7 of 13 rows blank). Same words, in the
+         install's warning colour, so the row is actionable. Nothing is invented here: a workspace
+         on a real price-0 tier still reads its own tier name. */
+      var noPlan=!pn;
+      if(noPlan) pn="No plan assigned";
       var tr=El("tr",{"class":"ln-row"});
       tr.setAttribute("data-name",t.name||"");
       tr.setAttribute("data-email",t.owner_email||t.email||"");
-      tr.innerHTML='<td><strong>'+X(t.name||"Unnamed")+'</strong></td><td>'+X(t.owner_email||t.email||"-")+'</td><td>'+X(pn)+'</td><td><span style="color:'+(t.status==="active"?"#16a34a":"#64748b")+'">'+X(t.status||"active")+'</span></td><td style="white-space:nowrap"></td>';
+      tr.innerHTML='<td><strong>'+X(t.name||"Unnamed")+'</strong></td><td>'+X(t.owner_email||t.email||"-")+'</td><td>'+(noPlan?'<span style="color:#92400e">'+X(pn)+'</span>':X(pn))+'</td><td><span style="color:'+(t.status==="active"?"#16a34a":"#64748b")+'">'+X(t.status||"active")+'</span></td><td style="white-space:nowrap"></td>';
       var td=tr.querySelectorAll("td")[4];
       td.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){impersonateTenant(t.id,X(t.name||"Unnamed"))}},"\u{1F464} Login As"));
       td.appendChild(document.createTextNode(" "));
@@ -3466,12 +3476,30 @@ function ET(tid,pn){
   api("/api/v1/plans").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     O("Assign Plan", function(){
-      $("mb").innerHTML='<div class="fld"><label>Current Plan: '+X(pn||"None")+'</label></div>';
+      var cur=String(pn||"").trim();
+      $("mb").innerHTML='<div class="fld"><label>Current Plan: '+X(cur||"No plan assigned")+'</label></div>';
       var sel=El("select",{id:"ep-plan"});
-      a.forEach(function(p){sel.appendChild(El("option",{value:p.id},X(p.name)+" ($"+(p.price||0)+"/"+(p.billing_interval||"month")+")"));});
+      /* The control used to open with the FIRST plan in /api/v1/plans already selected, so pressing
+         "Assign Plan" without touching it silently moved the workspace onto whatever the list
+         returned first (measured 2026-10-30 on this screen: 7 of 13 workspaces have no subscription,
+         so the most likely operator visit is exactly the one that would overwrite a real plan with
+         an arbitrary one). An empty value means "nobody has chosen yet": the placeholder is first
+         and selected, the workspace's own current tier is preselected when there is one, and Assign
+         refuses in-panel until a real choice exists. */
+      sel.appendChild(El("option",{value:""},"\u2014 choose a plan \u2014"));
+      a.forEach(function(p){
+        var o=El("option",{value:p.id},X(p.name)+" ($"+(p.price||0)+"/"+(p.billing_interval||"month")+")");
+        if(cur && String(p.name||"").trim()===cur) o.selected=true;
+        sel.appendChild(o);
+      });
       $("mb").appendChild(ff("Select Plan", sel));
+      $("mb").appendChild(El("div",{id:"ep-plan-warn","style":"display:none;color:#b45309;font-size:12px;margin-top:8px"},
+        "Choose a plan first \u2014 nothing has been changed."));
       $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
-      $("mf").appendChild(El("button",{"class":"btn",onclick:function(){SET(tid)}},"Assign Plan"));
+      $("mf").appendChild(El("button",{"class":"btn",onclick:function(){
+        if(!$("ep-plan").value){ var w=$("ep-plan-warn"); if(w) w.style.display="block"; return; }
+        SET(tid);
+      }},"Assign Plan"));
     });
   });
 }
