@@ -1266,6 +1266,15 @@ async function renderPlans() {
   if (!Array.isArray(plans)) plans = plans.data || plans.plans || [];
   const _paid = plans.filter(p => Number(p.price) > 0 && !planIsCurrent(p));
   const _target = _paid.length ? _paid[0] : null;
+  // CAN THIS INSTALL TAKE PAYMENT, BEFORE WE INVITE A PURCHASE (2026-10-30). The backend has
+  // answered this at GET /api/v1/checkout/status since 2026-10-25 — the route existed with no UI in
+  // THIS console, so the panel still offered an Upgrade that POST /checkout/create can only refuse
+  // with 503 payment_provider_not_configured (measured live: five such refusals in two minutes on
+  // 2026-10-30 00:42-00:44Z). Ask first; when payment is off, the button files a request instead of
+  // pretending a checkout is about to open. A failed ask is not fatal: the card behaves as before.
+  let _pay = null;
+  try { _pay = await api('/checkout/status'); } catch (e) { _pay = null; }
+  const _payOff = !!(_pay && _pay.configured === false);
 
   // Purchase requests — workspaces that pressed Upgrade while no payment provider was configured.
   // `POST /api/v1/checkout/create` records each one (status `provider_missing`) and tells the
@@ -1313,7 +1322,9 @@ async function renderPlans() {
             : (planIsCurrent(p)
                 ? `<span class="badge badge-blue">Current plan</span>`
                 : (Number(p.price) > 0
-                    ? `<button class="btn btn-primary btn-xs" data-upgrade-plan="${x(p.slug)}" onclick="window._startUpgrade('${x(p.slug)}')">Upgrade</button>`
+                    ? (_payOff
+                        ? `<button class="btn btn-secondary btn-xs" data-upgrade-plan="${x(p.slug)}" title="Card payments are not switched on for this installation yet. This records your request for the team that runs it — nothing is charged." onclick="window._startUpgrade('${x(p.slug)}')">Request plan</button>`
+                        : `<button class="btn btn-primary btn-xs" data-upgrade-plan="${x(p.slug)}" onclick="window._startUpgrade('${x(p.slug)}')">Upgrade</button>`)
                     : `<span class="badge">Free plan</span>`))
         }</td>
       </tr>`).join('')}</tbody>
@@ -1321,9 +1332,11 @@ async function renderPlans() {
     ${!isSuperAdmin() && _target ? `
     <div class="card" style="text-align:center;padding:30px;background:#eef2ff;border:2px solid var(--primary);margin-top:16px">
       <div style="font-size:32px;margin-bottom:8px">🚀</div>
-      <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">Ready to unlock more features?</h2>
-      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Upgrade to a paid plan to get more cards, leads, and advanced features.</p>
-      <button class="btn btn-primary" data-upgrade-plan="${x(_target.slug)}" onclick="window._startUpgrade('${x(_target.slug)}')">Upgrade to ${x(_target.name)}</button>
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">${_payOff?'Get this plan activated':'Ready to unlock more features?'}</h2>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:16px">${_payOff
+        ? 'Card payment is not switched on for this installation yet, so nothing can be charged here. Ask for the plan and the team that runs it will activate it for you.'
+        : 'Upgrade to a paid plan to get more cards, leads, and advanced features.'}</p>
+      <button class="btn ${_payOff?'btn-secondary':'btn-primary'}" data-upgrade-plan="${x(_target.slug)}" onclick="window._startUpgrade('${x(_target.slug)}')">${_payOff?'Request '+x(_target.name):'Upgrade to '+x(_target.name)}</button>
     </div>`:''}
     ${!isSuperAdmin() && mine.length ? `
     <div class="card" style="margin-top:20px" id="my-plan-requests">

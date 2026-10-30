@@ -383,7 +383,7 @@ function api(p,o){
     // a page that can never load anything. Keyed on the API's own message, not on 403 as a class
     // (403 is also "Admin only" and friends, which must NOT log anyone out).
     if(r.status===403) return errBody().then(function(e){var t=(e&&e.error)||"";if(/workspace is inactive|no longer exists/i.test(t)){T="";try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(ex){}window.location.href="/login?expired=1";throw Error("auth")}throw Error(t||"Error 403")});
-    if(r.status===402){return errBody().then(function(e){KCUP((e&&e.error)||"Plan limit reached. Upgrade to continue.");throw Error("upgrade_required")})}
+    if(r.status===402){return errBody().then(function(e){var pm=(e&&e.error)||"Plan limit reached. Upgrade to continue.";KCUP(pm);var pe=Error("upgrade_required");pe.planMessage=pm;throw pe})}
     if(!r.ok) return errBody().then(function(e){throw Error((e&&(e.error||e.message))||("Error "+r.status+(r.statusText?" "+r.statusText:"")))});
     return r.json();
   });
@@ -547,7 +547,7 @@ function LSYN(){
         scnRecent();
       }).catch(function(e){
         btnIdle();
-        if(e&&e.message==="upgrade_required"){msg("Card scans are not included in your current plan.",false);return;}
+        if(e&&e.message==="upgrade_required"){msg((e&&e.planMessage)||"Card scans are not included in your current plan.",false);return;}
         msg("The card could not be scanned"+(e&&e.message?" \u2014 "+e.message:"")+".",false);
       });
     });
