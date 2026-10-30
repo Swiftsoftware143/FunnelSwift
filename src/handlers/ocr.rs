@@ -37,6 +37,34 @@ pub struct ParseCardRequest {
     pub image_base64: Option<String>,
 }
 
+/// The biggest card photo the scanner accepts, in BYTES of the ORIGINAL file.
+///
+/// The customer app promises 12 MB in its own words ("Choose a photo of the card (up to 12 MB)")
+/// and refuses anything larger in the picker, so 12 MB is the number the SERVER has to honour —
+/// not axum's 2 MB default envelope.
+///
+/// MEASURED 2026-10-30 on the live origin, before this constant existed: a 3 MB photo (4 MB of
+/// base64) answered `413 {"error":"That file is too large to upload. The maximum size is 2 MB
+/// ..."}`, and `GET /api/v1/ocr/scans` stayed at 0 rows — so a phone photo, the only thing a card
+/// scanner is ever fed, never reached this handler. The route carried no `DefaultBodyLimit`, so
+/// axum's default applied while the page promised three times as much.
+pub const MAX_PHOTO_BYTES: usize = 12 * 1024 * 1024;
+
+/// The request envelope `POST /api/v1/ocr/parse-card` needs to carry the largest allowed photo.
+///
+/// Base64 inflates by 4/3, so a 12 MB photo arrives as 16 MB of JSON string. The envelope is set
+/// well above that on purpose: the handler's own guard (`MAX_PHOTO_BYTES`) must be the thing that
+/// answers a too-big picture with the app's 12 MB sentence, and it only runs once the body has been
+/// read — so a merely-too-big photo (13-15 MB) must still fit here, or the middleware's generic
+/// 2 MB envelope sentence is the one the customer reads. Applied to that ONE route so no other
+/// endpoint inherits a 20 MB read limit.
+pub const MAX_BODY_BYTES: usize = 20 * 1024 * 1024;
+
+/// The route this ceiling belongs to. The body-read deadline middleware (`src/body_deadline.rs`)
+/// has to recognise it by path, because that middleware buffers the body BEFORE the router applies
+/// the route's own `DefaultBodyLimit` — see the comment there.
+pub const PATH: &str = "/api/v1/ocr/parse-card";
+
 #[derive(Debug, Serialize)]
 struct OcrServiceRequest<'a> {
     image_base64: &'a str,
@@ -381,6 +409,17 @@ pub async fn handle_parse_card(
     features::enforce_feature_limit(&state, tenant_id, "max_ocr_scans", "Card scans").await?;
 
     let image_base64 = payload.image_base64.unwrap_or_default();
+    // The server-side twin of the picker's own 12 MB check. The route's envelope below bounds the
+    // BASE64 length; this states the ceiling in the units the customer was shown, so an oversized
+    // picture is refused with a sentence rather than with the middleware's generic 2 MB numbers.
+    // Every refusal here happens BEFORE the metering INSERT, so an oversized picture costs the
+    // workspace nothing.
+    if image_base64.trim().len() / 4 * 3 > MAX_PHOTO_BYTES {
+        return Err(AppError::PayloadTooLarge(format!(
+            "That picture is over {} MB — choose a smaller one.",
+            MAX_PHOTO_BYTES / (1024 * 1024)
+        )));
+    }
     if image_base64.trim().is_empty() {
         tracing::warn!(%tenant_id, "parse-card called with empty image_base64");
         return Ok(Json(empty_card_response()));

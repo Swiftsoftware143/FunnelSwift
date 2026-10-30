@@ -52,6 +52,15 @@ pub enum AppError {
     #[error("Upgrade required: {0}")]
     UpgradeRequired(String),
 
+    /// 413 — the body or the file inside it is larger than this route accepts.
+    ///
+    /// The middleware's own `413` (`body_deadline::body_too_large_response`) names the 2 MB
+    /// ENVELOPE, because that is the only limit it knows. A route that raises its envelope for a
+    /// legitimately larger file (the card scanner takes a 12 MB photo) has to be able to say its
+    /// own number in the same JSON shape — see `handlers::ocr::MAX_PHOTO_BYTES`.
+    #[error("Payload too large: {0}")]
+    PayloadTooLarge(String),
+
     /// 424 — the PROVIDER was reached and refused (or could not be reached).
     ///
     /// WHY 424 AND NOT 500: `GET /api/v1/integrations/coreswift/lists` mapped a rejected stored key
@@ -127,6 +136,7 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::UpgradeRequired(msg) => (StatusCode::PAYMENT_REQUIRED, msg),
+            AppError::PayloadTooLarge(msg) => (StatusCode::PAYLOAD_TOO_LARGE, msg),
             AppError::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             AppError::UpstreamRefused(msg) => (StatusCode::FAILED_DEPENDENCY, msg),
             // Too many failed sign-ins from one address — **429**, carrying the pause and (below)

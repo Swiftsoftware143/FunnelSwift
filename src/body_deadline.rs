@@ -201,6 +201,33 @@ pub async fn body_read_deadline_middleware(
         return next.run(Request::from_parts(parts, body)).await;
     }
 
+    // A route that legitimately accepts a LARGER body than axum's 2 MB default is read with ITS OWN
+    // limit here, before the probe below. WHY HERE AND NOT ONLY ON THE ROUTE: this middleware
+    // buffers the body before the router ever hands the request to the route's `DefaultBodyLimit`
+    // layer, so `Bytes::from_request` here applies axum's default no matter what the route declares.
+    // MEASURED 2026-10-30: raising the limit on `POST /api/v1/ocr/parse-card` alone changed nothing —
+    // a 2 MB photo still answered 413 while a 1 MB one passed, because this read refused it first.
+    if parts.uri.path() == crate::handlers::ocr::PATH {
+        let limit = crate::handlers::ocr::MAX_BODY_BYTES;
+        let probe = Request::from_parts(parts.clone(), body);
+        return match tokio::time::timeout(deadline, axum::body::to_bytes(probe.into_body(), limit))
+            .await
+        {
+            Ok(Ok(bytes)) => {
+                next.run(Request::from_parts(parts, Body::from(bytes)))
+                    .await
+            }
+            Ok(Err(_)) => body_too_large_response(),
+            Err(_elapsed) => {
+                warn!(
+                    "request body not received within {:?} (stalled body) — answered 408 for {} {}",
+                    deadline, parts.method, parts.uri
+                );
+                body_deadline_response(deadline)
+            }
+        };
+    }
+
     let probe = Request::from_parts(parts.clone(), body);
 
     // `()` is the extractor state: `Bytes::from_request` takes its limit from the request's own

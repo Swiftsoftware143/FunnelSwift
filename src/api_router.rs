@@ -981,7 +981,16 @@ pub fn create_router(
             get(email_template_handler::email_log),
         )
         // OCR - business card parsing
-        .route("/api/v1/ocr/parse-card", post(ocr::handle_parse_card))
+        //
+        // The envelope is RAISED for this route alone: the customer app offers a 12 MB photo
+        // (`ocr::MAX_PHOTO_BYTES`) and base64 puts that at 16 MB of JSON, so axum's default 2 MB
+        // read limit refused every photo a phone takes. Measured 2026-10-30 on the live origin: a
+        // 3 MB photo answered 413 "The maximum size is 2 MB" and wrote no `ocr_scans` row.
+        .route(
+            "/api/v1/ocr/parse-card",
+            post(ocr::handle_parse_card)
+                .layer(axum::extract::DefaultBodyLimit::max(ocr::MAX_BODY_BYTES)),
+        )
         // The caller's own scan history (migration 120, cron 2026-10-29). A metered, sold
         // feature whose allowance the plan strip shows must be auditable by the customer; the
         // read is tenant-scoped in the handler, so there is no id in the path to spoof.
