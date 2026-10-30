@@ -30,17 +30,20 @@
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 217 `.route(..)` mounts / 216 unique paths, classified three ways:
+//! 218 `.route(..)` mounts / 217 unique paths, classified three ways:
 //!
 //! (The 2026-10-30 recount folded in ONE private `/api` mount added after the 2026-10-24 numbers —
-//! no boundary moved, only the count. This test is the guard that says so out loud.)
+//! no boundary moved, only the count. The same day's pricing page added ONE public mount,
+//! `/api/v1/public/plans`, which is the anonymous price list it prints; that is the `20 -> 21`
+//! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   191 mounts  /api/**            190 unique after the duplicate `/api/v1/linkedin/auth`
+//!   192 mounts  /api/**            191 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
-//!     20        public            -> PUBLIC_ROUTES below (the two card-QR image READs
+//!     21        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
-//!                                    `<img src>` that carries no Authorization header)
+//!                                    `<img src>` that carries no Authorization header; the
+//!                                    public price list joined on 2026-10-30)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
 //!    168        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (38 of them `/api/v1/admin/**` = the operator surface,
@@ -380,7 +383,7 @@ mod tests {
                 private,
                 served
             ),
-            (217, 216, 191, 20, 3, 168, 26),
+            (218, 217, 192, 21, 3, 168, 26),
             "the census in the module docs no longer matches the router"
         );
     }
