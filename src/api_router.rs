@@ -198,6 +198,10 @@ pub fn create_router(
             post(public_signup_handler::public_signup),
         )
         .route("/api/v1/auth/login", post(login))
+        // The PUBLIC price list (measured 2026-10-30): the marketing pricing page states that every
+        // price it prints is the one this install sells, so it has to be able to READ them. This is
+        // the anonymous, minimal twin of the console's `/api/v1/plans` — name/slug/price only.
+        .route("/api/v1/public/plans", get(plan_handler::public_plans))
         .route("/api/v1/auth/forgot-password", post(forgot_password))
         .route("/api/v1/auth/reset-password", post(reset_password))
         .route("/api/v1/auth/me", get(me))

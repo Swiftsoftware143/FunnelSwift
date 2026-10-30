@@ -292,6 +292,48 @@ pub async fn list_plans(State(state): State<AppState>) -> AppResult<Json<Vec<Pla
     Ok(Json(plans))
 }
 
+/// `GET /api/v1/public/plans` — the prices this install actually sells, for the ANONYMOUS
+/// marketing pricing page.
+///
+/// Why this exists (measured 2026-10-30): `www/pricing.html` tells the visitor that "Every price
+/// below is the one this install sells", while its cards are hand-authored HTML wired to nothing.
+/// An operator price change in the console therefore left the public page quoting a number the
+/// app no longer charges, and no check anywhere on the box could see the drift. The page now
+/// reads its amounts from here and keeps its authored copy.
+///
+/// The payload is deliberately tiny and carries nothing a tenant owns: the plan name and slug the
+/// visitor clicks, the two prices the card prints, and the product side that groups them. No ids,
+/// no features, no limits — those stay on the authenticated `/api/v1/plans` the console reads.
+/// It sits on [`crate::auth::route_policy::PUBLIC_ROUTES`] on purpose: a stranger is exactly who
+/// needs a price.
+pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
+    let rows = sqlx::query(
+        "SELECT name, slug, price::float8 AS price, \
+                COALESCE(annual_price, 0)::float8 AS annual_price, \
+                COALESCE(billing_cycle, 'month') AS billing_cycle, \
+                COALESCE(side, 'both') AS side \
+           FROM plans ORDER BY price, slug",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let plans: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "name": r.get::<String, _>("name"),
+                "slug": r.get::<String, _>("slug"),
+                "price": r.get::<f64, _>("price"),
+                "annual_price": r.get::<f64, _>("annual_price"),
+                "billing_cycle": r.get::<String, _>("billing_cycle"),
+                "side": r.get::<String, _>("side"),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "plans": plans })))
+}
+
 /// A plan's `purchase_url` is a hosted payment page an OPERATOR types in, so refuse a typo at
 /// SAVE time instead of at the till.
 ///

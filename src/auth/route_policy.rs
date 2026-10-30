@@ -149,6 +149,11 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // The marketing site injects the platform-level `seo_*` rows from `site_settings` (no tenant
     // column) into its HTML; the handler reads only those keys.
     "/api/v1/seo/inject",
+    // The price list the ANONYMOUS marketing pricing page prints. A stranger is exactly who needs
+    // to know what a plan costs; the handler serves names, slugs and the two prices and nothing a
+    // tenant owns (measured 2026-10-30 — the page claimed its prices were the install's, and they
+    // were hand-authored HTML).
+    "/api/v1/public/plans",
     // --- public lead capture / checkout -----------------------------------------
     // The lead-capture form on a served funnel posts here with no session (the visitor is
     // anonymous by construction); the handler scopes the write to the tenant it resolves from the
@@ -490,6 +495,8 @@ mod tests {
             "/api/v1/auth/email-change/confirm",
             "/api/v1/seo/sitemap.xml",
             "/api/v1/seo/inject",
+            // the public pricing page is read by a visitor with no session
+            "/api/v1/public/plans",
             "/api/v1/web-to-lead",
             "/api/v1/checkout/session/abc123",
             "/api/v1/kinetic/cards/0a1b2c3d/gate",

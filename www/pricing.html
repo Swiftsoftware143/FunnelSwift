@@ -82,7 +82,7 @@
       <div class="card">
         <h3>Free</h3>
         <p class="who">Two free plans — pick the product you need and start today.</p>
-        <div class="price"><span class="amt">$0</span><span class="per">/month</span></div>
+        <div class="price" data-plan="capture-free"><span class="amt" data-role="amt">$0</span><span class="per">/month</span></div>
         <p class="yr">Free forever — no card required</p>
         <ul>
           <li class="head">Capture Free — lead capture</li>
@@ -102,8 +102,8 @@
       <div class="card">
         <h3>Capture Starter</h3>
         <p class="who">For ad campaigns and lead gen — connect your CRM and automate.</p>
-        <div class="price"><span class="amt">$9</span><span class="per">/month</span></div>
-        <p class="yr">or $89 a year (two months free)</p>
+        <div class="price" data-plan="capture-starter"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
+        <p class="yr" data-role="yr">or $89 a year (two months free)</p>
         <ul>
           <li>100 leads</li>
           <li>5 tags</li>
@@ -118,8 +118,8 @@
       <div class="card">
         <h3>Kinetic Pro</h3>
         <p class="who">Fully branded, interactive digital business cards.</p>
-        <div class="price"><span class="amt">$9</span><span class="per">/month</span></div>
-        <p class="yr">or $89 a year (two months free)</p>
+        <div class="price" data-plan="kinetic-pro"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
+        <p class="yr" data-role="yr">or $89 a year (two months free)</p>
         <ul>
           <li>Unlimited captured contacts and tags</li>
           <li>1 custom domain</li>
@@ -134,8 +134,8 @@
         <div class="badge">Most popular</div>
         <h3>Suite</h3>
         <p class="who">Kinetic Cards and lead capture in one platform.</p>
-        <div class="price"><span class="amt">$29</span><span class="per">/month</span></div>
-        <p class="yr">or $290 a year (two months free)</p>
+        <div class="price" data-plan="suite"><span class="amt" data-role="amt">$29</span><span class="per">/month</span></div>
+        <p class="yr" data-role="yr">or $290 a year (two months free)</p>
         <ul>
           <li>Everything in Capture Starter and Kinetic Pro</li>
           <li>3 custom domains</li>
@@ -150,8 +150,8 @@
       <div class="card">
         <h3>Agency / Scale</h3>
         <p class="who">For agencies and marketing firms managing multiple clients.</p>
-        <div class="price"><span class="amt">$79</span><span class="per">/month</span></div>
-        <p class="yr">or $790 a year (two months free)</p>
+        <div class="price" data-plan="agency"><span class="amt" data-role="amt">$79</span><span class="per">/month</span></div>
+        <p class="yr" data-role="yr">or $790 a year (two months free)</p>
         <ul>
           <li>Everything in Suite</li>
           <li>10 custom domains</li>
@@ -166,6 +166,7 @@
     </div>
 
     <p class="note">Prices in US dollars. <strong>Every account starts on a free plan</strong> — pick Capture Free or Kinetic Free when you sign up. To move to a paid plan, open <strong>Plan &amp; Billing</strong> in your dashboard and send the upgrade request: our team switches the workspace and the limits change at once. Need more domains, more seats, or a volume deal? Ask on the same screen and we will quote it.</p>
+    <p class="note" id="priceSource"></p>
   </div>
 </section>
 
@@ -181,6 +182,55 @@
     </div>
   </div>
 </footer>
+
+<script>
+/* Amounts on this page are READ from the plan records this install sells (2026-10-30).
+   The cards above keep their authored copy and feature lists, but every price is a placeholder
+   that must agree with the `plans` table — an operator changing a price in the console would
+   otherwise leave this page quoting a number the app no longer charges, with nothing on the box
+   able to see the drift. GET /api/public/plans is the anonymous, minimal price list.
+   If that read fails, the authored amounts stay and the line under them says so. */
+(function () {
+  'use strict';
+  function money(n) {
+    var v = Number(n) || 0;
+    return '$' + (v % 1 === 0 ? String(v) : v.toFixed(2));
+  }
+  var out = document.getElementById('priceSource');
+  fetch('/api/v1/public/plans', { headers: { 'Accept': 'application/json' } })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (d) {
+      var plans = (d && Array.isArray(d.plans)) ? d.plans : [];
+      if (!plans.length) throw new Error('no plans returned');
+      var byslug = {};
+      plans.forEach(function (p) { byslug[p.slug] = p; });
+      var painted = 0, books = document.querySelectorAll('.price[data-plan]');
+      for (var i = 0; i < books.length; i++) {
+        var p = byslug[books[i].getAttribute('data-plan')];
+        if (!p) continue;
+        var amt = books[i].querySelector('[data-role="amt"]');
+        if (amt) { amt.textContent = money(p.price); painted++; }
+        var yr = books[i].parentNode.querySelector('p.yr[data-role="yr"]');
+        if (yr && p.annual_price > 0) {
+          yr.textContent = 'or ' + money(p.annual_price) + ' a year'
+            + (Math.abs(p.annual_price - p.price * 10) < 0.01 ? ' (two months free)' : '');
+        }
+      }
+      if (out) {
+        out.textContent = painted
+          ? 'Prices read live from this install\u2019s own plan records just now \u2014 '
+            + painted + ' plan' + (painted === 1 ? '' : 's') + ' confirmed.'
+          : 'Live prices were read, but no card on this page matched a plan this install sells.';
+      }
+    })
+    .catch(function (e) {
+      if (out) {
+        out.textContent = 'The live price list could not be read just now (' + e.message
+          + '), so the amounts above are the last published ones. Reload to try again.';
+      }
+    });
+})();
+</script>
 
 </body>
 </html>
