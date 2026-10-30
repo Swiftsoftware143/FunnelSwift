@@ -143,7 +143,7 @@ try{
     body: JSON.stringify(body)
   });
   var data = await res.json();
-  if (!res.ok) throw new Error(data.error || data.message || 'Signup failed');
+  if (!res.ok) throw new Error(data.message || (typeof data.error === 'string' ? data.error : '') || 'Signup failed');
   // NO auto-login. David's model: the server generated the login credentials and emailed them, so the
   // user confirms their address by signing in with the password we sent — a real two-step check. The
   // old code handed the session over in the URL fragment, which skipped that check entirely.

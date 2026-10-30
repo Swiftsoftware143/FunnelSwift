@@ -805,7 +805,7 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  const data = await res.json();
 
  if(!res.ok){
- throw new Error(data.error || data.message || 'Signup failed');
+ throw new Error(data.message || (typeof data.error === 'string' ? data.error : '') || 'Signup failed');
  }
 
  // David's signup model: the marketing form collects NAME + EMAIL only. The server generated

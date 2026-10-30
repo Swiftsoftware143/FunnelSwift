@@ -149,7 +149,7 @@ async function api(path, opts={}) {
   const res = await fetch(API_BASE + path, { ...opts, headers });
   if (res.status === 401) { clearSession(); window.location.href = '/login'; throw new Error('auth'); }
   if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error', false); throw new Error('402'); }
-  if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); throw new Error(e.error||e.message||'Error '+res.status); }
+  if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); throw new Error(e.message||(typeof e.error==='string'?e.error:'')||'Error '+res.status); }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
@@ -899,7 +899,7 @@ window._fsAvatarUpload = async function () {
       body: fd
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    if (!r.ok) throw new Error(d.message || (typeof d.error === 'string' ? d.error : '') || ('Error ' + r.status));
     if (d.avatar_url) USER.avatar_url = d.avatar_url;
     const im = document.getElementById('fsac-av'), ph = document.getElementById('fsac-avph');
     const del = document.getElementById('fsac-avdel');
@@ -936,7 +936,7 @@ window._fsAvatarRemove = async function () {
       headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    if (!r.ok) throw new Error(d.message || (typeof d.error === 'string' ? d.error : '') || ('Error ' + r.status));
     USER.avatar_url = '';
     showToast('Profile picture removed', 'success');
     renderApp();
@@ -974,7 +974,7 @@ window._fsPasswordSave = async function () {
       body: JSON.stringify({ current_password: cp, new_password: np })
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    if (!r.ok) throw new Error(d.message || (typeof d.error === 'string' ? d.error : '') || ('Error ' + r.status));
     ['fsac-np', 'fsac-np2', 'fsac-cp'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     fsMsg('fsac-pwmsg', 'Password changed', true);
   } catch (e) { fsMsg('fsac-pwmsg', (e && e.message) || 'Could not change the password', false); }
@@ -1000,7 +1000,7 @@ window._fsEmailChangeSend = async function () {
       body: JSON.stringify({ new_email: v })
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || d.message || ('Error ' + r.status));
+    if (!r.ok) throw new Error(d.message || (typeof d.error === 'string' ? d.error : '') || ('Error ' + r.status));
     if (d && d.delivered === false) {
       fsMsg('fsac-ecmsg', d.message || 'That address cannot receive mail, so nothing was sent.', false);
     } else {
@@ -1628,7 +1628,7 @@ function bindLeads() {
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
-        showToast((d && (d.error || d.message)) || ('Import failed (' + r.status + ')'), 'error');
+        showToast((d && (d.message || (typeof d.error === 'string' ? d.error : ''))) || ('Import failed (' + r.status + ')'), 'error');
         return;
       }
       const first = (d.errors && d.errors[0]);
@@ -1656,7 +1656,7 @@ function bindLeads() {
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
-        showToast((d && (d.error || d.message)) || ('Export failed (' + r.status + ')'), 'error');
+        showToast((d && (d.message || (typeof d.error === 'string' ? d.error : ''))) || ('Export failed (' + r.status + ')'), 'error');
         return;
       }
       const blob = await r.blob();
@@ -4204,7 +4204,7 @@ async function showExactEmail() {
     });
     if (res.status === 401) { clearSession(); window.location.href = '/login'; return; }
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
+    if (!res.ok) throw new Error(body.message || (typeof body.error === 'string' ? body.error : '') || ('Error ' + res.status));
     const esc = s => String(s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
     if (subj) subj.textContent = 'Subject: ' + (body.subject || '');
     if (frame) frame.srcdoc = body.html
@@ -4238,7 +4238,7 @@ async function sendBrandPreview() {
     });
     if (res.status === 401) { clearSession(); window.location.href = '/login'; return; }
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
+    if (!res.ok) throw new Error(body.message || (typeof body.error === 'string' ? body.error : '') || ('Error ' + res.status));
     if (msg) { msg.style.color = body.sent ? '#16a34a' : '#b45309'; msg.textContent = body.detail || (body.sent ? 'Preview sent.' : 'No preview was sent.'); }
   } catch (e) {
     if (msg) { msg.style.color = '#dc2626'; msg.textContent = 'Preview failed: ' + e.message; }
@@ -4270,7 +4270,7 @@ async function uploadBrandLogo() {
     });
     if (res.status === 401) { clearSession(); window.location.href = '/login'; return; }
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || body.message || ('Error ' + res.status));
+    if (!res.ok) throw new Error(body.message || (typeof body.error === 'string' ? body.error : '') || ('Error ' + res.status));
     showToast('Logo uploaded', 'success');
     renderApp();
   } catch (e) { showToast('Upload failed: ' + e.message, 'error'); }
