@@ -351,6 +351,33 @@ fn empty_card_response() -> Value {
     card_response(&CardFields::default())
 }
 
+/// The same fallback, plus the two facts the customer needs: why no fields came back, and whether
+/// this attempt cost them a scan.
+///
+/// `reason`/`message`/`refunded` are ADDITIVE keys on the frozen contract (the mobile client reads
+/// `name/title/company/email/phone/parsed` and ignores what it does not know). They exist because
+/// the page used to say only "we could not read this card" for two different events: a picture with
+/// no text on it and a reader that never answered. The customer cannot act on the second one, and
+/// only the first one costs them a scan, so the sentence has to differ.
+fn empty_card_response_with(reason: &str) -> Value {
+    let mut body = empty_card_response();
+    let message = match reason {
+        "reader_unavailable" => {
+            "Our card reader did not answer, so that scan is on us — it did not use one of your \
+             scans. Try again in a minute, or type the details in yourself."
+        }
+        _ => {
+            "We could not read any text in that picture, so type the details in yourself. That \
+             scan counted against your plan — retake the photo in better light and the fields \
+             usually come back."
+        }
+    };
+    body["reason"] = json!(reason);
+    body["message"] = json!(message);
+    body["refunded"] = json!(reason == "reader_unavailable");
+    body
+}
+
 // ───────────────────────────── host service ─────────────────────────────────
 
 fn service_url() -> String {
@@ -366,31 +393,73 @@ fn service_token() -> Option<String> {
         .filter(|v| !v.trim().is_empty())
 }
 
-/// POST the base64 image to the host Tesseract service. Errors are returned as
-/// plain strings so the caller can log a reason and degrade gracefully.
-async fn call_ocr_service(image_base64: &str) -> Result<String, String> {
+/// Why a card scan produced no reading — and, because the answer decides who pays for it,
+/// WHY is data here rather than a log string.
+///
+/// `max_ocr_scans` is a SOLD meter whose allowance is `COUNT(*) FROM ocr_scans`
+/// (`features::get_usage_count`), so a scan row written before the reader is even asked is money.
+/// The two failures are not the same event and must not be billed the same way:
+///
+///   * [`OcrFailure::CannotRead`] — the reader ran and the PICTURE was the problem (a container no
+///     reader understands, or a page with no card fields on it). The work was performed, so that
+///     scan keeps its unit and the page says so.
+///   * [`OcrFailure::Unavailable`] — the reader is OURS and it never answered (no token, refused
+///     connection, timeout, 5xx, unreadable body). The workspace must not be charged for work we
+///     could not perform, so the metered row is deleted (`refund_scan`).
+#[derive(Debug)]
+pub enum OcrFailure {
+    CannotRead(String),
+    Unavailable(String),
+}
+
+impl std::fmt::Display for OcrFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OcrFailure::CannotRead(reason) => write!(f, "picture unreadable: {reason}"),
+            OcrFailure::Unavailable(reason) => write!(f, "reader unavailable: {reason}"),
+        }
+    }
+}
+
+/// POST the base64 image to the host Tesseract service.
+///
+/// The service's own answer is honoured: a 422 means it read our bytes and could not make a
+/// picture of them (the caller's photo), while anything else non-2xx — and any transport
+/// failure — means the reader never did the work.
+async fn call_ocr_service(image_base64: &str) -> Result<String, OcrFailure> {
     let Some(token) = service_token() else {
-        return Err("OCR_SERVICE_TOKEN is not configured in the container env".to_string());
+        return Err(OcrFailure::Unavailable(
+            "OCR_SERVICE_TOKEN is not configured in the container env".to_string(),
+        ));
     };
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(OCR_TIMEOUT_SECS))
         .build()
-        .map_err(|e| format!("failed to build http client: {e}"))?;
+        .map_err(|e| OcrFailure::Unavailable(format!("failed to build http client: {e}")))?;
     let response = client
         .post(format!("{}/ocr", service_url().trim_end_matches('/')))
         .header("X-OCR-Token", token)
         .json(&OcrServiceRequest { image_base64 })
         .send()
         .await
-        .map_err(|e| format!("ocr service unreachable: {e}"))?;
+        .map_err(|e| OcrFailure::Unavailable(format!("ocr service unreachable: {e}")))?;
     let status = response.status();
+    if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
+        let detail = response.text().await.unwrap_or_default();
+        return Err(OcrFailure::CannotRead(format!(
+            "ocr service 422: {}",
+            detail.chars().take(160).collect::<String>()
+        )));
+    }
     if !status.is_success() {
-        return Err(format!("ocr service returned status {status}"));
+        return Err(OcrFailure::Unavailable(format!(
+            "ocr service returned status {status}"
+        )));
     }
     let body: OcrServiceResponse = response
         .json()
         .await
-        .map_err(|e| format!("ocr service sent unreadable body: {e}"))?;
+        .map_err(|e| OcrFailure::Unavailable(format!("ocr service sent unreadable body: {e}")))?;
     Ok(body.text.unwrap_or_default())
 }
 
@@ -459,11 +528,43 @@ pub async fn handle_parse_card(
             record_scan_outcome(&state, scan_id, &fields, parsed).await;
             Ok(Json(card_response(&fields)))
         }
-        Err(reason) => {
-            tracing::warn!(%tenant_id, "parse-card degraded to manual entry: {reason}");
-            record_scan_outcome(&state, scan_id, &CardFields::default(), false).await;
-            Ok(Json(empty_card_response()))
+        Err(failure) => {
+            // Who pays: a picture the reader could not make sense of keeps its metered unit (the
+            // read was performed); a read the READER never performed is refunded, because the
+            // allowance is literally the row count in `ocr_scans`.
+            let unreadable = matches!(failure, OcrFailure::CannotRead(_));
+            if unreadable {
+                tracing::warn!(%tenant_id, "parse-card degraded to manual entry: {failure}");
+                record_scan_outcome(&state, scan_id, &CardFields::default(), false).await;
+            } else {
+                tracing::error!(%tenant_id, "parse-card refunded — {failure}");
+                refund_scan(&state, scan_id).await;
+            }
+            let reason = if unreadable {
+                "no_text"
+            } else {
+                "reader_unavailable"
+            };
+            Ok(Json(empty_card_response_with(reason)))
         }
+    }
+}
+
+/// Give the metered unit back: the scan the reader never performed must not count.
+///
+/// The allowance is `COUNT(*) FROM ocr_scans` per tenant (`features.rs`), so removing the row this
+/// request created IS the refund — nothing else reads the row first, and the customer's own history
+/// (`GET /api/v1/ocr/scans`) is built from the same table, so a refunded attempt never appears as a
+/// scan they paid for. A failure here is logged and swallowed: the customer still gets the honest
+/// "that one is on us" answer and the platform keeps working.
+async fn refund_scan(state: &AppState, scan_id: Option<Uuid>) {
+    let Some(id) = scan_id else { return };
+    if let Err(e) = sqlx::query("DELETE FROM ocr_scans WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await
+    {
+        tracing::error!(scan_id = %id, "failed to refund ocr_scan row: {e}");
     }
 }
 

@@ -488,12 +488,13 @@ function LSYN(){
     var box=$("scn-fields");
     if(!box||!box.parentNode)return;
     box.style.display="block";
+    var note = got
+        ? 'Read off the card. Correct anything the scan got wrong, then save it as a lead.'
+        : (d.message || 'We could not read this card, so type the details in yourself \u2014 the lead is saved exactly the same way.');
     var h='<div class="card" style="margin-top:16px"><h3 style="margin:0 0 4px">'
       +(got?"Check the details":"Type the details")+'</h3>'
-      +'<p style="color:#64748b;font-size:12px;margin:0 0 12px;max-width:70ch">'
-      +(got
-        ? 'Read off the card. Correct anything the scan got wrong, then save it as a lead.'
-        : 'We could not read this card, so type the details in yourself \u2014 the lead is saved exactly the same way.')
+      +'<p style="color:'+(got?'#64748b':'#b45309')+';font-size:12px;margin:0 0 12px;max-width:70ch">'
+      +X(note)
       +'</p>';
     SCAN_FIELDS.forEach(function(k){
       h+='<label style="font-size:12px;color:#64748b">'+SCAN_LABELS[k]+'</label>'
