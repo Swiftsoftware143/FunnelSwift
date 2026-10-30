@@ -334,8 +334,17 @@ pub async fn create_checkout_session(
             // `checkout_sessions` with a status that says exactly why it stopped. The workspace's
             // own Checkout Sessions screen is the history of what was attempted, and support can
             // read which plan was wanted instead of guessing from a 503 in a log line.
+            //
+            // A CLIENT THAT NAMES ITS PLAN IN `plan` IS STILL NAMING A PLAN (2026-10-30). The web
+            // upgrade screen sends `plan_slug`, but nothing documented that spelling, so an API
+            // caller, a stored integration or a future mobile checkout sends the obvious name.
+            // Before this the request carried an EMPTY slug and the buyer was then told "That plan
+            // is not one this installation sells" about a plan this installation does sell, while
+            // the operator's plan-request queue never saw the demand. `plan_slug` still wins when
+            // both keys are present.
             let plan_slug = payload["plan_slug"]
                 .as_str()
+                .or_else(|| payload["plan"].as_str())
                 .unwrap_or("")
                 .trim()
                 .to_string();
@@ -530,6 +539,15 @@ pub async fn create_checkout_session(
                 "No charge was made — nothing was sent to a payment provider, so you cannot be billed. \
                  Upgrades are not switched on for this installation yet: your request has been passed \
                  to the team that runs it, who can activate this plan for your workspace."
+            } else if plan_slug.is_empty() {
+                // AN EMPTY SLUG IS NOT A PLAN WE DO NOT SELL (2026-10-30). The sentence below is
+                // about a NAMED plan this catalogue does not carry; with nothing named at all it
+                // states something the request never said, and its advice ("pick a plan from the
+                // list") sends a caller whose client always omits the slug round the same dead end
+                // for ever. Say what actually happened.
+                "No charge was made — nothing was sent to a payment provider, so you cannot be billed. \
+                 This request did not name a plan, so there was nothing to buy and nothing was \
+                 recorded. Pick a plan on the pricing page and press Upgrade again."
             } else if plan.is_none() {
                 "No charge was made — nothing was sent to a payment provider, so you cannot be billed. \
                  That plan is not one this installation sells, so nothing was recorded. Reload the \
@@ -581,11 +599,18 @@ pub async fn create_checkout_session(
             }
             let plan_slug = payload["plan_slug"]
                 .as_str()
+                // Same alias as the no-provider arm above: `plan` is the obvious name for the
+                // field and `plan_slug` is the documented one. A provider IS configured here, so
+                // this is the arm that can actually take money — a caller using the natural name
+                // must not be turned away with "plan_slug is required".
+                .or_else(|| payload["plan"].as_str())
                 .unwrap_or("")
                 .trim()
                 .to_string();
             if plan_slug.is_empty() {
-                return Err(AppError::Validation("plan_slug is required".into()));
+                return Err(AppError::Validation(
+                    "plan_slug (or plan) is required — the request named no plan to buy.".into(),
+                ));
             }
             let plan: Option<(Uuid, String, f64, f64)> = sqlx::query_as(
                 "SELECT id, name, COALESCE(price, 0)::float8, COALESCE(annual_price, 0)::float8 \
