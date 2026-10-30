@@ -149,7 +149,13 @@ async function api(path, opts={}) {
   const res = await fetch(API_BASE + path, { ...opts, headers });
   if (res.status === 401) { clearSession(); window.location.href = '/login'; throw new Error('auth'); }
   if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error', false); throw new Error('402'); }
-  if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); throw new Error(e.message||(typeof e.error==='string'?e.error:'')||'Error '+res.status); }
+  /* kanban cron-2026-10-30 — the refusal's MACHINE CODE and HTTP status are carried on the error.
+     A caller that only sees the human sentence cannot tell "this install has no payment provider"
+     (a normal state, already explained on the Plans screen) from a real failure: `_startUpgrade`
+     matched /payment_provider/ against the prose, but the prose is "No charge was made — …", so the
+     branch never fired and the buyer got a red "Could not start checkout: …". Attaching code/status
+     lets a caller branch on the code the server actually sent. */
+  if (!res.ok) { const e = await res.json().catch(()=>({error:'Request failed'})); const err = new Error(e.message||(typeof e.error==='string'?e.error:'')||'Error '+res.status); err.status = res.status; err.code = (typeof e.error==='string'?e.error:''); err.body = e; throw err; }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
@@ -1213,9 +1219,19 @@ window._startUpgrade = async function (slug) {
     showToast('Checkout was created but no payment link came back — nothing was charged. Please contact support.', 'error', false);
   } catch (e) {
     const msg = String((e && e.message) || '');
+    const code = String((e && e.code) || '');
     if (msg === '402') return;                 // api() already toasted the plan limit
-    if (/payment_provider|not[_ ]configured/i.test(msg)) {
-      showToast('Upgrades are not open on this workspace yet — nothing was charged. Contact support and we will set the plan up for you.', 'info', false);
+    /* kanban cron-2026-10-30 — MEASURED on admin.funnelswift.net (free workspace, "Request plan"):
+       the server answered 503 {error:"payment_provider_not_configured", message:"No charge was made —
+       nothing was sent to a payment provider… your request has been passed to the team that runs it…"},
+       and this catch fired the GENERIC arm, painting a red toast "Could not start checkout: <that whole
+       sentence> — nothing was charged." — an ERROR frame plus a duplicated "nothing was charged" for a
+       state the Plans card on the same screen already explains ("Card payment is not switched on for
+       this installation yet…"). The old match read the human prose for /payment_provider/, but the prose
+       says "No charge was made". Branch on the CODE the server sent and paint the server's own
+       buyer-first sentence as information, verbatim. */
+    if (code === 'payment_provider_not_configured' || /payment_provider_not_configured|no active payment provider/i.test(msg)) {
+      showToast(msg, 'info', false);
     } else {
       showToast('Could not start checkout: ' + msg + ' — nothing was charged.', 'error', false);
     }
