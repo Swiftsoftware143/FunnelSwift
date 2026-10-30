@@ -400,7 +400,16 @@ function upgradeTo(slug){
   var useYear = (TERM === 'year' && rawYr > 0);
   var raw = useYear ? rawYr : rawMo;
   var amount = raw > 0 ? ' \u2014 $' + (raw % 1 === 0 ? String(raw) : raw.toFixed(2)) + (useYear ? '/year' : '/month') : '';
-  if(!confirm('Upgrade this workspace to ' + label + amount + '?\n\nNothing is charged until the payment provider confirms the payment.')) return;
+  // What pressing OK actually does depends on whether THIS install can take money. The page above
+  // already says which arm it is ("Upgrades are not switched on…" when checkout/status reports
+  // configured=false), so the confirm must say the same thing: promising a payment provider that
+  // does not exist — and staying silent about the request that IS filed — is the one place a buyer
+  // is asked to agree to something the next screen contradicts.
+  var payOff = (typeof PAYCFG !== 'undefined' && PAYCFG && PAYCFG.configured === false);
+  var promise = payOff
+    ? 'Payments are not open on this installation yet. Pressing OK files a request for this plan against your workspace \u2014 our team switches it on by hand, and nothing is charged today.'
+    : 'Nothing is charged until the payment provider confirms the payment.';
+  if(!confirm('Upgrade this workspace to ' + label + amount + '?\n\n' + promise)) return;
   try {
     var token = T || '';
     fetch(window.location.origin+'/api/v1/checkout/create', {
