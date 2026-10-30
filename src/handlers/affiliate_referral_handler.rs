@@ -45,7 +45,7 @@ SELECT rt.referrer_code,
        (SELECT af.name FROM affiliates af WHERE af.id = COALESCE((SELECT al2.affiliate_id FROM affiliate_links al2 WHERE al2.tracking_code = rt.referrer_code LIMIT 1), rt.referrer_code) LIMIT 1) AS affiliate_name,
        (SELECT af.email FROM affiliates af WHERE af.id = COALESCE((SELECT al3.affiliate_id FROM affiliate_links al3 WHERE al3.tracking_code = rt.referrer_code LIMIT 1), rt.referrer_code) LIMIT 1) AS affiliate_email
   FROM referral_tracking rt
- WHERE ($1::bool OR rt.referrer_code = $2)
+ WHERE ($1::bool OR rt.referrer_code = ANY($2))
  GROUP BY rt.referrer_code
  ORDER BY signups DESC, last_signup_at DESC";
 
@@ -54,7 +54,7 @@ const RECENT_SQL: &str = "\
 SELECT rt.referrer_code, rt.referred_email, rt.referred_tenant_id, rt.created_at,
        (SELECT t.name FROM tenants t WHERE t.id = rt.referred_tenant_id) AS referred_tenant_name
   FROM referral_tracking rt
- WHERE ($1::bool OR rt.referrer_code = $2)
+ WHERE ($1::bool OR rt.referrer_code = ANY($2))
  ORDER BY rt.created_at DESC
  LIMIT $3";
 
@@ -81,11 +81,41 @@ pub async fn list_affiliate_referrals(
             .flatten();
 
     let scope_all = auth.is_admin;
-    let scope_code = own_code.clone().unwrap_or_default();
+
+    // EVERY code this caller owns -- not just the workspace badge code (cron 2026-10-30).
+    //
+    // A referral row carries whichever code the visitor actually arrived with, and the code an
+    // affiliate SHARES is the link code minted on their "Products to Promote" screen
+    // (`affiliate_links.tracking_code`), not `tenants.affiliate_code`. Scoping on the tenant code
+    // alone therefore answered `total_signups = 0` to the very affiliate who earned the referral:
+    // measured live with a self-service affiliate, a minted `TRACK…` code, and a visitor who signed
+    // up with `?ref=TRACK…` -- `referral_tracking` held the row and this route hid it, so the
+    // affiliate's own screen said nobody had ever signed up through them.
+    //
+    // The three namespaces are the ones this module already resolves per row: the workspace code,
+    // the per-link codes, and the short affiliate id shown on the admin Affiliates tab.
+    let own_codes: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT code FROM (
+             SELECT t.affiliate_code AS code FROM tenants t WHERE t.id = $1
+             UNION
+             SELECT al.tracking_code FROM affiliate_links al
+               JOIN affiliates af ON af.id = al.affiliate_id
+              WHERE af.tenant_id = $1 OR af.email = $2 OR af.user_id = $3
+             UNION
+             SELECT af.id FROM affiliates af
+              WHERE af.tenant_id = $1 OR af.email = $2 OR af.user_id = $3
+         ) owned
+         WHERE code IS NOT NULL AND code <> ''",
+    )
+    .bind(tenant_id)
+    .bind(&auth.email)
+    .bind(Uuid::parse_str(&auth.user_id).ok())
+    .fetch_all(&state.pool)
+    .await?;
 
     let rows = sqlx::query(BY_CODE_SQL)
         .bind(scope_all)
-        .bind(&scope_code)
+        .bind(&own_codes)
         .fetch_all(&state.pool)
         .await?;
 
@@ -124,7 +154,7 @@ pub async fn list_affiliate_referrals(
 
     let recent_rows = sqlx::query(RECENT_SQL)
         .bind(scope_all)
-        .bind(&scope_code)
+        .bind(&own_codes)
         .bind(RECENT_LIMIT)
         .fetch_all(&state.pool)
         .await?;
@@ -147,6 +177,10 @@ pub async fn list_affiliate_referrals(
 
     // The link a tenant shares. Same `?ref=` contract `www/signup.html` reads and `kinetic_handler`
     // renders into the branding badge.
+    // The badge link keeps its published contract: the workspace's own code, and nothing when the
+    // workspace has none. A link CODE is not substituted here because the console renders this
+    // block only when `affiliate_code` is present -- a share_url with no code named beside it would
+    // be a surface nothing on screen ever shows.
     let share_url = own_code
         .as_ref()
         .filter(|c| !c.is_empty())
@@ -155,7 +189,7 @@ pub async fn list_affiliate_referrals(
     Ok(Json(json!({
         "affiliate_code": own_code,
         "share_url": share_url,
-        "scope": if scope_all { "all_codes" } else { "own_code" },
+        "scope": if scope_all { "all_codes" } else { "own_codes" },
         "total_signups": total,
         "distinct_codes": by_code.len(),
         "by_code": by_code,
