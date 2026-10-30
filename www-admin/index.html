@@ -248,6 +248,39 @@ function formatCurrency(n) { return new Intl.NumberFormat('en-US',{style:'curren
 // so that prints "unlimited" for a feature the gate REFUSES (measured live: Capture Free / Starter
 // showed ∞ cards, Kinetic Free / Pro showed ∞ leads).
 const fmtPlanLimit = (v) => (v === null || v === undefined || Number(v) < 0) ? '∞' : (Number(v) === 0 ? 'None' : v);
+/* A plan's `features` is a map of BOOLEAN gates plus a free-text `description` meta key. The
+   catalogue used to print the raw object (`JSON.stringify(p.features).slice(0,50)`), which rendered
+   in the operator's main Plans screen as `{"custom_domain":false,"description":"Perfect for` —
+   an internal blob, cut mid-word, and the one column an operator actually reads. Render the GATES
+   as words instead: how many are on, which ones, with the plan's description as the tooltip.
+   The raw JSON editor stays available in the Edit Features dialog for power edits. */
+const FEAT_ACRONYMS = {api:'API',sms:'SMS',qr:'QR',seo:'SEO',ocr:'OCR',url:'URL',id:'ID',sso:'SSO',crm:'CRM',ai:'AI',pdf:'PDF'};
+function featLabel(k){
+  const words = String(k).split('_').filter(Boolean)
+    .map(w => FEAT_ACRONYMS[w.toLowerCase()] || (w.charAt(0).toUpperCase() + w.slice(1)));
+  return words.join(' ');
+}
+function featSummary(f){
+  f = (f && typeof f === 'object' && !Array.isArray(f)) ? f : {};
+  const desc = typeof f.description === 'string' ? f.description : '';
+  const gates = Object.keys(f).filter(k => k !== 'description' && k !== 'name' && k !== 'label');
+  const on = gates.filter(k => { const v = f[k]; return v === true || (typeof v === 'number' && v !== 0); });
+  if (!gates.length) {
+    return desc ? `<span class="badge badge-blue" title="${x(desc)}">Described</span> `
+                + `<span style="font-size:12px;color:var(--muted)">no feature flags</span>`
+                : `<span style="color:var(--muted)">—</span>`;
+  }
+  if (!on.length) {
+    return `<span class="badge badge-yellow" title="${x(desc)}">No features on</span> `
+         + `<span style="font-size:12px;color:var(--muted)">of ${gates.length}</span>`;
+  }
+  const names = on.map(featLabel);
+  const shown = names.slice(0, 2).join(', ');
+  const more = names.length - Math.min(2, names.length);
+  return `<span class="badge badge-green" title="${x(desc)}">${on.length} on</span> `
+       + `<span style="font-size:12px;color:var(--muted)" title="${x(names.join(', '))}">`
+       + x(shown) + (more > 0 ? ` +${more} more` : '') + `</span>`;
+}
 
 /* ── kanban t_02f8fd6d: prefill sources for the Edit modals ──────────────────────────────────
    The rows each list screen last rendered, keyed by id. These lists are `SELECT *`, so the row an
@@ -4793,7 +4826,7 @@ async function renderPlanAdmin() {
           <td>${fmtPlanLimit(p.max_leads)}</td>
           <td>${fmtPlanLimit(p.max_tags)}</td>
           <td>${p.payment_provider ? `<span class="badge badge-blue">${x(p.payment_provider)}</span>` : '-'}</td>
-          <td><code style="font-size:11px">${x(JSON.stringify(p.features || {}).slice(0, 50))}</code></td>
+          <td>${featSummary(p.features)}</td>
           <td><button class="btn btn-secondary btn-xs" data-plan-edit="${x(p.id)}">Edit Features</button></td>
         </tr>`).join('') : `<tr><td colspan="8">No plans returned</td></tr>`}</tbody>
       </table></div>
