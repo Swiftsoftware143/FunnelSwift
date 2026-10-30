@@ -4271,14 +4271,26 @@ function HASAN(){
   var f=p.features,v=(f&&f.analytics!==undefined&&f.analytics!==null)?f.analytics:p.has_analytics;
   return v===true||v==="true"||v===1||v==="1";
 }
+function ANUP(){
+  /* The refusal pane, reached two ways: the plan pre-check below, and a 402 from the route itself.
+     The second way is the ONLY one a workspace with no plan row ever takes — HASAN() has no
+     feature map to read and lets the API judge — and until 2026-10-30 the catch returned early
+     leaving `#ct` on `<div class="loading">Loading...</div>` for ever once the upgrade dialog
+     api() opens was dismissed (measured live on a workspace with no plan row). Both paths render
+     here, and the sentence names the tier the SERVER says this workspace runs on
+     (`/auth/me.plan_effective_name`, the same field the Upgrade view quotes) rather than guessing
+     "Free": a tenant with no plan assigned is told exactly that, and which tier applies meanwhile. */
+  var p=U&&U.current_plan, eff=U&&(U.plan_effective_name||U.plan_name);
+  var who=(p&&p.name)?('This workspace is on <strong>'+X(p.name)+'</strong>.')
+    :(eff?('This workspace has no plan chosen yet, so it runs on <strong>'+X(eff)+'</strong> — the tier this app applies to a workspace without a plan.')
+         :'This workspace has no plan chosen yet.');
+  var ct=$("ct"); if(!ct) return;
+  ct.innerHTML='<div class="cc"><h3>Analytics</h3>'
+    +'<p style="color:#64748b;font-size:13px;padding:4px 0">Views, clicks and the cards that earn them are part of the paid plans. '+who+'</p>'
+    +'<button class="btn btn-p" onclick="S(\'upgrade\')" style="margin-top:8px">See the plans</button></div>';
+}
 function LAAN(){
-  if(!HASAN()){
-    $("ct").innerHTML='<div class="cc"><h3>Analytics</h3>'
-      +'<p style="color:#64748b;font-size:13px;padding:4px 0">Views, clicks and the cards that earn them are part of the paid plans. This workspace is on <strong>'
-      +X((U&&U.current_plan&&U.current_plan.name)||"the free plan")+'</strong>.</p>'
-      +'<button class="btn btn-p" onclick="S(\'upgrade\')" style="margin-top:8px">See the plans</button></div>';
-    return;
-  }
+  if(!HASAN()){ ANUP(); return; }
   function stat(label,val){
     return '<div class="cc" style="flex:1;min-width:130px;margin:0">'
       +'<p style="margin:0;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.04em">'+label+'</p>'
@@ -4306,7 +4318,10 @@ function LAAN(){
             :'<p style="color:#64748b;padding:18px;text-align:center">No card traffic recorded yet. Share a card and its views appear here.</p>')
       +'</div>';
   }).catch(function(e){
-    if(String((e&&e.message)||"")==="upgrade_required") return;   // api() already opened the upgrade modal
+    /* A 402 here is the plan gate refusing the route, not a read failure: api() has already opened
+       the upgrade dialog, and the pane lands BEHIND it so the screen still explains itself once the
+       dialog is dismissed (it used to return early and sit on "Loading..." for ever). */
+    if(String((e&&e.message)||"")==="upgrade_required"){ ANUP(); return; }
     $("ct").innerHTML='<div class="cc"><h3>Analytics</h3><p style="color:#dc2626">Could not read your analytics: '
       +X((e&&e.message)||"unknown error")+'</p></div>';
   });
