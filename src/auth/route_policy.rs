@@ -30,16 +30,19 @@
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 216 `.route(..)` mounts / 215 unique paths, classified three ways:
+//! 217 `.route(..)` mounts / 216 unique paths, classified three ways:
+//!
+//! (The 2026-10-30 recount folded in ONE private `/api` mount added after the 2026-10-24 numbers —
+//! no boundary moved, only the count. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   190 mounts  /api/**            189 unique after the duplicate `/api/v1/linkedin/auth`
+//!   191 mounts  /api/**            190 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     20        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    167        private           -> require_auth: app JWT, tenant-status checked
+//!    168        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (38 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -372,7 +375,7 @@ mod tests {
                 private,
                 served
             ),
-            (216, 215, 190, 20, 3, 167, 26),
+            (217, 216, 191, 20, 3, 168, 26),
             "the census in the module docs no longer matches the router"
         );
     }
