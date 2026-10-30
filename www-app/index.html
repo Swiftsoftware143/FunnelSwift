@@ -4939,7 +4939,7 @@ function SLB(){
   var n=(($("lm-bn")||{}).value||"").trim(), c=(($("lm-bc")||{}).value||"#4f46e5");
   LBM("Saving...","i");
   api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"email_branding",value:{brand_name:n,brand_color:c}})})
-    .then(function(){ LBM("Branding saved","s"); })
+    .then(function(){ LBM("Branding saved","s"); PBEX(); })
     .catch(function(e){ LBM((e&&e.message)||"Could not save","e"); });
 }
 function ULB(){
@@ -4960,40 +4960,20 @@ function ULB(){
       var im=$("lm-logo-prev");
       if(im&&d.logo_url){ im.src=d.logo_url; im.style.display="block"; }
       if($("lm-logo")) $("lm-logo").value="";
-      LBM("Logo uploaded","s");
+      LBM("Logo uploaded","s"); PBEX();
     })
     .catch(function(e){ LBM((e&&e.message)||"Upload failed","e"); });
 }
-// What a CUSTOMER sees — mirrors Branding::header_html (src/branding.rs): a centred logo (max 56px
-// high / 240px wide); otherwise the brand name in 20px #111827; then a 3px rule in the brand colour;
-// nothing at all when neither is set. Painted from the FIELD values (not the saved document) so a
-// name or colour can be judged before saving. It sends nothing and saves nothing.
-function LBP(logoUrl){
-  var box=$("lm-bp"); if(!box) return;
-  var blank=$("lm-bp-blank");
-  var nm=((($("lm-bn")||{}).value)||"").trim();
-  var raw=((($("lm-bc")||{}).value)||"#4f46e5").trim();
-  var col=/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(raw)?raw:"#4f46e5";
-  var logo=(logoUrl||"").trim();
-  var branded=!!(nm||logo);
-  var h="";
-  if(branded){
-    h+='<div style="text-align:center;padding:16px 0 6px">';
-    if(logo) h+='<img src="'+X(logo)+'" alt="'+X(nm||"Your logo")+'" style="max-height:56px;max-width:240px;display:inline-block">';
-    else h+='<span style="font:700 20px/1.3 -apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#111827">'+X(nm)+'</span>';
-    h+='</div><div style="border-top:3px solid '+col+';margin:0 0 16px"></div>';
-  }
-  h+='<div style="font:14px/1.5 -apple-system,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#111827">Hi Alex — this is a sample of the message body. '+
-     (branded?'Only the header above comes from your branding.':'With no branding set, the mail opens with FunnelSwift\'s own header.')+'</div>';
-  box.innerHTML=h;
-  if(blank){ blank.style.display=branded?"none":"block"; blank.textContent=branded?"":"Nothing is set yet, so mail keeps FunnelSwift's own header."; }
-}
+// This pane used to DRAW the header in JS (a mirror of Branding::header_html), so what a customer
+// read could describe a header the mailer never emits. It now shows the sender's own rendered
+// message (PBEX below), which is the only thing that cannot drift: same template, same merge
+// fields, same branding header — returned, never mailed. Removed with the pane that called it.
 function DLB(){
   LBM("Removing...","i");
   api("/api/v1/settings/branding/logo",{method:"DELETE"})
     .then(function(){
       var im=$("lm-logo-prev"); if(im){ im.style.display="none"; im.removeAttribute("src"); }
-      LBM("Logo removed","s");
+      LBM("Logo removed","s"); PBEX();
     })
     .catch(function(e){ LBM((e&&e.message)||"Could not remove the logo","e"); });
 }
@@ -5254,22 +5234,19 @@ function LM(){
     ebRow.appendChild(ebRm);
     ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){SLB();}},"Save branding"));
     ebRow.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"lm-brand-preview",onclick:function(){PBE();}},"Send me a preview"));
-    ebRow.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"lm-brand-exact",onclick:function(){PBEX();}},"Show the exact email"));
     ebRow.appendChild(El("span",{id:"lm-brand-msg",style:"font-size:11px;color:#64748b"}));
     wrap.appendChild(ebRow);
     var bpWrap=El("div",{style:"margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0"});
-    bpWrap.appendChild(El("strong",{style:"font-size:13px"},"What your customers see"));
-    bpWrap.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin:4px 0 10px"},"The header block the app puts at the top of every email this workspace sends. It follows the fields above as you type; this preview sends nothing and saves nothing."));
-    bpWrap.appendChild(El("div",{id:"lm-bp",style:"border:1px solid #e2e8f0;border-radius:10px;padding:20px;background:#fff;max-width:520px"}));
-    bpWrap.appendChild(El("div",{id:"lm-bp-blank",style:"font-size:11px;color:#94a3b8;margin-top:6px"}));
+    var bpHead=El("div",{style:"display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"});
+    bpHead.appendChild(El("strong",{style:"font-size:13px"},"What your customers see"));
+    bpHead.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){PBEX();}},"Refresh"));
+    bpWrap.appendChild(bpHead);
+    bpWrap.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin:4px 0 10px"},"The mail this workspace really sends, rendered by the server — same template, same merge fields, same branding header. Nothing is mailed and it can go nowhere but your own row. Save the branding above to see the change here."));
     ebDiv.appendChild(bpWrap);
-    // The server-rendered message lives here. Hidden until asked for: rendering costs a round trip
-    // and the customer asked for the exact mail only when they pressed the button.
-    ebDiv.appendChild(El("div",{id:"lm-exact",style:"display:none;margin-top:12px"}));
-    var bpName=$("lm-bn"), bpColor=$("lm-bc");
-    if(bpName) bpName.addEventListener("input",function(){ LBP(br.logo_url); });
-    if(bpColor) bpColor.addEventListener("input",function(){ LBP(br.logo_url); });
-    LBP(br.logo_url);
+    // The server's own output, shown on open and re-rendered after every save, upload and removal:
+    // a preview that cannot disagree with the mail path, because it IS the mail path's renderer.
+    ebDiv.appendChild(El("div",{id:"lm-exact",style:"margin-top:12px"}));
+    PBEX();
 
     /* Email provider — THIS workspace's OWN sending identity (kanban t_7ac7ceb5). Built LAST, after
        every innerHTML write on this parent, and its dynamic half renders into its own #lep-fields
