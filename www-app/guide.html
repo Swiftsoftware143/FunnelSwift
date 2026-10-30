@@ -283,6 +283,7 @@
         <strong>If the reader cannot read the card</strong>, the five fields come back empty instead of failing. Type the details in yourself and save — the screen still works, it just did not read anything.
       </div>
       <p>Card scans are metered against your plan. Your plan includes a number of scans; when you have used them, choosing a photo opens the upgrade dialog rather than silently doing nothing. The count is per scan attempt, so retrying a photo you already scanned uses another one.</p>
+      <p>Every scan you run is also kept in <strong>Recent scans</strong>, under the scanner, with the reading it returned and when it ran. A scan is a sold, metered unit, so the reading is kept even when you did not save it: press <strong>Save as a lead</strong> on any entry and it goes into your Leads exactly as if you had saved it at the time. A scan that came back empty stays in the list marked as one that counted, and you can type the details in yourself from there.</p>
 
       <h2 id="campaigns">📣 Campaigns</h2>
       <p><strong>Campaigns</strong> is where this workspace keeps track of what it is running. Press <strong>New campaign</strong> and give it a <strong>name</strong>, a <strong>type</strong> (free text — <code>email</code> is the default), a <strong>status</strong> and an optional <strong>description</strong>.</p>
@@ -713,6 +714,9 @@ window.FunnelSwiftConfig = {
         handles the card and the session appears in <strong>Billing History</strong>. If checkout is not open
         on this install, the same press tells you plainly that nothing was charged and files the request with
         our team &mdash; there is no second button to hunt for.</p>
+      <p>Picking a paid plan on the pricing page when you <strong>sign up</strong> files the same request:
+        the workspace still starts on Free, nothing is charged, and the choice is already with our team, so
+        you do not have to ask again once you are in.</p>
       <p>Either way the dashboard then shows a <strong>Your plan request</strong> card for that plan: the day
         it was filed, any note from our team, and its state &mdash; <span class="badge badge-yellow">With our
         team</span>, <span class="badge badge-blue">We have contacted you</span>,
