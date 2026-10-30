@@ -27,8 +27,27 @@ use uuid::Uuid;
 
 /// Default docker-bridge address of `funnelswift-ocr.service`.
 const DEFAULT_OCR_SERVICE_URL: &str = "http://172.17.0.1:8093";
-/// Slightly longer than the service's own 20s Tesseract timeout.
-const OCR_TIMEOUT_SECS: u64 = 25;
+/// How long the app waits for the host reader before calling it unavailable.
+///
+/// This used to be 25 s with a comment claiming it was "slightly longer than the service's own
+/// 20s Tesseract timeout". Both numbers moved and this one did not: `funnelswift-ocr.service`
+/// now budgets a 30 s `convert -auto-orient` normalisation PASS PLUS a 60 s Tesseract read
+/// (raised for the 12 MiB photos this handler promises to accept), so the app was giving up
+/// while the reader was still working. The customer never saw an error we could explain — the
+/// scan came back as `reader_unavailable`, the metered row was refunded, and the page told them
+/// to type the card in by hand.
+///
+/// MEASURED 2026-10-30 against the live service: a 24 MP phone photo (the pixel count a modern
+/// handset produces) took 23.2 s to read on an idle box — one busy moment away from the 25 s
+/// ceiling — and the app's own log already carried three `reader unavailable` refunds that day.
+///
+/// 90 s is chosen against every hop this request crosses, not guessed: the service needs at most
+/// ~90 s (30 s normalise + 60 s read, both hard-capped there), nginx gives this exact route
+/// `proxy_read_timeout 120s` (sites/funnelswift.conf), and Cloudflare's edge tears a request down
+/// at 100 s — so 90 s is the last value that is longer than the reader's own budget while still
+/// ending inside the edge's ceiling. Keep this ABOVE the service's total budget if either number
+/// moves again; a client timeout shorter than the work is a silent feature outage.
+const OCR_TIMEOUT_SECS: u64 = 90;
 
 /// The client only ever sends `image_base64`.
 #[derive(Debug, Deserialize)]
