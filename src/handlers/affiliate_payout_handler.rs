@@ -169,9 +169,17 @@ pub async fn mark_payout_paid(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    sqlx::query("UPDATE affiliate_payouts SET status = 'paid', paid_at = NOW() WHERE id = $1")
-        .bind(id)
-        .execute(&state.pool)
-        .await?;
+    // A 200 here has to mean a row actually moved. This used to answer
+    // {"message":"Payout marked as paid"} for ANY id, including one that does not exist (measured
+    // 2026-10-31: 200 on a made-up uuid, 0 rows changed) — so the console could report a payout
+    // settled while nothing had happened.
+    let res =
+        sqlx::query("UPDATE affiliate_payouts SET status = 'paid', paid_at = NOW() WHERE id = $1")
+            .bind(id)
+            .execute(&state.pool)
+            .await?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::NotFound("That payout does not exist.".into()));
+    }
     Ok(Json(json!({"message": "Payout marked as paid"})))
 }
