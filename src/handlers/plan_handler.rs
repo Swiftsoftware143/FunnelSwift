@@ -150,6 +150,40 @@ pub async fn sync_plan_to_affiliate_product(
     let name = plan_name.as_str();
     let price = plan_price;
 
+    // A PAID plan owns NO affiliate product, by design — so do not ask the database to make one.
+    //
+    // Migration 070's trigger `enforce_affiliate_products_are_free` refuses any product linked to a
+    // plan whose price is not zero ("affiliates may only hand out free plans; the customer upgrades
+    // in app and pays for it themselves"), and the admin backfill route has honoured that rule as a
+    // READ since it shipped. The three plan-save call sites did not: every save of a paid plan
+    // (measured live 2026-10-31: Agency / Scale, $79, saved repeatedly) ran the INSERT, the trigger
+    // refused it, and the caller logged `affiliate product sync failed` for a write that can never
+    // succeed. The rule lives in the ONE writer, so all three call sites inherit it.
+    //
+    // This arm also closes the hole the trigger structurally cannot see: the trigger fires on the
+    // PRODUCT row, and pricing a plan up writes only the PLAN row — so a product created while its
+    // plan was free stays ACTIVE after the plan costs money, which would let an affiliate hand out a
+    // plan the customer is now charged for. Retiring it here is the only writer of `plan_id` acting.
+    if price != 0.0 {
+        let retired = sqlx::query(
+            "UPDATE affiliate_products SET is_active = false, updated_at = NOW() \
+             WHERE plan_id = $1 AND is_active = true",
+        )
+        .bind(plan_id)
+        .execute(pool)
+        .await?;
+        if retired.rows_affected() > 0 {
+            tracing::info!(
+                plan_id = %plan_id,
+                plan = name,
+                price = price,
+                retired = retired.rows_affected(),
+                "affiliate product retired: the plan is PAID, and an affiliate may only hand out a free plan"
+            );
+        }
+        return Ok(None);
+    }
+
     // Look up the FunnelSwift Plans category; fall back to any available category
     let category_id: Option<uuid::Uuid> = match sqlx::query_scalar(
         "SELECT id FROM product_categories WHERE slug = 'funnelswift-plans' LIMIT 1",
