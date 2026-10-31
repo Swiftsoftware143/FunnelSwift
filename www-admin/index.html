@@ -3563,16 +3563,23 @@ async function renderSystemTags() {
           </table></div>`}
     </div>`;
 
+  // A tag that FunnelSwift ITSELF reads cannot be deleted or renamed (migration 121 +
+  // tag_logic::is_platform_reserved; the API refuses both with a 409). The two lifecycle ids are the
+  // crate's own constants, and a tag carrying a Free plan mapping is resolved BY NAME by the
+  // tag -> free-account executor. The badge is what tells an operator which rows those are before
+  // they reach for Edit.
+  const APP_READ_IDS = ['3b008e4a-dbc8-5558-8762-2e1787ec7c2c', '15698a9a-67fe-5bf1-9aac-1dcd7a1ccd9e'];
+  const isAppRead = (t) => APP_READ_IDS.indexOf(String(t.id)) >= 0 || !!t.provisions_account;
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
-      <div><h1 style="font-size:22px;font-weight:700">🔖 System Tags</h1><p style="font-size:13px;color:var(--muted)">These tags appear to all users. Users cannot edit or delete them.</p></div>
+      <div><h1 style="font-size:22px;font-weight:700">🔖 System Tags</h1><p style="font-size:13px;color:var(--muted)">These tags appear to all users. Users cannot edit or delete them. A tag marked "Used by the app" is read by FunnelSwift itself — recolour it or clear its plan mapping, but it cannot be renamed or deleted.</p></div>
       <button class="btn btn-primary btn-sm" id="add-sys-tag-btn">+ Add System Tag</button>
     </div>
     ${items.length === 0 ? `<div class="empty"><div class="icon">🔖</div><div class="title">No system tags yet</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Group</th><th>Color</th><th>Plan Mapping</th><th>Free Account</th><th>Actions</th></tr></thead>
       <tbody>${items.map(t=>`<tr>
-        <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px"></span><strong>${x(t.name)}</strong> <span class="badge badge-purple">System</span></td>
+        <td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${x(t.color||'#6366f1')};margin-right:8px"></span><strong>${x(t.name)}</strong> <span class="badge badge-purple">System</span>${isAppRead(t)?' <span class="badge badge-yellow" title="FunnelSwift reads this tag itself: a paid upgrade marks leads with Sold, and a tag with a Free plan mapping signs a lead up in another app. It can be recoloured or un-mapped, but not deleted or renamed.">Used by the app</span>':''}</td>
         <td>${tagGroupCell(t)}</td>
         <td><div style="width:20px;height:20px;border-radius:4px;background:${x(t.color||'#6366f1')};border:1px solid #e2e8f0"></div></td>
         <td>${t.plan_slug?`<span class="badge badge-yellow">${x(t.source_app?t.source_app+' / ':'')}${x(t.plan_slug)}</span>`:'-'}</td>
