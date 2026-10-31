@@ -24,6 +24,12 @@ pub struct Affiliate {
     pub rate_band_id: Option<Uuid>,
     /// When the recompute last touched the standing rate.
     pub rate_updated_at: Option<DateTime<Utc>>,
+    /// The platform user account this affiliate is, when one is linked.
+    ///
+    /// `affiliate_payouts.affiliate_user_id` is a uuid keyed to THIS column, so without it the
+    /// console cannot name the person a payout belongs to. It was selected nowhere — the admin
+    /// screen listed affiliates with no way to address them (kanban cron-2026-10-31).
+    pub user_id: Option<Uuid>,
     pub tax_docs: Option<serde_json::Value>,
     pub is_active: bool,
     pub is_visible: Option<bool>,
