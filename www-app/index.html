@@ -1432,12 +1432,17 @@ function LD(){
     if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px">No leads.</p>';return;}
     
     var tbl=El("table");
-    tbl.innerHTML='<tr><th style="width:30px"><input type="checkbox" id="ld-all" title="Select every lead shown"></th><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Status</th><th></th></tr>';
+    tbl.innerHTML='<tr><th style="width:30px"><input type="checkbox" id="ld-all" title="Select every lead shown"></th><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Owner</th><th>Status</th><th></th></tr>';
     a.forEach(function(l){
       var tr=El("tr",{"class":"ld-row"});
       var name=(l.first_name||"")+" "+(l.last_name||"");
       if(!name.trim()) name=l.name||"Unnamed";
       var status=l.status||"new";
+      /* cron-1030-linkedin — the modal stores the profile URL on the lead; show it on the row so a
+         captured profile is one click away instead of buried in the custom-fields list. Only an
+         http(s) linkedin.com/in/ URL is turned into a link (anything else is left inert). */
+      var liUrl="";
+      try{ if(l.custom_fields&&typeof l.custom_fields==="object"){ var liRaw=String(l.custom_fields.LinkedIn||l.custom_fields.linkedin||""); if(/^https?:\/\/([A-Za-z0-9.-]*\.)?linkedin\.com\/in\//i.test(liRaw)) liUrl=liRaw; } }catch(le){}
       // kanban t_adf187f9: colour by the CANONICAL space only. This branch used to compare against
       // "Closed Won" / "Closed Lost" (pipeline spellings) and "inactive" (a TENANT lifecycle value)
       // — none of the three can occur in `leads.status`, so the whole branch was dead, and
@@ -1450,12 +1455,37 @@ function LD(){
       tr.setAttribute("data-search",(name+" "+l.email+" "+l.phone+" "+status+" "+l.source).toLowerCase());
       tr.setAttribute("data-status",status);
       tr.innerHTML='<td><input type="checkbox" class="ld-sel" value="'+X(l.id)+'"></td>'
-        +'<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(l.source==="funnel"?"Funnel":(l.source||"-"))+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
+        +'<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'')+(liUrl?' <a href="'+X(liUrl)+'" target="_blank" rel="noopener noreferrer" title="LinkedIn profile" style="font-size:10px;color:#0a66c2;font-weight:700;text-decoration:none">in</a>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(l.source==="funnel"?"Funnel":(l.source||"-"))+'</span></td><td><span class="ld-own" data-uid="'+X(l.assigned_to?String(l.assigned_to):"")+'" title="'+X(l.assigned_to?"Lead owner":"No owner yet — open Edit to hand this lead to a teammate")+'">'+(l.assigned_to?"…":"—")+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
     ldWireSelect();
     fnLabelSources();
+    owFill();
+  });
+}
+/* cron-1030 — the Owner column above holds the lead's `assigned_to` uuid, which means nothing to a
+   human, so the name is resolved from the workspace's OWN people (GET /api/v1/team/members, the same
+   customer-scoped list the modal's picker fills from — never an admin route). The map is fetched once
+   per page load and reused; a failed fetch leaves the dash in place instead of inventing a name. */
+var __owMap=null;
+function owNames(cb){
+  if(__owMap) return cb(__owMap);
+  api("/api/v1/team/members").then(function(r){
+    var m={}; ((r&&r.members)||[]).forEach(function(x){ m[x.id]=x.name||x.email||x.id; });
+    __owMap=m; cb(m);
+  }).catch(function(){ __owMap={}; cb({}); });
+}
+function owFill(){
+  var spans=document.querySelectorAll(".ld-own");
+  if(!spans.length) return;
+  owNames(function(m){
+    Array.prototype.forEach.call(spans,function(s){
+      var u=s.getAttribute("data-uid")||"";
+      if(!u){ s.textContent="—"; s.style.color="#94a3b8"; return; }
+      s.textContent=m[u]||"(not an active teammate)";
+      if(!m[u]) s.style.color="#94a3b8";
+    });
   });
 }
 /* kanban 2026-10-19 — a lead captured on a funnel records WHICH page in `custom_fields.funnel_slug`
@@ -1672,6 +1702,18 @@ function RF(id,l){
     sts.forEach(function(s){
       fst.appendChild(El("option",{value:s,selected:l.status===s?"selected":null},s));
     });
+    /* cron-1030 — WHO WORKS THIS LEAD. `POST /api/v1/leads/:id/assign` has been in the router since
+       the leads table did, and its picker list (`GET /api/v1/team/members`, whose handler doc says it
+       exists "for the lead owner picker") had NO caller on any served page. So `leads.assigned_to` was
+       a column only an API client could write: the workspace could not hand a lead to a teammate from
+       its own console at all. The select is filled from the workspace's own people (scoped from the
+       credential, active logins only) and the save writes it through the ASSIGN route, not through
+       PUT /leads/:id — that path takes any uuid without checking the person belongs to this tenant. */
+    var fow=El("select",{id:"fow"});
+    fow.appendChild(El("option",{value:""},"Unassigned"));
+    var owCur=l.assigned_to?String(l.assigned_to):"";
+    fow.setAttribute("data-orig",owCur);
+    var owNote=El("span",{style:"font-size:11px;color:#64748b;display:block;margin-top:3px"},"");
     var fnt=El("textarea",{id:"fnt",rows:"3"});
     fnt.textContent=l.notes||"";
 
@@ -1691,6 +1733,57 @@ function RF(id,l){
     mb.appendChild(ff("Phone",fp));
     mb.appendChild(ff("Website",fw));
     mb.appendChild(ff("Source",fs));
+    mb.appendChild(ff("Owner",fow));
+    mb.appendChild(owNote);
+    api("/api/v1/team/members").then(function(r){
+      var list=(r&&r.members)||[];
+      list.forEach(function(m){
+        fow.appendChild(El("option",{value:m.id,selected:m.id===owCur?"selected":null},
+          (m.name||m.email||m.id)+(m.role?" ("+m.role+")":"")));
+      });
+      /* A lead can be owned by somebody who has since been disabled: `team_members` lists ACTIVE
+         logins only (correctly — an owner picker should not offer a login that cannot sign in), so
+         the stored owner is added back as a named option instead of the select silently showing
+         "Unassigned" for a lead that does have an owner. */
+      if(owCur && !list.some(function(m){return m.id===owCur;}))
+        fow.appendChild(El("option",{value:owCur,selected:"selected"},"(former teammate — no longer active)"));
+      owNote.textContent = list.length>1
+        ? "Only active logins are offered. Changing this and pressing Save hands the lead over."
+        : "This workspace has one active login, so there is nobody else to hand a lead to yet.";
+    }).catch(function(){
+      owNote.textContent="The teammate list could not be loaded, so the owner is left exactly as it is.";
+      fow.disabled=true;
+    });
+    /* cron-1030-linkedin — POST /api/v1/leads/linkedin-lookup had NO caller on any SERVED page
+       (only the mobile client documents it), so the one thing a person re-types for every lead was
+       never captured here. This row takes the profile URL, asks that route for the name it can derive
+       from the URL, and stores the URL itself as a custom field so a profile is never lost even when
+       no name comes back. The route is honest about its limits: this install has no enrichment
+       provider, so only a name can be derived — it never invents an email or a company. */
+    var fli=El("input",{id:"fli",value:(cs["LinkedIn"]||""),placeholder:"https://linkedin.com/in/..."});
+    var lif=El("button",{"class":"btn btn-sm btn-o",type:"button",style:"margin-top:4px"},"Use name from LinkedIn");
+    var limsg=El("span",{style:"font-size:11px;color:#64748b;margin-left:8px"});
+    lif.onclick=function(){
+      var lu=(fli.value||"").trim();
+      limsg.style.color="#64748b"; limsg.textContent="";
+      if(!lu){limsg.style.color="#b91c1c";limsg.textContent="Paste the profile URL first.";return;}
+      limsg.textContent="Reading the profile URL\u2026";
+      fetch("/api/v1/leads/linkedin-lookup",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},body:JSON.stringify({url:lu})})
+        .then(function(r){return r.json().catch(function(){return {};}).then(function(d){return {ok:r.ok,status:r.status,d:d};});})
+        .then(function(res){
+          var d=res.d||{};
+          if(!res.ok){limsg.style.color="#b91c1c";limsg.textContent=(d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Lookup failed ("+res.status+").");return;}
+          var nm=((d&&(d.name||d.full_name))||"").trim();
+          if(nm && !(fn.value||"").trim()){fn.value=nm;}
+          var have=false;
+          document.querySelectorAll("#cfl .cfk").forEach(function(k){if((k.value||"").toLowerCase()==="linkedin")have=true;});
+          if(!have){cfl.appendChild(addRow("LinkedIn",lu));}
+          limsg.style.color=nm?"#16a34a":"#92400e";
+          limsg.textContent=nm?("Filled the name as \u201c"+nm+"\u201d \u2014 check it before saving."):"Saved the URL on the lead. This install has no enrichment provider, so the name has to be typed by hand.";
+        })
+        .catch(function(e){limsg.style.color="#b91c1c";limsg.textContent="Lookup failed: "+((e&&e.message)||e);});
+    };
+    mb.appendChild(El("div",{},[El("label",{style:"font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"LinkedIn profile"),fli,lif,limsg]));
     mb.appendChild(ff("Status",fst));
     mb.appendChild(ff("Notes",fnt));
     // Tag assignment
@@ -1736,11 +1829,33 @@ function SL(id){
   });
   d.custom_fields=cs;
   var m=id?"PUT":"POST", u=id?"/api/v1/leads/"+id:"/api/v1/leads";
+  /* The owner is read BEFORE the request, and written through its OWN route after the lead exists:
+     `POST /api/v1/leads/:id/assign` is the only writer that checks the person really is in this
+     workspace (the PUT above takes any uuid it is handed). A new lead has no id until the create
+     answers one, so the assign follows the save instead of riding inside it. */
+  var fowEl=$("fow");
+  var wantOwner=fowEl?String(fowEl.value||""):"";
+  var origOwner=fowEl?String(fowEl.getAttribute("data-orig")||""):"";
   showMsg("Saving...","mi");
   api(u,{method:m,body:JSON.stringify(d)}).then(function(r){
     var prov=(r&&r.provisioning)||[];
     var lid=(r&&(r.lead_id||r.id))||id;
-    if(prov.length){ TGSV(lid,prov); } else { C(); S("leads"); }
+    var handled=function(){
+      if(prov.length){ TGSV(lid,prov); } else { C(); S("leads"); }
+    };
+    if(!lid || wantOwner===origOwner) return handled();
+    return api("/api/v1/leads/"+lid+"/assign",{method:"POST",body:JSON.stringify({assigned_to: wantOwner||null})})
+      .then(function(ar){
+        var nm="";
+        if(wantOwner&&fowEl){ var opt=fowEl.options[fowEl.selectedIndex]; nm=opt?String(opt.textContent||""):""; }
+        showMsg(nm?("Saved. Now owned by "+nm+"."):"Saved. This lead is unassigned.","ms");
+        handled();
+      })
+      .catch(function(e){
+        /* The lead IS saved; only the hand-over failed, and saying "Save failed" would be a lie that
+           sends the operator back to retype everything. */
+        showMsg("The lead was saved, but the owner was not set: "+(e.message||"the assignment was refused"),"me");
+      });
   }).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
 /* ─── the lead modal's stored-tag line: SHOW + REMOVE (kanban t_769b93ba) ─────────────────────────
