@@ -159,6 +159,27 @@ pub(crate) fn generate_initial_password() -> String {
     out
 }
 
+/// A field that is PRESENT but not a JSON string is REFUSED, never silently ignored.
+///
+/// This handler reads a `serde_json::Value`, so `payload["x"].as_str()` answers `None` for a
+/// number, an array or an object exactly as it does for an ABSENT key — and every arm downstream
+/// treats `None` as "the caller did not send it". Measured live 2026-10-31: `POST
+/// /api/v1/auth/signup {"name":"Fz","email":"probe@example.invalid","password":12345678}` answered
+/// **201 "Account created successfully"** and created the account with a MINTED password, so the
+/// caller's password was discarded without a word; the same body against this app's own typed
+/// `/api/v1/auth/register` door (and against all four siblings' register doors) is a 422
+/// `password: that value is not valid for this form.` A field that silently does nothing is worse
+/// than no field, so presence with the wrong type is the same 422 here, and nothing is written.
+fn optional_str<'a>(payload: &'a Value, key: &str) -> AppResult<Option<&'a str>> {
+    match payload.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s.as_str())),
+        Some(_) => Err(AppError::UnprocessableEntity(format!(
+            "{key}: that value is not valid for this form."
+        ))),
+    }
+}
+
 pub async fn public_signup(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -166,7 +187,9 @@ pub async fn public_signup(
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let Json(payload) = body.map_err(crate::error::json_rejection)?;
     let email = payload["email"].as_str().unwrap_or("").trim().to_string();
-    let password = payload["password"].as_str().unwrap_or("").to_string();
+    let password = optional_str(&payload, "password")?
+        .unwrap_or("")
+        .to_string();
     let name = payload["name"].as_str().unwrap_or("").trim().to_string();
     // A plan slug in the body is never the plan itself — a public signup only ever starts on the
     // free tier, and WHICH free tier is resolved from `plans.price`/`plans.side` at the assignment
@@ -179,9 +202,8 @@ pub async fn public_signup(
     // floor — the account was seated on CAPTURE free, the other product (max_forms 0), and no plan
     // request was filed, while the same body spelled `plan` filed the request. A field that only
     // one of the two callers can fill is a field that silently does nothing, so BOTH are read.
-    let requested_plan = payload["plan"]
-        .as_str()
-        .or_else(|| payload["plan_slug"].as_str())
+    let requested_plan = optional_str(&payload, "plan")?
+        .or(optional_str(&payload, "plan_slug")?)
         .unwrap_or("")
         .trim()
         .to_lowercase();
@@ -195,8 +217,7 @@ pub async fn public_signup(
     // the row is then recorded exactly as it always was, and the verdict is FLAGGED in three places
     // that outlive this request: the `referral.resolved` field below, the log line, and the
     // recomputed `resolved:false` on `GET /api/v1/affiliate-referrals`.
-    let affiliate_code = payload["affiliate_code"]
-        .as_str()
+    let affiliate_code = optional_str(&payload, "affiliate_code")?
         .map(|s| s.trim().chars().take(100).collect::<String>())
         .filter(|s| !s.is_empty());
 
@@ -247,8 +268,7 @@ pub async fn public_signup(
     // name a customer typed is silently thrown away. Absent or blank keeps the historical
     // derivation, so the web form's behaviour is byte-identical. Validated the same way `name` is,
     // because it lands in the same two `varchar(255)` columns.
-    let workspace_name = payload["tenant_name"]
-        .as_str()
+    let workspace_name = optional_str(&payload, "tenant_name")?
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
@@ -619,7 +639,8 @@ pub async fn public_signup(
 
 #[cfg(test)]
 mod legacy_plan_slug_tests {
-    use super::legacy_plan_slug;
+    use super::{legacy_plan_slug, optional_str};
+    use serde_json::json;
 
     /// The spelling the $79 card shipped until 2026-10-23 must name the tier that card sold.
     #[test]
@@ -648,5 +669,32 @@ mod legacy_plan_slug_tests {
     fn unknown_words_are_not_invented_into_a_tier() {
         assert_eq!(legacy_plan_slug("notaplan"), "notaplan");
         assert_eq!(legacy_plan_slug(""), "");
+    }
+
+    /// A wrong-typed field is a REFUSAL, not a silent "the caller did not send it" (measured live
+    /// 2026-10-31: a numeric `password` created the account on a minted password and answered 201).
+    #[test]
+    fn a_present_field_of_the_wrong_type_is_refused() {
+        let body = json!({"name": "Fz", "email": "probe@example.invalid", "password": 12345678});
+        let err = optional_str(&body, "password").unwrap_err();
+        assert!(
+            matches!(err, crate::error::AppError::UnprocessableEntity(ref m) if m == "password: that value is not valid for this form."),
+            "a numeric password must be a 422 naming the field, never Ok(None): {err:?}"
+        );
+        let body = json!({"plan": ["kinetic-pro"]});
+        assert!(optional_str(&body, "plan").is_err());
+    }
+
+    /// Absent and null stay "not sent", and a string is the value itself — the three arms the
+    /// handler actually relies on.
+    #[test]
+    fn absent_null_and_string_keep_their_meaning() {
+        let body = json!({"email": "probe@example.invalid", "tenant_name": null});
+        assert_eq!(optional_str(&body, "password").unwrap(), None);
+        assert_eq!(optional_str(&body, "tenant_name").unwrap(), None);
+        assert_eq!(
+            optional_str(&body, "email").unwrap(),
+            Some("probe@example.invalid")
+        );
     }
 }
