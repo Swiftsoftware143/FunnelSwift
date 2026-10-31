@@ -890,6 +890,8 @@ async function renderMyAccount() {
              the template and the whole console stops parsing (measured 2026-10-21). -->
         <div><div class="form-label">Forms</div><div>${fmtPlanLimit(plan.max_forms)}</div></div>
         <div><div class="form-label">Custom Domains</div><div>${fmtPlanLimit(plan.max_custom_domains)}</div></div>
+        <div><div class="form-label">Team Members</div><div>${fmtPlanLimit(plan.max_team_members)}</div></div>
+        <div><div class="form-label">QR codes</div><div>${fmtPlanLimit(plan.max_qr_codes)}</div></div>
         <div><div class="form-label">Analytics</div><div>${plan.has_analytics?'✅':'❌'}</div></div>
         <div><div class="form-label">Remove our branding</div><div>${plan.has_white_label?'✅':'❌'}</div></div>
         <!-- (kanban t_726416be) "API Access" was RETIRED here with the api-key surface: POST
@@ -1353,13 +1355,14 @@ async function renderPlans() {
       ${isSuperAdmin() ? `<button class="btn btn-primary btn-sm" id="add-plan-btn">+ Add Plan</button>` : ''}
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Features</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Team</th><th>Features</th><th>Actions</th></tr></thead>
       <tbody>${plans.map(p=>`<tr>
         <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div>${p.purchase_url?'<div style="font-size:11px;color:#15803d;margin-top:2px">💳 hosted payment link</div>':''}</td>
         <td>${p.price>0?formatCurrency(p.price):'Free'}</td>
         <td><span class="badge badge-blue">${x(p.billing_cycle||'month')}</span></td>
         <td>${fmtPlanLimit(p.max_cards)}</td>
         <td>${fmtPlanLimit(p.max_leads)}</td>
+        <td>${fmtPlanLimit(p.max_team_members)}</td>
         <td>
           ${p.has_webhooks?'<span class="badge badge-green">Webhooks</span> ':''}
           ${p.has_analytics?'<span class="badge badge-blue">Analytics</span> ':''}
@@ -1461,6 +1464,9 @@ function openPlanModal(id) {
       <div class="form-group" style="margin-top:8px"><label class="form-label">Payment link (optional)</label><input class="input" name="purchase_url" type="url" placeholder="https://buy.stripe.com/..." value="${x(f('purchase_url','')||'')}"><div style="font-size:11px;color:var(--muted);margin-top:4px">A hosted payment page for this plan (a Stripe Payment Link, a PayPal button, anything that takes the money). With no payment provider key on this installation, pressing Upgrade sends the buyer here instead of refusing \u2014 paste one and this plan can be sold today. The plan is switched on by hand from the plan-request queue once the payment lands.</div></div>
       <div class="form-row"><div class="form-group"><label class="form-label">Max Cards</label><input class="input" name="max_cards" type="number" value="${f('max_cards','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Leads</label><input class="input" name="max_leads" type="number" value="${f('max_leads','')}" placeholder="Unlimited"></div></div>
       <div class="form-row"><div class="form-group"><label class="form-label">Max Tags</label><input class="input" name="max_tags" type="number" value="${f('max_tags','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Forms</label><input class="input" name="max_forms" type="number" value="${f('max_forms','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Team Members</label><input class="input" name="max_team_members" type="number" value="${f('max_team_members','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Custom Domains</label><input class="input" name="max_custom_domains" type="number" value="${f('max_custom_domains','')}" placeholder="Unlimited"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Team Members is how many logins this plan allows in one workspace: 1 is the owner alone, leave it blank for unlimited. The customer's own dashboard reads the same number as "Team used / allowed".</div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max QR Codes</label><input class="input" name="max_qr_codes" type="number" value="${f('max_qr_codes','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max OCR Scans</label><input class="input" name="max_ocr_scans" type="number" value="${f('max_ocr_scans','')}" placeholder="Unlimited"></div></div>
       <div style="margin-top:12px"><div class="form-label" style="margin-bottom:8px">Feature Toggles</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${['has_webhooks','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
