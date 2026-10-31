@@ -242,6 +242,18 @@ pub async fn update_tag(
         Some(raw) => clean_tag_name(raw)?,
         None => tag.name.clone(),
     };
+
+    // A RENAME of a tag the app reads breaks the same behaviour a delete does: `leads.tags` stores
+    // NAMES and `apply_sold_to_tenant_leads` writes `SOLD_TAG_NAME`, so a "Sold" renamed to anything
+    // else leaves every lead carrying a string no tag row matches. Refused with the reason; a
+    // recolour or a group change still goes through (only the name is reserved).
+    if name != old_name
+        && crate::tag_logic::is_platform_reserved(tag.id, tag.is_system, tag.provisions_account)
+    {
+        return Err(AppError::Conflict(crate::tag_logic::reserved_refusal(
+            &old_name,
+        )));
+    }
     check_tag_color(req.color.as_deref())?;
     let color = req.color.or(tag.color);
     // kanban t_f94a8a00: `clear_group` is the ONLY way to ungroup a tag. Without it a group can be
@@ -462,6 +474,15 @@ pub async fn delete_tag(
         return Err(AppError::Forbidden(
             "Only admins can delete system tags".into(),
         ));
+    }
+
+    // A tag the APP reads is not the operator's to remove (measured 2026-10-31: the Sold tag's row
+    // was gone and every paid upgrade skipped `apply_sold_to_tenant_leads`, so no lead was ever
+    // marked Sold). Refused with the reason and the safe alternatives, before any write.
+    if crate::tag_logic::is_platform_reserved(tag.id, tag.is_system, tag.provisions_account) {
+        return Err(AppError::Conflict(crate::tag_logic::reserved_refusal(
+            &tag.name,
+        )));
     }
 
     // The resolution's own scope, the same one the rename rewrite uses (see `update_tag`): a SYSTEM tag

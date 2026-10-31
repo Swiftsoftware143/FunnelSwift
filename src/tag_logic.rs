@@ -88,6 +88,46 @@ pub const QUALIFIED_TAG_ID: &str = "15698a9a-67fe-5bf1-9aac-1dcd7a1ccd9e";
 pub const SOLD_TAG_NAME: &str = "Sold";
 pub const QUALIFIED_TAG_NAME: &str = "Qualified";
 
+/// Is this a tag whose row the APP ITSELF reads — i.e. deleting or renaming it silently switches a
+/// documented behaviour off?
+///
+/// Measured 2026-10-31 (live `funnelswift`): no tag with id 3b008e4a… (Sold) existed, so every
+/// paid upgrade ran `apply_sold_to_tenant_leads`, found no tag row and returned 0 with a WARN —
+/// "Sold system tag (id=…) not found - skipping auto-apply" — so a customer who bought a plan had
+/// no lead marked Sold and the "Sold removes Qualified" rule never fired. Migration 115 measured the
+/// same shape on 2026-10-22 (`count(*) FROM tags` = 3: not one system tag existed, and the
+/// tag→free-account executor was dead until that file re-seeded the seven free tags). Both breakages
+/// had exactly one cause: `DELETE /api/v1/tags/:id` lets an admin delete a SYSTEM tag, and there is
+/// no repair path in the product — the only recovery is another migration.
+///
+/// Two classes are reserved, and both are read by this crate rather than by a human:
+///  * the lifecycle pair — `apply_sold_to_tenant_leads` resolves Sold BY ID (this constant) and
+///    writes `SOLD_TAG_NAME` into `leads.tags`, while the seeded `Sold removes Qualified` tag rule
+///    is keyed on both ids. A rename breaks it too: the lead's stored string would no longer match
+///    any tag row, which is the exact defect `update_tag`'s rename rewrite exists to prevent;
+///  * any tag carrying a free-account mapping (`provisions_account`) — `app_provision` resolves it BY
+///    NAME out of this table, so losing the row switches tag-driven signup off.
+///
+/// Everything else that is `is_system` stays deletable: the fleet's shared vocabulary (Referral,
+/// Website, …) is the operator's to retire.
+pub fn is_platform_reserved(id: Uuid, is_system: bool, provisions_account: bool) -> bool {
+    if !is_system {
+        return false;
+    }
+    let id = id.to_string();
+    id == SOLD_TAG_ID || id == QUALIFIED_TAG_ID || provisions_account
+}
+
+/// The one sentence an operator reads when they try to delete or rename a reserved tag.
+pub fn reserved_refusal(name: &str) -> String {
+    format!(
+        "\"{name}\" is a tag FunnelSwift itself uses: a paid upgrade marks every lead in the workspace \
+         with it, and a tag that provisions a free account signs a lead up in another app. Deleting or \
+         renaming it would switch that off for every workspace with no way back. Recolour it, or turn \
+         its Free plan mapping off, instead."
+    )
+}
+
 /// Auto-apply the "Sold" tag to all leads in a tenant when the plan the tenant was just put on is
 /// a PAID one, which in turn triggers the "Sold removes Qualified" tag rule via assign_lead_tags.
 ///
