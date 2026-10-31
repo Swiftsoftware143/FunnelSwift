@@ -280,6 +280,15 @@ pub fn create_router(
         // The people in the caller's own workspace, for the lead owner picker (cron 2026-10-21).
         // Static path, so it cannot collide with `/leads/:id`; authenticated by the global gate.
         .route("/api/v1/team/members", get(lead_handler::team_members))
+        // A customer adds their own teammate (2026-10-31). Until this route the only door was the
+        // operator's `/api/v1/admin/users`, so a workspace's plan allowance had nothing to bound and
+        // the customer had to ask the platform operator to hire. Gated in the handler: the caller
+        // must administer THIS workspace (tenant taken from the session) and the plan's
+        // `max_team_members` must have a free seat.
+        .route(
+            "/api/v1/team/invite",
+            post(crate::handlers::team_handler::invite_teammate),
+        )
         .route(
             "/api/v1/leads/:id/stage",
             post(lead_handler::update_lead_stage),

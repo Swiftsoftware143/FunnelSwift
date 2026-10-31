@@ -58,6 +58,7 @@ pub mod site_settings_handler;
 pub mod tag_group_handler;
 pub mod tag_handler;
 pub mod tag_rule_handler;
+pub mod team_handler;
 pub mod template_gating_handler;
 pub mod tenant_handler;
 pub mod theme_endpoint;

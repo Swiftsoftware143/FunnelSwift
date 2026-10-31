@@ -732,7 +732,7 @@ pub const TEAMMATE_ROLES: [&str; 4] = ["user", "admin", "company_admin", "busine
 
 /// Parse a requested teammate role: absent/blank keeps the member default, anything outside
 /// [`TEAMMATE_ROLES`] is a 400 that names the field instead of a row no gate would recognise.
-fn teammate_role(raw: Option<&str>) -> Result<String, AppError> {
+pub(crate) fn teammate_role(raw: Option<&str>) -> Result<String, AppError> {
     let role = raw
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty())
@@ -773,6 +773,24 @@ pub async fn create_tenant_user(
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("tenant_id must be a uuid".into()))?;
+    mint_workspace_user(&state, tenant_id, &req).await
+}
+
+/// The ONE teammate mint, shared by BOTH doors (kanban 2026-10-31).
+///
+/// The operator console has added teammates since 2026-10-18 through `create_tenant_user`; the
+/// customer had no way at all, so a workspace's people could only grow if the platform operator did
+/// it by hand. `POST /api/v1/team/invite` now calls THIS function, so the two doors cannot drift on
+/// the parts that matter: the fleet's address rule, the duplicate check, the generated password,
+/// the credentials mail, and the withheld/handover contract. What the doors do NOT share is
+/// authority — the admin door checks `is_admin`, the customer door checks the caller's role inside
+/// the workspace AND its plan's seat allowance, and it passes the tenant from the session rather
+/// than from the body, so a customer cannot mint into somebody else's workspace.
+pub(crate) async fn mint_workspace_user(
+    state: &AppState,
+    tenant_id: Uuid,
+    req: &Value,
+) -> AppResult<Json<Value>> {
     // The fleet's ONE address rule — the same `normalize` the public signup uses, and the same one
     // the account-provisioning door 700 lines above already applies. Measured live 2026-10-29: this
     // door's own `contains('@')` test accepted `a@b` (an '@' with no dot in the domain) and let the
