@@ -342,12 +342,33 @@ pub async fn create_checkout_session(
             // is not one this installation sells" about a plan this installation does sell, while
             // the operator's plan-request queue never saw the demand. `plan_slug` still wins when
             // both keys are present.
-            let plan_slug = payload["plan_slug"]
+            let mut plan_slug = payload["plan_slug"]
                 .as_str()
                 .or_else(|| payload["plan"].as_str())
                 .unwrap_or("")
                 .trim()
                 .to_string();
+            // A FLEET-SHAPED CALLER NAMES ITS PLAN BY ID (2026-10-31). Every other app in the
+            // fleet takes `purchasable_type` + `purchasable_id` (a plan UUID); this arm read only
+            // a slug, so such a caller carried an EMPTY slug, was told "this request did not name
+            // a plan" about a plan it had named, and the demand never reached the operator's
+            // queue. Resolve the id to its slug; a slug in the body still wins when both are sent,
+            // and an id that names no plan falls through to the honest refusal below.
+            if plan_slug.is_empty() {
+                if let Some(pid) = payload["purchasable_id"]
+                    .as_str()
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                {
+                    if let Ok(Some(slug)) =
+                        sqlx::query_scalar::<_, String>("SELECT slug FROM plans WHERE id = $1")
+                            .bind(pid)
+                            .fetch_optional(&state.pool)
+                            .await
+                    {
+                        plan_slug = slug;
+                    }
+                }
+            }
             let plan: Option<(Uuid, String, f64, f64)> = sqlx::query_as(
                 "SELECT id, name, COALESCE(price, 0)::float8, COALESCE(annual_price, 0)::float8 \
                  FROM plans WHERE slug = $1",
@@ -597,7 +618,7 @@ pub async fn create_checkout_session(
                     })),
                 ));
             }
-            let plan_slug = payload["plan_slug"]
+            let mut plan_slug = payload["plan_slug"]
                 .as_str()
                 // Same alias as the no-provider arm above: `plan` is the obvious name for the
                 // field and `plan_slug` is the documented one. A provider IS configured here, so
@@ -607,6 +628,23 @@ pub async fn create_checkout_session(
                 .unwrap_or("")
                 .trim()
                 .to_string();
+            // Same fleet shape as the no-provider arm above: a caller that names its plan by id
+            // must not be refused with "plan_slug is required" about a plan it named.
+            if plan_slug.is_empty() {
+                if let Some(pid) = payload["purchasable_id"]
+                    .as_str()
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                {
+                    if let Ok(Some(slug)) =
+                        sqlx::query_scalar::<_, String>("SELECT slug FROM plans WHERE id = $1")
+                            .bind(pid)
+                            .fetch_optional(&state.pool)
+                            .await
+                    {
+                        plan_slug = slug;
+                    }
+                }
+            }
             if plan_slug.is_empty() {
                 return Err(AppError::Validation(
                     "plan_slug (or plan) is required — the request named no plan to buy.".into(),
