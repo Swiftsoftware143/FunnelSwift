@@ -1427,6 +1427,40 @@ function LD(){
     sb.oninput=function(){LDf(null)};
     sf.appendChild(sb);
     sf.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){sb.value="";LDf(null)}},"Clear"));
+    /* 2026-10-31: GET /api/v1/leads/export had NO caller in this console. The operator's console got
+       the button; the customer's did not, while this screen's own inline guide lists "Export" among
+       what the Leads table does. So a customer who bought a plan FOR its import/export entitlement
+       could not get their data out. This is the missing caller: it honours the search box (the
+       server narrows by the same `q`, so the file matches the rows on screen), saves the CSV, and
+       shows the plan refusal when the tier has no import/export rather than doing nothing. */
+    var ldExp=El("button",{"class":"btn btn-sm btn-o",style:"margin-left:8px"},"Export CSV");
+    ldExp.id="ld-export";
+    ldExp.onclick=function(){
+      var term=(sb.value||"").trim();
+      var label=ldExp.textContent;
+      ldExp.disabled=true; ldExp.textContent="Exporting\u2026";
+      fetch("/api/v1/leads/export?format=csv"+(term?"&q="+encodeURIComponent(term):""),
+            {headers:T?{Authorization:"Bearer "+T}:{}})
+        .then(function(r){
+          if(!r.ok){
+            return r.text().then(function(t){
+              var d={}; try{d=JSON.parse(t)}catch(e){}
+              showMsg((d&&(d.message||d.error))||("Export refused ("+r.status+")"),"me");
+            });
+          }
+          return r.blob().then(function(b){
+            var u=URL.createObjectURL(b);
+            var a=document.createElement("a");
+            a.href=u; a.download="leads-"+new Date().toISOString().slice(0,10)+".csv";
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(function(){URL.revokeObjectURL(u)},5000);
+            showMsg(term?('Exported the leads matching "'+term+'".'):"Exported all your leads.","ok");
+          });
+        })
+        .catch(function(e){ showMsg("Export failed: "+((e&&e.message)||e),"me"); })
+        .then(function(){ ldExp.disabled=false; ldExp.textContent=label; });
+    };
+    sf.appendChild(ldExp);
     
     var list=$("ld-list");
     if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px">No leads.</p>';return;}
