@@ -2183,10 +2183,20 @@ function openAffiliateProductModal(id) {
 }
 
 // ── AFFILIATE PAYOUTS ──
+// kanban cron-2026-10-31: both payout WRITE routes shipped with NO UI anywhere in the fleet —
+// `POST /api/v1/affiliate-payouts` (record a payout) and `POST /api/v1/affiliate-payouts/:id/pay`
+// (settle it) — while this screen rendered a "+ Record Payout" button whose bind function was
+// empty, so clicking it did nothing at all (measured on admin.funnelswift.net: the served page is
+// byte-identical to this file and `function bindAffiliatePayouts() {}` is on it). An operator could
+// neither record nor settle an affiliate payout from the console. David's rule: a backend route
+// with no UI is a defect. PAYOUT_ROWS is the row an action button came from, keyed by id.
+let PAYOUT_ROWS = {};
 async function renderAffiliatePayouts() {
   let items = [];
   try { items = await api('/affiliate-payouts'); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.payouts || [];
+  PAYOUT_ROWS = {};
+  items.forEach(p => { PAYOUT_ROWS[String(p.id)] = p; });
 
   const isAdmin = isSuperAdmin();
 
@@ -2195,25 +2205,111 @@ async function renderAffiliatePayouts() {
       <h1 style="font-size:22px;font-weight:700">${isAdmin?'Affiliate Payouts':'My Payouts'}</h1>
       ${isAdmin ? `<button class="btn btn-primary btn-sm" id="add-payout-btn">+ Record Payout</button>` : ''}
     </div>
-    ${items.length === 0 ? `<div class="empty"><div class="icon">💰</div><div class="title">No payouts yet</div></div>` : `
+    ${items.length === 0 ? `<div class="empty"><div class="icon">💰</div><div class="title">No payouts yet</div><div class="desc">${isAdmin?'Use “Record Payout” to log what an affiliate has earned.':'A payout appears here once the operator records one.'}</div></div>` : `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-value">${formatCurrency(items.reduce((s,i)=>s+(i.amount||0),0))}</div><div class="stat-label">Total${isAdmin?' Payouts':' Earned'}</div></div>
       <div class="stat-card"><div class="stat-value">${items.filter(i=>i.status==='pending').length}</div><div class="stat-label">Pending</div></div>
       <div class="stat-card"><div class="stat-value">${items.filter(i=>i.status==='paid').length}</div><div class="stat-label">Paid</div></div>
     </div>
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>ID</th>${isAdmin?'<th>Affiliate</th>':''}<th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+      <thead><tr><th>ID</th>${isAdmin?'<th>Affiliate</th>':''}<th>Amount</th><th>Method</th><th>Status</th><th>Date</th>${isAdmin?'<th>Actions</th>':''}</tr></thead>
       <tbody>${items.map(p=>`<tr>
         <td><code style="font-size:11px">${x(p.id).substring(0,8)}</code></td>
         ${isAdmin?`<td>${x(p.affiliate_name||p.affiliate_id||'-')}</td>`:''}
         <td><strong>${formatCurrency(p.amount)}</strong></td>
+        <td>${x(p.method||'-')}</td>
         <td><span class="badge ${p.status==='paid'?'badge-green':p.status==='pending'?'badge-yellow':'badge-red'}">${x(p.status)}</span></td>
-        <td>${formatDate(p.created_at||p.payout_date)}</td>
+        <td>${formatDate(p.paid_at||p.created_at||p.payout_date)}</td>
+        ${isAdmin?`<td>${p.status==='paid'?'<span style="font-size:12px;color:var(--muted)">Settled</span>':`<button class="btn btn-primary btn-xs" data-pay-payout="${x(p.id)}">Mark paid</button>`}</td>`:''}
       </tr>`).join('')}</tbody>
     </table></div></div>`}
   </div>`;
 }
-function bindAffiliatePayouts() {}
+function bindAffiliatePayouts() {
+  document.getElementById('add-payout-btn')?.addEventListener('click', () => window._openPayoutModal());
+  document.querySelectorAll('[data-pay-payout]').forEach(btn => {
+    btn.addEventListener('click', () => window._payPayout(btn.getAttribute('data-pay-payout')));
+  });
+}
+/* Settling a payout is a money record, so it is confirmed before the write and the table repaints
+   from GET /affiliate-payouts afterwards — the row itself is the proof, not the toast. */
+window._payPayout = function(id) {
+  const p = PAYOUT_ROWS[String(id)] || {};
+  STATE.modal = { title: 'Mark this payout as paid?', content:
+    `<p style="font-size:13px;margin:0 0 6px">${formatCurrency(p.amount)} to <strong>${x(p.affiliate_name||p.affiliate_id||'this affiliate')}</strong>.</p>
+     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">This records the payment in the affiliate's history. It does not move money.</p>
+     <div style="display:flex;gap:8px;justify-content:flex-end">
+       <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+       <button type="button" class="btn btn-primary" id="payout-pay-confirm">Yes, mark paid</button>
+     </div>` };
+  renderApp();
+  document.getElementById('payout-pay-confirm')?.addEventListener('click', async () => {
+    try {
+      await api('/affiliate-payouts/' + encodeURIComponent(id) + '/pay', { method: 'POST' });
+      showToast('Payout marked paid', 'success');
+      STATE.modal = null; renderApp();
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+};
+/* Recording a payout needs the affiliate's PLATFORM USER id: `affiliate_payouts.affiliate_user_id`
+   is a uuid keyed to `affiliates.user_id`, which the affiliate list only started carrying once the
+   server selected that column. An affiliate with no linked account cannot be paid, so the form says
+   exactly that instead of offering a choice the server would refuse. */
+window._openPayoutModal = function() {
+  STATE.modal = { title: 'Record a Payout', content: `<div class="empty"><div class="icon">⏳</div></div>` };
+  renderApp();
+  setTimeout(async () => {
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    let affs = [];
+    try { affs = await api('/affiliates'); } catch(e) { affs = []; }
+    if (!Array.isArray(affs)) affs = affs.data || affs.affiliates || [];
+    const payable = affs.filter(a => a.user_id);
+    if (payable.length === 0) {
+      body.innerHTML = `<div class="empty">
+        <div class="icon">🔗</div>
+        <div class="title">No affiliate has a linked account yet</div>
+        <div class="desc">A payout is recorded against the affiliate's own user account. None of the ${affs.length} affiliate${affs.length===1?'':'s'} in this workspace is linked to one yet: an affiliate who joins the programme themselves carries a linked account, while one added by hand in this console does not. A linked affiliate appears in this form.</div>
+        <div style="margin-top:12px"><button type="button" class="btn btn-secondary" onclick="window._closeModal()">Close</button></div>
+      </div>`;
+      return;
+    }
+    body.innerHTML = `<form id="payout-form">
+      <div class="form-group"><label class="form-label">Affiliate</label>
+        <select class="input" name="affiliate_user_id" required>
+          ${payable.map(a=>`<option value="${x(a.user_id)}">${x(a.name||a.email||'Affiliate')} — ${x(a.email||'')}</option>`).join('')}
+        </select></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Amount</label><input class="input" name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00"></div>
+        <div class="form-group"><label class="form-label">Method</label>
+          <select class="input" name="method">
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="paypal">PayPal</option>
+            <option value="stripe">Stripe</option>
+            <option value="cheque">Cheque</option>
+            <option value="other">Other</option>
+          </select></div>
+      </div>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 6px">A recorded payout starts as <strong>pending</strong>. Use “Mark paid” on its row once the money has actually gone out — that is what dates it in the affiliate's history.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Record Payout</button>
+      </div>
+    </form>`;
+    document.getElementById('payout-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(e.target));
+      const amount = parseFloat(d.amount);
+      if (!(amount > 0)) { showToast('Enter an amount greater than zero', 'error'); return; }
+      try {
+        await api('/affiliate-payouts', { method: 'POST', body: JSON.stringify({
+          affiliate_user_id: d.affiliate_user_id, amount, method: d.method, status: 'pending' }) });
+        showToast('Payout recorded', 'success');
+        STATE.modal = null; renderApp();
+      } catch(err) { showToast(err.message, 'error'); }
+    });
+  }, 100);
+};
 
 // ════════════════ RATE BANDS (Super Admin) ════════════════
 // David, 2026-10-03: the performance bands are seeded policy ("rows you can edit"). The admin guide
