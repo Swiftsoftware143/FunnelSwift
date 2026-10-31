@@ -30,7 +30,7 @@
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 219 `.route(..)` mounts / 218 unique paths, classified three ways:
+//! 220 `.route(..)` mounts / 219 unique paths, classified three ways:
 //!
 //! (The 2026-10-31 recount folds in ONE private `/api` mount, `POST
 //! /api/v1/admin/email-log/send-reset` — the operator console's remedy for a credentials email
@@ -46,15 +46,15 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   193 mounts  /api/**            192 unique after the duplicate `/api/v1/linkedin/auth`
+//!   194 mounts  /api/**           193 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     21        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header; the
 //!                                    public price list joined on 2026-10-30)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    169        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (39 of them `/api/v1/admin/**` = the operator surface,
+//!    170        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (40 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -391,7 +391,7 @@ mod tests {
                 private,
                 served
             ),
-            (219, 218, 193, 21, 3, 169, 26),
+            (220, 219, 194, 21, 3, 170, 26),
             "the census in the module docs no longer matches the router"
         );
     }

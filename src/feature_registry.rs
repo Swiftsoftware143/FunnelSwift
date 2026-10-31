@@ -203,14 +203,19 @@ pub const SPECS: &[Spec] = &[
         // Live 2026-10-02: 15 workspaces x exactly 1 active user (the System tenant holds 0); all
         // six plans' column = 1 (Agency / Scale carries a `feature_limits` row of -1 = unlimited).
         //
-        // WIRING it is a product build, not a gate fix — an invite/seat route, its credential
-        // email and a members screen — and five of six plans sell 1 seat, so the built surface
-        // would 402 its only caller. Same reasoning as t_1d600303 (`max_api_calls`) and t_5ce5b5a3
-        // (`storage_mb`): retire the key whose quantity has no write path, and say so where an
-        // operator looks. The test below fails `cargo test` if a gate ever calls this key without
-        // the surface (or the record) changing with it.
-        enforced_by: "(dashboard usage counter only — no gate calls it, and no route can: a workspace holds exactly one user, its owner. No route adds a member to an existing workspace, so this cap is inert on every plan — decided permanently 2026-10-02, kanban t_49e4cef9)",
-        read_by_gate: false,
+        // WIRED 2026-10-31 (this reverses the t_49e4cef9 record the way that card required: build
+        // the add-a-member surface FIRST, then flip `read_by_gate` and update the test). The surface
+        // now exists: `POST /api/v1/team/invite` lets a workspace owner add a teammate (its own
+        // credential mail and a members list live on `GET /api/v1/team/members`), and it calls
+        // `features::enforce_feature_limit(&state, tenant_id, "max_team_members", "Team members")`
+        // before the mint — so the cap is reachable and refusal is a real 402, not dead code.
+        //
+        // The allowance itself is still the plans' to set: measured 2026-10-31, all six plans
+        // (free .. agency $79) carry `max_team_members = 1` and the count includes the owner, so
+        // every workspace reads "1 of 1 seat used" and an invite is refused until a plan grants a
+        // second seat — a pricing decision, not this file's (NEEDS-DAVID, card filed).
+        enforced_by: "POST /api/v1/team/invite (handlers::team_handler::invite_teammate) — refuses the mint when the workspace's active people reach the plan's max_team_members",
+        read_by_gate: true,
     },
     // ── boolean flags ──────────────────────────────────────────────────────────────────────
     Spec {
@@ -771,31 +776,31 @@ mod tests {
         assert!(!override_value_ok(Kind::Boolean, 2));
     }
 
-    /// `max_team_members` is INERT PERMANENTLY (kanban t_49e4cef9, decided 2026-10-02). The meter
-    /// counts active users, every workspace holds exactly one (its owner), and no route can add a
-    /// second — so there is nothing a gate could refuse. Both halves of that record are asserted
-    /// here: the Spec must still SAY there is no gate, and no `enforce_*` call site may name the
-    /// key. Wiring it later therefore takes a deliberate edit — build the add-a-member surface,
-    /// flip `read_by_gate`, update this test — which is exactly the decision this card recorded.
+    /// `max_team_members` is WIRED as of 2026-10-31 — the add-a-member surface exists now, so the
+    /// gate is reachable and the t_49e4cef9 record is discharged the way it asked (surface first,
+    /// then `read_by_gate`, then this test). What is asserted: the gate is named by a real call site,
+    /// the Spec says which route owns it, and the key still reads the plan column the dashboard
+    /// counter reads — so the cap the customer is refused by and the number the panel prints cannot
+    /// drift apart.
     #[test]
-    fn max_team_members_stays_inert_until_a_workspace_can_gain_a_member() {
+    fn max_team_members_is_gated_by_the_add_a_member_route() {
         let s = spec("max_team_members")
             .expect("the key is a live plan column and the dashboard team counter");
         assert_eq!(s.column, Some("max_team_members"));
         assert!(
-            !s.read_by_gate,
-            "max_team_members claims to be read by a gate — build the add-a-member route first"
+            s.read_by_gate,
+            "max_team_members is enforced by POST /api/v1/team/invite now — if that route is gone, \
+             flip this back and restore the inert record (kanban t_49e4cef9)"
         );
         assert!(
-            s.enforced_by.contains("no gate calls it"),
-            "the Spec must keep saying that no gate calls this key: {}",
+            s.enforced_by.contains("/api/v1/team/invite"),
+            "the Spec must name the route that enforces it: {}",
             s.enforced_by
         );
         assert!(
-            !called_keys().contains(&"max_team_members".to_string()),
-            "an enforce_* call site names max_team_members, but no route can add a member to an \
-             existing workspace, so the gate would be unreachable dead code: build the add-a-member \
-             route and flip read_by_gate (kanban t_49e4cef9) before wiring this key"
+            called_keys().contains(&"max_team_members".to_string()),
+            "the gate is declared but no enforce_* call site names it — the console would promise a \
+             cap nothing applies"
         );
     }
 }

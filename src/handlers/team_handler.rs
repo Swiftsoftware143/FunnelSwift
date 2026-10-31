@@ -78,16 +78,82 @@ pub async fn invite_teammate(
         ));
     }
 
+    // WHAT A CUSTOMER MAY HAND OUT — checked FIRST, before any allowance (2026-10-31).
+    // `users.role` carries BOTH responsibilities here: `admin` is the PLATFORM operator, and
+    // `auth::middleware` sets `is_admin` from exactly that string, which is what opens every
+    // `/api/v1/admin/*` handler. The shared mint accepts `admin` because the OPERATOR's console
+    // legitimately appoints platform admins — so without this gate a workspace owner could invite
+    // a person as `admin` and hand out platform-wide authority over every other customer. The
+    // console never offered it as a sensible choice, but the API is the door that has to refuse it.
+    //
+    // Order matters: the role is parsed BEFORE `enforce_feature_limit`, so the dangerous value can
+    // never reach the mint whatever a plan's seat allowance happens to be now or later. (Measured
+    // 2026-10-31: every plan on this install carries `max_team_members = 1`, so the allowance arm
+    // answered 402 first and the role was never looked at — the escalation was latent, not absent.)
+    let role = customer_role(req.get("role").and_then(|v| v.as_str()))?;
+
     // The plan decides next. `max_team_members` counts the workspace's ACTIVE people, the owner
     // included, so a single-seat plan refuses here with the fleet's own upgrade sentence (402)
     // instead of creating a login nobody may use.
     features::enforce_feature_limit(&state, tenant_id, "max_team_members", "Team members").await?;
 
-    // Parse the role before the mint so an unknown role never reaches a row.
-    let role = teammate_role(req.get("role").and_then(|v| v.as_str()))?;
     let mut body = req.clone();
     if let Some(obj) = body.as_object_mut() {
         obj.insert("role".to_string(), json!(role));
     }
     mint_workspace_user(&state, tenant_id, &body).await
+}
+
+/// The roles a WORKSPACE OWNER may hand out — the operator-only `admin` (platform authority) is not
+/// among them, and saying so is a 400 that names the field rather than a silent downgrade: a caller
+/// who asked for `admin` must not be told "added" while a member row was written.
+///
+/// `company_admin` and `business_user` are workspace roles; `user` is the member default. The
+/// vocabulary comes from [`teammate_role`] (the shared parse and the one list), and the refusal is
+/// this door's own, so a role the operator console accepts is still refused HERE.
+fn customer_role(raw: Option<&str>) -> Result<String, AppError> {
+    let role = teammate_role(raw)?;
+    if role == "admin" {
+        return Err(AppError::BadRequest(
+            "role 'admin' is a platform role, not a workspace one — choose user, company_admin or \
+             business_user"
+                .into(),
+        ));
+    }
+    Ok(role)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::customer_role;
+
+    /// The escalation this gate exists for: a workspace owner may not mint a platform admin.
+    #[test]
+    fn a_customer_may_not_hand_out_the_platform_role() {
+        let err =
+            customer_role(Some("admin")).expect_err("admin must be refused on the customer door");
+        let text = format!("{err:?}");
+        assert!(
+            text.contains("platform role"),
+            "refusal must name the reason: {text}"
+        );
+    }
+
+    /// The three roles a workspace may use still pass, unchanged — the gate is narrow on purpose.
+    #[test]
+    fn the_workspace_roles_still_pass() {
+        for r in ["user", "company_admin", "business_user"] {
+            assert_eq!(customer_role(Some(r)).unwrap(), r);
+        }
+        // absent/blank keeps the member default, exactly as the shared parse does
+        assert_eq!(customer_role(None).unwrap(), "user");
+        assert_eq!(customer_role(Some("  ")).unwrap(), "user");
+    }
+
+    /// A word outside the shared vocabulary is still the shared 400 (not this door's new one).
+    #[test]
+    fn an_unknown_role_is_still_refused_by_name() {
+        let err = customer_role(Some("superuser")).expect_err("unknown role must be refused");
+        assert!(format!("{err:?}").contains("role must be one of"));
+    }
 }
