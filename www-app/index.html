@@ -5423,6 +5423,23 @@ function TMLOAD(msg,kind){
         +'<span style="color:#94a3b8;font-size:11px">'+X(String(m.role||"user").replace(/_/g," "))+'</span></div>';
     });
     h+='</div>';
+    /* THE ALLOWANCE IS PRINTED, NOT DISCOVERED (2026-10-31). `GET /api/v1/team/members` now carries
+       `seats` from the same resolver the invite enforces (`remaining_headroom`), so this pane states
+       "1 of 1 seat used" and offers the upgrade BEFORE the press — previously the only way to learn a
+       plan was full was to press Add teammate and read a 402. `limit:null` means the plan sets no
+       team limit (configured nowhere, or the -1 unlimited convention), so no ceiling is claimed. */
+    var seats=(d&&d.seats)||null;
+    var full=false;
+    if(seats && seats.limit!==null && typeof seats.limit!=="undefined"){
+      full=Number(seats.used)>=Number(seats.limit);
+      h+='<div style="font-size:12px;margin-top:8px;color:'+(full?"#b45309":"#334155")+'">'
+        +'<strong>'+Number(seats.used)+' of '+Number(seats.limit)+'</strong> seat'+((Number(seats.limit)===1)?"":"s")+' used on this plan'
+        +(full?' — every seat is taken. <a href="#" id="tm-upgrade" style="color:#2563eb">Upgrade to add a teammate</a>.':"")
+        +'</div>';
+    } else if(seats){
+      h+='<div style="font-size:12px;margin-top:8px;color:#334155"><strong>'+Number(seats.used)+'</strong> seat'+((Number(seats.used)===1)?"":"s")+' used — this plan sets no team limit.</div>';
+    }
+    if(!full){
     h+='<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">'
       +'<input id="tm-name" placeholder="Name" style="width:130px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
       +'<input id="tm-email" placeholder="name@their-domain.com" style="width:200px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
@@ -5431,7 +5448,10 @@ function TMLOAD(msg,kind){
       +'</select>'
       +'<button class="btn btn-sm" onclick="TMADD()">Add teammate</button>'
       +'<span id="tm-msg" style="font-size:11px;color:#64748b"></span></div>';
+    }
     box.innerHTML=h;
+    var up=$("tm-upgrade");
+    if(up){ up.addEventListener("click",function(ev){ ev.preventDefault(); S("plans"); }); }
     if(msg){ var s=$("tm-msg"); if(s){ s.style.color=(kind==="e")?"#dc2626":"#059669"; s.textContent=msg; } }
   }).catch(function(e){ box.innerHTML='<p class="msg me">Could not load your team: '+X(e.message||String(e))+'</p>'; });
 }

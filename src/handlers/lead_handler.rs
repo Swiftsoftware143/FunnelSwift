@@ -829,7 +829,20 @@ pub async fn team_members(
         })
         .collect();
 
-    Ok(Json(json!({ "members": members })))
+    // THE SEAT ALLOWANCE TRAVELS WITH THE LIST (2026-10-31). The customer's team pane used to show
+    // the people and nothing else, so a workspace on a one-seat plan only learned the plan was full
+    // by pressing "Add teammate" and reading a 402 — a dead press instead of a stated allowance.
+    // The number comes from the SAME resolver the invite itself enforces (`remaining_headroom`), so
+    // the counter a customer reads and the refusal they would get can never disagree. `None` (key
+    // configured nowhere) and the `-1` unlimited convention both report `limit: null`.
+    let remaining = features::remaining_headroom(&state, tenant_id, "max_team_members").await?;
+    let used = members.len() as i64;
+    let seat_limit = remaining.map(|free| used + free);
+
+    Ok(Json(json!({
+        "members": members,
+        "seats": { "used": used, "limit": seat_limit }
+    })))
 }
 
 pub async fn update_lead_stage(

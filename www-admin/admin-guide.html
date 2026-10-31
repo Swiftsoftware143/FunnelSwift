@@ -217,7 +217,7 @@
           <tr><td><code>max_tag_groups</code></td><td>Number (groups)</td><td>Tag groups — POST /api/v1/tag-groups</td></tr>
           <tr><td><code>max_integrations</code></td><td>Number (connections)</td><td>Integration Center connections — POST /api/v1/provider-keys</td></tr>
           <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
-          <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — a dashboard counter only, and <strong>permanently inert</strong>: every workspace holds exactly one user (its owner) and no route adds a second member, so nothing can fire this cap. Measured 2026-10-02 (kanban <code>t_49e4cef9</code>): all 15 workspaces hold exactly 1 active user each (the System tenant 0) and the plan column reads 1 across the board (Agency / Scale carries a -1 = unlimited row). Reviving it means building the add-a-member surface first, then gating it.</td></tr>
+          <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — the seat allowance a workspace is shown, and a live gate. Set it per plan in <strong>Plans → Edit → Max Team Members</strong> (blank = unlimited, 1 = the owner alone). A workspace owner adds a teammate in <strong>Settings → Your team</strong> (<code>POST /api/v1/team/invite</code>); the server counts the workspace's active people against this row and, when no seat is free, refuses with <code>402 Team members limit reached (1/1). Upgrade to increase your limit.</code> rather than minting a login nobody may use. The same screen and the same refusal read their number from ONE resolver, so the allowance a customer is shown and the refusal they would get cannot disagree. Corrected 2026-10-31: the Plans editor used to render no field for this column while its own submit handler coerced the value, so every plan — Agency / Scale included — sat at the column default of 1; the console now renders the field, the dashboard prints the allowance as "N of M seats used", and a full plan offers the upgrade link instead of a dead press.</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
           <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead import and export — POST /api/v1/leads/import, GET /api/v1/leads/export</td></tr>
           <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — a plan-page marker only, with no gate of its own: multi-destination delivery is what the <strong>Webhooks</strong> engine does (POST /api/v1/webhooks, gated by <code>has_webhooks</code>). The resource this key used to switch on was retired on 2026-10-02 (kanban t_0aaf0bc5).</td></tr>
@@ -287,7 +287,7 @@
           <tr><td><code>max_settings</code></td><td>agency −1 · kinetic-pro −1</td><td>nothing — settings are internal key/value storage, not a plan entitlement.</td></tr>
           <tr><td><code>max_target_software</code></td><td>agency −1 · kinetic-pro 50</td><td>nothing now — a third name for the same target-software count, and that resource (with <code>max_routing_targets</code>) was itself retired (see the row above).</td></tr>
           <tr><td><code>storage_mb</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 50 · capture-free 50 · kinetic-free 500</td><td>nothing — <strong>storage is not metered on any plan</strong>. The app has no file storage to measure: no upload route and no file/blob table (the only binary column in the whole database is the migration runner's checksum), and the logo/avatar fields hold <em>links</em>, not bytes — so no cap has a quantity to compare against. Measured 2026-10-02: the largest workspace holds ≈39 kB of rows and the entire database (16 workspaces) is 14 MB, i.e. the authored 50/500 MB sat far above anything ever stored. The rows stay deleted by decision (kanban <code>t_5ce5b5a3</code>); the numbers are a starting point if a real file store is ever built, not a promise.</td></tr>
-          <tr><td><code>team_members</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1 · capture-free 1 · kinetic-free 3</td><td><code>max_team_members</code> (the same count of active users). Nothing adds a member to an existing workspace, so the cap is <strong>inert</strong> — and that is decided permanently (kanban <code>t_49e4cef9</code>, 2026-10-02), not pending: the only three writers of <code>users</code> each create their own workspace first, the only tenant-user routes are a read and a bulk delete, and no workspace holds more than 1 active user.</td></tr>
+          <tr><td><code>team_members</code></td><td>agency −1 · kinetic-pro −1 · capture-starter 1 · capture-free 1 · kinetic-free 3</td><td><code>max_team_members</code> (the same count of active users). Since 2026-10-31 the cap is <strong>enforced</strong>: <code>POST /api/v1/team/invite</code> refuses at the limit with a 402 naming the allowance (<code>1/1</code> on a single-seat plan), so a workspace cannot grow past the seats its plan pays for. The earlier note that the cap was inert (kanban <code>t_49e4cef9</code>, 2026-10-02) described the state before the add-a-member screen existed; <code>GET /api/v1/team/members</code> now also answers <code>{"seats":{"used":1,"limit":1}}</code> taken from that same resolver.</td></tr>
         </table>
         <p>The authored numbers survive in the migration headers and in this table — deliberately not as live
         rows, so nothing downstream can mistake them for an enforced cap. If a capability above is built
@@ -673,19 +673,43 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         notice went out. The list keeps the history instead: the last 50 transactional attempts, newest
         first, each with its recipient, subject, result and &mdash; when it did not go out &mdash; the
         provider's own reason.</p>
+        <p>The list holds the last 50 attempts that went to a <em>real</em> address. Messages withheld for a
+        reserved/test recipient (<code>.invalid</code>, <code>.example</code> and similar &mdash; the rule that
+        keeps test signups from mailing anyone) are counted rather than listed: the strip above the table
+        reads &ldquo;&hellip; sent &middot; N not sent (reserved/test addresses)&rdquo; over the last week, and
+        the table's own heading says so. A probe address therefore cannot push a real customer's attempt out
+        of the window.</p>
         <p>Read the <strong>Result</strong> column like this:</p>
         <ul>
           <li><strong>sent</strong> &mdash; the mail provider accepted the message for delivery.</li>
-          <li><strong>not sent (reserved address)</strong> &mdash; the recipient was a test/reserved address
-          (<code>.invalid</code>, <code>.example</code> and similar), so the message was deliberately
-          withheld and no real inbox was touched. This is normal and is what keeps test signups from
-          mailing anyone.</li>
           <li><strong>REFUSED</strong> &mdash; the provider would not take the message, so the customer
           received nothing. The reason column carries the provider's own words; fix the credential or the
           recipient and send again.</li>
         </ul>
-        <p>If the list is empty, no transactional mail has been attempted on this installation yet. It is
-        read-only &mdash; the panel cannot alter or resend a row, it only reports what the app actually did.</p>
+        <p>The strip also names the most recent refusal with its address and the provider's sentence, so
+        &ldquo;has ANY customer mail been refused this week&rdquo; is answered without scrolling.</p>
+        <p>If the list is empty, no transactional mail has been attempted on this installation yet.</p>
+      </div>
+
+      <div class="card">
+        <h3>Send reset &mdash; when a customer says they never got in</h3>
+        <p>Every row carries a <strong>Send reset</strong> button (the <em>Sign-in help</em> column). It mints
+        a fresh one-hour reset token for that address and sends the app's own password-reset mail through the
+        same provider and template as every other message &mdash; so a customer whose credentials mail was
+        refused, or whose reset link has expired, gets a working link without being sent back to the
+        &ldquo;Forgot password?&rdquo; screen they cannot complete when no mail reaches them.</p>
+        <p>The button reports the server's own answer, never a guess:</p>
+        <ul>
+          <li><strong>Sent &#10003;</strong> &mdash; the provider accepted the message, and the toast names the
+          address it went to.</li>
+          <li><strong>Not sent</strong> &mdash; the reason is stated in words: no active account uses that
+          address; the workspace is retired (reactivate it first); the address is a reserved/test one, so
+          nothing was sent and no inbox was touched (the token is still issued); or the provider refused the
+          message, with the provider's own sentence as the reason.</li>
+        </ul>
+        <p>Pressing it again replaces the previous unused token for that account, so the customer never has two
+        live links. The history rows themselves stay read-only &mdash; the panel never edits or deletes what
+        the app actually did.</p>
       </div>
 
       <div class="card">
