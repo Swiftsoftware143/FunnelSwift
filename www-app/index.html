@@ -5363,6 +5363,17 @@ function LM(){
     ebDiv.appendChild(El("div",{id:"lm-exact",style:"margin-top:12px"}));
     PBEX();
 
+    /* Your team — the customer adds their own teammate (2026-10-31). Built LAST like the panes above,
+       and its dynamic half renders into its own #lm-team container so nothing re-parses a parent
+       (the t_7caf7873 trap). The seat allowance is the plan's `max_team_members`: when it is full the
+       SERVER answers 402 with the fleet's upgrade sentence, so this screen never guesses a number. */
+    var tmDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
+    tmDiv.innerHTML='<strong style="font-size:13px">Your team</strong>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">Everyone who can sign in to this workspace. A new teammate gets their own sign-in details by email; your plan decides how many seats you have.</p>'
+      +'<div id="lm-team"></div>';
+    list.appendChild(tmDiv);
+    TMLOAD();
+
     /* Email provider — THIS workspace's OWN sending identity (kanban t_7ac7ceb5). Built LAST, after
        every innerHTML write on this parent, and its dynamic half renders into its own #lep-fields
        container, so switching provider re-parses only that container (the t_7caf7873 trap: a
@@ -5395,6 +5406,62 @@ function LM(){
     EPLOAD();
   });
 }
+/* === Your team (2026-10-31) =====================================================================
+   Reads the caller's own workspace through GET /api/v1/team/members and adds a teammate through
+   POST /api/v1/team/invite. The server owns both decisions this screen must not duplicate: who may
+   invite (a workspace admin) and whether a seat is free (the plan's max_team_members). A refusal
+   arrives as the server's own sentence and is printed verbatim. */
+function TMLOAD(msg,kind){
+  var box=$("lm-team"); if(!box) return;
+  api("/api/v1/team/members").then(function(d){
+    var ms=(d&&d.members)||[];
+    var h='<div style="font-size:12px;color:#334155">';
+    if(!ms.length){ h+='<p style="color:#94a3b8">Nobody yet.</p>'; }
+    ms.forEach(function(m){
+      h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9">'
+        +'<span>'+X(m.name||m.email)+' <span style="color:#94a3b8;font-size:11px">'+X(m.email||"")+'</span></span>'
+        +'<span style="color:#94a3b8;font-size:11px">'+X(String(m.role||"user").replace(/_/g," "))+'</span></div>';
+    });
+    h+='</div>';
+    h+='<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">'
+      +'<input id="tm-name" placeholder="Name" style="width:130px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
+      +'<input id="tm-email" placeholder="name@their-domain.com" style="width:200px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
+      +'<select id="tm-role" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
+      +'<option value="user">Member</option><option value="company_admin">Company admin</option><option value="business_user">Business user</option><option value="admin">Admin</option>'
+      +'</select>'
+      +'<button class="btn btn-sm" onclick="TMADD()">Add teammate</button>'
+      +'<span id="tm-msg" style="font-size:11px;color:#64748b"></span></div>';
+    box.innerHTML=h;
+    if(msg){ var s=$("tm-msg"); if(s){ s.style.color=(kind==="e")?"#dc2626":"#059669"; s.textContent=msg; } }
+  }).catch(function(e){ box.innerHTML='<p class="msg me">Could not load your team: '+X(e.message||String(e))+'</p>'; });
+}
+function TMADD(){
+  var email=(($("tm-email")||{}).value||"").trim();
+  var name=(($("tm-name")||{}).value||"").trim();
+  var role=(($("tm-role")||{}).value||"user");
+  var msg=$("tm-msg");
+  if(!email){ if(msg){msg.style.color="#dc2626";msg.textContent="Enter the teammate's email address.";} return; }
+  if(msg){ msg.style.color="#64748b"; msg.textContent="Adding…"; }
+  api("/api/v1/team/invite",{method:"POST",body:JSON.stringify({name:name,email:email,role:role})})
+    .then(function(d){
+      var note=d.credentials_emailed
+        ? ("Invitation sent to "+d.email+" — their sign-in details are in their inbox.")
+        : (d.withheld
+            ? ("Added "+d.email+". That address is a reserved test address, so no mail was attempted — give them this password: "+d.handover_password)
+            : ("Added "+d.email+", but the email could not be sent"+(d.detail?(" ("+d.detail+")"):"")+" — their password is: "+d.handover_password));
+      TMLOAD(note, d.credentials_emailed?"": "w");
+      if(!d.credentials_emailed && msg){ msg.style.color="#b45309"; }
+    })
+    .catch(function(e){
+      /* 402 = the plan has no free seat: the server's sentence already says so and names the
+         allowance, so print it and point at the upgrade path rather than paraphrasing a number. */
+      /* A 402 carries the server's own sentence on `planMessage` (`api()`'s upgrade arm); `message`
+         there is only the code "upgrade_required", which is not something to show a customer. */
+      var why=(e&&(e.planMessage||e.message))||"That teammate could not be added.";
+      if(msg){ msg.style.color="#dc2626"; msg.textContent=why; }
+    });
+}
+
 /* === Updated group edit — handle system flag === */
 /* kanban t_2f2c184b: this button used to fetch `GET /api/v1/tag-groups/:id` — a path the router does
    NOT serve (only PUT/DELETE), so the call answered an empty-bodied 405, `api()` threw a SyntaxError
