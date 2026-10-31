@@ -174,29 +174,57 @@ pub async fn list_tenants(
     .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
-    let tenants: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|r| {
-            json!({
-                "id": r.0, "name": r.1, "slug": r.2, "created_at": r.3,
-                "plan_name": r.4, "plan_slug": r.5, "plan": r.4, "status": r.7,
-                "email": r.6, "user_count": r.8, "owner_email": r.9,
-                // The AUTHORITATIVE harness attribution, written at signup by the door that minted
-                // the workspace (kanban t_fc88ec2a). Published so the operator's Tenants list can
-                // badge a harness row instead of GUESSING from the owner address: a harness that
-                // used an ordinary-looking address read as a customer. COALESCEd to '' above so a
-                // row minted before the column existed is empty, never null.
-                "probe_harness": r.10,
-                // When anyone in this workspace last signed in (kanban 2026-10-27): the newest
-                // `users.last_login_at` across its people. The operator's list had no way to tell a
-                // workspace whose credentials mail went out and whose owner never came back from one
-                // that is in daily use. NULL means "nothing recorded" and is published as null — the
-                // screen says so in words rather than inventing a date, exactly like ADASwift's
-                // last-sign-in column (`65700fb`).
-                "last_sign_in": r.11
-            })
-        })
-        .collect();
+    // Every workspace is HELD to a real tier, but only some HOLD one. `plan_name` below comes from
+    // the newest active subscription row, so a workspace that never chose a plan answered NULL here
+    // — measured live 2026-10-31 on this install: 7 of 13 rows carried no level at all, while every
+    // gate compared those same workspaces against the install's price-0 tier
+    // (`features::effective_plan`, fail-closed to `Capture Free`). That is the panel-vs-gate
+    // divergence `features.rs` exists to prevent, and `GET /api/v1/auth/me` already publishes the
+    // fix (`plan_effective_name` + `plan_is_default`); the operator's list — the surface the operator
+    // actually reads — published neither, and not even `plan_assigned`, so a plan-less workspace was
+    // indistinguishable from one whose plan row had simply gone missing.
+    //
+    // Each row therefore names the tier the GATES enforce, tagged with whether the workspace CHOSE
+    // it: `plan_assigned=false` + `plan_effective_name="Capture Free"` + `plan_is_default=true`
+    // reads as "no plan chosen yet — running on Capture Free", never as a bought tier. Same two
+    // fields, same meaning, same resolver (`features::effective_plan_label`) as `/me`, so the two
+    // surfaces cannot drift apart again.
+    let mut tenants: Vec<serde_json::Value> = Vec::with_capacity(rows.len());
+    for r in rows {
+        let plan_assigned = r.4.is_some();
+        let (plan_effective_name, plan_is_default) = if plan_assigned {
+            (None, false)
+        } else {
+            match crate::features::effective_plan_label(&state, r.0).await {
+                Ok(Some((name, defaulted))) => (Some(name), defaulted),
+                // No price-0 plan on this install: nothing to name, so name nothing.
+                _ => (None, false),
+            }
+        };
+        tenants.push(json!({
+            "id": r.0, "name": r.1, "slug": r.2, "created_at": r.3,
+            "plan_name": r.4, "plan_slug": r.5, "plan": r.4, "status": r.7,
+            "email": r.6, "user_count": r.8, "owner_email": r.9,
+            // false => this workspace holds NO active subscription; the level it is actually held
+            // to is `plan_effective_name` (see the block above).
+            "plan_assigned": plan_assigned,
+            "plan_effective_name": plan_effective_name,
+            "plan_is_default": plan_is_default,
+            // The AUTHORITATIVE harness attribution, written at signup by the door that minted
+            // the workspace (kanban t_fc88ec2a). Published so the operator's Tenants list can
+            // badge a harness row instead of GUESSING from the owner address: a harness that
+            // used an ordinary-looking address read as a customer. COALESCEd to '' above so a
+            // row minted before the column existed is empty, never null.
+            "probe_harness": r.10,
+            // When anyone in this workspace last signed in (kanban 2026-10-27): the newest
+            // `users.last_login_at` across its people. The operator's list had no way to tell a
+            // workspace whose credentials mail went out and whose owner never came back from one
+            // that is in daily use. NULL means "nothing recorded" and is published as null — the
+            // screen says so in words rather than inventing a date, exactly like ADASwift's
+            // last-sign-in column (`65700fb`).
+            "last_sign_in": r.11
+        }));
+    }
     Ok(Json(json!(tenants)))
 }
 

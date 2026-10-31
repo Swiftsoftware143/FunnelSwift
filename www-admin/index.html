@@ -3817,9 +3817,22 @@ function tenantPlanCell(t) {
   const opts = ['<option value=""' + (cur ? '' : ' selected') + '>— no plan —</option>']
     .concat(TENANT_PLAN_ROWS.map(p =>
       `<option value="${x(p.slug)}"${p.slug === cur ? ' selected' : ''}>${x(p.name)}</option>`));
-  return `<select class="input plan-sel" data-tenant="${x(t.id)}" data-current="${x(cur)}" ` +
+  const sel = `<select class="input plan-sel" data-tenant="${x(t.id)}" data-current="${x(cur)}" ` +
     `style="min-width:150px" title="Assign this workspace's plan (writes the active subscription row)">` +
     opts.join('') + `</select>`;
+  // "— no plan —" is a true statement about the SUBSCRIPTION, but it is a misleading one about the
+  // LIMITS: every gate compares a plan-less workspace against the install's price-0 tier
+  // (`features::effective_plan`, fail-closed), so 7 of this install's 13 workspaces are enforced
+  // against a real tier while this column named none (measured live 2026-10-31). The server now
+  // publishes the same `plan_effective_name` + `plan_is_default` pair that the customer's own
+  // dashboard reads, so the operator sees the tier the workspace is HELD to — and can tell it apart
+  // from a plan the customer actually chose.
+  if (!cur && t.plan_effective_name) {
+    return sel + `<div style="font-size:11px;color:var(--muted);margin-top:4px" ` +
+      `title="No plan is assigned to this workspace, so every limit is enforced against this tier.">` +
+      `held to ${x(t.plan_effective_name)}${t.plan_is_default ? ' (default)' : ''}</div>`;
+  }
+  return sel;
 }
 // The workspace whose people are open below the Tenants table (2026-10-18). `null` = closed.
 let TENANT_USER_TENANT = null, TENANT_USER_TENANT_NAME = '', TENANT_USERS = null, TENANT_USERS_MSG = '';
