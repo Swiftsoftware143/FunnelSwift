@@ -730,6 +730,120 @@ pub async fn test_email_config(
     }
 }
 
+/// POST /api/v1/admin/email-log/send-reset — the operator's "this customer never got in" action.
+///
+/// The send history (`GET /api/v1/admin/email-log`) answers *what left the box*; it cannot help the
+/// person on the phone who never received the credentials mail. Before this arm the only remedy an
+/// operator had was telling the customer to use "forgot password" — which a customer who receives
+/// no mail from this app cannot complete either. This mints a fresh one-hour reset token for the
+/// account behind the address the operator clicked and sends the app's own `password_reset`
+/// template through the same sender the public flow uses, so branding, templates and the
+/// reserved-address withhold all behave identically (a `.invalid`/harness address is recorded as
+/// withheld and never attempted).
+///
+/// Body: `{"email": "<address>"}`. Every arm that is not a server fault answers 200 with a plain
+/// sentence; `sent` is true only when the provider hand-off actually happened.
+#[derive(Debug, Deserialize)]
+pub struct AdminSendResetRequest {
+    pub email: String,
+}
+
+pub async fn admin_send_reset(
+    user: crate::auth::middleware::AuthUser,
+    State(state): State<AppState>,
+    body: Result<Json<AdminSendResetRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_platform_admin(&user)?;
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
+    let key = crate::security::email_addr::lookup_key(&req.email);
+    let found = sqlx::query(
+        "SELECT id, tenant_id, email, name, role FROM users \
+         WHERE lower(email) = $1 AND is_active = true",
+    )
+    .bind(&key)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(row) = found else {
+        return Ok(Json(serde_json::json!({
+            "sent": false,
+            "reason": "no_account",
+            "message": "No active account uses that address, so there is nobody to send sign-in help to.",
+        })));
+    };
+    let target_id: Uuid = row.get("id");
+    let tenant_id: Uuid = row.get("tenant_id");
+    let target_email: String = row.get("email");
+    let target_name: String = row.get("name");
+    let target_role: String = row.get("role");
+
+    if !crate::handlers::tenant_handler::workspace_access_allowed(
+        &state.pool,
+        tenant_id,
+        &target_role,
+    )
+    .await?
+    {
+        return Ok(Json(serde_json::json!({
+            "sent": false,
+            "reason": "workspace_retired",
+            "message": "That workspace is retired, so no new sign-in help is issued. Reactivate the workspace first.",
+        })));
+    }
+
+    let token = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + chrono::Duration::hours(1);
+    sqlx::query("UPDATE password_resets SET used = true WHERE user_id = $1 AND used = false")
+        .bind(target_id)
+        .execute(&state.pool)
+        .await
+        .ok();
+    sqlx::query("INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)")
+        .bind(target_id)
+        .bind(&token)
+        .bind(expires_at)
+        .execute(&state.pool)
+        .await?;
+
+    if let Some(domain) = crate::security::probe_addr::harness_domain(&target_email) {
+        crate::email::record_withheld(
+            &state.pool,
+            "password reset email",
+            &target_email,
+            &format!("'{domain}' is a fleet-harness / reserved address"),
+        )
+        .await;
+        return Ok(Json(serde_json::json!({
+            "sent": false,
+            "withheld": true,
+            "reason": "reserved_address",
+            "message": format!("'{domain}' is a reserved test address, so nothing was sent. The reset code was still issued."),
+        })));
+    }
+
+    match crate::email::send_reset_email(
+        &state.pool,
+        tenant_id,
+        &target_email,
+        &token,
+        &target_name,
+    )
+    .await
+    {
+        Ok(()) => Ok(Json(serde_json::json!({
+            "sent": true,
+            "message": format!("A one-hour reset link is on its way to {target_email}."),
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "sent": false,
+            "reason": "send_failed",
+            "message": format!(
+                "The provider refused the message: {}",
+                e.chars().take(200).collect::<String>()
+            ),
+        }))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

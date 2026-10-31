@@ -984,6 +984,15 @@ pub fn create_router(
             "/api/v1/admin/email-log",
             get(email_template_handler::email_log),
         )
+        // The ACTION beside that history (cron 2026-10-31). The log tells the operator a customer's
+        // credentials mail was refused; until this route there was nothing to do about it from the
+        // panel — the customer who receives no mail from us cannot complete "forgot password"
+        // either. This mints a fresh reset token for that address and sends the app's own
+        // password_reset template through the same sender the public flow uses.
+        .route(
+            "/api/v1/admin/email-log/send-reset",
+            post(email_template_handler::admin_send_reset),
+        )
         // OCR - business card parsing
         //
         // The envelope is RAISED for this route alone: the customer app offers a 12 MB photo

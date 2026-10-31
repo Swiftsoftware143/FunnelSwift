@@ -2827,14 +2827,36 @@ async function bindEmailProvider() {
           hist.innerHTML = sumLine + '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ' real attempts \u2014 reserved/test addresses are not listed)</div>'
             + '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
             + '<th style="padding:2px 6px">When</th><th style="padding:2px 6px">To</th><th style="padding:2px 6px">Subject</th>'
-            + '<th style="padding:2px 6px">Result</th><th style="padding:2px 6px">Reason</th></tr></thead><tbody>'
+            + '<th style="padding:2px 6px">Result</th><th style="padding:2px 6px">Reason</th><th style="padding:2px 6px">Sign-in help</th></tr></thead><tbody>'
             + rows.map(r => '<tr style="border-top:1px solid #e2e8f0">'
               + '<td style="padding:2px 6px;color:#64748b">' + x(r.at ? new Date(r.at).toLocaleString() : '') + '</td>'
               + '<td style="padding:2px 6px">' + x(r.to || '') + '</td>'
               + '<td style="padding:2px 6px">' + x(r.subject || '') + '</td>'
               + '<td style="padding:2px 6px;color:' + colour(r.status) + '">' + x(word(r.status)) + '</td>'
-              + '<td style="padding:2px 6px;color:#b91c1c">' + x(r.detail || '') + '</td></tr>').join('')
+              + '<td style="padding:2px 6px;color:#b91c1c">' + x(r.detail || '') + '</td>'
+              + '<td style="padding:2px 6px"><button type="button" data-reset="' + x(r.to || '') + '" style="font-size:11px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer">Send reset</button></td></tr>').join('')
             + '</tbody></table>';
+          /* THE ACTION BESIDE THE HISTORY (cron 2026-10-31). A refusal in the list above names a
+             customer who received nothing; the panel used to leave the operator with no remedy but
+             "tell them to click Forgot password" — which a customer receiving no mail from us cannot
+             complete either. Each row now mints a fresh one-hour reset token for that address and
+             sends the app's own password_reset template (POST /admin/email-log/send-reset). */
+          hist.querySelectorAll('button[data-reset]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const addr = btn.getAttribute('data-reset') || '';
+              const label = btn.textContent;
+              btn.disabled = true; btn.textContent = 'Sending\u2026';
+              try {
+                const res = await api('/admin/email-log/send-reset', { method: 'POST', body: JSON.stringify({ email: addr }) });
+                btn.textContent = (res && res.sent) ? 'Sent \u2713' : 'Not sent';
+                showToast((res && res.message) || 'The server sent no answer', (res && res.sent) ? 'success' : 'error', false);
+              } catch (e) {
+                btn.textContent = label;
+                showToast('Could not send sign-in help: ' + e.message, 'error', false);
+              }
+              btn.disabled = false;
+            });
+          });
         }
       } catch (e) { hist.innerHTML = '<div style="color:#b91c1c;font-size:12px">Could not load the send history: ' + x(e.message) + '</div>'; }
     }
