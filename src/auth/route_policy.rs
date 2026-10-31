@@ -30,7 +30,15 @@
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 218 `.route(..)` mounts / 217 unique paths, classified three ways:
+//! 219 `.route(..)` mounts / 218 unique paths, classified three ways:
+//!
+//! (The 2026-10-31 recount folds in ONE private `/api` mount, `POST
+//! /api/v1/admin/email-log/send-reset` — the operator console's remedy for a credentials email
+//! that never left, commit 4593f8b. It is a plain `require_auth` route on the operator surface
+//! (role-checked by `admin_surface_denied` like its 38 neighbours), so nothing about the boundary
+//! moved: only the numbers. That commit landed the route without bumping this census, which left
+//! `cargo test` RED on HEAD from 06:38 until this line — the same shape the 2026-10-25 entry
+//! below records, and the reason the test prints WHICH bucket moved.)
 //!
 //! (The 2026-10-30 recount folded in ONE private `/api` mount added after the 2026-10-24 numbers —
 //! no boundary moved, only the count. The same day's pricing page added ONE public mount,
@@ -38,15 +46,15 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   192 mounts  /api/**            191 unique after the duplicate `/api/v1/linkedin/auth`
+//!   193 mounts  /api/**            192 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     21        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header; the
 //!                                    public price list joined on 2026-10-30)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    168        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (38 of them `/api/v1/admin/**` = the operator surface,
+//!    169        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (39 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -355,7 +363,7 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 201 mounts, 176 of them on the API surface. If a route is
+    /// The census the module docs quote: 219 mounts, 193 of them on the API surface. If a route is
     /// added or removed, this test is the reminder to re-measure the docs above with it.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
@@ -383,7 +391,7 @@ mod tests {
                 private,
                 served
             ),
-            (218, 217, 192, 21, 3, 168, 26),
+            (219, 218, 193, 21, 3, 169, 26),
             "the census in the module docs no longer matches the router"
         );
     }
