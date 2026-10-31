@@ -810,21 +810,37 @@ pub async fn team_members(
     .fetch_all(&state.pool)
     .await?;
 
+    // WHO IS THE OWNER (2026-10-31). `users.role` cannot answer it: the public signup mints the
+    // workspace's first user as plain `user`, the same vocabulary a teammate created by
+    // `POST /api/v1/team/invite` gets. The door that recognises the owner uses `is_workspace_creator`
+    // — the OLDEST active person in the workspace — so the list this pane renders must use the SAME
+    // rule, or the screen and the authority disagree. Measured before this: the team pane printed a
+    // bare "user" for the owner and for every member alike.
+    let creator: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE tenant_id = $1 AND is_active = true \
+         ORDER BY created_at, id LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
     let members: Vec<serde_json::Value> = rows
         .iter()
         .map(|r| {
             let name: String = r.try_get("name").unwrap_or_default();
             let email: String = r.try_get("email").unwrap_or_default();
+            let id = r.try_get::<Uuid, _>("id").ok();
             let label = if name.trim().is_empty() {
                 email.clone()
             } else {
                 name
             };
             json!({
-                "id": r.try_get::<Uuid, _>("id").map(|v| v.to_string()).unwrap_or_default(),
+                "id": id.map(|v| v.to_string()).unwrap_or_default(),
                 "name": label,
                 "email": email,
                 "role": r.try_get::<String, _>("role").unwrap_or_default(),
+                "is_owner": id.is_some() && id == creator,
             })
         })
         .collect();
@@ -839,9 +855,22 @@ pub async fn team_members(
     let used = members.len() as i64;
     let seat_limit = remaining.map(|free| used + free);
 
+    // WHAT AN UPGRADE COULD ACTUALLY BUY (2026-10-31). The pane told every customer "every seat is
+    // taken. Upgrade to add a teammate" — and on this install EVERY plan carries
+    // `max_team_members = 1`, so the upgrade it promised adds no seat at all. The ceiling of the
+    // catalogue travels with the list so the screen only offers a link a plan can honour.
+    let best_limit: Option<i64> =
+        sqlx::query_scalar("SELECT MAX(max_team_members)::bigint FROM plans")
+            .fetch_one(&state.pool)
+            .await?;
+
     Ok(Json(json!({
         "members": members,
-        "seats": { "used": used, "limit": seat_limit }
+        "seats": {
+            "used": used,
+            "limit": seat_limit,
+            "best_limit": best_limit
+        }
     })))
 }
 

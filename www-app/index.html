@@ -5411,6 +5411,18 @@ function LM(){
    POST /api/v1/team/invite. The server owns both decisions this screen must not duplicate: who may
    invite (a workspace admin) and whether a seat is free (the plan's max_team_members). A refusal
    arrives as the server's own sentence and is printed verbatim. */
+/* A member's role IN WORDS (2026-10-31). The fleet vocabulary is WorkflowSwift's/missedcall's
+   `teamRoleLabel`: the workspace OWNER is not a role at all — this app's signup mints the first user
+   as plain `user`, the same value the invite door gives a teammate — so the server marks it
+   `is_owner` (the oldest active person, the same rule the invite door enforces). Never print the bare
+   enum word ("user") on this screen. */
+function teamRoleWord(m){
+  if(!m) return "";
+  if(m.is_owner) return "Owner";
+  var r=String(m.role||"");
+  var w={user:"Member",team_member:"Member",company_admin:"Company admin",business_user:"Business user",admin:"Admin",super_admin:"Super admin",agency_admin:"Agency admin",owner:"Owner"}[r];
+  return w || r.replace(/_/g," ") || "Member";
+}
 function TMLOAD(msg,kind){
   var box=$("lm-team"); if(!box) return;
   api("/api/v1/team/members").then(function(d){
@@ -5420,7 +5432,7 @@ function TMLOAD(msg,kind){
     ms.forEach(function(m){
       h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9">'
         +'<span>'+X(m.name||m.email)+' <span style="color:#94a3b8;font-size:11px">'+X(m.email||"")+'</span></span>'
-        +'<span style="color:#94a3b8;font-size:11px">'+X(String(m.role||"user").replace(/_/g," "))+'</span></div>';
+        +'<span style="color:#94a3b8;font-size:11px">'+X(teamRoleWord(m))+'</span></div>';
     });
     h+='</div>';
     /* THE ALLOWANCE IS PRINTED, NOT DISCOVERED (2026-10-31). `GET /api/v1/team/members` now carries
@@ -5432,9 +5444,13 @@ function TMLOAD(msg,kind){
     var full=false;
     if(seats && seats.limit!==null && typeof seats.limit!=="undefined"){
       full=Number(seats.used)>=Number(seats.limit);
+      /* An upgrade is only offered when a plan can actually deliver a seat: `best_limit` is the
+         highest `max_team_members` in the catalogue (2026-10-31 — every plan carries 1 here, so the
+         "Upgrade to add a teammate" link promised a purchase that adds nothing). */
+      var canUpgrade=full && seats.best_limit!==null && typeof seats.best_limit!=="undefined" && Number(seats.best_limit)>Number(seats.limit);
       h+='<div style="font-size:12px;margin-top:8px;color:'+(full?"#b45309":"#334155")+'">'
         +'<strong>'+Number(seats.used)+' of '+Number(seats.limit)+'</strong> seat'+((Number(seats.limit)===1)?"":"s")+' used on this plan'
-        +(full?' — every seat is taken. <a href="#" id="tm-upgrade" style="color:#2563eb">Upgrade to add a teammate</a>.':"")
+        +(full?(canUpgrade?' — every seat is taken. <a href="#" id="tm-upgrade" style="color:#2563eb">Upgrade to add a teammate</a>.':' — every seat is taken; no plan here includes a second seat yet.'):"")
         +'</div>';
     } else if(seats){
       h+='<div style="font-size:12px;margin-top:8px;color:#334155"><strong>'+Number(seats.used)+'</strong> seat'+((Number(seats.used)===1)?"":"s")+' used — this plan sets no team limit.</div>';
