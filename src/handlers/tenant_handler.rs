@@ -191,6 +191,21 @@ pub async fn list_tenants(
     // surfaces cannot drift apart again.
     let mut tenants: Vec<serde_json::Value> = Vec::with_capacity(rows.len());
     for r in rows {
+        // A HARNESS THAT NEVER SENT THE HEADER IS STILL NOT A CUSTOMER (measured live 2026-10-31).
+        // `tenants.probe_harness` is stamped ONLY from the `X-Swift-Harness` request header, and
+        // the fleet's own walkers do not send it — so this install's Tenants list carried
+        // "Tenancy Canary A/B" as if a customer owned them (13 rows, 3 of them machinery). The
+        // OWNER ADDRESS is the second signal the signup door always has: an address on a
+        // reserved/harness domain can never receive mail (it is suppressed at source) and cannot
+        // be a real customer. Such a row is held back from the default list exactly like a tagged
+        // harness row, and published as `reserved_owner` so `?include_probe=1` can badge it.
+        let reserved_owner =
+            r.9.as_deref()
+                .map(crate::coreswift::is_reserved_test_email)
+                .unwrap_or(false);
+        if reserved_owner && !include_probe {
+            continue;
+        }
         let plan_assigned = r.4.is_some();
         let (plan_effective_name, plan_is_default) = if plan_assigned {
             (None, false)
@@ -216,6 +231,9 @@ pub async fn list_tenants(
             // used an ordinary-looking address read as a customer. COALESCEd to '' above so a
             // row minted before the column existed is empty, never null.
             "probe_harness": r.10,
+            // true => the owner's address is on a reserved/harness domain, so this workspace is
+            // machinery rather than a customer. Only reachable with `?include_probe=1`.
+            "reserved_owner": reserved_owner,
             // When anyone in this workspace last signed in (kanban 2026-10-27): the newest
             // `users.last_login_at` across its people. The operator's list had no way to tell a
             // workspace whose credentials mail went out and whose owner never came back from one
