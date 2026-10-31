@@ -111,9 +111,38 @@ pub async fn create_payout(
     let affiliate_user_id: Uuid = affiliate_user_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid affiliate_user_id".into()))?;
-    let amount = req["amount"].as_f64().unwrap_or(0.0);
+    // An amount is REQUIRED and must be positive. This used to default to 0.0, so a caller who
+    // omitted it recorded a real $0.00 payout row the affiliate then saw in "My Payouts"
+    // (measured 2026-10-31: POST with no `amount` answered 201 and stored 0.00).
+    let amount = req["amount"]
+        .as_f64()
+        .filter(|a| a.is_finite() && *a > 0.0)
+        .ok_or_else(|| AppError::BadRequest("Enter an amount greater than zero.".into()))?;
     let status = req["status"].as_str().unwrap_or("pending");
+    if !matches!(status, "pending" | "paid") {
+        return Err(AppError::BadRequest(
+            "status must be pending or paid".into(),
+        ));
+    }
     let method = req["method"].as_str();
+
+    // The id must belong to an affiliate who actually has a linked account. Without this the
+    // INSERT hit the `users(id)` foreign key and answered a bare 500 "Database error" for a
+    // typo'd or stale id (measured 2026-10-31) — an operator deserves the reason, not a server
+    // error. The UI's own picker only offers linked affiliates; the API is now just as strict.
+    let linked: Option<(i32,)> = sqlx::query_as(
+        "SELECT 1::int FROM affiliates a JOIN users u ON u.id = a.user_id \
+         WHERE a.user_id = $1 LIMIT 1",
+    )
+    .bind(affiliate_user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    if linked.is_none() {
+        return Err(AppError::UnprocessableEntity(
+            "That affiliate has no linked user account, so a payout cannot be recorded against them."
+                .into(),
+        ));
+    }
 
     sqlx::query(
         "INSERT INTO affiliate_payouts (id, affiliate_user_id, amount, method, status) VALUES ($1, $2, $3, $4, $5)"
