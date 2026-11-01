@@ -1,5 +1,6 @@
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
+use crate::handlers::plan_handler::set_active_plan;
 use crate::state::AppState;
 use axum::{
     body::Bytes,
@@ -393,6 +394,103 @@ pub async fn create_checkout_session(
             )))
         }
     };
+
+    // A FREE TIER IS NOT A PURCHASE (2026-11-01). Both products this app sells carry a $0 plan
+    // (Capture Free, Kinetic Free) and the app tells a customer to move between them in its own
+    // words: the plan gate refuses a Kinetic card on Capture Free with "Cards is not included in
+    // Capture Free. The Kinetic Free plan includes it — open Upgrade to switch to it."
+    // (`features::not_included`). The Upgrade screen rendered that non-current free tier as a chip
+    // with NO control at all, so the instruction ended on a dead end nobody could complete — and on
+    // this installation, where `payment_providers` is empty, the press filed an operator request
+    // for a plan that costs nothing (measured live before this arm: POST /checkout/create
+    // {plan_slug:"kinetic-free"} answered 503 payment_provider_not_configured + a plan_requests
+    // row). Nothing can be charged for a $0 plan, so the absence of a payment provider must not be
+    // what decides whether a workspace may move onto one.
+    //
+    // Scope is deliberately narrow, for two reasons that are both about money:
+    //   * only a plan whose price AND annual price are both 0 — a real tier still goes to Stripe;
+    //   * only when what the workspace is LEAVING is also a $0 plan. A paid workspace asking for a
+    //     free tier is a downgrade with a paid term attached to it, so it keeps the existing path
+    //     (refused here, recorded as a request, resolved by the operator) rather than silently
+    //     cancelling what the customer paid for.
+    {
+        let mut wanted_slug = payload["plan_slug"]
+            .as_str()
+            .or_else(|| payload["plan"].as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if wanted_slug.is_empty() {
+            if let Some(pid) = payload["purchasable_id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok())
+            {
+                if let Ok(Some(slug)) =
+                    sqlx::query_scalar::<_, String>("SELECT slug FROM plans WHERE id = $1")
+                        .bind(pid)
+                        .fetch_optional(&state.pool)
+                        .await
+                {
+                    wanted_slug = slug;
+                }
+            }
+        }
+        if !wanted_slug.is_empty() {
+            let free_plan: Option<(Uuid, String, f64, f64)> = sqlx::query_as(
+                "SELECT id, name, COALESCE(price, 0)::float8, COALESCE(annual_price, 0)::float8 \
+                 FROM plans WHERE slug = $1",
+            )
+            .bind(&wanted_slug)
+            .fetch_optional(&state.pool)
+            .await?;
+            if let Some((free_plan_id, free_name, free_price, free_annual)) = free_plan {
+                if free_price <= 0.0 && free_annual <= 0.0 {
+                    let current = crate::plan_movement::current_plan(&state.pool, tenant_id).await;
+                    let leaving_paid = current
+                        .as_ref()
+                        .map(|(_, price)| *price > 0.0)
+                        .unwrap_or(false);
+                    if !leaving_paid {
+                        if let Some((current_slug, _)) = current.as_ref() {
+                            if *current_slug == wanted_slug {
+                                return Ok((
+                                    StatusCode::OK,
+                                    Json(json!({
+                                        "status": "already_on_plan",
+                                        "configured": false,
+                                        "message": format!(
+                                            "This workspace is already on the {free_name} plan — nothing was changed and nothing was charged."
+                                        ),
+                                        "plan": { "name": free_name, "slug": wanted_slug, "price": 0.0 },
+                                    })),
+                                ));
+                            }
+                        }
+                        let (_, new_slug) =
+                            set_active_plan(&state.pool, tenant_id, free_plan_id).await?;
+                        tracing::info!(
+                            tenant = %tenant_id,
+                            to = %new_slug,
+                            from = current.as_ref().map(|(s, _)| s.as_str()).unwrap_or("(none)"),
+                            "checkout/create: workspace switched itself onto a $0 plan (no payment provider involved)"
+                        );
+                        return Ok((
+                            StatusCode::OK,
+                            Json(json!({
+                                "status": "switched",
+                                "configured": false,
+                                "message": format!(
+                                    "You are now on the {free_name} plan. Nothing was charged — a plan that costs nothing needs no payment provider. Anything above the new plan's allowances stops working until you move back."
+                                ),
+                                "plan": { "name": free_name, "slug": new_slug, "price": 0.0 },
+                                "from": current.as_ref().map(|(s, _)| json!({ "slug": s })),
+                            })),
+                        ));
+                    }
+                }
+            }
+        }
+    }
 
     let configured = resolve_plan_provider(&state, tenant_id).await?;
 

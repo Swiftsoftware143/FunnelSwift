@@ -376,7 +376,17 @@ function renderUpgrade(plans){
     if(isCurrent){
       html += '<div style="text-align:center;padding:10px;background:#6366f1;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Current Plan</div>';
     } else if(price <= 0){
-      html += '<div data-free-plan="'+esc(p.slug)+'" style="text-align:center;padding:10px;background:#eef2ff;color:#4338ca;border-radius:8px;font-size:13px;font-weight:600">Free plan — nothing to pay</div>';
+      // A $0 TIER IS SWITCHABLE (2026-11-01). This cell used to be a dead chip — "Free plan —
+      // nothing to pay" with no control — because `POST /api/v1/checkout/create` refused a $0 plan
+      // ("That plan costs nothing"). But the APP ITSELF tells a customer to make exactly this move:
+      // the card gate refuses a Kinetic card on Capture Free with "The Kinetic Free plan includes
+      // it — open Upgrade to switch to it.", and the operator's plan-request queue then had to
+      // grant a plan that costs nothing. The server now switches a workspace between two $0 tiers
+      // directly (see `create_checkout_session`: price 0 AND annual 0, and only when the plan being
+      // left is also $0), so the chip becomes the control the app's own sentence promises. A paid
+      // workspace still cannot reach this branch — every $0 row it could pick shows here, but the
+      // server refuses the paid→free downgrade and keeps it on the operator path.
+      html += '<button data-switch-plan="'+esc(p.slug)+'" onclick="switchFreePlan(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#fff;color:#4338ca;border:1px solid #6366f1;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Switch to this plan</button>';
     } else {
       html += '<button data-upgrade-plan="'+esc(p.slug)+'" onclick="upgradeTo(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
     }
@@ -385,6 +395,51 @@ function renderUpgrade(plans){
   
   html += '</div></div>';
   $("ct").innerHTML = html;
+}
+
+/* Move a workspace onto a $0 tier, immediately. The server does this itself
+   (`create_checkout_session`: price 0 AND annual 0, and only when the plan being LEFT is also $0 —
+   a paid workspace asking for a free tier stays on the operator path). Two outcomes are real:
+   `switched` and `already_on_plan`; both answer 200 and both are true statements, so both are shown
+   as the server wrote them rather than re-worded here. The plan the page prints afterwards is the
+   one `/auth/me` now reports, so the header, the plan cards' "Current Plan" marker and the
+   dashboard's plan strip all move together — a reload cannot disagree with what the customer was
+   just told. */
+function switchFreePlan(slug){
+  var planObj = PLANS[slug] || null;
+  var label = (planObj && planObj.name) ? planObj.name : slug;
+  if(!confirm('Switch this workspace to the ' + label + ' plan?\n\n' +
+      'Nothing is charged \u2014 this plan costs nothing. The change is immediate: the allowances ' +
+      'listed on the cards above apply from now on, so anything above them stops working until you ' +
+      'switch back.')) return;
+  try {
+    var token = T || '';
+    fetch(window.location.origin+'/api/v1/checkout/create', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({plan_slug:slug, billing_cycle:'month'})
+    }).then(function(r){
+      return r.text().then(function(t){
+        var d = {};
+        try { d = JSON.parse(t); } catch(e) { d = { _raw: String(t || '').slice(0, 200) }; }
+        d._status = r.status; d._ok = r.ok; return d;
+      });
+    }).then(function(d){
+      if(d && (d.status === 'switched' || d.status === 'already_on_plan')){
+        PREQ_MSG = { ok:true, text: d.message || ('You are now on the ' + label + ' plan. Nothing was charged.') };
+        var paint = function(){ PREQ_OFFER = null; LPU(); window.scrollTo(0,0); };
+        if(typeof api === 'function'){
+          api('/api/v1/auth/me').then(function(u){ if(u && !u.error) window.U = u; paint(); });
+        } else { paint(); }
+        return;
+      }
+      alert('The plan could not be switched \u2014 nothing was charged.\n\n' +
+        ((d && (d.message || d.error || d._raw)) || ('the server answered ' + ((d && d._status) || 'no reply'))));
+    }).catch(function(e){
+      alert('The plan could not be switched (' + ((e && e.message) ? e.message : e) +
+        '). Nothing was charged \u2014 please check your connection and try again.');
+    });
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 function upgradeTo(slug){
@@ -444,6 +499,27 @@ function upgradeTo(slug){
       if(data && data.message) {
         var operatorMsg = /provider|not configured/i.test(data.message);
         if(operatorMsg && PLANS[slug]){
+          // THE REFUSAL ALREADY FILED IT (measured live 2026-11-01 in Chromium on this app).
+          // `POST /api/v1/checkout/create` answers 503 with `request_recorded: true` plus the row it
+          // wrote, so the SERVER records the ask in the very press that refuses the checkout. This
+          // page ignored that flag and posted /api/v1/plan-requests a SECOND time; the server deduped
+          // the twin onto the row it had just written, `requestPlan` read `status: 'existing'`, and
+          // the customer's FIRST press was answered "Your request … is already with our team" — as if
+          // they had asked before, on a workspace that had never asked. Read the server's own flag:
+          // confirm what actually happened, and file through /plan-requests only when it did NOT
+          // record the request (a pre-flag install, or a refusal that filed nothing).
+          var recorded = (data.request_recorded === true);
+          var prq = (data.plan_request) || {};
+          var askedName = prq.plan_name || PLANS[slug].name || slug;
+          if(recorded){
+            PREQ_OFFER = null;
+            PREQ_MSG = { ok:true, text: (prq.already_open === true)
+              ? 'You already have an open request for the ' + askedName + ' plan — our team is on it, and its live status is listed below.'
+              : 'Request recorded — nothing was charged. Our team will move this workspace to the ' + askedName + ' plan and confirm here; its live status is listed below.' };
+            loadRequests();
+            window.scrollTo(0,0);
+            return;
+          }
           PREQ_OFFER = { slug: slug, name: PLANS[slug].name || slug };
           PREQ_MSG = { ok:true, text:'Upgrades are not open on this workspace yet — nothing was charged.' };
           loadRequests();
