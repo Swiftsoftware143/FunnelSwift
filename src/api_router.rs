@@ -851,7 +851,11 @@ pub fn create_router(
         )
         .route(
             "/api/v1/payment-providers/:provider_type",
-            delete(checkout_handler::delete_payment_provider),
+            delete(checkout_handler::delete_payment_provider)
+                // Pause/resume WITHOUT destroying the stored key and signing secret. Every read of
+                // `payment_providers` filters `is_active = true`, so this is the whole on/off
+                // switch for taking money and it previously had no writer at all.
+                .patch(checkout_handler::set_payment_provider_active),
         )
         // kanban t_6a192c06 — the operator's own key check. A read-only Stripe call that answers
         // whether a key works BEFORE a customer finds out for them.

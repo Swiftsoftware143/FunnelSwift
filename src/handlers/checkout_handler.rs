@@ -101,6 +101,15 @@ pub async fn upsert_payment_provider(
         .unwrap_or("")
         .trim()
         .to_string();
+    // `is_active` is the column every READ of this table filters on (`resolve_plan_provider`,
+    // the webhook secret lookup and the subscription upsert all require `is_active = true`), and
+    // the write path used to hardcode `true` on both the INSERT and the ON CONFLICT arm. The
+    // console renders an Active/Inactive badge for a state nothing could ever reach, and the only
+    // way an operator could STOP payments was to DELETE the row — which also destroys the encrypted
+    // key and the webhook signing secret, so pausing cost a full re-entry of both secrets.
+    // Sent by the caller when given (so a pause is a real pause); absent means "active", which is
+    // what every other caller of this route expects today.
+    let is_active = payload["is_active"].as_bool().unwrap_or(true);
     // `payment_providers.tenant_id` REFERENCES `tenants(id)`. This upsert is the only writer the
     // operator's Provider Keys screen drives, and that screen runs on the PLATFORM ADMIN role, which
     // is exempt from `global_auth`'s workspace-existence gate — so the workspace has to be checked
@@ -125,17 +134,18 @@ pub async fn upsert_payment_provider(
     // (tenant_id, provider_type) and returned a 500.
     sqlx::query(
         "INSERT INTO payment_providers (id, tenant_id, provider_type, api_key, webhook_secret, is_active)
-         VALUES ($1, $2, $3, $4, $5, true)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (tenant_id, provider_type) DO UPDATE SET
              api_key = COALESCE(NULLIF(EXCLUDED.api_key, ''), payment_providers.api_key),
              webhook_secret = COALESCE(NULLIF(EXCLUDED.webhook_secret, ''), payment_providers.webhook_secret),
-             is_active = true",
+             is_active = EXCLUDED.is_active",
     )
     .bind(Uuid::new_v4())
     .bind(tenant_id)
     .bind(provider)
     .bind(&stored_api_key)
     .bind(&stored_secret)
+    .bind(is_active)
     .execute(&state.pool)
     .await?;
     Ok((
@@ -164,6 +174,44 @@ pub async fn delete_payment_provider(
         return Err(AppError::NotFound("Payment provider not found".into()));
     }
     Ok(Json(json!({"message": "Provider deleted"})))
+}
+/// `PATCH /api/v1/payment-providers/:provider_type` — pause or resume a saved provider WITHOUT
+/// destroying its credentials.
+///
+/// Every read of `payment_providers` requires `is_active = true`, so this one boolean is the whole
+/// on/off switch for taking money. It had no writer at all: `upsert_payment_provider` hardcoded
+/// `true`, and the console showed an Active/Inactive badge next to a Delete button and nothing else.
+/// An operator who wanted to stop charging (provider outage, rotating to a new account, a key that
+/// must not be live yet) had to delete the row and re-paste both secrets afterwards.
+///
+/// Body: `{"is_active": true|false}`. 404 when the caller's workspace has no such row.
+pub async fn set_payment_provider_active(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(provider_type): Path<String>,
+    Json(payload): Json<Value>,
+) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
+    let active = payload["is_active"]
+        .as_bool()
+        .ok_or_else(|| AppError::Validation("is_active (true or false) is required".into()))?;
+    let result = sqlx::query(
+        "UPDATE payment_providers SET is_active = $1 \
+         WHERE provider_type = $2 AND tenant_id = $3",
+    )
+    .bind(active)
+    .bind(&provider_type)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Payment provider not found".into()));
+    }
+    Ok(Json(json!({
+        "message": if active { "Provider activated" } else { "Provider paused" },
+        "provider_type": provider_type,
+        "is_active": active,
+    })))
 }
 /// WHICH payment provider funds a PLAN purchase (kanban t_ff1f0d6b, measured 2026-10-15).
 ///
@@ -229,6 +277,27 @@ async fn resolve_plan_provider(
 /// be read (it answers 503 `configured:false`). Skipping either gate would let this endpoint say
 /// "configured" for a press that would be refused, which is the drift the whole endpoint exists to
 /// prevent. `configured: true` therefore means exactly: a press reaches the provider.
+/// Whether this purchase is refused because a provider EXISTS but the operator PAUSED it, rather
+/// than because none is configured at all.
+///
+/// Pausing only became possible when `set_payment_provider_active` landed; before that every saved
+/// row was `is_active = true`, so "no active provider" always meant "none configured" and the
+/// operator instruction ("add a provider key") was always the right one. It is now one of TWO
+/// causes, and telling an operator to add a key when he has one and deliberately paused it sends
+/// him to re-enter a secret he already saved. Mirrors `resolve_plan_provider`'s two arms.
+async fn plan_provider_is_paused(state: &AppState, tenant_id: Uuid) -> bool {
+    let q = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS( \
+             SELECT 1 FROM payment_providers pp \
+              WHERE pp.is_active = false \
+                AND (pp.tenant_id = $1 \
+                     OR pp.tenant_id IN (SELECT u.tenant_id FROM users u WHERE u.role = 'admin')))",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await;
+    q.unwrap_or(false)
+}
 pub async fn checkout_status(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -547,6 +616,9 @@ pub async fn create_checkout_session(
             // it. Same invariant ADASwift already holds: "promising a row that does not exist is the
             // same class of lie as a 200 with no write".
             let request_recorded = plan_request.is_some();
+            // A paused provider is a DIFFERENT cause from an absent one; see
+            // `plan_provider_is_paused`.
+            let paused = plan_provider_is_paused(&state, tenant_id).await;
             // The buyer's sentence follows the same fact: the recording clause is only spoken when a
             // row exists. What a buyer needs comes first (nothing was charged; whether their ask was
             // taken) and NOTHING ELSE (2026-10-25). The operator's setup detail used to ride along in
@@ -579,16 +651,24 @@ pub async fn create_checkout_session(
                  be recorded this time. Press Upgrade again in a moment; if it keeps failing, contact \
                  support and name the plan above."
             };
-            tracing::error!(
-                "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
-                 no active provider owned by a platform-operator account either. OPERATOR: add a \
-                 provider key in the admin panel under Provider Keys / Payment providers on the \
-                 operator's own account; that key then funds every workspace's plan purchase."
-            );
+            if paused {
+                tracing::error!(
+                    "checkout/create REFUSED: a payment provider exists for tenant {tenant_id} but \
+                     is PAUSED (is_active = false), so no session was created. OPERATOR: resume it \
+                     in the admin panel under Provider Keys / Payment providers."
+                );
+            } else {
+                tracing::error!(
+                    "checkout/create REFUSED: no active payment provider for tenant {tenant_id}, and \
+                     no active provider owned by a platform-operator account either. OPERATOR: add a \
+                     provider key in the admin panel under Provider Keys / Payment providers on the \
+                     operator's own account; that key then funds every workspace's plan purchase."
+                );
+            }
             Ok((
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(json!({
-                    "error": "payment_provider_not_configured",
+                    "error": if paused { "payment_provider_paused" } else { "payment_provider_not_configured" },
                     // BUYER-FIRST (2026-10-22). This sentence is read by the CUSTOMER on the upgrade
                     // screen (`upgrade.js` paints the server's own `message` into the error panel), and
                     // it used to open by telling that customer how the platform operator configures
