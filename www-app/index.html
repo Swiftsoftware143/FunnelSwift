@@ -3145,7 +3145,12 @@ function LT(){
       var div=El("div",{"class":"tags-inline"});
       sys.forEach(function(t){
         var chk=El("input",{type:"checkbox","class":"sys-tag-cb",value:t.id,style:"margin-right:4px;cursor:pointer"});
-        var sp=El("span",{"class":"tag",style:"background:"+X(t.color||"#6366f1")+"20;color:"+X(t.color||"#6366f1")+";padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer",onclick:function(e){if(e.target.tagName!=="INPUT") MFT(t.id,true)}}, X(t.name)+' <span style="font-size:10px;opacity:.7">system</span>');
+        /* 2026-11-01: a customer's My Tags screen offered an editor for these, and the server
+           answers `403 Only admins can modify system tags` to every one of them (measured live).
+           The chip now explains instead of opening a form that cannot save; the operator's own
+           System Tags screen (LST, gated on U.is_admin) keeps the real editor. */
+        var sysEditable=!!(U&&U.is_admin);
+        var sp=El("span",{"class":"tag",title:sysEditable?"Shared with every workspace — a rename or recolour applies to all of them":(t.provisions_account?"Shared tag: applying it to a lead signs that lead up for "+String(t.source_app||"another Swift app")+"'s free plan":"Shared tag created by the administrator — it cannot be renamed from here"),style:"background:"+X(t.color||"#6366f1")+"20;color:"+X(t.color||"#6366f1")+";padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer",onclick:sysEditable?function(e){if(e.target.tagName!=="INPUT") MFT(t.id,true)}:function(){showMsg("This is a shared system tag — only a platform administrator can rename or recolour it.","mi")}}, X(t.name)+' <span style="font-size:10px;opacity:.7">system</span>');
         var row=El("span",{style:"display:inline-flex;align-items:center;margin:2px 4px"},[chk,sp]);
         div.appendChild(row);
       });
@@ -4843,10 +4848,18 @@ function RFT(id, t, groups, isSystem){
       mb.appendChild(info);
     }
     $("mf").appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
-    $("mf").appendChild(El("button",{"class":"btn",onclick:function(){ST(id,isSystem?"stags":"tags",isSystem)}},(id?"Save":"Create")));
+    $("mf").appendChild(El("button",{"class":"btn",onclick:function(){TAGSAVE(id,isSystem?"stags":"tags",isSystem)}},(id?"Save":"Create")));
   });
 }
-function ST(id,returnTab,isSystem){
+/* kanban 2026-11-01: this was `function ST(...)`, and the dashboard section declares
+   `var ST=null` (line ~1214) for the /dashboard/stats answer it paints from. Both are top-level
+   in the same classic script, so the `var ST=null` ASSIGNMENT ran after the hoisted function and
+   overwrote it -- `ST is not a function` on every click. Measured live in Chromium on a fresh
+   probe tenant: the tag modal's Create/Save threw `TypeError: ST is not a function` and answered
+   with no message at all, so a customer could NOT create a tag, rename one, or recolour one, and
+   the operator's System Tags screen could not either. Renamed to TAGSAVE; `ST` stays the stats
+   state every other reader expects. */
+function TAGSAVE(id,returnTab,isSystem){
   /* kanban t_f94a8a00: "" = "— No group —" = an explicit CLEAR on an update -- a null group_id alone
      means "keep the stored group" server-side, so the clear travels as clear_group:true. Both keys are
      omitted when the row has nothing to clear, so a no-touch save stays exactly the body it was. */
