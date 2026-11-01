@@ -204,6 +204,11 @@ tr:hover{background:#f8fafc}
   <!-- the workspace's OWN card performance: GET /api/v1/analytics/overview
        existed with no screen, so a tenant could not see its views or clicks at all. -->
   <a data-tab="analytics" onclick="S('analytics')">Analytics</a>
+  <!-- cron 2026-11-01: GET /api/v1/insights was live, tenant-scoped and answered ONE number, and
+       no console called it (grep -c insights over this file = 0) while the user guide tells a
+       customer to "track which source converts best via Insights". A backend route with no UI is a
+       defect, and so is a guide that promises a measurement the product cannot show. -->
+  <a data-tab="insights" onclick="S('insights')">Insights</a>
   <a data-tab="tags" onclick="S('tags')">My Tags</a>
   <a data-tab="tg" onclick="S('tg')">My Tag Groups</a>
   <!-- "My Affiliate" is the TENANT's own programme screen (join the programme, pick what you promote,
@@ -319,6 +324,7 @@ var helpContent={
   "campaigns":'<h4>Campaigns</h4><p>The campaigns this workspace runs, newest first. Each row carries a name, a type (for example <code>email</code>), a status and an optional description.</p><ul><li><strong>+ New campaign</strong> &mdash; name it, pick a type and a status, then <strong>Create campaign</strong>.</li><li><strong>Edit</strong> changes any of those fields; <strong>Delete</strong> removes the campaign for good and asks first.</li><li>Status is yours to set: <code>draft</code>, <code>active</code>, <code>paused</code> or <code>completed</code>. This screen records what your team is running &mdash; it does not send anything.</li></ul>',
   "analytics":'<h4>Analytics</h4><p>Views, clicks and shares for every card in this workspace, plus the visitors counted once per session. The table ranks your cards by views, so you can see which one earns the traffic. A card with no traffic yet does not appear until it is viewed. <strong>Analytics is part of the paid plans</strong> — on the free plan this screen shows the plans instead.'
   +'<p><strong>One card at a time.</strong> Every card has an <strong>Analytics</strong> button. It opens that card\'s own numbers: views, clicks, shares, unique visitors, views today and this week, a day-by-day table, where the views came from, and what visitors did. The same panel holds the <strong>campaign labels</strong> (source, medium, campaign, content, term) that are saved on the card, and the <strong>tracking link</strong> to share \u2014 the labels ride in that link\'s query string, so each visit it brings is filed under them and shows up in the labelled-visits list. Saving re-reads the link from the server, so the link shown is the one stored.</p>',
+  "insights":'<h4>Insights</h4><p>Which traffic source actually converts, measured from your own leads. Pick 7, 30 or 90 days; every lead counts under the <strong>source</strong> recorded when it was captured &mdash; give each channel its own link slug and the comparison is per channel. A lead with no source is counted as <code>(direct)</code>, so the rows always add up to the window total.</p><ul><li><strong>Converted</strong> counts leads whose status is <code>converted</code>. <code>qualified</code> is interest, not a customer, so it is not counted here.</li><li><strong>Day by day</strong> is every day in the window that captured at least one lead; <strong>Where they stand</strong> is the status mix of the same leads.</li></ul>',
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
   "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — admin-managed system tags are shared with every account</li><li><strong>Status</strong> tracks progress (the leads list badge and the Edit modal both edit it): new → contacted → qualified → converted → lost. The tenant pipeline on the <strong>Lead Stages</strong> screen is a separate field (Stage).</li><li><strong>Import CSV / Export CSV</strong> &mdash; both buttons use the same columns (Name, Email, Phone, Company, Source, Stage, Status, Score, Notes), so a file you exported can be imported back. Import is part of the plan&rsquo;s import/export entitlement (Agency): it refuses before writing a single row when the plan does not carry it or the file would not fit, and it reports how many rows were new, already present, or unreadable.</li></ul>',
   "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Every card has a public URL, and they all live on the card host — <b>www.kntcrd.com</b> — not on the address you are signed in to:</p><ul><li><code>www.kntcrd.com/k/slug</code> — Kinetic Card (original)</li><li><code>www.kntcrd.com/b/slug</code> — Bio Link</li><li><code>www.kntcrd.com/c/slug</code> — Digital Business Card</li><li><code>www.kntcrd.com/m/slug</code> — Micro Page</li><li><code>www.kntcrd.com/f/slug</code> — Mini Funnel</li><li><code>www.kntcrd.com/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
@@ -395,7 +401,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",analytics:"Analytics",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms"};
+var TI={dashboard:"Dashboard",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -754,7 +760,7 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,wtl:LWTL,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN};
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,wtl:LWTL,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN,insights:LINS};
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
@@ -4534,6 +4540,54 @@ function LAAN(){
       +X((e&&e.message)||"unknown error")+'</p></div>';
   });
 }
+/* ── Insights: WHICH SOURCE CONVERTS (cron 2026-11-01) ─────────────────────────────────────────
+   GET /api/v1/insights answered one number and no console called it, while the user guide tells a
+   customer to compare traffic sources "via Insights". This renders the measurement that route now
+   returns: every source with its leads, converted count and rate, the daily trend and the status
+   mix. No number here is computed in the browser — the server's figure is what is shown. */
+function LINS(days){
+  var win=days||30;
+  function n(v){return (typeof v==="number")?v:(parseInt(v,10)||0);}
+  function stat(label,val){
+    return '<div class="cc" style="flex:1;min-width:130px;margin:0">'
+      +'<p style="margin:0;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.04em">'+label+'</p>'
+      +'<p style="margin:6px 0 0;font-size:24px;font-weight:700">'+val+'</p></div>';
+  }
+  function winbtn(k,l){return '<button class="btn btn-sm'+(k===win?'':' btn-ghost')+'" onclick="LINS('+k+')">'+l+'</button>';}
+  api("/api/v1/insights?days="+win).then(function(d){
+    d=d||{};
+    var src=Array.isArray(d.sources)?d.sources:[];
+    var rows=src.map(function(s){
+      return '<tr><td>'+X(s.source||"(direct)")+'</td>'
+        +'<td style="text-align:right">'+n(s.leads)+'</td>'
+        +'<td style="text-align:right">'+n(s.converted)+'</td>'
+        +'<td style="text-align:right">'+n(s.conversion_rate)+'%</td>'
+        +'<td>'+(s.last_lead_at?X(String(s.last_lead_at).slice(0,16).replace("T"," ")):'&mdash;')+'</td></tr>';
+    }).join("");
+    var dd=Array.isArray(d.by_day)?d.by_day:[];
+    var drows=dd.map(function(x){
+      return '<tr><td>'+X(x.day||"")+'</td><td style="text-align:right">'+n(x.leads)+'</td></tr>';
+    }).join("");
+    var st=Array.isArray(d.statuses)?d.statuses:[];
+    var srows=st.map(function(x){
+      return '<tr><td>'+X(x.status||"(unset)")+'</td><td style="text-align:right">'+n(x.leads)+'</td></tr>';
+    }).join("");
+    $("ct").innerHTML='<div class="cc"><h3>Insights</h3>'
+      +'<p style="color:#64748b;font-size:13px;margin-bottom:10px">Which traffic source actually converts. Every lead counts under the source recorded when it was captured &mdash; give each channel its own link slug and the comparison is per channel.</p>'
+      +'<div style="display:flex;gap:8px;margin-bottom:14px">'+winbtn(7,'7 days')+winbtn(30,'30 days')+winbtn(90,'90 days')+'</div>'
+      +'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">'
+      +stat('Leads in window',n(d.window_leads))+stat('Converted',n(d.converted))
+      +stat('Conversion rate',n(d.conversion_rate)+'%')+stat('All-time leads',n(d.total_leads))
+      +'</div>'
+      +(rows?'<h4 style="margin:0 0 8px">By source</h4><table><tr><th>Source</th><th style="text-align:right">Leads</th><th style="text-align:right">Converted</th><th style="text-align:right">Rate</th><th>Last lead</th></tr>'+rows+'</table>'
+            :'<p style="color:#64748b;padding:18px;text-align:center">No leads captured in the last '+win+' days. Share a card or a lead form and the source it came from appears here.</p>')
+      +(drows?'<h4 style="margin:18px 0 8px">Day by day</h4><table><tr><th>Day</th><th style="text-align:right">Leads</th></tr>'+drows+'</table>':'')
+      +(srows?'<h4 style="margin:18px 0 8px">Where they stand</h4><table><tr><th>Status</th><th style="text-align:right">Leads</th></tr>'+srows+'</table>':'')
+      +'</div>';
+  }).catch(function(e){
+    $("ct").innerHTML='<div class="cc"><h3>Insights</h3><p style="color:#dc2626">Could not read your insights: '+X((e&&e.message)||"unknown error")+'</p></div>';
+  });
+}
 function LW(){
   api("/api/v1/webhooks").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
@@ -5634,7 +5688,7 @@ function SG(id,returnTab,isSystem){
 
 
 </script>
-<script src="/upgrade.js?v=20261030a"></script>
+<script src="/upgrade.js?v=20261101a"></script>
 <!-- Cookie Consent Banner -->
 <div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#0f172a;color:#e2e8f0;z-index:99999;padding:16px 24px;font-family:system-ui,sans-serif;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.4);display:none">
   <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
