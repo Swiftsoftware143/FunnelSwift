@@ -376,17 +376,28 @@ function renderUpgrade(plans){
     if(isCurrent){
       html += '<div style="text-align:center;padding:10px;background:#6366f1;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Current Plan</div>';
     } else if(price <= 0){
-      // A $0 TIER IS SWITCHABLE (2026-11-01). This cell used to be a dead chip — "Free plan —
-      // nothing to pay" with no control — because `POST /api/v1/checkout/create` refused a $0 plan
-      // ("That plan costs nothing"). But the APP ITSELF tells a customer to make exactly this move:
-      // the card gate refuses a Kinetic card on Capture Free with "The Kinetic Free plan includes
-      // it — open Upgrade to switch to it.", and the operator's plan-request queue then had to
-      // grant a plan that costs nothing. The server now switches a workspace between two $0 tiers
-      // directly (see `create_checkout_session`: price 0 AND annual 0, and only when the plan being
-      // left is also $0), so the chip becomes the control the app's own sentence promises. A paid
-      // workspace still cannot reach this branch — every $0 row it could pick shows here, but the
-      // server refuses the paid→free downgrade and keeps it on the operator path.
-      html += '<button data-switch-plan="'+esc(p.slug)+'" onclick="switchFreePlan(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#fff;color:#4338ca;border:1px solid #6366f1;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Switch to this plan</button>';
+      // A $0 TIER IS SWITCHABLE — from ANOTHER $0 TIER (2026-11-01). This cell used to be a dead
+      // chip — "Free plan — nothing to pay" with no control — because `POST /api/v1/checkout/create`
+      // refused a $0 plan ("That plan costs nothing"). But the APP ITSELF tells a customer to make
+      // exactly this move: the card gate refuses a Kinetic card on Capture Free with "The Kinetic
+      // Free plan includes it — open Upgrade to switch to it.", and the operator's plan-request
+      // queue then had to grant a plan that costs nothing. The server now switches a workspace
+      // between two $0 tiers directly (see `create_checkout_session`), so the chip becomes the
+      // control the app's own sentence promises.
+      //
+      // A PAYING workspace is the other case, and it is NOT a switch (2026-11-01). `checkout/create`
+      // refuses a paid→free move on purpose — it would cancel a term the customer already paid for —
+      // so pressing "Switch" there answered 503 payment_provider_not_configured, and before this
+      // change a $0 tile offered a paying customer nothing at all. `POST /api/v1/plan-requests` now
+      // accepts a $0 plan from a paid workspace, so the tile ASKS instead: the request lands in the
+      // queue the operator already works, and the screen says plainly that the team will make the
+      // move. Nobody is charged either way.
+      var onPaidPlan = !!(cp && Number(cp.price) > 0);
+      if(onPaidPlan){
+        html += '<button data-request-free="'+esc(p.slug)+'" onclick="requestPlan(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#fff;color:#4338ca;border:1px solid #6366f1;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Request this plan</button>';
+      } else {
+        html += '<button data-switch-plan="'+esc(p.slug)+'" onclick="switchFreePlan(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#fff;color:#4338ca;border:1px solid #6366f1;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Switch to this plan</button>';
+      }
     } else {
       html += '<button data-upgrade-plan="'+esc(p.slug)+'" onclick="upgradeTo(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
     }

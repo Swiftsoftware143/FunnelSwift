@@ -78,9 +78,22 @@ pub async fn create(
     let (plan_name, price) =
         plan.ok_or_else(|| AppError::NotFound(format!("No plan with slug '{slug}'")))?;
     if price <= 0.0 {
-        return Err(AppError::BadRequest(
-            "That plan costs nothing — there is nothing to request.".into(),
-        ));
+        // A $0 PLAN IS NOT A PURCHASE — but it can be a DOWNGRADE (2026-11-01). The flat refusal
+        // here was right for a workspace already running on a $0 tier (there is nothing to buy, and
+        // `checkout/create` moves it between two $0 tiers itself), and WRONG for a workspace LEAVING
+        // a paid plan: `checkout/create` deliberately refuses a paid→free move (it would cancel a
+        // term the customer already paid for), and this endpoint refused the ask too — so a paying
+        // customer had NO working control for "put me on the free plan" anywhere in the console. The
+        // tile said "Switch to this plan" only after 2026-11-01, and pressing it on a paid workspace
+        // answered 503 payment_provider_not_configured. Record the ask instead: nothing is charged
+        // by this call, and the operator's own queue already resolves plan changes.
+        let current = crate::plan_movement::current_plan(&state.pool, tenant_id).await;
+        let leaving_paid = current.as_ref().map(|(_, p)| *p > 0.0).unwrap_or(false);
+        if !leaving_paid {
+            return Err(AppError::BadRequest(
+                "That plan costs nothing — there is nothing to request.".into(),
+            ));
+        }
     }
 
     let existing: Option<Uuid> = sqlx::query_scalar(
