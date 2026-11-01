@@ -9,7 +9,8 @@ use askama::Template;
 
 use crate::auth::handlers::{
     change_password, confirm_email_change, delete_avatar, forgot_password, get_avatar, get_usage,
-    login, me, register, request_email_change, reset_password, update_profile, upload_avatar,
+    login, logout_all, me, register, request_email_change, reset_password, update_profile,
+    upload_avatar,
 };
 use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
@@ -207,6 +208,14 @@ pub fn create_router(
         .route("/api/v1/auth/me", get(me))
         .route("/api/v1/me/usage", get(get_usage))
         .route("/api/v1/auth/password", put(change_password))
+        // "Sign out every other device" (cron 2026-11-01). The machinery behind it already
+        // existed — a password change bumps `users.sessions_valid_from` and the boundary read
+        // refuses every session minted before it — but nothing could reach it, so a customer whose
+        // old phone was still signed in had no way to end that session without also changing the
+        // password they knew. This route bumps the same column and returns a fresh token for the
+        // device that pressed it. Private like its neighbours: the account comes from the caller's
+        // own token, so there is no id in the path to spoof.
+        .route("/api/v1/auth/logout-all", post(logout_all))
         // The signup session's own choice of first password, for an account whose credentials mail
         // never left (migration 119). Authenticated on purpose: the caller must already hold the
         // token signup returned, and the SQL gate admits each account exactly once.

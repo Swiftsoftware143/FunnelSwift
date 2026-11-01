@@ -1347,3 +1347,65 @@ pub async fn confirm_email_change(
         "message": "Your sign-in address has been changed. Use it the next time you sign in.",
     })))
 }
+
+/// `POST /api/v1/auth/logout-all` — end every OTHER signed-in device on this account.
+///
+/// The machinery already existed and nothing could reach it: a password change or reset bumps
+/// `users.sessions_valid_from`, and the boundary read refuses any JWT minted before it (kanban
+/// t_80787a0f). Measured 2026-11-01: no route and no console control would bump that column, so a
+/// customer who thinks someone else is in their account had exactly one option — change the
+/// password they already know — and a customer whose picture of the intruder is "an old phone I
+/// sold" had none at all.
+///
+/// This is the missing verb. It bumps the same column and then mints a FRESH token in the same
+/// second, so the device that pressed the button stays signed in (the boundary read deliberately
+/// allows a session minted in the same second as the change) while every other JWT dies at its
+/// next request. The new token is in the response because the caller's own old token is now dead
+/// too — a 200 that left the caller signed out of the tab they were looking at would be a trap.
+///
+/// Idempotent: pressing it twice costs nothing, the second bump only moves the line forward.
+pub async fn logout_all(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let user_id = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
+
+    // The row is read (not the claim) so the re-minted token carries the account's CURRENT role
+    // and tenant: a claim that has since been narrowed must not be re-blessed by this route.
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1 AND is_active = true")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+
+    sqlx::query("UPDATE users SET sessions_valid_from = NOW(), updated_at = NOW() WHERE id = $1")
+        .bind(user_id)
+        .execute(&state.pool)
+        .await?;
+
+    let now = Utc::now().timestamp() as usize;
+    let claims = Claims {
+        sub: user.id.to_string(),
+        tenant_id: user.tenant_id.to_string(),
+        email: user.email.clone(),
+        role: user.role.clone(),
+        exp: now + 86400 * 30,
+        iat: now,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
+        impersonating: None,
+    };
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+    )
+    .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))?;
+
+    Ok(Json(json!({
+        "status": "ok",
+        "message": "Every other device has been signed out. This one stays signed in.",
+        "token": token,
+    })))
+}

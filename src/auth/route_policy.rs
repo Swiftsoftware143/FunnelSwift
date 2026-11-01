@@ -30,7 +30,7 @@
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 220 `.route(..)` mounts / 219 unique paths, classified three ways:
+//! 221 `.route(..)` mounts / 220 unique paths, classified three ways:
 //!
 //! (The 2026-10-31 recount folds in ONE private `/api` mount, `POST
 //! /api/v1/admin/email-log/send-reset` — the operator console's remedy for a credentials email
@@ -53,7 +53,7 @@
 //!                                    `<img src>` that carries no Authorization header; the
 //!                                    public price list joined on 2026-10-30)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    170        private           -> require_auth: app JWT, tenant-status checked
+//!    171        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (40 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -363,7 +363,7 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 219 mounts, 193 of them on the API surface. If a route is
+    /// The census the module docs quote: 220 mounts, 194 of them on the API surface. If a route is
     /// added or removed, this test is the reminder to re-measure the docs above with it.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
@@ -391,7 +391,7 @@ mod tests {
                 private,
                 served
             ),
-            (220, 219, 194, 21, 3, 170, 26),
+            (221, 220, 195, 21, 3, 171, 26),
             "the census in the module docs no longer matches the router"
         );
     }

@@ -4982,6 +4982,12 @@ h+='<div class="fld"><label>Username</label><input id="pf-user" maxlength="255" 
     h+='<div class="fld"><label>Confirm new password</label><input id="pf-np2" type="password" autocomplete="new-password"></div>';
     h+='<div class="fld"><label>Current password (verifies it is you)</label><input id="pf-cp" type="password" autocomplete="current-password"></div>';
     h+='<button class="btn" onclick="CPF()">Save</button><span id="pf-pmsg" class="msg" style="margin-left:8px"></span></div>';
+    /* Devices (cron 2026-11-01). Sessions are bearer tokens; one sold or lost phone stays signed in
+       until the account's session line moves. This button moves it and hands THIS tab a fresh
+       token, so the customer ends the other one instead of changing a password they know. */
+    h+='<div class="card"><h3>Signed-in devices</h3>';
+    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">If you are still signed in somewhere you no longer control — an old phone, a shared laptop — this ends every other session. This browser stays signed in.</p>';
+    h+='<button class="btn" onclick="LGA()">Sign out of every other device</button><span id="pf-devmsg" class="msg" style="margin-left:8px"></span></div>';
     h+='</div>';
     $("ct").innerHTML=h;
   }).catch(function(e){
@@ -5046,6 +5052,24 @@ function CPF(){
       pfMsg("pf-pmsg","Password changed","ms");
     })
     .catch(function(e){ pfMsg("pf-pmsg",(e&&e.message)||"Could not change the password","me"); });
+}
+/* End every other signed-in device (cron 2026-11-01). The API bumps the account's session line and
+   mints a fresh token for THIS tab; the caller's old token dies with the others, so the new one is
+   adopted here or the customer is quietly signed out of the page they are looking at. A refusal
+   lands in the field's own message (posted directly, so a 401 cannot be mistaken for an expired
+   session and cannot bounce the page to /login). */
+function LGA(){
+  pfMsg("pf-devmsg","Signing the other devices out...","mi");
+  fetch("/api/v1/auth/logout-all",{method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T}})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+      if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
+      return d||{};})})
+    .then(function(d){
+      if(d.token){ T=d.token; try{localStorage.setItem("ws_fs_token",T)}catch(e){} }
+      pfMsg("pf-devmsg",d.message||"Every other device has been signed out.","ms");
+    })
+    .catch(function(e){ pfMsg("pf-devmsg",(e&&e.message)||"Could not sign the other devices out","me"); });
 }
 function UPF(){
   var f=$("pf-file"), file=f&&f.files?f.files[0]:null;
