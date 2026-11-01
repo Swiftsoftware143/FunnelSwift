@@ -3320,7 +3320,7 @@ async function renderProviderKeys() {
               <td>${wh ? '<span class="badge badge-green">Set</span>' : '<span class="badge badge-red">Missing</span>'}</td>
               <td style="font-size:11px;white-space:nowrap" data-pp-posture>key ${_postureCell(p && p.api_key_set, p && p.api_key_sealed)} webhook ${_postureCell(p && p.webhook_secret_set, p && p.webhook_secret_sealed)}</td>
               <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Inactive'}</span></td>
-              <td><button class="btn btn-secondary btn-xs" onclick="window._testPaymentProvider('${x(ptype)}','')">Test stored key</button> <button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
+              <td><button class="btn btn-secondary btn-xs" onclick="window._testPaymentProvider('${x(ptype)}','')">Test stored key</button> <button class="btn btn-secondary btn-xs" data-pp-toggle="${x(ptype)}" onclick="window._togglePaymentProvider('${x(ptype)}', ${(active === true || active === 'true') ? 'false' : 'true'})">${(active === true || active === 'true') ? 'Pause' : 'Resume'}</button> <button class="btn btn-danger btn-xs" onclick="window._deletePaymentProvider('${x(ptype)}')">Delete</button></td>
             </tr>`;
           }).join('')}</tbody>
       </table></div>
@@ -3364,6 +3364,23 @@ window._deletePaymentProvider = async function(ptype) {
   if (!confirm('Delete the ' + ptype + ' payment provider?')) return;
   try { await api('/payment-providers/' + encodeURIComponent(ptype), { method: 'DELETE' }); showToast('Payment provider deleted', 'success'); renderView(); }
   catch(e) { showToast(e.message, 'error'); }
+};
+
+// Pause / resume WITHOUT deleting. Every read of payment_providers requires is_active = true, so a
+// paused provider stops the Upgrades button charging while the encrypted key and the webhook signing
+// secret stay exactly where they are. Before this the only way to stop payments was Delete, which
+// threw both secrets away and made pausing a full re-entry.
+window._togglePaymentProvider = async function(ptype, makeActive) {
+  const verb = makeActive ? 'resume' : 'pause';
+  if (!confirm((makeActive ? 'Resume' : 'Pause') + ' the ' + ptype + ' payment provider? ' +
+      (makeActive ? 'Upgrades will charge normally again.'
+                  : 'New upgrades will be refused, with the reason recorded, until you resume it. Your saved key is kept.'))) return;
+  try {
+    const r = await api('/payment-providers/' + encodeURIComponent(ptype), { method: 'PATCH', body: JSON.stringify({ is_active: makeActive }) });
+    if (r) showToast('Payment provider ' + (makeActive ? 'resumed' : 'paused'), 'success');
+    else showToast('Could not ' + verb + ': ' + (LAST_ERR || 'unknown error'), 'error');
+    renderView();
+  } catch(e) { showToast(e.message, 'error'); }
 };
 
 // kanban t_6a192c06 — find out whether a payment key works BEFORE it matters. A raw fetch, NOT api():
