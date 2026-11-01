@@ -760,13 +760,45 @@ pub async fn submit_funnel_lead(
     // cost the capture, so every failure below is logged and the visitor still gets their 201. The
     // recipient is the workspace OWNER's own address — never the visitor's — and
     // `dispatch_for_tenant` withholds a reserved/harness address instead of sending.
+    //
+    // THE OWNER CAN TURN THIS OFF (2026-11-01). A funnel that takes hundreds of opt-ins an hour
+    // turns one mail per lead into a flood the operator has no way to stop: the setting screen had
+    // no control because the feature predates it by a day. `lead_notifications` is a plain
+    // `tenant_settings` row written by the SAME PUT /api/v1/settings the rest of that screen uses,
+    // so this introduces no route. ABSENT means ON — the state of every workspace that never
+    // touched it — and an unreadable row is ON too: losing a lead notification is the worse of the
+    // two failures. `AND $2` is what enforces it, so a switched-off workspace runs no owner query
+    // at all and cannot mail anybody through this arm.
+    let notifications_on = match sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = 'lead_notifications'",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(Some(v)) => v
+            .get("enabled")
+            .and_then(|e| e.as_bool())
+            .or_else(|| v.as_bool())
+            .unwrap_or(true),
+        Ok(None) => true,
+        Err(e) => {
+            tracing::warn!(
+                tenant = %tenant_id,
+                "new-lead notification: setting read failed, sending: {e}"
+            );
+            true
+        }
+    };
+
     let owner: Option<(String, String)> = match sqlx::query_as(
         "SELECT COALESCE(name,''), email FROM users \
-          WHERE tenant_id = $1 AND is_active AND email <> '' \
+          WHERE tenant_id = $1 AND is_active AND email <> '' AND $2 \
           ORDER BY CASE WHEN role IN ('admin','company_admin') THEN 0 ELSE 1 END, created_at \
           LIMIT 1",
     )
     .bind(tenant_id)
+    .bind(notifications_on)
     .fetch_optional(&state.pool)
     .await
     {

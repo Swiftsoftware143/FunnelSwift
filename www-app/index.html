@@ -5519,6 +5519,36 @@ function LM(){
     ebDiv.appendChild(El("div",{id:"lm-exact",style:"margin-top:12px"}));
     PBEX();
 
+    /* Lead notifications — the switch this screen never had (2026-11-01). The capture handler mails
+       the workspace OWNER the moment a visitor submits a funnel; on a busy funnel that is one mail
+       per opt-in, and until now there was no way to stop it. The row this writes is the plain
+       `lead_notifications` tenant setting that handler reads, so no new route is involved. ABSENT
+       means ON — exactly what the server does with no row — so this box starts checked on a
+       workspace that has never touched it, and an operator who never asked for anything keeps
+       today's behaviour. */
+    var lnSet=d.find(function(s){return s.key==="lead_notifications"});
+    var lnOn=!(lnSet&&lnSet.value&&lnSet.value.enabled===false);
+    var lnDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
+    lnDiv.innerHTML='<strong style="font-size:13px">Lead notifications</strong>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">When a visitor submits one of your funnels, FunnelSwift emails the workspace owner address. Switch it off and the lead still lands in the Leads screen and still fires your webhooks — you just do not get the mail.</p>';
+    var lnRow=El("div",{style:"display:flex;gap:8px;align-items:center;flex-wrap:wrap"});
+    var lnBox=El("input",{id:"lm-leadnotif",type:"checkbox",style:"width:16px;height:16px"});
+    lnBox.checked=lnOn;
+    lnRow.appendChild(lnBox);
+    lnRow.appendChild(El("label",{for:"lm-leadnotif",style:"font-size:12px"},"Email the workspace owner when a lead is captured"));
+    lnRow.appendChild(El("button",{"class":"btn btn-sm",id:"lm-leadnotif-save",onclick:function(){
+      var on=!!(document.getElementById("lm-leadnotif")||{}).checked;
+      api("/api/v1/settings",{method:"PUT",body:JSON.stringify({key:"lead_notifications",value:{enabled:on}})})
+        .then(function(){
+          showMsg(on?"Saved — the owner is emailed for each new lead.":"Saved — lead emails are off. Leads still land in the Leads screen.","mk");
+          setTimeout(function(){var m=document.getElementById("mm"); if(m) m.className="msg";},2500);
+        })
+        .catch(function(e){ showMsg((e&&e.message)||"That setting could not be saved","me"); });
+    }},"Save"));
+    lnRow.appendChild(El("span",{id:"lm-leadnotif-msg",style:"font-size:11px;color:#64748b"}));
+    lnDiv.appendChild(lnRow);
+    list.appendChild(lnDiv);
+
     /* Your team — the customer adds their own teammate (2026-10-31). Built LAST like the panes above,
        and its dynamic half renders into its own #lm-team container so nothing re-parses a parent
        (the t_7caf7873 trap). The seat allowance is the plan's `max_team_members`: when it is full the
