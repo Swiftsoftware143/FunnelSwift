@@ -201,6 +201,83 @@ pub async fn effective_plan_label(
     }))
 }
 
+/// The cheapest plan in this installation that actually GRANTS `feature_key`, as
+/// `(name, price, billing_cycle)`.
+///
+/// A refusal that only says "upgrade" leaves the customer with nowhere to go: this install carries
+/// six plans on two product sides, and the cheapest plan overall is not the cheapest one that
+/// includes the thing that was refused. Every row is judged by the SAME rules the gate uses
+/// ([`plan_row_flag`] for a boolean flag, the mapped limit column for a numeric one), so the plan
+/// a refusal names is one that would really pass the gate that refused.
+async fn cheapest_plan_with(state: &AppState, feature_key: &str) -> Option<(String, f64, String)> {
+    let rows: Vec<Value> = sqlx::query_scalar("SELECT to_jsonb(p) FROM plans p")
+        .fetch_all(&state.pool)
+        .await
+        .ok()?;
+
+    let mut best: Option<(String, f64, String)> = None;
+    for row in rows {
+        let grants = match limit_column(feature_key) {
+            // 0 = not included, >0 = capped, -1 = unlimited.
+            Some(column) => row
+                .get(column)
+                .and_then(Value::as_i64)
+                .map(|n| n != 0)
+                .unwrap_or(false),
+            None => plan_row_flag(&row, feature_key).unwrap_or(false),
+        };
+        if !grants {
+            continue;
+        }
+        let name = row.get("name").and_then(Value::as_str).unwrap_or("?");
+        let price = row.get("price").and_then(Value::as_f64).unwrap_or(0.0);
+        let cycle = row
+            .get("billing_cycle")
+            .and_then(Value::as_str)
+            .unwrap_or("month");
+        if best.as_ref().map(|b| price < b.1).unwrap_or(true) {
+            best = Some((name.to_string(), price, cycle.to_string()));
+        }
+    }
+    best
+}
+
+/// The refusal a gate returns when the workspace's plan simply does not include the thing.
+///
+/// It names the plan the customer is ON and the cheapest plan that DOES include it, with its price.
+/// The previous sentence ("Upgrade to access this feature.") named no plan and no price, so a
+/// customer on the free tier could not tell which of the six plans to ask for — and in this
+/// installation upgrades are switched on by hand from the Upgrade screen, so "upgrade" has to say
+/// which plan to request. A feature that NO plan on this install grants says so plainly rather
+/// than pointing at a screen that cannot help.
+async fn not_included(
+    state: &AppState,
+    tenant_id: Uuid,
+    feature_key: &str,
+    label: &str,
+) -> AppError {
+    let current = effective_plan_label(state, tenant_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|(name, _)| name)
+        .unwrap_or_else(|| "your current plan".to_string());
+
+    let tail = match cheapest_plan_with(state, feature_key).await {
+        Some((name, price, cycle)) if price > 0.0 => format!(
+            "{name} (${price:.2}/{cycle}) includes it — open Upgrade and request that plan."
+        ),
+        Some((name, _, _)) => {
+            format!("The {name} plan includes it — open Upgrade to switch to it.")
+        }
+        None => "No plan on this installation includes it yet — tell our team from the Upgrade \
+                 screen."
+            .to_string(),
+    };
+
+    AppError::UpgradeRequired(format!("{label} is not included in {current}. {tail}"))
+}
+
 /// One WARN per plan-less workspace per process, not one per gate evaluation: the fallback is
 /// correct but the operator should still see which workspaces have no subscription.
 fn warn_defaulted_once(tenant_id: Uuid, row: &Value) {
@@ -265,6 +342,9 @@ pub async fn enforce_feature_limit(
         // treats as allow. A plan-less workspace is NOT this case: `effective_plan` gives it the
         // install's free tier, whose own numbers decide.
         None => Ok(()),
+        // A zero limit is not a usage cap — the plan simply does not include the thing, so the
+        // refusal names the plan that does (see `not_included`).
+        Some(0) => Err(not_included(state, tenant_id, feature_key, label).await),
         Some(limit) => {
             let usage = get_usage_count(state, tenant_id, feature_key).await;
             check_numeric_limit(limit, usage, label)
@@ -400,10 +480,7 @@ pub async fn enforce_feature_flag(
             return if on {
                 Ok(())
             } else {
-                Err(AppError::UpgradeRequired(format!(
-                    "{} is not available on your current plan. Upgrade to access this feature.",
-                    label
-                )))
+                Err(not_included(state, tenant_id, feature_key, label).await)
             };
         }
     }
@@ -417,10 +494,7 @@ pub async fn enforce_feature_flag(
     if plan_row_flag(&plan.row, feature_key).unwrap_or(false) {
         Ok(())
     } else {
-        Err(AppError::UpgradeRequired(format!(
-            "{} is not available on your current plan. Upgrade to access this feature.",
-            label
-        )))
+        Err(not_included(state, tenant_id, feature_key, label).await)
     }
 }
 
@@ -440,9 +514,7 @@ pub async fn enforce_action_button_limit(
         return Ok(()); // unlimited
     }
     if limit == 0 {
-        return Err(AppError::UpgradeRequired(
-            "Action buttons are not available on your current plan. Upgrade to add more.".into(),
-        ));
+        return Err(not_included(state, tenant_id, "max_action_buttons", "Action buttons").await);
     }
     let usage: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM kinetic_buttons WHERE card_id = $1")
         .bind(card_id)
