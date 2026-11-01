@@ -27,7 +27,20 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
         // Same phantom column as the card counter: `is_template` does not exist on
         // kinetic_cards, the query errored, `if let Ok(...)` swallowed it and the sitemap
         // silently listed ZERO card pages.
-        "SELECT slug, updated_at FROM kinetic_cards WHERE COALESCE(slug,'') != '' ORDER BY updated_at DESC LIMIT 500"
+        // Only cards that are PUBLIC: an inactive card, and any fleet/probe fixture, must never
+        // be advertised to a crawler (cron 2026-11-01). Three arms, because a probe can arrive
+        // through any of them: `tenants.probe_harness` is the authoritative tag written at
+        // signup; the address arm covers a row minted at a door that did not write it; the slug
+        // arm covers a fixture minted INSIDE an otherwise ordinary workspace — measured live on
+        // the funnels arm below, where `zz-probe-funnel-capture` sat in a tenant with no email
+        // and no probe tag, so neither of the other two arms could see it.
+        "SELECT c.slug, c.updated_at FROM kinetic_cards c \
+         LEFT JOIN tenants t ON t.id = c.tenant_id \
+         WHERE COALESCE(c.slug,'') <> '' AND c.is_active \
+           AND COALESCE(t.probe_harness,'') = '' \
+           AND COALESCE(t.email,'') !~* '@(example\\.invalid|maxxspace\\.com)$' \
+           AND c.slug !~* '(^|[-_])(probe|test)([-_]|$)' \
+         ORDER BY c.updated_at DESC LIMIT 500",
     )
     .fetch_all(&state.pool)
     .await
@@ -40,13 +53,29 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
             let updated: Option<chrono::DateTime<chrono::Utc>> =
                 row.try_get("updated_at").unwrap_or(None);
             let lastmod = updated.map(|d| d.format("%Y-%m-%d").to_string());
-            urls.push(xml_url("https://kntcrd.com", &format!("/k/{}", slug), "daily", "0.8", lastmod));
+            urls.push(xml_url(
+                "https://kntcrd.com",
+                &format!("/k/{}", slug),
+                "daily",
+                "0.8",
+                lastmod,
+            ));
         }
     }
 
     // Public funnels
     if let Ok(rows) = sqlx::query(
-        "SELECT slug, created_at FROM funnels WHERE COALESCE(slug,'') != '' ORDER BY created_at DESC LIMIT 100"
+        // Same three arms as the card query above, plus `is_active`: this endpoint is the file
+        // `robots.txt` points a crawler at, and it was listing EVERY row with a slug — including
+        // a retired funnel and the live `zz-probe-funnel-capture` fixture, so the only funnel
+        // page Google was told about was a test artefact.
+        "SELECT f.slug, f.created_at FROM funnels f \
+         LEFT JOIN tenants t ON t.id = f.tenant_id \
+         WHERE COALESCE(f.slug,'') <> '' AND f.is_active \
+           AND COALESCE(t.probe_harness,'') = '' \
+           AND COALESCE(t.email,'') !~* '@(example\\.invalid|maxxspace\\.com)$' \
+           AND f.slug !~* '(^|[-_])(probe|test)([-_]|$)' \
+         ORDER BY f.created_at DESC LIMIT 100",
     )
     .fetch_all(&state.pool)
     .await
@@ -59,10 +88,15 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
             // the sitemap while still listing the URL (found by the scanner as a new
             // TIMESTAMP row on this line, kanban t_7197ad72).  The kinetic_cards block above
             // keeps DateTime<Utc>: that column really is timestamptz.
-            let created: Option<chrono::NaiveDateTime> =
-                row.try_get("created_at").unwrap_or(None);
+            let created: Option<chrono::NaiveDateTime> = row.try_get("created_at").unwrap_or(None);
             let lastmod = created.map(|d| d.format("%Y-%m-%d").to_string());
-            urls.push(xml_url(base, &format!("/funnel/{}", slug), "weekly", "0.7", lastmod));
+            urls.push(xml_url(
+                base,
+                &format!("/funnel/{}", slug),
+                "weekly",
+                "0.7",
+                lastmod,
+            ));
         }
     }
 
