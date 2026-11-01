@@ -654,12 +654,13 @@ pub async fn submit_funnel_lead(
     State(state): State<AppState>,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let funnel: Option<(Uuid, Uuid, bool)> =
-        sqlx::query_as("SELECT id, tenant_id, is_active FROM funnels WHERE slug = $1 LIMIT 1")
-            .bind(&slug)
-            .fetch_optional(&state.pool)
-            .await?;
-    let Some((funnel_id, tenant_id, is_active)) = funnel else {
+    let funnel: Option<(Uuid, Uuid, bool, String)> = sqlx::query_as(
+        "SELECT id, tenant_id, is_active, COALESCE(name,'') FROM funnels WHERE slug = $1 LIMIT 1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((funnel_id, tenant_id, is_active, funnel_name)) = funnel else {
         return Err(AppError::NotFound("Funnel not found".into()));
     };
     // The operator closed this page (migration 116). A browser still holding the OPEN copy — a
@@ -753,6 +754,49 @@ pub async fn submit_funnel_lead(
             &[],
         ),
     );
+
+    // TELL THE OWNER (2026-11-01). The lead is written and the webhook has fired; without this the
+    // owner only found out by opening the panel. Best effort by design: a mail problem must never
+    // cost the capture, so every failure below is logged and the visitor still gets their 201. The
+    // recipient is the workspace OWNER's own address — never the visitor's — and
+    // `dispatch_for_tenant` withholds a reserved/harness address instead of sending.
+    let owner: Option<(String, String)> = match sqlx::query_as(
+        "SELECT COALESCE(name,''), email FROM users \
+          WHERE tenant_id = $1 AND is_active AND email <> '' \
+          ORDER BY CASE WHEN role IN ('admin','company_admin') THEN 0 ELSE 1 END, created_at \
+          LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!(tenant = %tenant_id, "new-lead notification: owner lookup failed: {e}");
+            None
+        }
+    };
+    if let Some((owner_name, owner_email)) = owner {
+        let owner_name = if owner_name.trim().is_empty() {
+            "there".to_string()
+        } else {
+            owner_name
+        };
+        if let Err(e) = crate::email::send_new_lead_email(
+            &state.pool,
+            tenant_id,
+            &owner_email,
+            &owner_name,
+            &name,
+            email.as_deref().unwrap_or(""),
+            phone.as_deref(),
+            &funnel_name,
+        )
+        .await
+        {
+            tracing::warn!(tenant = %tenant_id, "new-lead notification not sent: {e}");
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(json!({ "status": "ok" }))))
 }

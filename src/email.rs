@@ -601,6 +601,32 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // A NEW LEAD ON A PUBLIC FUNNEL (cron 2026-11-01). Capturing a lead is this app's whole
+        // job, and until now a captured lead landed in a table the owner had to remember to open:
+        // a visitor filled in the form, the row was written, and nobody was told. The recipient is
+        // the workspace owner's OWN address (never the visitor's), so the message can be answered
+        // by replying to it. A template row named `new_lead` overrides this arm; `lead_phone` is
+        // empty for a funnel that does not ask for a number.
+        "new_lead" => {
+            let funnel = vars
+                .get("funnel_name")
+                .unwrap_or(&"your funnel")
+                .to_string();
+            let lead_name = vars.get("lead_name").unwrap_or(&"A visitor").to_string();
+            let lead_email = vars.get("lead_email").unwrap_or(&"").to_string();
+            let lead_phone = vars.get("lead_phone").unwrap_or(&"").to_string();
+            let phone_line = if lead_phone.is_empty() {
+                String::new()
+            } else {
+                format!("Phone: {lead_phone}\n")
+            };
+            let subject = format!("New lead on {funnel}");
+            let text = format!(
+                "Hi {0},\n\nSomeone just filled in {1}.\n\nName: {2}\nEmail: {3}\n{4}\nEvery lead is stored on your dashboard: {5}/dashboard\n\nReply to this message to answer them directly.\n\n- The {6} Team",
+                name, funnel, lead_name, lead_email, phone_line, app_url, APP_NAME
+            );
+            (subject, Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -767,6 +793,42 @@ pub async fn send_plan_request_received_email(
         tenant_id,
         to,
         "plan_request_received",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+/// Tell a workspace owner that a visitor just filled in one of their public funnels (2026-11-01).
+///
+/// Called from `POST /funnel/:slug/submit`, after the `leads` row and its `lead.created` webhook
+/// are written. The recipient is the OWNER's own address — never the visitor's — so pressing reply
+/// answers the person who filled the form. Best effort by design: a mail failure must never lose
+/// the capture, so the caller logs it and keeps the `201`. Renders through the tenant's own
+/// templates and branding like every other mail here, and a reserved/harness recipient is withheld
+/// and recorded as a non-send by `dispatch_for_tenant`.
+#[allow(clippy::too_many_arguments)]
+pub async fn send_new_lead_email(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    owner_name: &str,
+    lead_name: &str,
+    lead_email: &str,
+    lead_phone: Option<&str>,
+    funnel_name: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", owner_name);
+    vars.insert("lead_name", lead_name);
+    vars.insert("lead_email", lead_email);
+    vars.insert("lead_phone", lead_phone.unwrap_or(""));
+    vars.insert("funnel_name", funnel_name);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "new_lead",
         &bound_vars(vars),
     )
     .await
