@@ -505,22 +505,37 @@ pub async fn admin_stats(
         .get("include_probe")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    // One predicate, spelled twice exactly as the list spells it: a workspace is COUNTED only
-    // when it would be LISTED. `$1::bool OR COALESCE(t.probe_harness,'') = '' OR t.probe_harness ~* '^CNRY'`
-    let total_tenants: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tenants t \
+    // One predicate, spelled exactly as the LIST spells it — and the list has TWO arms: the
+    // `probe_harness` tag in SQL and the OWNER ADDRESS in Rust (`coreswift::is_reserved_test_email`).
+    // Counting only the SQL arm is what made this counter disagree with the rows beside it
+    // (measured live 2026-10-31: dashboard said 13 tenants while the Tenants list showed 9, because
+    // four workspaces carry no harness tag yet their owner sits on a reserved/probe domain). Both
+    // arms are applied here, using the list's own owner ordering, so the number and the rows cannot
+    // drift apart again.
+    let counted: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
+           ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
+                    u.created_at ASC \
+           LIMIT 1), '') AS owner_email, \
+                (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count \
+         FROM tenants t \
          WHERE $1::bool OR COALESCE(t.probe_harness, '') = '' OR t.probe_harness ~* '^CNRY'",
     )
     .bind(include_probe)
-    .fetch_one(&state.pool)
+    .fetch_all(&state.pool)
     .await?;
-    let total_users: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users u JOIN tenants t ON t.id = u.tenant_id \
-         WHERE $1::bool OR COALESCE(t.probe_harness, '') = '' OR t.probe_harness ~* '^CNRY'",
-    )
-    .bind(include_probe)
-    .fetch_one(&state.pool)
-    .await?;
+    let counts_as_customer = |include_probe: bool, owner: &str| {
+        include_probe || !crate::coreswift::is_reserved_test_email(owner)
+    };
+    let total_tenants: i64 = counted
+        .iter()
+        .filter(|(owner, _)| counts_as_customer(include_probe, owner))
+        .count() as i64;
+    let total_users: i64 = counted
+        .iter()
+        .filter(|(owner, _)| counts_as_customer(include_probe, owner))
+        .map(|(_, n)| *n)
+        .sum();
     let total_affiliates: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM affiliates")
         .fetch_one(&state.pool)
         .await?;
