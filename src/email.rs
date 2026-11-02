@@ -308,10 +308,13 @@ fn with_branding_header(
     let logo = b.resolve_logo_url(APP_URL);
     let header = b.header_html(logo.as_deref());
     let html = match html {
-        Some(h) => Some(format!("{header}{h}")),
+        // Inside the document, never in front of it — see `branding::place_header` for the live
+        // measurement. A template fragment is wrapped into a whole document so the header (and the
+        // tenant's logo) cannot land outside the body a client may rebuild.
+        Some(h) => Some(crate::branding::place_header(&h, &header)),
         None => text.as_deref().map(|t| {
             format!(
-                "{header}<div style=\"font:14px/1.6 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;white-space:pre-wrap\">{}</div>",
+                "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"></head>\n<body style=\"margin:0;padding:0;\">{header}<div style=\"font:14px/1.6 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;white-space:pre-wrap\">{}</div></body></html>",
                 crate::branding::escape_html(t)
             )
         }),
@@ -1074,7 +1077,18 @@ mod tests {
             Some("<p>Body</p>".to_string()),
         );
         let html = html.unwrap();
-        assert!(html.starts_with("<div style=\"text-align:center"));
+        // The header OPENS the message body, but it is no longer the first byte of the string: it
+        // now sits inside a real document (see `branding::place_header`, live measurement
+        // 2026-11-01) instead of in front of a fragment. Assert the document and the order.
+        assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
+        let body_at = html.find("<body").expect("a document must carry a body");
+        let head_at = html
+            .find("<div style=\"text-align:center")
+            .expect("the branding header must be painted");
+        assert!(
+            head_at > body_at,
+            "the header must be inside <body>: {html}"
+        );
         assert!(html.contains("<p>Body</p>"), "the original body survives");
         assert!(html.contains("https://app.funnelswift.net/api/v1/branding/logo/abc?v=7"));
         assert!(html.contains("Giraudy Capital"));
