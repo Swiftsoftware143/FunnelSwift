@@ -4195,38 +4195,123 @@ function bindTenants() {
 // now answer 404. Removed with its nav item, its views entry and the bind dispatch case.
 
 // ── SYSTEM SETTINGS (Super Admin only) ──
+// MEASURED 2026-11-04: this screen used to render a "General Settings" card whose Default-Plan
+// <select>, "Max Tenants Per User" <input>, "Registration Open" toggle and "Save Settings" button
+// were ALL decorative — no reader in this file, no handler in src/, and `/api/v1/settings` is the
+// tenant store, not a platform config. A previous pass removed the inert controls and said so on
+// the screen instead of faking them.
+//
+// The backend now exists: GET|PUT /api/v1/admin/platform-settings (src/handlers/
+// platform_settings_handler.rs, storage `system_settings.funnelswift_platform_settings`). TWO controls
+// are rendered because only two have a real effect in THIS schema:
+//   * Registration open — enforced at both signup doors. Closed refuses a NEW account with a
+//     buyer-first sentence; existing accounts keep working.
+//   * Default plan for a new workspace — decides the PRODUCT SIDE a signup with no plan of its own is
+//     seated on. Only price-0 plans are offered, because a default seat is never a sale.
+// The old third control, "max tenants per user", is deliberately NOT restored: one `users` row owns
+// exactly one `tenants` row here, so a cap could neither admit nor refuse anything. The API states
+// the same reason in `not_applicable`, so any client reading it learns the scope too.
 async function renderSettings() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
-
-  // (keep-working audit 2026-10-07) This screen used to render a "General Settings" card with a
-  // Default-Plan <select id="default-plan">, a "Max Tenants Per User" <input id="max-tenants">, a
-  // "Registration Open" toggle <span id="reg-open-toggle"> and a "Save Settings" <button>, and NOT
-  // ONE of them was wired: each id occurs only in its own markup (no reader anywhere in this file),
-  // the button has no handler (there is no `.matches()`/`.closest()` click delegation either) and
-  // bindSettings() was empty. There is no backend for any of the three either — no `max_tenants` /
-  // `registration_open` / `default_plan` column or admin_settings key exists in src/, and
-  // /api/v1/settings is the TENANT `{key,value}` store, not a platform config. A control that
-  // silently does nothing is worse than no control (David, t_00d3c751) — this app already removed
-  // `+ Add User` for the same reason — so the inert fields and the dead Save button are removed
-  // rather than faked. Making them real is a product decision: default plan / per-user tenant limit /
-  // registration-open all need a backend first.
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let d = null, err = '';
+  try { d = await api('/admin/platform-settings'); } catch (e) { err = e.message || String(e); }
+  STATE.platformSettings = d;
+  if (!d) {
+    return `<div>
+      <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚡ System Settings</h1>
+      <div class="card"><div class="card-header"><span class="card-title">General Settings</span></div>
+        <div class="empty" style="padding:24px 12px"><div class="icon">⚠️</div>
+          <div class="title">Could not load the installation settings</div>
+          <p style="color:var(--muted);font-size:13px">${esc(err)}</p></div></div></div>`;
+  }
+  const s = d.settings || {};
+  const open = s.registration_open !== false;
+  const plans = Array.isArray(d.seatable_plans) ? d.seatable_plans : [];
+  const cur = s.default_plan_slug || '';
+  const dp = d.default_plan || null;
+  const opts = [`<option value="">— use the signup page&#39;s own plan —</option>`]
+    .concat(plans.map(p => `<option value="${esc(p.slug)}"${p.slug === cur ? ' selected' : ''}>${esc(p.name)} — ${esc(p.slug)} (${esc(p.side)} side)</option>`))
+    .join('');
+  const notApplied = (dp && dp.seat_effective === false)
+    ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:10px;font-size:13px">⚠️ ${esc(dp.warning || 'The saved default plan is no longer usable.')}</div>`
+    : '';
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚡ System Settings</h1>
     <div class="card">
       <div class="card-header"><span class="card-title">General Settings</span></div>
-      <div class="empty" style="padding:24px 12px">
-        <div class="icon">⚙️</div>
-        <div class="title">No platform-wide settings are exposed here yet</div>
-        <p style="color:var(--muted);font-size:13px;max-width:560px;margin:8px auto 0">
-          Plan configuration lives under <strong>Plans</strong> and per-customer controls under
-          <strong>Tenants</strong>. Platform-wide defaults (default plan, per-user tenant limit,
-          registration open) need a backend before they can be set from here.
-        </p>
+      <div style="padding:16px 18px">
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+          <input type="checkbox" id="ps-reg-open" ${open ? 'checked' : ''} style="margin-top:3px;width:16px;height:16px;cursor:pointer">
+          <div>
+            <label for="ps-reg-open" style="font-weight:600;cursor:pointer">New signups are ${open ? 'OPEN' : 'CLOSED'}</label>
+            <div style="color:var(--muted);font-size:13px;margin-top:2px">
+              When open, anyone can create a workspace from the public signup pages. When closed, a
+              new signup is refused with a short message and <strong>nothing is created</strong> —
+              existing customers keep signing in and working exactly as before.
+            </div>
+          </div>
+        </div>
+        <div style="padding:12px 0">
+          <label for="ps-default-plan" style="font-weight:600;display:block;margin-bottom:4px">Default plan for a new workspace</label>
+          <select id="ps-default-plan" class="input" style="max-width:420px">${opts}</select>
+          <div style="color:var(--muted);font-size:13px;margin-top:6px">
+            Applied only when a signup names no plan of its own — a visitor who picked a plan on the
+            pricing page always gets what they chose. Only free (price-0) plans are offered: a default
+            seat is not a sale, so nothing paid can be handed out by default.
+          </div>
+          ${notApplied}
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+          <button class="btn btn-primary" id="ps-save">Save settings</button>
+          <span id="ps-msg" style="font-size:13px"></span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-header"><span class="card-title">What is not here, and why</span></div>
+      <div style="padding:16px 18px;color:var(--muted);font-size:13px">
+        Plan pricing and gated features live under <strong>Plans</strong>; per-customer controls under
+        <strong>Tenants</strong>. A per-user workspace cap is not offered because one account owns
+        exactly one workspace in this app, so a cap has nothing it could admit or refuse.
       </div>
     </div>
   </div>`;
 }
-function bindSettings() {}
+function bindSettings() {
+  const box = $('ps-reg-open'), sel = $('ps-default-plan'), btn = $('ps-save'), msg = $('ps-msg');
+  if (!box || !btn) return;
+  // The label states the CURRENT state, which only changes on save — so repaint it as the operator
+  // ticks the box, rather than leaving the words disagreeing with the control.
+  const paint = () => {
+    const lab = document.querySelector('label[for="ps-reg-open"]');
+    if (lab) lab.textContent = 'New signups are ' + (box.checked ? 'OPEN' : 'CLOSED');
+  };
+  box.addEventListener('change', paint);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted)'; }
+    try {
+      const out = await api('/admin/platform-settings', {
+        method: 'PUT',
+        body: JSON.stringify({ registration_open: !!box.checked, default_plan_slug: sel ? (sel.value || null) : null }),
+      });
+      const s = (out && out.settings) || {};
+      // The status line is painted by this render, and renderView() below replaces the pane — so a
+      // message written into #ps-msg is wiped a moment later (measured in the browser: the operator
+      // pressed Save and read nothing). The console's own feedback channel is the toast, which
+      // survives the repaint; the repainted toggle is the second, quieter confirmation that the
+      // value came back from the server.
+      showToast('Settings saved — new signups are ' + (s.registration_open ? 'OPEN' : 'CLOSED') +
+        (s.default_plan_slug ? ' · default seat ' + s.default_plan_slug : ' · no default seat'),
+        'success');
+      renderView();
+    } catch (e) {
+      if (msg) { msg.textContent = 'Not saved: ' + (e.message || e); msg.style.color = '#b91c1c'; }
+      btn.disabled = false;
+    }
+  });
+}
 
 // ── EMAIL BRANDING (per-tenant identity on transactional email) ─────────────────────
 // Backend (kanban t_c06a32eb) had NO screen: brand_name / brand_color live in this tenant's

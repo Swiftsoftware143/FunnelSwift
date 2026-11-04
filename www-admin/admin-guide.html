@@ -109,6 +109,7 @@
       <a href="#my-account" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👤</span> My Account</a>
       <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
       <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> What System Tags Do</a>
+      <a href="#system-settings" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">⚡</span> System Settings (installation-wide)</a>
       <a href="#affiliates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🤝</span> Affiliates</a>
       <a href="#kinetic-admin" class="section-title" onclick="closeMobile()">Kinetic Admin</a>
       <a href="#kinetic-admin" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🃏</span> Manage Templates</a>
@@ -452,6 +453,43 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             <em>No plan assigned</em> there and in this panel's tenant list — the app no longer invents a
             tier name for a workspace that has none.</li>
         </ul>
+      </div>
+
+      <!-- ============ SYSTEM SETTINGS ============ -->
+      <h2 id="system-settings">⚡ System Settings — the whole installation</h2>
+
+      <div class="card">
+        <h3>What this screen controls</h3>
+        <p>Everything else in this console acts on <em>your own workspace</em>. This screen acts on
+        the installation: two controls that apply to every new signup, wherever it comes from.</p>
+
+        <h4>New signups are OPEN / CLOSED</h4>
+        <p>Open is the normal state: anyone can create a workspace from the public signup pages. Close
+        it and a new signup is refused before anything is written — no workspace row, no account, no
+        email — and the person sees one short sentence saying so. Your existing customers are not
+        affected at all: signing in, resetting a password, the whole dashboard and this console keep
+        working exactly as before. Both public doors obey the switch, so the mobile app cannot create
+        an account while the web door is shut.</p>
+
+        <h4>Default plan for a new workspace</h4>
+        <p>Decides the product a new workspace starts on when the person who signed up did not pick a
+        plan themselves. <em>Only free plans are offered</em>, because a default seat is not a sale —
+        nothing has been charged, so nothing paid can be handed out by default. A visitor who chose a
+        plan on the pricing page always gets what they chose; this setting never overrules them. Leave
+        it on "use the signup page's own plan" and behaviour is exactly as it was before this control
+        existed.</p>
+
+        <h4>What is deliberately not on this screen</h4>
+        <p>Prices, lead caps and gated features live under <strong>Plans</strong>; per-customer limits
+        and feature overrides live under <strong>Tenants</strong>. A "max workspaces per user" cap is
+        not offered because one account owns exactly one workspace in this app — a cap there could
+        neither admit nor refuse anything, and a control that cannot change anything is worse than no
+        control at all.</p>
+
+        <p class="muted"><strong>Saving</strong> writes the pair in one statement, so the installation
+        can never be left half-configured. The screen reads the saved values back from the server
+        after saving, which is why the status line under the button is a statement about the database
+        rather than about what you typed.</p>
       </div>
 
       <!-- ============ SYSTEM TAGS ============ -->

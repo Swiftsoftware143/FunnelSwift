@@ -40,6 +40,7 @@ mod models;
 mod path_rejection;
 mod plan_movement;
 mod plan_resolver;
+mod platform_settings;
 mod probe_harness;
 mod security;
 mod smtp;

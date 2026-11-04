@@ -40,6 +40,20 @@ pub async fn register(
     body: Result<Json<RegisterRequest>, axum::extract::rejection::JsonRejection>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     let Json(req) = body.map_err(crate::error::json_rejection)?;
+    // ── THE DOOR CAN BE CLOSED (platform setting, 2026-11-04) ──────────────────────────────────
+    // Same gate as `public_signup_handler::public_signup`: the console's "Registration open" control
+    // governs BOTH public signup doors, and this is the one the mobile app posts to. Enforcing it on
+    // only one door would leave a hole the operator believes is shut. Existing accounts are never
+    // touched — login, reset and profile are all separate routes.
+    let platform = crate::platform_settings::load(&state.pool).await;
+    if !platform.registration_open {
+        tracing::warn!("register REFUSED: registration is closed by the platform setting");
+        return Err(AppError::Forbidden(
+            "We are not taking new signups at the moment. Your existing account still works — \
+             please try again later, or contact us if you need a workspace today."
+                .into(),
+        ));
+    }
     // Check if email already exists
     // Normalise and validate the address BEFORE the first SELECT (kanban t_38017305): the value
     // that is checked for a duplicate is the exact value that gets stored, put into the JWT claims

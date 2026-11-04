@@ -226,6 +226,25 @@ pub async fn public_signup(
     // emails it; the user sets their own in their profile once they are in. A caller that still
     // supplies a password (existing API clients) is honoured and validated exactly as before, so
     // this widens the contract rather than replacing it.
+    // ── THE DOOR CAN BE CLOSED (platform setting, 2026-11-04) ──────────────────────────────────
+    // The admin console's System Settings screen promised a "Registration open" control for as long
+    // as it has existed, and never had a backend behind it. It has one now:
+    // `funnelswift_platform_settings.registration_open` in `system_settings`. Closed refuses BOTH
+    // signup doors before any row, hash or mail is made — existing accounts are untouched, so
+    // closing the door never locks a customer out. The refusal is buyer-first prose, not
+    // operator-speak: this is the sentence a would-be customer reads.
+    let platform = crate::platform_settings::load(&state.pool).await;
+    if !platform.registration_open {
+        tracing::warn!(
+            email_domain = email.rsplit('@').next().unwrap_or(""),
+            "signup REFUSED: registration is closed by the platform setting"
+        );
+        return Err(AppError::Forbidden(
+            "We are not taking new signups at the moment. Your existing account still works — \
+             please try again later, or contact us if you need a workspace today."
+                .into(),
+        ));
+    }
     if email.is_empty() || name.is_empty() {
         return Err(AppError::BadRequest("Name and email are required".into()));
     }
@@ -395,11 +414,43 @@ pub async fn public_signup(
     // affiliate-only carve-out in `web_to_lead_handler` hid the rest). The side now follows the
     // `source` marker the two pages already send, defaulting to the MAIN product this route's own
     // page serves.
-    let side = if source == "kinetic-landing" || requested_plan.starts_with("kinetic") {
-        crate::plan_resolver::ProductSide::Kinetic
+    // ── THE OPERATOR'S DEFAULT SEAT (platform setting, 2026-11-04) ─────────────────────────────
+    // `default_plan_slug` names an ACTIVE, price-0 plan the operator has chosen as where a NEW
+    // workspace starts. It decides the SIDE, because that is the value `assign_free_plan` seats by;
+    // so the setting's effect is "a homepage signup that names no plan of its own lands on the
+    // Kinetic free tier" when `kinetic-free` is chosen, and on the capture tier when it is cleared.
+    //
+    // It applies ONLY when the caller named no plan: a visitor who picked a plan on /pricing has
+    // told us what they want, and a platform default must never overrule a customer's own choice.
+    // An unknown or since-retired slug is ignored (the update handler refuses to save one, but a
+    // plan can be retired afterwards) — the page's own marker still decides, exactly as before.
+    let default_side = if requested_plan.is_empty() {
+        match platform.default_plan_slug.as_deref() {
+            Some(slug) => {
+                let row: Option<String> = sqlx::query_scalar(
+                    "SELECT side::text FROM plans WHERE slug = $1 AND price = 0",
+                )
+                .bind(slug)
+                .fetch_optional(&state.pool)
+                .await?;
+                match row.as_deref() {
+                    Some("kinetic") => Some(crate::plan_resolver::ProductSide::Kinetic),
+                    Some(_) => Some(crate::plan_resolver::ProductSide::Capture),
+                    None => None,
+                }
+            }
+            None => None,
+        }
     } else {
-        crate::plan_resolver::ProductSide::Capture
+        None
     };
+    let side = default_side.unwrap_or_else(|| {
+        if source == "kinetic-landing" || requested_plan.starts_with("kinetic") {
+            crate::plan_resolver::ProductSide::Kinetic
+        } else {
+            crate::plan_resolver::ProductSide::Capture
+        }
+    });
     let plan = crate::plan_resolver::assign_free_plan(
         &state.pool,
         tenant_id,
