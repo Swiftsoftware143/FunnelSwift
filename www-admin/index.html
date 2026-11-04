@@ -839,6 +839,22 @@ async function renderMyAccount() {
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsPasswordSave()">Save</button><span id="fsac-pwmsg" style="font-size:12px;margin-left:8px"></span></div>
     </div>
+    <!-- SIGNED-IN DEVICES (2026-11-04). POST /api/v1/auth/logout-all has been mounted and reachable
+         from the customer app since 2026-11-01, and this operator console had no way to press it: an
+         operator who thinks their password leaked could change the password (which moves the same
+         session line) but could not END a session sitting on a device they no longer hold. The route
+         answers a FRESH token for the calling tab, so the press must adopt it or it would sign the
+         operator out of the screen they are looking at. Hidden while impersonating a tenant: the
+         route acts on the CALLER, and there it is the customer's account, so pressing it would kick
+         that customer off every device they own. -->
+    ${localStorage.getItem(IMP_ORIGINAL_KEY) ? '' : `
+    <div class="card">
+      <div class="card-header"><span class="card-title">📱 Signed-in devices</span></div>
+      <p style="font-size:13px;color:#64748b;margin:0 0 10px">Signed in somewhere you no longer
+        control — an old phone, a shared laptop? This ends every other session on the account. This
+        screen stays signed in.</p>
+      <div><button class="btn btn-sm" id="fsac-so-btn" onclick="window._fsSignOutOthers()">Sign out every other device</button><span id="fsac-somsg" style="font-size:12px;margin-left:8px"></span></div>
+    </div>`}
     <div class="card">
       <div class="card-header"><span class="card-title">✉️ Sign-in email</span></div>
       <!-- (cron 2026-10-20) The address printed in the Profile card below was read-only: the
@@ -1019,6 +1035,31 @@ window._fsPasswordSave = async function () {
     ['fsac-np', 'fsac-np2', 'fsac-cp'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     fsMsg('fsac-pwmsg', 'Password changed', true);
   } catch (e) { fsMsg('fsac-pwmsg', (e && e.message) || 'Could not change the password', false); }
+};
+/* "Sign out every other device" (2026-11-04). POST /auth/logout-all bumps users.sessions_valid_from
+   and answers a FRESH token for this tab, because the caller's own old token dies with the others —
+   adopting it is what keeps the operator on the screen they are looking at. Posted directly, not
+   through api(): that helper pins Content-Type: application/json for a GET-shaped body and, more to
+   the point, its 401 arm clears the token and bounces to /login, which is the exact outcome this
+   control is supposed to AVOID for the current tab. */
+window._fsSignOutOthers = async function () {
+  if (localStorage.getItem(IMP_ORIGINAL_KEY)) { fsMsg('fsac-somsg', 'Stop impersonating first', false); return; }
+  if (!window.confirm('Sign out every other device signed into this account? This screen stays signed in.')) return;
+  fsMsg('fsac-somsg', 'Signing out\u2026', null);
+  try {
+    const r = await fetch(API_BASE + '/auth/logout-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}) }
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || (typeof d.error === 'string' ? d.error : '') || ('Error ' + r.status));
+    // No fresh session means the server did NOT move the session line: claiming success would be the
+    // trap this whole card exists to avoid, so it is reported as a failure and the token is untouched.
+    if (!d.token) throw new Error('The server did not return a new session, so nothing was changed.');
+    TOKEN = d.token;
+    localStorage.setItem('ws_fs_token', TOKEN);
+    fsMsg('fsac-somsg', d.message || 'Every other device has been signed out. This one stays signed in.', true);
+  } catch (e) { fsMsg('fsac-somsg', (e && e.message) || 'Could not sign the other devices out', false); }
 };
 /* Change of the operator's OWN sign-in address (cron 2026-10-20). The route pair shipped in the app
    console with no operator surface: the address in the Profile card was read-only. This only ASKS -
