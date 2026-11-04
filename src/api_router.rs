@@ -720,6 +720,15 @@ pub fn create_router(
             "/api/v1/admin/users/:id",
             delete(crate::handlers::admin_handler::delete_tenant_user),
         )
+        // Re-issue a teammate's login details (2026-11-04). The panel could add a teammate, correct
+        // a role and remove one, but when the credentials mail never arrived there was no action
+        // anywhere: the operator's only remedy was delete-and-re-mint, which throws away every lead
+        // and ticket attached to that user id. Mints a new password and mails it through the same
+        // credentials mailer the two create doors use.
+        .route(
+            "/api/v1/admin/users/:id/resend-credentials",
+            post(crate::handlers::admin_handler::resend_tenant_user_credentials),
+        )
         .route(
             "/api/v1/admin/tenants/:id/feature-overrides",
             get(crate::handlers::admin_handler::get_tenant_feature_overrides),

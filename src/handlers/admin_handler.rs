@@ -911,6 +911,92 @@ pub(crate) async fn mint_workspace_user(
     })))
 }
 
+/// Re-issue a teammate's login details (admin only).
+///
+/// `POST /api/v1/admin/users/:id/resend-credentials`. The panel has listed the workspaces whose
+/// credentials mail never became a sign-in since 2026-10-27, but that list had NO action: when the
+/// customer never received the mail (or lost the password), the only remedy was to delete the
+/// account and mint it again, which throws away every lead and ticket attached to that user id.
+/// This route mints a NEW password, stores only its hash, and mails it through the SAME
+/// credentials mailer and the SAME reserved-address test as the two create doors, so the three
+/// cannot drift.
+///
+/// The password is returned ONLY when nothing was emailed - a reserved test address, or a provider
+/// refusal. That is the identical handover contract `create_tenant_user` uses: the operator must
+/// be able to hand over *something*, or the account is still unreachable.
+pub async fn resend_tenant_user_credentials(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    // The row the caller named: an unknown id is a 404, not a silent no-op, so the panel can tell
+    // "this teammate is gone" from "the mail failed".
+    let row: Option<(Uuid, String, String, bool)> = sqlx::query_as(
+        "SELECT tenant_id, email, COALESCE(name, email), is_active FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (tenant_id, email, name, is_active) =
+        row.ok_or_else(|| AppError::NotFound("No such teammate".into()))?;
+
+    // A disabled account cannot sign in whatever password it holds, so mailing one would be a lie.
+    if !is_active {
+        return Err(AppError::BadRequest(
+            "that account is deactivated - reactivate it first".into(),
+        ));
+    }
+
+    let generated_password = Uuid::new_v4()
+        .to_string()
+        .replace('-', "")
+        .chars()
+        .take(12)
+        .collect::<String>();
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(generated_password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+        .to_string();
+    sqlx::query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&password_hash)
+        .bind(user_id)
+        .execute(&state.pool)
+        .await?;
+
+    let withheld = crate::security::probe_addr::harness_domain(&email).is_some();
+    let mut emailed = false;
+    let mut detail = String::new();
+    if !withheld {
+        match crate::email::send_credentials_email(
+            &state.pool,
+            tenant_id,
+            &email,
+            &name,
+            &generated_password,
+        )
+        .await
+        {
+            Ok(()) => emailed = true,
+            Err(e) => detail = e,
+        }
+    }
+
+    Ok(Json(json!({
+        "id": user_id.to_string(),
+        "tenant_id": tenant_id.to_string(),
+        "email": email,
+        "credentials_emailed": emailed,
+        "withheld": withheld,
+        "detail": detail,
+        "handover_password": if emailed { Value::Null } else { json!(generated_password) },
+    })))
+}
+
 /// Move an existing teammate to another role (admin only).
 ///
 /// `POST /api/v1/admin/users/:id/role` with `{role}`. The console could add a teammate but never
