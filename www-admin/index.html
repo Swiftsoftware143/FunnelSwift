@@ -3938,7 +3938,7 @@ async function renderTenants() {
       </div>
       ${TENANT_USERS === null ? '<div class="empty" style="padding:16px">Loading…</div>' : (TENANT_USERS.length === 0
         ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
-        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td>${u.last_login_at?x(formatDate(u.last_login_at)):'<span style="color:var(--muted)">never</span>'}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td><td><button class="btn btn-ghost tu-remove" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Remove this teammate from the workspace" style="font-size:12px;padding:2px 8px">Remove</button></td></tr>`).join('')}</tbody></table></div>`)}
+        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td>${u.last_login_at?x(formatDate(u.last_login_at)):'<span style="color:var(--muted)">never</span>'}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td><td><button class="btn btn-ghost tu-resend" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Email this teammate a fresh password and switch the old one off" style="font-size:12px;padding:2px 8px;margin-right:6px">Resend login</button><button class="btn btn-ghost tu-remove" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Remove this teammate from the workspace" style="font-size:12px;padding:2px 8px">Remove</button></td></tr>`).join('')}</tbody></table></div>`)}
       <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input class="input" id="tu-name" placeholder="Their name"></div>
         <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input class="input" id="tu-email" placeholder="them@company.com"></div>
@@ -4096,6 +4096,31 @@ function bindTenants() {
       sel.disabled = false;
       TENANT_USERS_MSG = '<span style="color:#b91c1c">' + x((e && e.message) || 'Could not change that role') + '</span>';
     }
+    renderApp();
+  }));
+  // Re-issue a login (2026-11-04). The pane lists every teammate and can correct a role or remove
+  // one, but when the credentials mail never arrived the operator's only remedy was to delete the
+  // account and mint it again - which throws away every lead and ticket attached to that user id.
+  // The route mints a new password and mails it through the SAME credentials mailer the two create
+  // doors use; a reserved test address is withheld, so the password comes back for handing over.
+  document.querySelectorAll('.tu-resend').forEach(btn => btn.addEventListener('click', async () => {
+    const uid = btn.getAttribute('data-user'), mail = btn.getAttribute('data-email') || 'that teammate';
+    if (!uid) return;
+    if (!confirm('Email ' + mail + ' a fresh password? Their current password stops working immediately.')) return;
+    btn.disabled = true;
+    try {
+      const r = await api('/admin/users/' + encodeURIComponent(uid) + '/resend-credentials', { method: 'POST', body: '{}' });
+      if (r && r.credentials_emailed) {
+        TENANT_USERS_MSG = '<span style="color:#15803d">\u2705 New login details were emailed to ' + x(mail) + '.</span>';
+      } else if (r && r.withheld) {
+        TENANT_USERS_MSG = '<span style="color:#b45309">\u26d4 Nothing was emailed (' + x(mail) + ' is a reserved test address). Hand them this password:</span> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">' + x(r.handover_password || '') + '</code>';
+      } else {
+        TENANT_USERS_MSG = '<span style="color:#b91c1c">\u274c The credentials email FAILED for ' + x(mail) + ' - hand them this password:</span> <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">' + x((r && r.handover_password) || '') + '</code>' + (r && r.detail ? '<div style="font-size:12px;color:#b91c1c">' + x(r.detail) + '</div>' : '');
+      }
+    } catch (e) {
+      TENANT_USERS_MSG = '<span style="color:#b91c1c">' + x((e && e.message) || 'Could not re-issue that login') + '</span>';
+    }
+    btn.disabled = false;
     renderApp();
   }));
   // Remove a teammate (2026-10-23). The pane could add one and move a role but never take one out,
@@ -4968,7 +4993,17 @@ async function renderPlanAdmin() {
   try { const t = await api('/tenants'); tenants = Array.isArray(t) ? t : (t.tenants || t.data || []); } catch (e) { tenants = []; }
   STATE.data.planAdminPlans = plans;
   STATE.data.planAdminTenants = tenants;
-  const tenantOpts = tenants.map(t => `<option value="${x(t.id)}">${x(t.name || t.email || t.id)}${t.plan_name ? ' — ' + x(t.plan_name) : ''}</option>`).join('');
+  // Disambiguate the tenant picker (2026-11-02): four live workspaces are all named
+  // "My Workspace", so the operator's plan-assignment and per-tenant override pickers
+  // showed four identical options and a plan/override could land on the wrong workspace.
+  // Only repeated names get the owner (or slug) appended, so unique names stay short.
+  const nameCounts = {};
+  tenants.forEach(t => { const n = t.name || t.email || t.id; nameCounts[n] = (nameCounts[n] || 0) + 1; });
+  const tenantOpts = tenants.map(t => {
+    const nm = t.name || t.email || t.id;
+    const who = (nameCounts[nm] > 1 && (t.owner_email || t.slug)) ? ' · ' + x(t.owner_email || t.slug) : '';
+    return `<option value="${x(t.id)}">${x(nm)}${who}${t.plan_name ? ' — ' + x(t.plan_name) : ''}</option>`;
+  }).join('');
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <div><h1 style="font-size:22px;font-weight:700">🎚️ Plans &amp; Features</h1>
