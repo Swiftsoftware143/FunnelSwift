@@ -1293,7 +1293,17 @@ pub fn create_router(
             body_read_deadline,
             crate::body_deadline::body_read_deadline_middleware,
         ))
-        .layer(axum::middleware::from_fn_with_state(
+        // MOUNTED WITH `route_layer`, NOT `layer` (cron 2026-11-05). `Router::layer` wraps the
+        // FALLBACK as well as the routes, so before this every path that matched no route answered
+        // `401 {"error":"Authentication required"}` — measured live: `GET /api/v1/does-not-exist-xyz`
+        // -> 401 here, while IncentiveSwift / ADASwift / MissedCall answer 404 for the same request.
+        // Two user-visible consequences: a mistyped deep link or a stale console call looked like an
+        // EXPIRED SESSION (the SPA treats a 401 as "sign in again") instead of a page that does not
+        // exist, and any route census that probes a path with no credential reads a non-existent
+        // route as "present but gated". `route_layer` applies the same middleware to exactly the
+        // mounted routes, so a guarded request still answers 401 at t+0.00s while an unmounted path
+        // falls through to axum's own 404 — the shape the rest of the fleet already ships.
+        .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             crate::auth::global_auth::require_auth,
         ))
