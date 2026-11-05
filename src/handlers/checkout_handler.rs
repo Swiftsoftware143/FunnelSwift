@@ -685,7 +685,7 @@ pub async fn create_checkout_session(
             // on one open request per (tenant, plan_slug) -- the same key `plan_request_handler`'s
             // customer door uses. Before this the row only existed if the console's own follow-up
             // press ran, so a buyer who closed the tab had asked for nothing. Inserted directly
-            // rather than through that handler so no receipt mail is queued: nothing was charged.
+            // rather than through that handler; the receipt is sent below for a FRESH row only.
             let plan_request = match plan.as_ref() {
                 Some((_, name, price, annual_price)) => {
                     let asked_for = if yearly { *annual_price } else { *price };
@@ -714,6 +714,59 @@ pub async fn create_checkout_session(
             // it. Same invariant ADASwift already holds: "promising a row that does not exist is the
             // same class of lie as a 200 with no write".
             let request_recorded = plan_request.is_some();
+            // A RECEIPT FOR THE BUYER WHO PRESSED UPGRADE (2026-11-05; parity with ADASwift
+            // 6539342). The customer's own "Request a plan" door mails this receipt, but this
+            // path filed the SAME row and mailed nothing -- so a buyer told "your request has
+            // been passed to the team" had no copy of it and no way to prove the ask. Sent only
+            // when the row is FRESH: the open-row dedupe means a second press wrote nothing and
+            // must never send a second mail.
+            let mut receipt_emailed = false;
+            let fresh = plan_request
+                .as_ref()
+                .and_then(|v| v.get("already_open"))
+                .and_then(|v| v.as_bool())
+                == Some(false);
+            if fresh {
+                let asked_name = plan
+                    .as_ref()
+                    .map(|(_, n, _, _)| n.clone())
+                    .unwrap_or_else(|| plan_slug.clone());
+                if let Some(uid) = user_id {
+                    let filer: Option<(String, String)> = sqlx::query_as(
+                        "SELECT email, COALESCE(NULLIF(name, ''), '') FROM users WHERE id = $1",
+                    )
+                    .bind(uid)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .unwrap_or(None);
+                    if let Some((email, name)) = filer {
+                        let greeting = if name.trim().is_empty() {
+                            "there".to_string()
+                        } else {
+                            name.trim().to_string()
+                        };
+                        // Best effort by design, like every other mail here: the `plan_requests`
+                        // row is the record the operator works from, so a mail failure is
+                        // logged and reported, never fatal.
+                        match crate::email::send_plan_request_received_email(
+                            &state.pool,
+                            tenant_id,
+                            &email,
+                            &greeting,
+                            &asked_name,
+                            "",
+                        )
+                        .await
+                        {
+                            Ok(()) => receipt_emailed = true,
+                            Err(e) => tracing::warn!(
+                                to = %email,
+                                "refused-upgrade receipt was not sent: {e}"
+                            ),
+                        }
+                    }
+                }
+            }
             // A paused provider is a DIFFERENT cause from an absent one; see
             // `plan_provider_is_paused`.
             let paused = plan_provider_is_paused(&state, tenant_id).await;
@@ -777,7 +830,8 @@ pub async fn create_checkout_session(
                     "message": message,
                     "configured": false,
                     "request_recorded": request_recorded,
-                    "plan_request": plan_request
+                    "plan_request": plan_request,
+                    "receipt_emailed": receipt_emailed
                 })),
             ))
         }
