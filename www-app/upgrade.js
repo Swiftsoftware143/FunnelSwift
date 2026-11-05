@@ -526,7 +526,11 @@ function upgradeTo(slug){
             PREQ_OFFER = null;
             PREQ_MSG = { ok:true, text: (prq.already_open === true)
               ? 'You already have an open request for the ' + askedName + ' plan — our team is on it, and its live status is listed below.'
-              : 'Request recorded — nothing was charged. Our team will move this workspace to the ' + askedName + ' plan and confirm here; its live status is listed below.' };
+              : 'Request recorded — nothing was charged. Our team will move this workspace to the ' + askedName + ' plan and confirm here; its live status is listed below.'
+                  // A COPY THE BUYER CAN KEEP (2026-11-05). The refusal now mails the receipt; say so,
+                  // but only when the server confirms it queued the mail — a promise with no send
+                  // behind it is the same class of lie as "request recorded" with no row.
+                  + (data.receipt_emailed === true ? ' A copy of your request has been emailed to you.' : '') };
             loadRequests();
             window.scrollTo(0,0);
             return;
