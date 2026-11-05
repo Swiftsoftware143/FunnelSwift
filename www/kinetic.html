@@ -815,6 +815,9 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  // failure, false for a reserved test address. Claiming "Check your email" regardless left real
  // customers with an account and a password they could never receive.
  var emailed = !(data && data.credentials_emailed === false);
+ // ...and WHY nothing left, when nothing did (kanban t_499119d2): `withheld` means the
+ // sender refused to attempt it because the address cannot receive mail — a non-send, not an outage.
+ var withheld = !!(data && data.withheld);
  // The session signup just returned: what the password chooser below authenticates with.
  window.__signupToken = (data && data.token) || '';
  window.__signupEmail = email;
@@ -825,6 +828,16 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
    okBox.innerHTML = '<strong>Account created!</strong><br>Check your email. We sent your login '
      + 'details to ' + email.replace(/[<>&]/g, '') + '.<br>You can change your password any time in '
      + 'your profile settings.';
+ } else if (withheld) {
+   // Reserved / undeliverable address: a DELIBERATE non-send, not an outage (kanban t_499119d2).
+   okBox.innerHTML = '<strong>Account created!</strong><br>We did not send your login details to '
+     + email.replace(/[<>&]/g, '') + ' — that address cannot receive mail, so there is nothing in your inbox. '
+     + 'Choose your password in the box below and sign in with it.'
+     + '<br><span style="font-size:12px;color:#64748b">You can also '
+     + '<a href="https://app.funnelswift.net/forgot-password?email=' + encodeURIComponent(email)
+     + '" style="color:#2563eb;font-weight:600">send yourself a reset code</a> '
+     + 'from an address that can receive mail.</span>';
+   okBox.insertAdjacentHTML('beforeend', initialPwBoxHtml());
  } else {
    okBox.innerHTML = '<strong>Account created!</strong><br>We could not send your login details to '
      + email.replace(/[<>&]/g, '') + ', so there is nothing in your inbox. '

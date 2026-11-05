@@ -132,6 +132,18 @@ async fn dispatch_for_tenant(
             subject = %subject,
             "email skipped — no email provider configured for this tenant (Admin > Settings > Email Provider)"
         );
+        // An unconfigured provider is a FAILED send, not a silent skip (kanban t_499119d2): this was
+        // the one arm of the funnel that returned before recording anything, so the failure never
+        // reached `email_send_log` and the operator's delivery history simply had no row for it.
+        // Record it on the same slots every other failure writes.
+        record_last_send(
+            pool,
+            to,
+            subject,
+            false,
+            "email provider not configured (Admin > Settings > Email Provider)",
+        )
+        .await;
         return Err(
             "Email provider not configured. Set it in Admin > Settings > Email Provider."
                 .to_string(),

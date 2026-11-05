@@ -162,6 +162,10 @@ try{
   // page that printed "Check your email" unconditionally sent real customers hunting an inbox that
   // would stay empty, holding an account whose password nobody could ever read. Say the truth.
   var emailed = !(data && data.credentials_emailed === false);
+  // ...and WHY nothing left, when nothing did (kanban t_499119d2). `withheld` means the
+  // server refused to attempt the send because the address cannot receive mail (a reserved test
+  // domain). That is not an outage, and the banner must not say it is.
+  var withheld = !!(data && data.withheld);
   // The session signup just returned: what the password chooser below authenticates with.
   window.__signupToken = (data && data.token) || '';
   window.__signupEmail = body.email;
@@ -176,6 +180,17 @@ try{
       ' or <a href="https://app.funnelswift.net/login.html" style="color:#2563eb;font-weight:600">sign in</a>.' +
       '</div>';
     btn.innerHTML = 'Check your email';
+  } else if (withheld) {
+    // A reserved / undeliverable address is a DELIBERATE non-send, not an outage (kanban t_499119d2):
+    // the old copy blamed "the mail service for this site", which made every probe signup read as a
+    // broken credentials mail. Nothing failed here, so say exactly that.
+    loading.innerHTML = "<strong>Account created!</strong><br>We did not send your login details to " +
+      body.email.replace(/[<>&]/g, '') + ' \u2014 that address cannot receive mail, so there is nothing ' +
+      'waiting in your inbox. Choose your password in the box below and sign in with it.' + ask +
+      '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
+      'You can also ' + resetLink + ' from an address that can receive mail.</div>';
+    btn.innerHTML = 'Set your password';
+    loading.insertAdjacentHTML('beforeend', initialPwBoxHtml());
   } else {
     loading.innerHTML = "<strong>Account created!</strong><br>We could not send your login details to " +
       body.email.replace(/[<>&]/g, '') + ' — so there is nothing waiting in your inbox, and we will not ' +

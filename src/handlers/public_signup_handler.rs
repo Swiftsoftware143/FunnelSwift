@@ -529,6 +529,12 @@ pub async fn public_signup(
     // copied, not invented: ADASwift's register has answered `credentials_emailed` since 2026-10-24.
     // A withheld probe address is `false` too — for that recipient the truth is also "nothing was
     // sent", and the page must not claim otherwise.
+    // WAS IT WITHHELD (or did it fail)? The page needs the difference (kanban t_499119d2): a
+    // reserved address is a deliberate NON-SEND, not a mail outage, and a banner that blames "the
+    // mail service" for it is how a probe signup gets read as a broken credentials mail. `false` for
+    // both arms would conflate them, so the reason travels as its own flag — spelled `withheld`, the
+    // field name this app's other credential doors already answer (admin invite / add user).
+    let withheld = probe_send_reason.is_some();
     let credentials_emailed = match probe_send_reason {
         Some(reason) => {
             tracing::info!(
@@ -669,6 +675,9 @@ pub async fn public_signup(
             // password in their inbox (a send failure, or a probe address the sender withholds).
             // The page must say so instead of promising mail that never left.
             "credentials_emailed": credentials_emailed,
+            // True when the sender REFUSED to attempt the send (reserved/harness address), so the
+            // page can say "that address cannot receive mail" instead of claiming a mail outage.
+            "withheld": withheld,
             "token": token,
             // The flat slug this response always carried (null only when the install has no free
             // plan at all) plus the structured assignment that can never be silent.
