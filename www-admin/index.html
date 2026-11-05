@@ -1257,7 +1257,7 @@ function renderModal(m) {
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
         <span class="modal-title">${x(m.title)}</span>
-        <button class="modal-close" onclick="window._closeModal()">✕</button>
+        <button class="modal-close" aria-label="Close dialog" onclick="window._closeModal()">✕</button>
       </div>
       <div class="modal-body" id="modal-body">${typeof m.content === 'function' ? m.content() : (m.content||'')}</div>
     </div>
