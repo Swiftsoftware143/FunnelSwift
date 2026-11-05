@@ -3883,6 +3883,8 @@ let TENANT_SHOW_PROBES = false;
 // ticked ids, so a filter can never widen a destructive action. `last_sign_in` is null when the app
 // has recorded no sign-in at all, which is exactly the row being hunted.
 let TENANT_ONLY_NEVER = false;
+// Outcome of the last in-place credential resend, drawn as a banner above the table (2026-11-05).
+let TENANT_RESEND_MSG = '';
 function tenantPlanCell(t) {
   const cur = String(t.plan_slug || '');
   const opts = ['<option value=""' + (cur ? '' : ' selected') + '>— no plan —</option>']
@@ -3954,19 +3956,19 @@ async function renderTenants() {
         <button class="btn btn-danger btn-sm" id="tnDel" disabled>Delete selected</button>
       </div>
     </div>
-    <div class="card"><div class="table-wrap"><table class="table">
+    ${TENANT_RESEND_MSG?'<div class="card" style="border-left:4px solid #b45309;padding:12px 14px;margin-bottom:14px;font-size:13px">'+TENANT_RESEND_MSG+'</div>':''}<div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th title="When anyone in this workspace last signed in. 'not recorded' means the app has no sign-in for it — the column started empty, so an older workspace can read that way even if its owner has used it.">Last sign-in</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
       <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}">
         <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}</td>
+        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}${t.owner_credentials_undelivered?'<div style="margin-top:4px"><span class="badge badge-yellow" title="The first password we minted for this owner was never delivered - a provider refusal, or a reserved test address withheld at source. Nobody has ever read it, so this workspace cannot be signed into until you send a new one.">password never delivered</span></div>':''}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td>${tenantPlanCell(t)}</td>
         <td style="font-size:12px">${t.last_sign_in ? x(new Date(asUtc(t.last_sign_in)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '<span style="color:var(--muted)" title="No sign-in recorded for this workspace. The app only began recording sign-ins on 27 Oct 2026, so this can read that way for a workspace whose owner has in fact used it.">not recorded</span>'}</td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
         <td><button class="btn btn-secondary btn-xs tu-open" data-tenant="${x(t.id)}" data-name="${x(t.name||t.company_name||'')}" title="See this workspace's people, and add one">${t.user_count||0} user${(t.user_count||0)===1?'':'s'}</button></td>
         <td>${formatDate(t.created_at)}</td>
-        <td>${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
+        <td>${t.owner_credentials_undelivered && t.owner_user_id ? `<button class="btn btn-primary btn-xs tn-resend" data-user="${x(t.owner_user_id)}" data-email="${x(t.owner_email||'')}" title="Mint a brand-new password for the owner and email it">Send login</button> ` : ''}${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
     ${TENANT_USER_TENANT ? `<div class="card" id="tenant-users-panel" style="margin-top:16px">
@@ -3994,7 +3996,35 @@ async function renderTenants() {
 // Bulk tenant delete (kanban t_ac2fe688). The backend refuses two deletes — the account you are
 // signed in as, and a portfolio company — and answers per-id, so a refused row shows its reason
 // instead of hiding behind a generic failure.
+function bindTenantResend() {
+  // Send a fresh password to a workspace owner whose credentials mail never went out (2026-11-05).
+  // The People panel already had a per-user resend; the Tenants list is the screen the operator
+  // actually watches, so the badge and the action belong on the row it badges.
+  document.querySelectorAll('.tn-resend').forEach(btn => btn.addEventListener('click', async () => {
+    const uid = btn.getAttribute('data-user'), mail = btn.getAttribute('data-email') || 'the owner';
+    if (!uid) return;
+    if (!confirm('Send ' + mail + ' a brand-new password? Their current password stops working immediately.')) return;
+    btn.disabled = true; btn.textContent = 'sending...';
+    try {
+      const r = await api('/admin/users/' + encodeURIComponent(uid) + '/resend-credentials', { method: 'POST', body: '{}' });
+      const pw = (r && r.handover_password) || '';
+      if (r && r.credentials_emailed) {
+        TENANT_RESEND_MSG = '\u2705 A new password was emailed to ' + x(mail) + '.';
+      } else if (r && r.withheld) {
+        TENANT_RESEND_MSG = '\u26d4 Nothing was emailed (' + x(mail) + ' is a reserved test address). Hand them this password: <code>' + x(pw) + '</code>';
+      } else {
+        TENANT_RESEND_MSG = '\u26a0\ufe0f No email left the system' + (r && r.detail ? ': ' + x(r.detail) : '.') + (pw ? ' Hand them this password: <code>' + x(pw) + '</code>' : '');
+      }
+      renderApp();
+    } catch (e) {
+      TENANT_RESEND_MSG = '\u26d4 Could not send the login: ' + x((e && e.message) || String(e));
+      renderApp();
+    }
+  }));
+}
+
 function bindTenants() {
+  bindTenantResend();
   const all = document.getElementById('tnAll');
   const del = document.getElementById('tnDel');
   const boxes = () => Array.from(document.querySelectorAll('.tn-chk'));
@@ -6065,7 +6095,7 @@ window.appGuidePages = {
   "systemTags": { title: "System Tags", desc: "The tags owned by the platform and the other SwiftSoftware apps — the ones that drive cross-app provisioning. These are shared, not per-tenant.", actions: ["See which system tags exist", "See the product and plan each points at"] },
   "mobileInterest": { title: "Mobile App Interest", desc: "Everyone who asked to be told when the mobile app ships, newest first. The list is filled by the Notify Me form on the public download page, so these addresses are not customers and belong to no workspace. Copy all emails takes the whole list at once, ready to paste into a message when the app is released. Platform administrators only.", actions: ["Read who asked, and on which platform", "Copy every address to tell them the app is out"] },
   "tagGroups": { title: "Tag Groups", desc: "Group related tags so a rule or an audience can target several at once.", actions: ["Create a group", "Add tags to it", "Use the group in a rule or campaign"] },
-  "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts"] },
+  "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts. A workspace whose owner never received the first password we made for them carries a 'password never delivered' note under the owner's address, with a 'Send login' button: it makes a new password, emails it and signs that workspace out of its old sessions, and when the address is a test address that can never receive mail it shows the password on screen so you can pass it on.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts", "Give a workspace owner a login when their first password never arrived"] },
   "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
   "planRequests": { title: "Plan Requests", desc: "A workspace that wants a paid plan asks here — its own Upgrade screen files the request because this install cannot take a card. Nothing is charged. Move a request to contacted, done or declined, and the customer sees that state the next time their screen loads.", actions: ["See every request and the workspace it came from", "Mark a request contacted, done or declined", "The number on the label is how many are still waiting"] },
   "settings": { title: "Settings", desc: "This app's own configuration for your account — the mail server it sends through and the other integration slots.", actions: ["Set the mail server credentials", "Check whether email is configured", "Review the other settings"] },
