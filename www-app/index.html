@@ -1810,7 +1810,7 @@ function RF(id,l){
       var list=(r&&r.members)||[];
       list.forEach(function(m){
         fow.appendChild(El("option",{value:m.id,selected:m.id===owCur?"selected":null},
-          (m.name||m.email||m.id)+(m.role?" ("+m.role+")":"")));
+          (m.name||m.email||m.id)+" ("+teamRoleWord(m)+")"));
       });
       /* A lead can be owned by somebody who has since been disabled: `team_members` lists ACTIVE
          logins only (correctly — an owner picker should not offer a login that cannot sign in), so
