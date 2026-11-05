@@ -107,6 +107,7 @@
       <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Email Branding</a>
       <a href="#my-account" class="section-title" onclick="closeMobile()">Account</a>
       <a href="#my-account" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👤</span> My Account</a>
+      <a href="#teammates" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👥</span> Team &amp; Roles</a>
       <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
       <a href="#system-tags" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> What System Tags Do</a>
       <a href="#system-settings" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">⚡</span> System Settings (installation-wide)</a>
@@ -452,6 +453,65 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             subscription), never the role word “User”. A workspace with no subscription on record reads
             <em>No plan assigned</em> there and in this panel's tenant list — the app no longer invents a
             tier name for a workspace that has none.</li>
+        </ul>
+      </div>
+
+      <!-- ============ TEAM & ROLES ============ -->
+      <h2 id="teammates">👥 Team &amp; Roles — the people in a workspace</h2>
+
+      <div class="card">
+        <h3>Where it is</h3>
+        <p><strong>Tenants</strong> → the <strong>“N users”</strong> button on a workspace's row opens
+        <strong>People in &lt;workspace&gt;</strong>. That panel is the whole team: who is in the
+        workspace, what each of them is allowed to do, and three actions — <strong>+ Add user</strong>,
+        <strong>Resend login</strong> and <strong>Remove</strong>.</p>
+      </div>
+
+      <div class="card">
+        <h3>The four roles the app issues</h3>
+        <p>The picker offers exactly the roles the server and the database recognise. A value outside
+        that list is refused with the field named (<code>role must be one of: …</code>), so a
+        workspace can never be left holding a role no gate understands.</p>
+        <ul>
+          <li><strong>Member</strong> (<code>user</code>) — the default. Uses the workspace and sees no
+            operator screens.</li>
+          <li><strong>Company admin</strong> (<code>company_admin</code>) — the workspace's own admin.
+            Deliberately <em>not</em> a platform admin: this console and every
+            <code>/api/v1/admin/*</code> route are gated on <code>admin</code> alone, so this person
+            runs their own company without reaching anyone else's.</li>
+          <li><strong>Admin</strong> (<code>admin</code>) — the platform operator role that opens this
+            console. Give it to your own staff only.</li>
+          <li><strong>Business user</strong> (<code>business_user</code>) — a workspace member recorded
+            under that name; no gate in the app treats it differently from a Member today.</li>
+        </ul>
+        <p>A role change saves the moment you pick it from the row's select. It is not a hint: the server
+        re-reads the account's row on every request, so <em>demoting</em> someone takes effect on their
+        next click, not when their long-lived sign-in expires.</p>
+      </div>
+
+      <div class="card">
+        <h3>Adding someone — and what happens when the email cannot go out</h3>
+        <p><strong>+ Add user</strong> asks for a name, an email and a role. The server generates the
+        password and mails the sign-in details. The account is never left as a login nobody knows: the
+        answer reports which of three things happened, and the panel says it in words.</p>
+        <ul>
+          <li><strong>Emailed</strong> — the provider accepted the message, so the teammate has their
+            details.</li>
+          <li><strong>Withheld</strong> — the address is a reserved test address, so nothing was sent,
+            on purpose. The panel hands <em>you</em> the generated password to pass on.</li>
+          <li><strong>Failed</strong> — the provider refused. The panel says so and hands you the
+            password, because otherwise the teammate has no way in.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Resend login · Remove</h3>
+        <ul>
+          <li><strong>Resend login</strong> mails a fresh password and switches the old one off
+            immediately — the right move when a password is lost or has been shared.</li>
+          <li><strong>Remove</strong> takes the teammate out of the workspace. If their record still
+            owns leads or payouts it is kept and their sign-in is switched off instead, so a departure
+            never orphans a customer's data; the panel says which of the two happened.</li>
         </ul>
       </div>
 
