@@ -93,15 +93,58 @@ pub async fn invite_teammate(
     let role = customer_role(req.get("role").and_then(|v| v.as_str()))?;
 
     // The plan decides next. `max_team_members` counts the workspace's ACTIVE people, the owner
-    // included, so a single-seat plan refuses here with the fleet's own upgrade sentence (402)
-    // instead of creating a login nobody may use.
-    features::enforce_feature_limit(&state, tenant_id, "max_team_members", "Team members").await?;
+    // included, so a single-seat plan refuses here instead of creating a login nobody may use.
+    // The refusal is put through [`seat_refusal`] first: if no plan on this installation sells more
+    // seats than the caller already has, "Upgrade to increase your limit" is a dead end and must not
+    // be said (measured 2026-11-05 on Agency / Scale, the top plan).
+    if let Err(refusal) =
+        features::enforce_feature_limit(&state, tenant_id, "max_team_members", "Team members").await
+    {
+        return Err(seat_refusal(&state, tenant_id, refusal).await);
+    }
 
     let mut body = req.clone();
     if let Some(obj) = body.as_object_mut() {
         obj.insert("role".to_string(), json!(role));
     }
     mint_workspace_user(&state, tenant_id, &body).await
+}
+
+/// The fleet's generic limit sentence ends "Upgrade to increase your limit." — a DEAD END when the
+/// workspace already holds the largest seat allowance any plan on this installation sells.
+///
+/// Measured 2026-11-05: every plan, up to Agency / Scale at the top of the price list, carries
+/// `max_team_members = 1`, so a customer paying for the best plan asked to add a colleague and was
+/// told to upgrade to something that does not exist (`402 Team members limit reached (1/1).
+/// Upgrade to increase your limit.`). Nothing on the screen could satisfy that instruction.
+///
+/// So when no plan offers more seats than the caller already has, say what is true instead: the
+/// allowance is in use and a person has to raise it. When SOME plan does offer more, the generic
+/// sentence is correct and is returned untouched — this can never suppress a real upgrade path, and
+/// it needs no change the day a plan's seat count is raised.
+async fn seat_refusal(state: &AppState, tenant_id: Uuid, refusal: AppError) -> AppError {
+    // The number the gates actually enforce for THIS workspace (tenant override, plan row or plan
+    // column — the one resolver), not the plan's raw column.
+    let current = match features::resolved_limit(state, tenant_id, "max_team_members").await {
+        Ok(Some(limit)) if limit > 0 => limit,
+        _ => return refusal,
+    };
+    let best: Option<i32> =
+        sqlx::query_scalar("SELECT MAX(max_team_members) FROM plans WHERE max_team_members > 0")
+            .fetch_one(&state.pool)
+            .await
+            .ok()
+            .flatten();
+    if matches!(best, Some(best) if best > current) {
+        return refusal;
+    }
+    AppError::UpgradeRequired(format!(
+        "Your plan includes {current} teammate{}. That seat is already in use, and no plan on this \
+         installation includes more, so there is nothing to upgrade to yet. Email {} and we will \
+         add the seats for you.",
+        if current == 1 { "" } else { "s" },
+        crate::email::SUPPORT_EMAIL
+    ))
 }
 
 /// The roles a WORKSPACE OWNER may hand out — the operator-only `admin` (platform authority) is not

@@ -385,7 +385,7 @@ pub async fn remaining_headroom(
 /// sets — for the tenant, for the plan's row, or on the plan's column — is the number every limit
 /// gate reads (including `enforce_action_button_limit`, which used to read the column only and
 /// would have made the panel's number for that key inert).
-async fn resolved_limit(
+pub async fn resolved_limit(
     state: &AppState,
     tenant_id: Uuid,
     feature_key: &str,
