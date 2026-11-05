@@ -499,13 +499,23 @@ pub async fn render_funnel(
     if status == StatusCode::OK {
         let og_title: String = raw_headline.chars().take(120).collect();
         let og_desc: String = raw_subheadline.chars().take(300).collect();
+        // SHARE IMAGE (cron 2026-11-05). The page declared `twitter:card = summary_large_image`
+        // and og:title/description but bound NO image, so every pasted funnel link previewed as a
+        // blank card — a "large image" card with no image renders nothing on X, and
+        // Facebook/LinkedIn/Slack show a grey box. This app's own 1200x630 card is the asset every
+        // scraper accepts and it is served from the same marketing host the link lives on, so a
+        // customer's page is no longer the one public URL in the estate with no share picture.
         seo_meta.push_str(&format!(
             "<meta name=\"description\" content=\"{desc}\">\n\
              <meta property=\"og:title\" content=\"{title}\">\n\
              <meta property=\"og:description\" content=\"{desc}\">\n\
+             <meta property=\"og:image\" content=\"https://funnelswift.net/assets/og-funnelswift.png\">\n\
+             <meta property=\"og:image:width\" content=\"1200\">\n\
+             <meta property=\"og:image:height\" content=\"630\">\n\
              <meta property=\"og:url\" content=\"https://funnelswift.net/funnel/{slug}\">\n\
              <meta name=\"twitter:title\" content=\"{title}\">\n\
-             <meta name=\"twitter:description\" content=\"{desc}\">\n",
+             <meta name=\"twitter:description\" content=\"{desc}\">\n\
+             <meta name=\"twitter:image\" content=\"https://funnelswift.net/assets/og-funnelswift.png\">\n",
             desc = html_escape(&og_desc),
             title = html_escape(&og_title),
             slug = html_escape(&slug),
