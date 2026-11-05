@@ -962,11 +962,19 @@ pub async fn resend_tenant_user_credentials(
         .hash_password(generated_password.as_bytes(), &salt)
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
         .to_string();
-    sqlx::query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
-        .bind(&password_hash)
-        .bind(user_id)
-        .execute(&state.pool)
-        .await?;
+    // Clear the latch this route exists to serve, and end any session minted from the OLD password:
+    // a re-issued password means the previous one is no longer a credential, so a token derived from
+    // it must not outlive it (`global_auth` refuses anything minted before `sessions_valid_from`,
+    // exactly as `reset_password` and `change_password` do). Leaving `password_undelivered` set would
+    // make the operator's brand-new badge keep saying "never delivered" after a successful resend.
+    sqlx::query(
+        "UPDATE users SET password_hash = $1, password_undelivered = FALSE, \
+                sessions_valid_from = NOW(), updated_at = NOW() WHERE id = $2",
+    )
+    .bind(&password_hash)
+    .bind(user_id)
+    .execute(&state.pool)
+    .await?;
 
     let withheld = crate::security::probe_addr::harness_domain(&email).is_some();
     let mut emailed = false;

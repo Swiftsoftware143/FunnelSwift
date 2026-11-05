@@ -149,6 +149,11 @@ pub async fn list_tenants(
             Option<String>,
             String,
             Option<chrono::DateTime<chrono::Utc>>,
+            // Owner identity + the "we minted a password nobody ever received" latch (2026-11-05).
+            // Same owner ordering as `owner_email` above, so the badge, the address and the resend
+            // action always describe ONE person.
+            Option<Uuid>,
+            bool,
         ),
     >(
         r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status,
@@ -158,7 +163,15 @@ pub async fn list_tenants(
                             u.created_at ASC
                    LIMIT 1) AS owner_email,
                   COALESCE(t.probe_harness, '') AS probe_harness,
-                  (SELECT MAX(u.last_login_at) FROM users u WHERE u.tenant_id = t.id) AS last_sign_in
+                  (SELECT MAX(u.last_login_at) FROM users u WHERE u.tenant_id = t.id) AS last_sign_in,
+                  (SELECT u.id FROM users u WHERE u.tenant_id = t.id
+                   ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
+                            u.created_at ASC
+                   LIMIT 1) AS owner_user_id,
+                  COALESCE((SELECT u.password_undelivered FROM users u WHERE u.tenant_id = t.id
+                   ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
+                            u.created_at ASC
+                   LIMIT 1), false) AS owner_credentials_undelivered
            FROM tenants t
            LEFT JOIN LATERAL (
                SELECT plan_id FROM tenant_plan_subscriptions s
@@ -240,7 +253,19 @@ pub async fn list_tenants(
             // that is in daily use. NULL means "nothing recorded" and is published as null — the
             // screen says so in words rather than inventing a date, exactly like ADASwift's
             // last-sign-in column (`65700fb`).
-            "last_sign_in": r.11
+            "last_sign_in": r.11,
+            // The owner's user id, for the one action that recovers a customer who never received
+            // the password we minted (2026-11-05). The People panel already had a per-user
+            // "Resend login" button, but the Tenants list — the screen the operator actually
+            // watches — could not say WHOSE mail failed, so the only route to that fact was the
+            // Email Log, one address at a time, or the customer complaining. Published here so the
+            // owner cell can badge it and offer the resend in place.
+            "owner_user_id": r.12,
+            // true => `users.password_undelivered` is set for that owner: the signup door minted a
+            // first password and the credentials mail never went out (provider refusal, or a
+            // reserved address withheld at source). Nobody has ever read it, so the account cannot
+            // be signed into without help.
+            "owner_credentials_undelivered": r.13
         }));
     }
     Ok(Json(json!(tenants)))
