@@ -445,7 +445,11 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             (field name <code>file</code>), PNG/JPEG/GIF/WebP up to 2 MB. The bytes live in
             <code>user_avatars</code> and are streamed back by the <strong>public</strong>
             <code>GET /api/v1/auth/avatar/:user_id</code> — an <code>&lt;img&gt;</code> carries no credential, so
-            that read is deliberately anonymous and narrow. The sidebar chip shows the picture once one is set.</li>
+            that read is deliberately anonymous and narrow. The sidebar chip shows the picture once one is set.
+            <strong>Remove picture</strong> (shown once a picture exists) calls
+            <code>DELETE /api/v1/auth/avatar</code>, which clears the stored bytes <em>and</em> the URL
+            the console reads in one transaction — so the initial-letter placeholder comes back and the
+            account is never left pointing at an image that no longer answers.</li>
           <li><strong>Password</strong> — <code>PUT /api/v1/auth/password</code>: the new password twice, plus
             the current one as the check. A wrong current password is answered as a field error, not a sign-out.</li>
           <li><strong>The plan shown</strong> — the workspace's real tier from
