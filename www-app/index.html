@@ -760,8 +760,24 @@ function S(t){
   var ti=TI;
   $("pt").textContent=ti[t]||t;
   $("ct").innerHTML='<div class="loading">Loading...</div>';
-  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,wtl:LWTL,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN,insights:LINS};
+  /* `LWTL` (Lead Forms) is declared in a LATER <script> block than this router, so naming it in
+     this map threw `ReferenceError: LWTL is not defined` for any tap that landed while the page
+     was still parsing - the router died and the panel stayed on "Loading..." with no error shown
+     (measured on the live console 2026-11-06, slow-device tap). Resolve it only once it exists,
+     and let a renderer that is still arriving have a few bounded retries instead of failing the
+     tap. Every renderer that IS declared here behaves exactly as before. */
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN,insights:LINS};
+  if(typeof LWTL==="function") L.wtl=LWTL;
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
+  else if(t!=="upgrade"&&t!=="funnels"){
+    var tries=0;
+    (function waitForRenderer(){
+      if(!document.querySelector("#ct .loading")) return;
+      if(t==="wtl"&&typeof LWTL==="function"){ L.wtl=LWTL; LWTL(); return; }
+      if(++tries<8) setTimeout(waitForRenderer,300);
+      else $("ct").innerHTML='<div class="cc"><p>This screen has not finished loading. Tap it again in a moment.</p></div>';
+    })();
+  }
   // keep the inline guide in step with the tab (the console switches tabs without touching the URL)
   if(window.inlineGuidePage) window.inlineGuidePage(t);
 }
