@@ -401,6 +401,20 @@ function api(p,o){
 }
 
 function X(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+/* Times are shown in the READER's own timezone. The API hands back UTC
+   (`2026-11-06 17:53:45.827789+00`); printing that raw made a 12:53 EST request read "17:53", and a
+   date-only field printed the UTC day, which is TOMORROW for anything filed after 19:00 local.
+   `TSFMT(v,0)` keys the calendar day, `TSFMT(v,1)` adds HH:MM — the same YYYY-MM-DD[ HH:MM] shape as
+   before, so nothing in the layout moves. (Named TSFMT, NOT `LT`: `LT` is this console's Tags loader.) */
+function _tsft(v){if(v===null||v===undefined)return null;var s=String(v).trim();if(!s)return null;
+  s=s.replace(" ","T").replace(/([+-]\d{2})$/,"$1:00");
+  if(!/([Zz]|[+-]\d{2}:?\d{2})$/.test(s))s+="Z";
+  var d=new Date(s);return isNaN(d.getTime())?null:d;}
+function TSFMT(v,withTime){var d=_tsft(v);if(!d)return v?String(v).slice(0,withTime?16:10):"";
+  var z=function(n){return (n<10?"0":"")+n;};
+  var day=d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate());
+  return withTime?day+" "+z(d.getHours())+":"+z(d.getMinutes()):day;}
+
 
 function $(id){return document.getElementById(id);}
 
@@ -720,7 +734,7 @@ function LCAM(){
           +(r.description?'<div style="color:#64748b;font-size:12px">'+X(r.description)+'</div>':'')+'</td>'
           +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+X(r.campaign_type||"—")+'</td>'
           +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+badge(r.status)+'</td>'
-          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+X(String(r.created_at||"").slice(0,10))+'</td>'
+          +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0">'+TSFMT(r.created_at,0)+'</td>'
           +'<td style="padding:8px 6px;border-top:1px solid #e2e8f0"><button class="btn btn-o" data-cam-edit="'+i+'">Edit</button> <button class="btn btn-o" data-cam-del="'+i+'" style="color:#b91c1c">Delete</button></td>'
           +'</tr>';
       });
@@ -1046,7 +1060,7 @@ function affLinks(){
         h+='<tr data-aff-link="'+X(l.id||"")+'"><td>'+X(l.target_software||"\u2014")+'</td>'
           +'<td><code>'+X(l.tracking_code||"")+'</code></td>'
           +'<td style="word-break:break-all;font-size:12px">'+X(url)+'</td>'
-          +'<td>'+(l.created_at?X(String(l.created_at).slice(0,10)):"\u2014")+'</td>'
+          +'<td>'+(l.created_at?TSFMT(l.created_at,0):"\u2014")+'</td>'
           +'<td><button type="button" class="btn" data-copy="'+X(url)+'" onclick="affCopyText(this)">Copy</button></td></tr>';
       });
       h+='</tbody></table>';
@@ -1357,7 +1371,7 @@ function D(){
     var h='<div class="card" data-plan-request-card="'+X(q.id)+'" style="margin-bottom:16px">';
     h+='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">';
     h+='<div><h3 style="margin:0 0 2px">Your plan request</h3><div style="font-size:16px;font-weight:700">'+X(q.plan_name||q.plan_slug||'')+'</div>';
-    h+='<div style="color:#64748b;font-size:12px;margin-top:2px">Filed '+X(String(q.created_at||'').slice(0,10))+'</div></div>';
+    h+='<div style="color:#64748b;font-size:12px;margin-top:2px">Filed '+TSFMT(q.created_at,0)+'</div></div>';
     h+='<span data-plan-request-state="'+X(st)+'" style="background:'+chipBg+';color:'+chipFg+';padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">'+X(label)+'</span></div>';
     if(q.reply){h+='<div style="margin-top:10px;background:#f8fafc;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;font-size:13px;color:#334155;white-space:pre-wrap"><strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'+X(q.reply)+'</div>';}
     h+='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
@@ -3913,7 +3927,7 @@ function LAL(){
         '<td>'+comm+'</td>'+
         '<td>'+(x.became_affiliate?'<span style="color:#16a34a;font-weight:600">Yes</span>':'<span style="color:#94a3b8">No</span>')+'</td>'+
         '<td>'+(((x.tags||[]).length)?X((x.tags||[]).join(", ")):'<span style="color:#94a3b8">\u2014</span>')+'</td>'+
-        '<td>'+X(String(x.created_at||"").slice(0,10))+'</td>';
+        '<td>'+TSFMT(x.created_at,0)+'</td>';
       tbl.appendChild(tr);
     });
     $("al-list").appendChild(tbl);
@@ -4471,7 +4485,7 @@ function LAFN(){
         +'</td>'
         +'<td style="font-size:12px"><a href="'+X(url)+'" target="_blank" rel="noopener">'+X(url)+'</a></td>'
         +'<td style="font-size:12px;text-align:right" class="fn-lc"></td>'
-        +'<td style="font-size:12px;color:#64748b">'+X(String(f.created_at||"").slice(0,10))+'</td><td></td>';
+        +'<td style="font-size:12px;color:#64748b">'+TSFMT(f.created_at,0)+'</td><td></td>';
       var td=tr.querySelectorAll("td")[4];
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnEdit(f);}},"Edit page"));
       td.appendChild(document.createTextNode(" "));
@@ -4598,7 +4612,7 @@ function LINS(days){
         +'<td style="text-align:right">'+n(s.leads)+'</td>'
         +'<td style="text-align:right">'+n(s.converted)+'</td>'
         +'<td style="text-align:right">'+n(s.conversion_rate)+'%</td>'
-        +'<td>'+(s.last_lead_at?X(String(s.last_lead_at).slice(0,16).replace("T"," ")):'&mdash;')+'</td></tr>';
+        +'<td>'+(s.last_lead_at?TSFMT(s.last_lead_at,1):'&mdash;')+'</td></tr>';
     }).join("");
     var dd=Array.isArray(d.by_day)?d.by_day:[];
     var drows=dd.map(function(x){
@@ -4652,7 +4666,7 @@ function LW(){
       var tr=El("tr");
       // kanban t_9ae9e586: the cell read w.event - a key the Webhook model never serializes - so every
       // row printed "-" on a row that has events. `events` is a JSONB array; print its badges.
-      tr.innerHTML='<td><strong>'+X(w.name||"-")+'</strong></td><td>'+(Array.isArray(w.events)&&w.events.length?w.events.map(function(e){return '<span class="badge bb">'+X(e)+'</span>';}).join(" "):"-")+'</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(w.url||"-")+'</td><td><span class="badge '+(w.is_active===false?"br":"bg")+'">'+(w.is_active===false?"Inactive":"Active")+'</span></td><td>'+(w.created_at?String(w.created_at).slice(0,10):"-")+'</td><td></td>';
+      tr.innerHTML='<td><strong>'+X(w.name||"-")+'</strong></td><td>'+(Array.isArray(w.events)&&w.events.length?w.events.map(function(e){return '<span class="badge bb">'+X(e)+'</span>';}).join(" "):"-")+'</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(w.url||"-")+'</td><td><span class="badge '+(w.is_active===false?"br":"bg")+'">'+(w.is_active===false?"Inactive":"Active")+'</span></td><td>'+(w.created_at?TSFMT(w.created_at,0):"-")+'</td><td></td>';
       var td=tr.querySelectorAll("td")[5];
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFW(w.id)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
@@ -4775,7 +4789,7 @@ function LST(){
         var gn=gName[t.group_id]||(t.group_id?t.group_id.slice(0,8)+"...":"-");
         var tr=El("tr",{"class":"st-row"});
         tr.setAttribute("data-name",t.name||"");
-        tr.innerHTML='<td><span class="tag" style="background:'+X(t.color||"#6366f1")+'20;color:'+X(t.color||"#6366f1")+';padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600">'+X(t.name)+'</span></td><td><span style="display:inline-block;width:12px;height:12px;background:'+X(t.color||"#6366f1")+';border-radius:3px;vertical-align:middle;margin-right:4px"></span> '+X(t.color||"#6366f1")+'</td><td>'+X(gn)+'</td><td>'+(t.created_at?String(t.created_at).slice(0,10):"-")+'</td><td></td>';
+        tr.innerHTML='<td><span class="tag" style="background:'+X(t.color||"#6366f1")+'20;color:'+X(t.color||"#6366f1")+';padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600">'+X(t.name)+'</span></td><td><span style="display:inline-block;width:12px;height:12px;background:'+X(t.color||"#6366f1")+';border-radius:3px;vertical-align:middle;margin-right:4px"></span> '+X(t.color||"#6366f1")+'</td><td>'+X(gn)+'</td><td>'+(t.created_at?TSFMT(t.created_at,0):"-")+'</td><td></td>';
         var td=tr.querySelectorAll("td")[4];
         td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFT(t.id,true)}},"Edit"));
         td.appendChild(document.createTextNode(" "));
@@ -4826,7 +4840,7 @@ function LSG(){
         var cnt=tgCount[g.id]||0;
         var tr=El("tr",{"class":"sg-row"});
         tr.setAttribute("data-name",g.name||"");
-        tr.innerHTML='<td><strong>'+X(g.name)+'</strong></td><td>'+cnt+' tags</td><td>'+(g.sort_order||0)+'</td><td>'+(g.created_at?String(g.created_at).slice(0,10):"-")+'</td><td></td>';
+        tr.innerHTML='<td><strong>'+X(g.name)+'</strong></td><td>'+cnt+' tags</td><td>'+(g.sort_order||0)+'</td><td>'+(g.created_at?TSFMT(g.created_at,0):"-")+'</td><td></td>';
         var td=tr.querySelectorAll("td")[4];
         // kanban t_2f2c184b: pass the screen's own context (isSystem=true) and the row object. The
         // screen's label, warning and post-save tab are the "System" ones, and without the object the
@@ -5853,7 +5867,7 @@ function LSUP(){
       h+='<div style="border-top:1px solid #e2e8f0;padding:12px 0">';
       h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><strong>'+X(r.subject)+'</strong>';
       h+='<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:'+bg+';color:'+fg+';font-weight:600">'+X(SUP_LABEL[r.status]||r.status)+'</span>';
-      h+='<span style="font-size:11px;color:#94a3b8">'+X(String(r.created_at||"").slice(0,16).replace("T"," "))+'</span></div>';
+      h+='<span style="font-size:11px;color:#94a3b8">'+TSFMT(r.created_at,1)+'</span></div>';
       h+='<p style="font-size:13px;color:#475569;white-space:pre-wrap;margin:6px 0 0">'+X(r.body||"")+'</p>';
       if(r.reply){h+='<div style="background:#f0fdf4;border-left:3px solid #22c55e;padding:8px 10px;margin-top:8px;border-radius:6px"><div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:2px">Our answer</div><p style="font-size:13px;color:#166534;white-space:pre-wrap;margin:0">'+X(r.reply)+'</p></div>';}
       h+='</div>';
@@ -5903,7 +5917,7 @@ function LWTL(){
       tr.innerHTML='<td><strong>'+X(f.name||"-")+'</strong></td><td>'+X(f.form_title||"-")+'</td><td>'+X(fs)+'</td>'
         +'<td data-wtltag="'+X(tid)+'">'+X(tagLabel(tid))+'</td>'
         +'<td><span class="badge '+(f.is_active===false?"br":"bg")+'">'+(f.is_active===false?"Off":"Live")+'</span></td>'
-        +'<td>'+(f.created_at?String(f.created_at).slice(0,10):"-")+'</td><td style="white-space:nowrap"></td>';
+        +'<td>'+(f.created_at?TSFMT(f.created_at,0):"-")+'</td><td style="white-space:nowrap"></td>';
       var td=tr.querySelectorAll("td")[6];
       /* Edit was written (MWTL) and never wired to a row: the only buttons were Get code and Del, so
          an operator could not rebind the tag or set the thank-you text on a form that already
