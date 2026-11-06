@@ -30,7 +30,13 @@
 //! operator's purchase-request screen. Nothing about the boundary moved — those three are plain
 //! `require_auth` routes — so only the numbers changed.
 //!
-//! 223 `.route(..)` mounts / 222 unique paths, classified three ways:
+//! 2026-11-06 recount: THREE private mounts — `GET|POST /api/v1/support-requests` (one mount, two
+//! methods on one path, the customer's own help request) plus the operator's
+//! `GET /api/v1/admin/support-requests` and `PUT /api/v1/admin/support-requests/:id`. All three
+//! are plain `require_auth`; the two admin arms are additionally role-checked by
+//! `admin_surface_denied`. Nothing about the boundary moved: only the numbers.
+//!
+//! 226 `.route(..)` mounts / 225 unique paths, classified three ways:
 //!
 //! (The 2026-11-04 recount folds in TWO private `/api` mounts, `GET|PUT
 //! /api/v1/admin/platform-settings` — the System Settings screen's installation-wide controls,
@@ -52,15 +58,15 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   196 mounts  /api/**           195 unique after the duplicate `/api/v1/linkedin/auth`
+//!   200 mounts  /api/**           199 unique after the duplicate `/api/v1/linkedin/auth`
 //!                                 mount (POST + DELETE on one path, legal in axum)
 //!     21        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header; the
 //!                                    public price list joined on 2026-10-30)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    173        private           -> require_auth: app JWT, tenant-status checked
-//!                                    (42 of them `/api/v1/admin/**` = the operator surface,
+//!    176        private           -> require_auth: app JWT, tenant-status checked
+//!                                    (44 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
 //!                                    tracking pixel, `/`, `/robots.txt`, `/admin/plans`.
@@ -369,7 +375,7 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 222 mounts, 196 of them on the API surface. If a route is
+    /// The census the module docs quote: 225 mounts, 200 of them on the API surface. If a route is
     /// added or removed, this test is the reminder to re-measure the docs above with it.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
@@ -397,7 +403,7 @@ mod tests {
                 private,
                 served
             ),
-            (223, 222, 197, 21, 3, 173, 26),
+            (226, 225, 200, 21, 3, 176, 26),
             "the census in the module docs no longer matches the router"
         );
     }
