@@ -335,6 +335,7 @@ pub async fn list_template_types(
         serde_json::json!({"type": "purchase_confirmed", "description": "Stored only — no sender in this app (there is no in-app checkout)", "merge_fields": ["name", "plan_name", "login_url", "app_name", "brand_name", "logo_url"]}),
         serde_json::json!({"type": "plan_request_update", "description": "Sent when the operator answers a customer's plan request — carries the new state and the operator's note", "merge_fields": ["name", "plan_name", "status_word", "reply", "app_name", "brand_name", "logo_url"]}),
         serde_json::json!({"type": "plan_request_received", "description": "Sent the moment a customer files a plan request — acknowledges the ask and says nothing has been charged", "merge_fields": ["name", "plan_name", "note", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "support_reply", "description": "Sent when the operator answers a support request — carries the customer's own subject and the operator's answer", "merge_fields": ["name", "subject_line", "status_word", "reply", "app_name", "brand_name", "logo_url"]}),
     ]))
 }
 

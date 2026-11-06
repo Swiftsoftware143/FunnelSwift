@@ -295,7 +295,8 @@ pub async fn admin_update(
                 replied_at = CASE WHEN $3 IS NULL THEN replied_at ELSE NOW() END,
                 updated_at = NOW()
           WHERE id = $1
-        RETURNING id, status, reply, replied_at::text AS replied_at,
+        RETURNING id, tenant_id, subject, requested_by, status, reply,
+                  replied_at::text AS replied_at,
                   updated_at::text AS updated_at",
     )
     .bind(id)
@@ -305,11 +306,87 @@ pub async fn admin_update(
     .await?;
     let row = row.ok_or_else(|| AppError::NotFound("No such support request".into()))?;
 
+    // THE ANSWER IS ALSO DELIVERED (cron 2026-11-06). Until now the operator's sentence was stored
+    // and the person who asked was told nothing: they had to return to the Support screen and hope
+    // to notice. `plan_request_handler` has mailed the asker since 2026-10-19 for exactly this
+    // reason, and this module shipped without it the same day it was written.
+    //
+    // Only a write that CARRIED a sentence mails — marking a row closed (or flipping a status with
+    // no new answer) must not post the customer an empty reply. A failure is REPORTED, never
+    // thrown: the row is already written, and losing the operator's answer because the mail
+    // provider hiccuped would be worse than the missing notification. A reserved/harness recipient
+    // is withheld by the send funnel and recorded as a non-send, so a probe is never emailed.
+    let tenant_id = row.get::<Uuid, _>("tenant_id");
+    let subject_line = row.get::<String, _>("subject");
+    let requested_by = row.get::<String, _>("requested_by");
+    let mut notified = false;
+    let mut notify_detail = String::new();
+    if let Some(written) = reply.as_deref() {
+        if requested_by.trim().is_empty() {
+            notify_detail = "The request has no address to notify.".to_string();
+        } else {
+            let filer_name: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+                "SELECT COALESCE(NULLIF(first_name, ''), NULLIF(name, '')) FROM users
+                  WHERE tenant_id = $1 AND lower(email) = lower($2) LIMIT 1",
+            )
+            .bind(tenant_id)
+            .bind(&requested_by)
+            .fetch_optional(&state.pool)
+            .await?
+            .flatten();
+            let greeting = filer_name
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| "there".to_string());
+            let status_word = match status.as_str() {
+                "closed" => "closed",
+                "answered" => "answered",
+                _ => "open",
+            };
+            // A reserved/harness recipient is a NON-SEND: the funnel withholds it (no provider
+            // request) and records `withheld`. Reporting that as "the customer was emailed" is the
+            // exact misreport this fleet has retracted twice, so ask the same predicate the funnel
+            // uses and keep `notified` false when it fires.
+            let reserved = crate::security::probe_addr::harness_domain(&requested_by).is_some();
+            match crate::email::send_support_reply_email(
+                &state.pool,
+                tenant_id,
+                &requested_by,
+                &greeting,
+                &subject_line,
+                status_word,
+                written,
+            )
+            .await
+            {
+                Ok(()) if reserved => {
+                    notify_detail =
+                        "the requesting address is a reserved/harness address, so the notice was \
+                         withheld and no email was sent"
+                            .to_string();
+                }
+                Ok(()) => notified = true,
+                Err(e) => {
+                    tracing::warn!(
+                        request = %id,
+                        to = %requested_by,
+                        "support-reply mail was not sent: {e}"
+                    );
+                    notify_detail = e;
+                }
+            }
+        }
+    }
+
     Ok(Json(json!({
         "id": row.get::<Uuid, _>("id"),
         "status": row.get::<String, _>("status"),
         "reply": row.get::<String, _>("reply"),
         "replied_at": row.get::<Option<String>, _>("replied_at"),
         "updated_at": row.get::<String, _>("updated_at"),
+        // Whether the customer was actually TOLD. The operator's screen says which, so a silent
+        // mail failure never looks like a delivered answer.
+        "notified": notified,
+        "notify_detail": notify_detail,
     })))
 }

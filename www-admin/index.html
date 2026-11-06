@@ -6077,7 +6077,7 @@ async function renderSupportRequests() {
   };
   return '<div>' +
     '<h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Support Requests</h1>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">A workspace asks for help from its own Support screen. Write the answer here and mark it answered &mdash; the customer reads that sentence on the same request the next time the screen loads.</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">A workspace asks for help from its own Support screen. Write the answer here and mark it answered &mdash; saving the sentence emails it to the person who asked, and it also stays on their request so they can read it again later.</div>' +
     (err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : '') +
     (open ? '<div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;color:#92400e"><strong>' + open + '</strong> workspace' + (open === 1 ? ' is' : 's are') + ' waiting on an answer.</div>' : '') +
     '<div class="card">' +
@@ -6100,9 +6100,22 @@ function bindSupportRequests() {
       }
       b.disabled = true;
       try {
-        await api('/admin/support-requests/' + encodeURIComponent(id),
+        const res = await api('/admin/support-requests/' + encodeURIComponent(id),
           { method: 'PUT', body: JSON.stringify({ status, reply }) });
-        showToast('Marked ' + status, 'success');
+        // The answer is EMAILED to the person who asked (the handler sends it and reports whether
+        // the send went out). Saying only "Marked answered" would be the old lie: the row moved and
+        // the customer was told nothing. When the send did not happen the operator is told why, so
+        // a mail-provider failure never looks like a delivered answer.
+        if (reply.trim()) {
+          if (res && res.notified) {
+            showToast('Answer saved and emailed to the customer', 'success');
+          } else {
+            showToast('Answer saved, but the customer was NOT emailed' +
+              (res && res.notify_detail ? ': ' + res.notify_detail : ''), 'error');
+          }
+        } else {
+          showToast('Marked ' + status, 'success');
+        }
         renderApp();
       } catch (e) {
         b.disabled = false;

@@ -642,6 +642,32 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // A SUPPORT REQUEST THE OPERATOR HAS ANSWERED (cron 2026-11-06). A customer files a
+        // request from the Support screen and reads the answer there — but only if they happen to
+        // go back and look, and nothing told them there was anything to look at. The plan-request
+        // answer beside this arm has mailed the person who asked since 2026-10-19 for exactly this
+        // reason; the support request, built on 2026-11-06, stored the sentence and told nobody.
+        // `subject_line` is the customer's own words so the mail is recognisable in a list, and
+        // `reply` is the operator's answer quoted whole. A template row named `support_reply`
+        // overrides this arm.
+        "support_reply" => {
+            // The brand the workspace signed up under, not this crate's constant: a tenant with
+            // its own branding must be answered by its own name, exactly like the branding preview
+            // arm reads the bound value rather than APP_NAME.
+            let brand = vars.get("brand_name").unwrap_or(&APP_NAME).to_string();
+            let asked = vars
+                .get("subject_line")
+                .unwrap_or(&"your request")
+                .to_string();
+            let reply = vars.get("reply").unwrap_or(&"").to_string();
+            let status_word = vars.get("status_word").unwrap_or(&"answered").to_string();
+            let subject = format!("Your {brand} support request - {asked}");
+            let text = format!(
+                "Hi {0},\n\nYou asked us:\n\n{1}\n\nOur answer, from the {2} team:\n\n{3}\n\nYour request now reads {4}. You can read it any time on the Support screen in your account - sign in at {5} and open Support in the left-hand menu.\n\nReplying to this message reaches the same team, so you never have to file a second request to answer us back.\n\n- The {2} Team",
+                name, asked, brand, reply, status_word, app_url
+            );
+            (subject, Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -880,6 +906,39 @@ pub async fn send_plan_request_update_email(
     .await
 }
 
+/// Tell the person who ASKED that the operator has answered their support request.
+///
+/// The row is the record and stays the record; this only carries the sentence to the inbox of the
+/// person who filed it, because an answer nobody is told about is an answer nobody reads. The
+/// caller records whether the attempt succeeded and NEVER fails the write on it: a dead mail
+/// provider must not lose the operator's reply. A reserved/harness recipient is withheld by the
+/// send funnel (no provider request at all) and lands in `email_send_log` as `withheld`, so a
+/// probe answer is neither delivered nor misreported as delivered.
+pub async fn send_support_reply_email(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    name: &str,
+    subject_line: &str,
+    status_word: &str,
+    reply: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("subject_line", subject_line);
+    vars.insert("status_word", status_word);
+    vars.insert("reply", reply);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "support_reply",
+        &bound_vars(vars),
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -926,6 +985,51 @@ mod tests {
             "empty note block leaked"
         );
         assert!(text.contains("Kinetic Pro"));
+    }
+
+    // The support answer is the second mail this app sends on the operator's behalf rather than on
+    // a customer's action, and it is composed from an inline arm (no template row on a fresh
+    // install). A withheld row stores only the KIND, never the subject, so the copy is asserted
+    // here — the live probe can prove the recipient and the count, not the words.
+    #[test]
+    fn support_reply_arm_carries_the_answer_and_says_where_to_read_it() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("subject_line", "Checkout will not take my card"),
+            ("status_word", "answered"),
+            ("reply", "Stripe was in test mode; it is live again now."),
+        ]));
+        let (subject, text, _html) = get_inline("support_reply", &v);
+        let text = text.unwrap_or_default();
+        assert!(
+            subject.contains("Checkout will not take my card"),
+            "subject was {subject}"
+        );
+        assert!(text.contains("Stripe was in test mode; it is live again now."));
+        assert!(
+            text.contains("Support"),
+            "the customer must be told where to look"
+        );
+        assert!(text.contains("answered"), "subject was {subject}");
+    }
+
+    #[test]
+    fn support_reply_arm_names_the_workspace_brand_when_one_is_applied() {
+        let pairs = [
+            ("name", "Probe"),
+            ("subject_line", "Cannot sign in"),
+            ("status_word", "answered"),
+            ("reply", "Try the reset link again."),
+        ];
+        let mut v = bound_vars(vars(&pairs));
+        v.insert("brand_name", "Probe Co");
+        let (_subject, text, _html) = get_inline("support_reply", &v);
+        let text = text.unwrap_or_default();
+        // `render_template` swaps APP_NAME for the tenant's brand before this arm runs; the arm
+        // must therefore read the bound value rather than the constant, or a branded workspace's
+        // customer is answered by "FunnelSwift" instead of the name they signed up for.
+        assert!(text.contains("Probe Co"), "text was {text}");
+        assert!(!text.contains("FunnelSwift"), "text was {text}");
     }
 
     #[test]
@@ -989,7 +1093,7 @@ mod tests {
         // kanban t_2f9a6576: `credentials` (the signup mail that carries the generated password)
         // was absent from this list, so the panel could not offer the type and an admin could not
         // edit the one mail every new customer receives.
-        let advertised: [&[&str]; 4] = [
+        let advertised: [&[&str]; 5] = [
             &[
                 "name",
                 "email",
@@ -1016,6 +1120,15 @@ mod tests {
                 "brand_name",
                 "logo_url",
             ],
+            &[
+                "name",
+                "subject_line",
+                "status_word",
+                "reply",
+                "app_name",
+                "brand_name",
+                "logo_url",
+            ],
         ];
         let bound = bound_vars(vars(&[
             ("name", "n"),
@@ -1023,6 +1136,9 @@ mod tests {
             ("password", "pw"),
             ("token", "t"),
             ("plan_name", "pl"),
+            ("subject_line", "s"),
+            ("status_word", "w"),
+            ("reply", "r"),
         ]));
         for list in advertised {
             for field in list {

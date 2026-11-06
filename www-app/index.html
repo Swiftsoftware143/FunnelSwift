@@ -358,7 +358,7 @@ var helpContent={
   "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above, then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Pause</strong> keeps the page and its link exactly where they are but stops it taking responses: a visitor sees \u201cThis form is closed\u201d, and a submission from a page that was already open is refused. Use it when a campaign ends or a list is full \u2014 <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
   "afleads":'<h4>Affiliate Leads</h4><p>The leads each affiliate has brought in, so you can see who is producing. <strong>Admin only.</strong></p>'
 ,
-  "support":'<h4>Support</h4><p>Ask the team anything about this workspace and read the answer here. <strong>Send request</strong> files a subject and a message; the answer is written on the same request, so it is still here when you come back. A request that is still open can be answered by nobody but our team, and a second request with the same subject while the first is open is treated as the same ask, so a double press does not make two.</p>',
+  "support":'<h4>Support</h4><p>Ask the team anything about this workspace and read the answer here. <strong>Send request</strong> files a subject and a message; the answer is written on the same request, so it is still here when you come back, and we also email it to the address you are signed in with so you are not left checking. A request that is still open can be answered by nobody but our team, and a second request with the same subject while the first is open is treated as the same ask, so a double press does not make two.</p>',
   "scan":'<h4>Card Scanner</h4><p>Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your <strong>Leads</strong> with the source <strong>card scan</strong>. Every field stays editable before you save, because a scan can be wrong; if the card cannot be read, the screen says so and lets you type the details in instead, so nothing is lost.</p><ul><li><strong>Choose a photo</strong> of the card (up to 12 MB).</li><li><strong>Correct any field</strong> the scan got wrong.</li><li><strong>Save it as a lead</strong> - each scan counts against the card-scan allowance on your plan, and a plan that does not include scanning points you at the plans.</li><li><strong>Recent scans</strong> under the scanner keeps your last 20 readings, so a card you scanned but did not save is not lost - press <strong>Save as a lead</strong> on the entry.</li></ul>'};
 function toggleHelp() {
   var p=document.getElementById("helpPanel"), f=document.getElementById("helpFab");
@@ -1224,7 +1224,13 @@ else if(T){
         +(u.is_admin?' <span class="badge bg">Admin</span>':'');
       renderAvatar();
       if(!u.is_admin){$("adm-sec").style.display="none";$("adm-links").style.display="none";}
-      S("dashboard");
+      /* The answer to a support request is EMAILED to the person who asked (cron 2026-11-06), and
+         that mail links here as /app#support — one click must open the screen the message is
+         about, not the dashboard three tabs away with no sign of the answer. Any other hash keeps
+         the ordinary landing tab. */
+      var want=(window.location.hash||"").replace(/^#/,"");
+      if(want==="support"){try{history.replaceState({},"","/app");}catch(e){}S("support");}
+      else{S("dashboard");}
       affBanner();   // David: banner the user can X out of, back on next login
     }
   });
@@ -5828,7 +5834,7 @@ function LSUP(){
   api("/api/v1/support-requests").then(function(d){
     var a=(d&&d.requests)||[];
     var h='<div class="cc"><h3>Support</h3>';
-    h+='<p style="color:#64748b;font-size:12px;margin-bottom:14px">Ask the team anything about this workspace and read the answer here. Every request and its answer stay listed, so nothing depends on an email arriving.</p>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:14px">Ask the team anything about this workspace and read the answer here. Every request and its answer stay listed, and the answer is also emailed to the address you are signed in with &mdash; so you hear about it without having to come back and look.</p>';
     h+='<div class="card" style="margin-bottom:14px"><h3>New request</h3>';
     h+='<div class="fld"><label>Subject</label><input id="sup-sub" maxlength="120" placeholder="One line about what you need"></div>';
     h+='<div class="fld"><label>Message</label><textarea id="sup-body" rows="4" maxlength="4000" placeholder="Tell us what happened and what you expected." style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-family:inherit;font-size:13px"></textarea></div>';
