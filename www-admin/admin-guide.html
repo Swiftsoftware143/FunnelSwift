@@ -151,6 +151,13 @@
       <p>The Super Admin dashboard at <code>/admin</code> provides full control over tenants (workspaces), plans, and feature assignments. You must be logged in as the root super admin.</p>
 
       <div class="card">
+        <h3>What the dashboard numbers mean</h3>
+        <p>Six figures sit at the top. <strong>Total Tenants</strong>, <strong>Total Users</strong>, <strong>Total Affiliates</strong> and <strong>Active Plans</strong> are the install-wide counts. <strong>On a Paid Plan</strong> is how many workspaces hold a plan with a price above zero, and <strong>Plan Value / mo</strong> and <strong>Plan Value / yr</strong> are what those plans would bill at list price.</p>
+        <p><strong>Plan value is list price, not money collected.</strong> No card payment is recorded until a payment provider is set up (Provider Keys &rarr; Payment providers), so the card shows the count of paid checkouts beside it — zero means nobody has actually been charged yet.</p>
+        <p>The table underneath lists each plan in use with how many workspaces hold it and what it is worth. Beneath that sentence you get the two numbers that decide what to do next: how many checkouts were <em>turned away because no payment provider is set up</em> (a customer pressed Buy and could not pay), and how many plan requests are waiting for an answer.</p>
+      </div>
+
+      <div class="card">
         <h3>Tenant List</h3>
         <p>Shows all tenants with their current plan assignment, creation date, and status. You can:</p>
         <ul>
