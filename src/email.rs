@@ -677,6 +677,17 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        "lead_cap_notice" => {
+            // Plain language on purpose: this mail is read by a business owner who did not change
+            // anything and whose forms have quietly stopped collecting. It says what happened,
+            // that nothing is broken, and the one action that fixes it.
+            let noun = vars.get("noun").unwrap_or(&"entry");
+            let text = format!(
+                "Hi {0},\n\nA form on your account just tried to take a new {1} and was stopped, because your workspace has reached the {1} allowance on {2}.\n\nWhat that means: visitors filling in your public form are now being told to contact you directly, so that {1} was not captured. Nothing is broken - the plan limit is doing exactly what it says.\n\nThe fix is one step. Open your account at {3}, go to Plans, and choose a plan with a bigger {1} allowance. Your forms start collecting again as soon as the new plan is active.\n\nIf you would rather stay on {2}, check whether every {1} you are holding is still one you want - the allowance only frees up when you delete one.\n\n- The FunnelSwift Team",
+                name, noun, plan_name, app_url
+            );
+            (CEILING_SUBJECT.to_string(), Some(text), None)
+        }
         _ => {
             let subject = "FunnelSwift Notification".to_string();
             (subject, Some(format!("{}", json!(vars))), None)
@@ -879,6 +890,98 @@ pub async fn send_new_lead_email(
         tenant_id,
         to,
         "new_lead",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+/// The exact subject of the plan-ceiling notice.
+///
+/// It doubles as the once-a-day dedupe key in `email_send_log` (that table stores the subject, not
+/// a template name), so it must stay a CONSTANT: a tenant name, a date or a count in here would
+/// defeat the dedupe and turn a holding ceiling into a mail flood.
+const CEILING_SUBJECT: &str = "Your lead capture has stopped at your plan's limit";
+
+/// Tell a workspace's OWNER that the plan's ceiling has stopped their public capture.
+///
+/// Called from [`crate::features::enforce_public_lead_limit`] — the gate a stranger's form submit
+/// hits. This is a NOTICE, not a refusal: the lead is already lost, so the mail exists only to make
+/// sure the one person who can lift the ceiling finds out the day it happens, instead of finding
+/// out when the next campaign under-performs and nobody can say why. Until this function existed
+/// the ceiling was silent to them: the prospect got a neutral sentence and the app log got a
+/// warning, and neither is read by the customer.
+///
+/// Silent for 24 hours after each notice, and silent for a workspace with no active user. Every
+/// failure is returned to the caller, which only logs it — the refusal itself is never affected.
+pub async fn notify_owner_of_public_ceiling(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    feature_key: &str,
+) -> Result<(), String> {
+    // The account holder is the one who can buy the fix. `users.role` is free text on this app
+    // (measured: company_admin / admin / user), so order with a CASE rather than binding a word
+    // that may not be in the vocabulary.
+    let owner: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT email, name FROM users \
+          WHERE tenant_id = $1 AND is_active = true \
+          ORDER BY CASE role WHEN 'company_admin' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, created_at \
+          LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some((email, name)) = owner else {
+        return Ok(());
+    };
+
+    // Once a day per address. Read from the delivery history so a WITHHELD notice (a probe
+    // workspace) also counts — otherwise a harness tenant at its ceiling would retry forever.
+    let already: Option<(i64,)> = sqlx::query_as(
+        "SELECT 1::bigint FROM email_send_log \
+          WHERE lower(to_email) = lower($1) AND subject = $2 \
+            AND created_at > NOW() - INTERVAL '24 hours' \
+          LIMIT 1",
+    )
+    .bind(&email)
+    .bind(CEILING_SUBJECT)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    if already.is_some() {
+        return Ok(());
+    }
+
+    let plan_name: String = sqlx::query_scalar(
+        "SELECT p.name FROM plans p \
+           JOIN tenant_plan_subscriptions s ON s.plan_id = p.id \
+          WHERE s.tenant_id = $1 AND s.status = 'active' \
+          ORDER BY s.start_date DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .unwrap_or_else(|| "your current plan".to_string());
+
+    let noun = match feature_key {
+        "max_leads" => "lead",
+        "max_cards" => "card",
+        "max_funnels" => "funnel",
+        "max_users" => "team member",
+        _ => "entry",
+    };
+
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name.as_deref().unwrap_or("there"));
+    vars.insert("plan_name", plan_name.as_str());
+    vars.insert("noun", noun);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        &email,
+        "lead_cap_notice",
         &bound_vars(vars),
     )
     .await

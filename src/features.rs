@@ -381,6 +381,32 @@ pub async fn enforce_public_lead_limit(
             feature = feature_key,
             "public form refused: the workspace is at the ceiling its plan allows"
         );
+        // TELL THE OWNER (added 2026-11-06). Until now the ceiling was silent to the one person who
+        // can lift it: the prospect got a neutral sentence, the app log got a warning, and the
+        // workspace's owner — who pays for the plan and is losing the lead — was told nothing. A
+        // public capture that stops overnight is the quietest way to lose a customer, because
+        // nothing in their own console ever changes. The refusal now mails the owner, at most once a
+        // day while the ceiling holds (the dedupe is the exact subject, see
+        // `email::notify_owner_of_public_ceiling`).
+        //
+        // Best effort and OFF the request path: the prospect's answer must never wait on SMTP, and a
+        // mail failure must never turn a refusal into a 500. `spawn` keeps the refusal instant; the
+        // task owns its own copy of the pool.
+        {
+            let pool = state.pool.clone();
+            let feature = feature_key.to_string();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::email::notify_owner_of_public_ceiling(&pool, tenant_id, &feature).await
+                {
+                    tracing::debug!(
+                        tenant_id = %tenant_id,
+                        error = %e,
+                        "public ceiling notice not sent"
+                    );
+                }
+            });
+        }
         return Err(AppError::ServiceUnavailable(
             "This form can't take new responses right now. Please contact the business directly."
                 .into(),
