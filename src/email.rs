@@ -158,9 +158,15 @@ async fn dispatch_for_tenant(
     match (&outcome, crate::security::probe_addr::harness_domain(to)) {
         (Ok(()), Some(domain)) => {
             tracing::info!(to = %to, domain = %domain, "send withheld — recording a non-send");
+            // THE SUBJECT, not a generic label (2026-11-06). This arm used to record every
+            // withheld send as "transactional email (withheld)", which threw away the one fact the
+            // operator needs when a real mail is suppressed by mistake: WHICH mail it was. Callers
+            // that suppress at a handler level already pass a meaningful kind ("signup credentials
+            // email"), so the fan-out path was the odd one out. `subject` is now the kind, and the
+            // history reads "<the subject> (withheld)".
             record_withheld(
                 pool,
-                "transactional email",
+                subject,
                 to,
                 &format!("'{domain}' is a fleet-harness / reserved address"),
             )
@@ -936,10 +942,11 @@ pub async fn notify_owner_of_public_ceiling(
     };
 
     // Once a day per address. Read from the delivery history so a WITHHELD notice (a probe
-    // workspace) also counts — otherwise a harness tenant at its ceiling would retry forever.
+    // workspace) also counts — otherwise a harness tenant at its ceiling would retry forever. The
+    // match is a PREFIX because a withheld row is recorded as "<subject> (withheld)".
     let already: Option<(i64,)> = sqlx::query_as(
         "SELECT 1::bigint FROM email_send_log \
-          WHERE lower(to_email) = lower($1) AND subject = $2 \
+          WHERE lower(to_email) = lower($1) AND subject LIKE $2 || '%' \
             AND created_at > NOW() - INTERVAL '24 hours' \
           LIMIT 1",
     )
