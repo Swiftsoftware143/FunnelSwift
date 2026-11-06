@@ -703,9 +703,12 @@ pub async fn submit_funnel_lead(
             .unwrap_or("Funnel visitor")
             .to_string()
     });
-    // The plan's lead ceiling binds this public door too — same helper, same key and same 402
-    // sentence as the panel's create and the Kinetic card's form.
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_leads", "Leads").await?;
+    // The plan's lead ceiling binds this public door too — but the READER here is the customer's
+    // own prospect, not the account holder, so the refusal must never carry the owner's "Upgrade to
+    // increase your limit" sentence (measured live 2026-11-06: it did, and this page prints the
+    // server's message verbatim). `enforce_public_lead_limit` answers a neutral sentence instead;
+    // the owner's own doors keep the upsell.
+    crate::features::enforce_public_lead_limit(&state, tenant_id, "max_leads").await?;
 
     // THE PHONE (migration 117). Optional everywhere: a funnel only shows the field when its owner
     // asked for one, and a visitor who leaves it blank is still a complete lead. A value that is not

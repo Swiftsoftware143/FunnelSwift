@@ -52,6 +52,17 @@ pub enum AppError {
     #[error("Upgrade required: {0}")]
     UpgradeRequired(String),
 
+    /// **503** — a PUBLIC (stranger-facing) door is refusing because the CUSTOMER's plan is spent.
+    ///
+    /// `UpgradeRequired`'s sentence is addressed to the account holder ("Upgrade to increase your
+    /// limit"). At a public form the reader is the customer's own PROSPECT, who can neither act on
+    /// that nor be told about the workspace's billing — and the public pages print the server's
+    /// message verbatim, so the upsell landed on the customer's landing page (measured live
+    /// 2026-11-06). Same ceiling, different reader: the public doors answer this neutral,
+    /// temporary sentence instead. 503 also passes through Cloudflare untouched, unlike a 502.
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     /// 413 — the body or the file inside it is larger than this route accepts.
     ///
     /// The middleware's own `413` (`body_deadline::body_too_large_response`) names the 2 MB
@@ -136,6 +147,9 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::UpgradeRequired(msg) => (StatusCode::PAYMENT_REQUIRED, msg),
+            // A public door refusing because the CUSTOMER's plan is spent. Neutral by construction:
+            // the sentence names no plan and offers no upgrade, because the reader is a prospect.
+            AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             AppError::PayloadTooLarge(msg) => (StatusCode::PAYLOAD_TOO_LARGE, msg),
             AppError::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             AppError::UpstreamRefused(msg) => (StatusCode::FAILED_DEPENDENCY, msg),

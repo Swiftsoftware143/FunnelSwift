@@ -352,6 +352,43 @@ pub async fn enforce_feature_limit(
     }
 }
 
+/// The same ceiling, read by a STRANGER instead of the account holder.
+///
+/// A customer's public funnel, web-to-lead form and Kinetic card are filled in by prospects who
+/// have no account here. [`enforce_feature_limit`] answers the OWNER's sentence ("Upgrade to
+/// increase your limit"), and those public pages print the server's message verbatim — so a
+/// workspace at its lead ceiling told its own prospects to "open Upgrade". Measured live 2026-11-06
+/// on a Capture Free workspace with `max_leads` overridden to 0: `POST /funnel/<slug>/submit`
+/// answered **402 "Leads is not included in Capture Free … open Upgrade to switch to it."**
+///
+/// The lead is still refused — the plan's ceiling is the owner's decision, not ours to overrun — but
+/// the stranger gets a neutral, temporary sentence, and the ceiling is logged so the owner's cap is
+/// visible in the app log. The owner's own doors keep [`enforce_feature_limit`], upsell intact.
+pub async fn enforce_public_lead_limit(
+    state: &AppState,
+    tenant_id: Uuid,
+    feature_key: &str,
+) -> AppResult<()> {
+    // `remaining_headroom` covers BOTH refusal shapes the owner's door has: a numeric cap reached
+    // (`Some(0)`) and a key the plan does not include at all (`limit 0` → also `Some(0)`); a
+    // plan-less install (`None`) stays allowed, exactly as the owner's gate allows it.
+    if matches!(
+        remaining_headroom(state, tenant_id, feature_key).await?,
+        Some(0)
+    ) {
+        tracing::warn!(
+            tenant_id = %tenant_id,
+            feature = feature_key,
+            "public form refused: the workspace is at the ceiling its plan allows"
+        );
+        return Err(AppError::ServiceUnavailable(
+            "This form can't take new responses right now. Please contact the business directly."
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Remaining headroom under the tenant's effective numeric limit (`None` = unlimited).
 ///
 /// The bulk IMPORT path needs the number, not a pass/fail: it has to refuse a whole file BEFORE
