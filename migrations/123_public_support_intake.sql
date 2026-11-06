@@ -1,0 +1,18 @@
+-- 123_public_support_intake.sql
+--
+-- A VISITOR who cannot sign in has no way to reach the team. Every customer-facing "contact
+-- support" instruction named an address whose domain publishes no mail exchanger — measured
+-- 2026-11-06 on two independent resolvers (dns.google, cloudflare-dns.com): MX = 0 for
+-- swiftsoftware.net, funnelswift.net, adaswift.com, incentiveswift.com, workflowswift.com,
+-- missedcallrespondr.com and coreswiftcrm.com, and nothing on this host listens on port 25 —
+-- so the message a locked-out customer sent bounced and they stayed locked out. The login page
+-- now files that message straight into the operator's existing support queue instead.
+--
+-- A message from someone who is not signed in belongs to no workspace, so `tenant_id` must be
+-- allowed to be NULL. Nothing else changes: the row has the same shape the tenant-scoped arm
+-- writes (`requested_by` carries the visitor's address, `body` the message), and the operator
+-- answers it from the same queue. `user_id` already allows NULL.
+--
+-- Idempotent: DROP NOT NULL is a no-op once the column is already nullable, which is what the
+-- app's boot runner needs because it re-reads this directory on every start.
+ALTER TABLE support_requests ALTER COLUMN tenant_id DROP NOT NULL;

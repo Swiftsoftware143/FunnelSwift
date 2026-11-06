@@ -140,10 +140,10 @@ async fn seat_refusal(state: &AppState, tenant_id: Uuid, refusal: AppError) -> A
     }
     AppError::UpgradeRequired(format!(
         "Your plan includes {current} teammate{}. That seat is already in use, and no plan on this \
-         installation includes more, so there is nothing to upgrade to yet. Email {} and we will \
-         add the seats for you.",
+         installation includes more, so there is nothing to upgrade to yet. Send us a message at {} \
+         and we will add the seats for you.",
         if current == 1 { "" } else { "s" },
-        crate::email::SUPPORT_EMAIL
+        crate::email::SUPPORT_CONTACT
     ))
 }
 

@@ -52,6 +52,18 @@ pub struct CreateBody {
     pub body: String,
 }
 
+/// A message from someone who is not signed in — the login page's contact form. `name` is
+/// optional context; `email` is the address the team replies to and the one the flood bound counts.
+#[derive(Deserialize)]
+pub struct PublicCreateBody {
+    pub email: String,
+    #[serde(default)]
+    pub name: String,
+    pub subject: String,
+    #[serde(default)]
+    pub body: String,
+}
+
 #[derive(Deserialize)]
 pub struct UpdateBody {
     pub status: String,
@@ -143,6 +155,116 @@ pub async fn create(
     ))
 }
 
+/// `POST /api/v1/public/support-request` — a message from someone who is NOT signed in.
+///
+/// WHY THIS EXISTS (measured 2026-11-06): the login page told a locked-out customer to "write to
+/// support@…", and every address the product named lived on a domain with no mail exchanger, so
+/// the message bounced and the customer had no way back in. This arm files the same kind of row
+/// the signed-in arm writes, attached to no workspace, so it lands in the operator queue the team
+/// already answers.
+///
+/// It is deliberately narrow: no workspace is created, nothing is sent by mail, no plan moves. The
+/// row IS the effect — the same "the record is the point" rule the tenant arm follows.
+///
+/// Flood control is a count, not a new dependency: at most three messages from one address in an
+/// hour, and a repeat of the same subject while the first is still open returns that row instead of
+/// minting a second one for the operator to reconcile. A visitor with no account cannot be trusted
+/// to be one visitor, so the bound is on the ADDRESS they type, which is also what the operator
+/// replies to.
+pub async fn create_public(
+    State(state): State<AppState>,
+    Json(body): Json<PublicCreateBody>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    let email = body.email.trim().to_lowercase();
+    let at = email.find('@').unwrap_or(0);
+    if at == 0
+        || at == email.len() - 1
+        || email.len() > 254
+        || email.chars().any(|c| c.is_whitespace())
+        || !email[at + 1..].contains('.')
+    {
+        return Err(AppError::BadRequest(
+            "Enter an email address we can reply to.".into(),
+        ));
+    }
+
+    let name = trim_cap(&body.name, 120);
+    let subject = trim_cap(&body.subject, MAX_SUBJECT);
+    if subject.is_empty() {
+        return Err(AppError::BadRequest(
+            "Give your message a short subject so the team knows what it is about.".into(),
+        ));
+    }
+    let message = trim_cap(&body.body, MAX_BODY);
+    if message.is_empty() {
+        return Err(AppError::BadRequest(
+            "Write your message so the team knows what you need.".into(),
+        ));
+    }
+    // The name is context for the operator, never a separate column: the address the team replies
+    // to is the one thing that must survive intact.
+    let message = if name.is_empty() {
+        message
+    } else {
+        format!("{name} wrote:\n\n{message}")
+    };
+
+    let recent: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM support_requests
+          WHERE lower(requested_by) = $1 AND created_at > now() - interval '1 hour'",
+    )
+    .bind(&email)
+    .fetch_one(&state.pool)
+    .await?;
+    if recent >= 3 {
+        return Err(AppError::TooManyAttempts {
+            retry_after_secs: 3600,
+        });
+    }
+
+    let existing: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM support_requests
+          WHERE tenant_id IS NULL AND lower(requested_by) = $1
+            AND lower(subject) = lower($2) AND status = 'open'
+          ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&email)
+    .bind(&subject)
+    .fetch_optional(&state.pool)
+    .await?;
+    if let Some(id) = existing {
+        return Ok((
+            StatusCode::OK,
+            Json(json!({
+                "id": id,
+                "status": "existing",
+                "message": "We already have your message with that subject — the team will reply to the address you gave."
+            })),
+        ));
+    }
+
+    let row = sqlx::query(
+        "INSERT INTO support_requests (tenant_id, user_id, requested_by, subject, body)
+         VALUES (NULL, NULL, $1, $2, $3)
+         RETURNING id, status, created_at::text AS created_at",
+    )
+    .bind(&email)
+    .bind(&subject)
+    .bind(&message)
+    .fetch_one(&state.pool)
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "id": row.get::<Uuid, _>("id"),
+            "status": row.get::<String, _>("status"),
+            "created_at": row.get::<String, _>("created_at"),
+            "message": "Your message is with our team. We will reply to the address you gave.",
+        })),
+    ))
+}
+
 /// `GET /api/v1/support-requests` — this workspace's requests, newest first.
 pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
     let tenant_id = parse_tenant(&auth)?;
@@ -201,9 +323,9 @@ pub async fn admin_list(
         "SELECT sr.id, sr.subject, sr.body, sr.status, sr.reply,
                 sr.replied_at::text AS replied_at, sr.requested_by,
                 sr.created_at::text AS created_at,
-                t.name AS tenant_name, t.id AS tenant_id
+                COALESCE(t.name, 'Website visitor') AS tenant_name, t.id AS tenant_id
            FROM support_requests sr
-           JOIN tenants t ON t.id = sr.tenant_id
+           LEFT JOIN tenants t ON t.id = sr.tenant_id
           WHERE ($1::text IS NULL OR sr.status = $1::text)
             AND ($2::bool OR COALESCE(t.probe_harness, '') = '')
           ORDER BY (sr.status = 'open') DESC, sr.created_at DESC
@@ -224,7 +346,7 @@ pub async fn admin_list(
         .map(|r| {
             json!({
                 "id": r.get::<Uuid, _>("id"),
-                "tenant_id": r.get::<Uuid, _>("tenant_id"),
+                "tenant_id": r.get::<Option<Uuid>, _>("tenant_id"),
                 "tenant_name": r.get::<String, _>("tenant_name"),
                 "requested_by": r.get::<String, _>("requested_by"),
                 "subject": r.get::<String, _>("subject"),
@@ -316,7 +438,10 @@ pub async fn admin_update(
     // thrown: the row is already written, and losing the operator's answer because the mail
     // provider hiccuped would be worse than the missing notification. A reserved/harness recipient
     // is withheld by the send funnel and recorded as a non-send, so a probe is never emailed.
-    let tenant_id = row.get::<Uuid, _>("tenant_id");
+    // A message from the login page belongs to NO workspace, so this row's tenant is NULL: the
+    // name lookup below simply finds nothing and the reply greets "there", instead of the cast
+    // panicking on a public row the operator was answering.
+    let tenant_id = row.get::<Option<Uuid>, _>("tenant_id");
     let subject_line = row.get::<String, _>("subject");
     let requested_by = row.get::<String, _>("requested_by");
     let mut notified = false;

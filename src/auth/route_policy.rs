@@ -177,6 +177,13 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // tenant owns (measured 2026-10-30 — the page claimed its prices were the install's, and they
     // were hand-authored HTML).
     "/api/v1/public/plans",
+    // A visitor who is NOT signed in files a help request (2026-11-06). The login page's own
+    // "still locked out?" sentence named a support address whose domain publishes no mail
+    // exchanger, so a locked-out customer's message bounced; the form now files the message into
+    // the operator's support queue instead. The handler takes no credential and reads no tenant —
+    // it writes ONE row with a NULL tenant, an address the visitor typed and a bounded message,
+    // and refuses a fourth message from one address within the hour.
+    "/api/v1/public/support-request",
     // --- public lead capture / checkout -----------------------------------------
     // The lead-capture form on a served funnel posts here with no session (the visitor is
     // anonymous by construction); the handler scopes the write to the tenant it resolves from the

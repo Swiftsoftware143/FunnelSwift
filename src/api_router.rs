@@ -931,6 +931,13 @@ pub fn create_router(
             "/api/v1/support-requests",
             get(support_request_handler::list_mine).post(support_request_handler::create),
         )
+        // A message from the LOGIN page: the visitor is not signed in, so this arm takes no
+        // credential and attaches the row to no workspace (migration 123). See the handler's own
+        // docs for the measured dead-end this closes.
+        .route(
+            "/api/v1/public/support-request",
+            post(support_request_handler::create_public),
+        )
         .route(
             "/api/v1/admin/support-requests",
             get(support_request_handler::admin_list),

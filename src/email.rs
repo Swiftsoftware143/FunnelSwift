@@ -259,11 +259,17 @@ pub(crate) async fn record_withheld(pool: &PgPool, kind: &str, to: &str, reason:
     write_panel(pool, to, &subject, false, &detail).await;
 }
 
-/// The app's OWN support address. David (2026-10-08): the reply-to/support address in
-/// a transactional mail is ALWAYS `support@` the app's own main domain — never the
-/// platform's or a sibling company's. FunnelSwift mail carried none at all (no address
-/// in any body), so [`with_support_footer`] adds this to every rendered message.
-pub const SUPPORT_EMAIL: &str = "support@swiftsoftware.net";
+/// The app's OWN support channel. David (2026-10-08): the reply-to/support line in a
+/// transactional mail is ALWAYS the app's own — never the platform's or a sibling company's.
+///
+/// It is a PAGE, not a mailbox (measured 2026-11-06 on dns.google and cloudflare-dns.com): every
+/// address this product named — `support@swiftsoftware.net`, `support@funnelswift.net` — lived on a
+/// domain publishing **MX = 0** with nothing on this host listening on port 25, so a customer's
+/// reply bounced and a locked-out customer had no way back in. The app now serves a contact form on
+/// its own host that files the message straight into the operator's support queue
+/// (`POST /api/v1/public/support-request`), so the advice a customer is given actually reaches a
+/// person. Do not put a `support@` address back here until its domain publishes a mail exchanger.
+pub const SUPPORT_CONTACT: &str = "https://app.funnelswift.net/contact.html";
 
 /// Append the support line to a rendered transactional message.
 ///
@@ -280,19 +286,22 @@ pub(crate) fn with_support_footer(
     html: Option<String>,
 ) -> (Option<String>, Option<String>) {
     let text = text.map(|t| {
-        if t.contains(SUPPORT_EMAIL) {
+        if t.contains(SUPPORT_CONTACT) {
             t
         } else {
-            format!("{}\n\nNeed help? Contact {}\n", t, SUPPORT_EMAIL)
+            format!(
+                "{}\n\nNeed help? Open {} and send us a message — no sign-in needed.\n",
+                t, SUPPORT_CONTACT
+            )
         }
     });
     let html = html.map(|h| {
-        if h.contains(SUPPORT_EMAIL) {
+        if h.contains(SUPPORT_CONTACT) {
             h
         } else {
             format!(
-                "{}\n<p style=\"font-size:13px;color:#6b7280;text-align:center;\">Need help? Contact <a href=\"mailto:{}\">{}</a></p>",
-                h, SUPPORT_EMAIL, SUPPORT_EMAIL
+                "{}\n<p style=\"font-size:13px;color:#6b7280;text-align:center;\">Need help? <a href=\"{}\">Send us a message</a> — no sign-in needed.</p>",
+                h, SUPPORT_CONTACT
             )
         }
     });
@@ -916,7 +925,11 @@ pub async fn send_plan_request_update_email(
 /// probe answer is neither delivered nor misreported as delivered.
 pub async fn send_support_reply_email(
     pool: &PgPool,
-    tenant_id: Uuid,
+    // `None` for a message filed from the LOGIN page: that visitor has no workspace, so the reply
+    // is branded with the app's own header (a nil account id resolves no stored branding) and the
+    // provider is resolved install-wide. The address the operator is answering is the one the
+    // visitor typed, which is why this arm can reply to someone who never signed in.
+    tenant_id: Option<Uuid>,
     to: &str,
     name: &str,
     subject_line: &str,
@@ -930,8 +943,8 @@ pub async fn send_support_reply_email(
     vars.insert("reply", reply);
     send_template_email_for_tenant(
         pool,
-        tenant_id,
-        tenant_id,
+        tenant_id.unwrap_or_default(),
+        tenant_id.unwrap_or_default(),
         to,
         "support_reply",
         &bound_vars(vars),
