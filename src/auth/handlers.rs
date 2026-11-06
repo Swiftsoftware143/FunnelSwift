@@ -566,14 +566,18 @@ pub async fn set_initial_password(
         .hash_password(req.password.as_bytes(), &salt)
         .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
         .to_string();
+    // ONE clock reading for the revocation line AND the token minted below, so the caller's own
+    // session is provably not "before" the line it just moved.
+    let issued_at = Utc::now().timestamp();
 
     let updated = sqlx::query(
         "UPDATE users SET password_hash = $1, password_undelivered = FALSE, \
-                sessions_valid_from = NOW(), updated_at = NOW() \
+                sessions_valid_from = to_timestamp($3), updated_at = NOW() \
            WHERE id = $2 AND password_undelivered AND is_active = true",
     )
     .bind(&new_hash)
     .bind(user_id)
+    .bind(issued_at as f64)
     .execute(&state.pool)
     .await?;
 
@@ -586,7 +590,14 @@ pub async fn set_initial_password(
     }
 
     tracing::info!(user = %user_id, "initial password chosen by the signup session");
-    Ok(Json(json!({"status": "ok"})))
+    // THE TAB THAT JUST CHOSE THE PASSWORD STAYS SIGNED IN (2026-11-06). The revocation line
+    // above ends every session minted BEFORE it, and the signup session that called this door is
+    // one of them: the 200 dropped the customer onto the sign-in screen immediately after they
+    // set the first password they ever knew. Same fix, same reason as `change_password` below —
+    // the boundary allows a session minted in the same second (`iat < valid_from`), the line and
+    // the token are both derived from ONE clock reading, and the token goes back to the caller.
+    let fresh = reissue_session(&state, user_id, issued_at).await?;
+    Ok(Json(json!({"status": "ok", "token": fresh})))
 }
 
 pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Value> {
@@ -905,6 +916,46 @@ pub async fn delete_avatar(
     ))
 }
 
+/// Mint a session for the account that JUST moved its own `sessions_valid_from` line.
+///
+/// The boundary rule is `iat < valid_from` (src/auth/global_auth.rs::session_predates_password_change),
+/// so a token whose `iat` EQUALS the line the account just wrote is a live session, while every
+/// token minted before it is dead. Writing the line from `issued_at` (rather than the database's own
+/// `NOW()`) and stamping the token with the same reading removes any dependence on the two clocks
+/// agreeing, which is what makes "the tab you are using stays signed in" true rather than lucky.
+///
+/// The row is RE-READ rather than reusing the caller's claims: a token re-minted from a stale claim
+/// would re-bless a role or tenant that has since been narrowed.
+pub(crate) async fn reissue_session(
+    state: &AppState,
+    user_id: Uuid,
+    issued_at: i64,
+) -> AppResult<String> {
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1 AND is_active = true")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+
+    let claims = Claims {
+        sub: user.id.to_string(),
+        tenant_id: user.tenant_id.to_string(),
+        email: user.email.clone(),
+        role: user.role.clone(),
+        exp: issued_at as usize + 86400 * 30,
+        iat: issued_at as usize,
+        aud: Some("funnelswift-api".to_string()),
+        iss: Some("funnelswift".to_string()),
+        impersonating: None,
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+    )
+    .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))
+}
+
 pub async fn change_password(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -947,18 +998,34 @@ pub async fn change_password(
     // SESSION REVOCATION (kanban t_80787a0f): a password change also ends every JWT minted
     // BEFORE it (`users.sessions_valid_from`), refused at the boundary read. Measured before this:
     // the same token kept answering 200 afterwards.
+    //
+    // AND THE CALLER'S OWN TAB KEEPS WORKING (measured live 2026-11-06). That revocation also
+    // killed the session doing the change: this route answered 200 and the very next call with the
+    // same bearer — `/auth/me`, `/leads` — answered 401 "This session is no longer valid. Please
+    // sign in again.", so a customer who changed their password was thrown back to the sign-in
+    // screen mid-task. The boundary deliberately allows a session minted in the SAME second as the
+    // line (`iat < valid_from`), which is exactly why `logout_all` below re-mints; this route now
+    // does the same from ONE clock reading (`to_timestamp($3)` == the token's `iat`), and returns
+    // the token so the console can adopt it. IncentiveSwift, WorkflowSwift and missedcallrespondr
+    // shipped this fix earlier; FunnelSwift was the odd one out.
+    let issued_at = Utc::now().timestamp();
     sqlx::query(
-        "UPDATE users SET password_hash = $1, sessions_valid_from = NOW(), updated_at = NOW() \
+        "UPDATE users SET password_hash = $1, sessions_valid_from = to_timestamp($3), \
+                updated_at = NOW() \
            WHERE id = $2",
     )
     .bind(&new_hash)
     .bind(user.id)
+    .bind(issued_at as f64)
     .execute(&state.pool)
     .await?;
 
-    Ok(Json(
-        serde_json::json!({"message": "Password updated successfully"}),
-    ))
+    let token = reissue_session(&state, user.id, issued_at).await?;
+
+    Ok(Json(serde_json::json!({
+        "message": "Password updated successfully",
+        "token": token,
+    })))
 }
 
 pub async fn forgot_password(
