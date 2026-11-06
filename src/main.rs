@@ -42,6 +42,7 @@ mod plan_movement;
 mod plan_resolver;
 mod platform_settings;
 mod probe_harness;
+mod probe_sweep;
 mod security;
 mod smtp;
 mod state;
@@ -167,6 +168,15 @@ async fn main() -> Result<()> {
     // row left `pending`/`sending` by a crash. Without it `max_attempts` and `next_retry_at` — both
     // columns of migrations/0016 — would stay unread configuration, the same defect one level down.
     webhooks::spawn_retry_worker(app_state.pool.clone());
+
+    // Probe-workspace janitor (2026-11-06). Harnesses mint a real workspace through the real
+    // signup route and mark it with `X-Swift-Harness`; they retire their identity but not the
+    // workspace, so probe rows accumulate for ever. Measured live: 30 of them across five apps,
+    // every one of them already hidden from the operator's own lists as "not a customer". This
+    // retires the tagged ones after the 14 days the fleet's residue policy authorises, and never
+    // touches a workspace whose owner is the fleet's own provider identity or a fleet-owned real
+    // domain.
+    probe_sweep::spawn_probe_sweeper(app_state.pool.clone());
 
     // Request-body read deadline (kanban t_488a19d4). Printed here so an operator can see the
     // bound that is actually in force: every request that DECLARES a body on a body-carrying
