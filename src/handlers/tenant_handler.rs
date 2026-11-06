@@ -382,12 +382,25 @@ pub async fn create_tenant(
             "A tenant with slug '{slug}' already exists"
         )));
     }
-    sqlx::query("INSERT INTO tenants (id, name, slug, email, status) VALUES ($1, $2, $3, $4, $5)")
+    // ATTRIBUTION AT CREATE (measured live 2026-11-06): this route is the one the operator screen and
+    // the fleet's harnesses POST to, and it wrote NO `probe_harness` — so a workspace created here for
+    // `probe-canary-a@swiftsoftware.dev` sat in `GET /api/v1/tenants` exactly like a customer's, because
+    // the list's filter only hides rows whose tag is set. Signup has tagged these addresses since
+    // t_fc88ec2a; the create route had no equivalent, which is how the operator saw two "Tenancy Canary"
+    // workspaces in the customer list. Same `auto-<domain>` marker the signup arm writes, so one filter
+    // covers both doors.
+    let probe_harness = email
+        .and_then(crate::security::probe_addr::attribution_domain)
+        .map(|domain| format!("auto-{domain}"));
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug, email, status, probe_harness) VALUES ($1, $2, $3, $4, $5, $6)",
+    )
         .bind(id)
         .bind(name)
         .bind(&slug)
         .bind(email)
         .bind(status)
+        .bind(&probe_harness)
         .execute(&state.pool)
         .await?;
     Ok((
