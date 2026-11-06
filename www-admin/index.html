@@ -147,7 +147,13 @@ async function api(path, opts={}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers||{}) };
   if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
   const res = await fetch(API_BASE + path, { ...opts, headers });
-  if (res.status === 401) { clearSession(); window.location.href = '/login'; throw new Error('auth'); }
+  /* A 401 on the SIGN-IN call is the answer to a mistyped password, not a session that ended:
+     bouncing it through clearSession()/`/login` threw the operator off the console to the customer
+     sign-in page with the typed email wiped and no message at all (measured live 2026-11-05: one
+     POST /auth/login -> 401, form empty, error box hidden). `authRedirect:false` lets that ONE call
+     fall through to the branch below, which raises the server's own sentence ("Invalid email or
+     password") for the form to print. Every other 401 keeps the redirect. */
+  if (res.status === 401 && opts.authRedirect !== false) { clearSession(); window.location.href = '/login'; throw new Error('auth'); }
   if (res.status === 402) { showToast('Upgrade required — this feature needs a paid plan', 'error', false); throw new Error('402'); }
   /* kanban cron-2026-10-30 — the refusal's MACHINE CODE and HTTP status are carried on the error.
      A caller that only sees the human sentence cannot tell "this install has no payment provider"
@@ -398,7 +404,7 @@ async function loadWebhookById(id) {
 
 // ── Login ──
 async function doLogin(email, password) {
-  const res = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  const res = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }), authRedirect: false });
   TOKEN = res.token;
   localStorage.setItem('ws_fs_token', TOKEN);
   await loadUser();
@@ -503,7 +509,13 @@ function bindLogin() {
     try { await doLogin(email.value.trim(), pass.value); }
     catch(e) { err.textContent = e.message; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
   };
-  pass.onkeydown = (e) => { if (e.key === 'Enter') btn.click(); };
+  /* Enter signs in from EITHER field (2026-11-05): only the password field was wired, so a user who
+     typed their email and pressed Enter got nothing at all — measured live: 0 requests. The button is
+     disabled for the whole request, so a held key cannot post twice. */
+  const submit = () => { if (btn.disabled) return; btn.click(); };
+  email.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } };
+  pass.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } };
+  if (email) email.focus();
 }
 
 // ── SHELL ──
