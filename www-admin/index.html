@@ -3528,6 +3528,15 @@ async function renderSuperAdmin() {
 
   let stats = {};
   try { stats = await api('/admin/stats'); } catch(e) { stats = {}; }
+  // Money is printed as list price, never as revenue: nothing has been collected while no payment
+  // provider is set up, and the card says so beside the numbers (cron 2026-11-06).
+  const money = v => (Number(v) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  const mix = Array.isArray(stats.plan_mix) ? stats.plan_mix : [];
+  const nrefused = Number(stats.checkouts_refused) || 0;
+  const npaid = Number(stats.checkouts_paid) || 0;
+  const nreq = Number(stats.open_plan_requests) || 0;
+  const note = nrefused + (nrefused === 1 ? ' checkout was' : ' checkouts were') + ' turned away because no payment provider is set up, ' +
+    npaid + ' paid, ' + nreq + (nreq === 1 ? ' plan request is' : ' plan requests are') + ' waiting for an answer.';
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚙️ Super Admin Dashboard</h1>
@@ -3536,6 +3545,18 @@ async function renderSuperAdmin() {
       <div class="stat-card"><div class="stat-value">${stats.total_users||0}</div><div class="stat-label">Total Users</div></div>
       <div class="stat-card"><div class="stat-value">${stats.total_affiliates||0}</div><div class="stat-label">Total Affiliates</div></div>
       <div class="stat-card"><div class="stat-value">${stats.total_plans||0}</div><div class="stat-label">Active Plans</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.workspaces_paid||0}</div><div class="stat-label">On a Paid Plan</div></div>
+      <div class="stat-card"><div class="stat-value">${money(stats.plan_value_monthly)}</div><div class="stat-label">Plan Value / mo</div></div>
+      <div class="stat-card"><div class="stat-value">${money(stats.plan_value_yearly)}</div><div class="stat-label">Plan Value / yr</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Plans in Use &mdash; list price, not money collected</span></div>
+      ${mix.length === 0
+        ? '<div class="empty"><div class="icon">💳</div><div class="title">Nobody is on a paid plan yet</div></div>'
+        : '<div class="table-wrap"><table class="table"><thead><tr><th>Plan</th><th>Workspaces</th><th>Price / mo</th><th>Value / mo</th></tr></thead><tbody>' +
+            mix.map(p => '<tr><td>' + (p.name || p.slug) + '</td><td>' + (p.count || 0) + '</td><td>' + money(p.price) + '</td><td>' + money((p.count || 0) * (p.price || 0)) + '</td></tr>').join('') +
+          '</tbody></table></div>'}
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">${note}</p>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Quick Actions</span></div>

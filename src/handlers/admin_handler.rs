@@ -542,11 +542,95 @@ pub async fn admin_stats(
     let total_plans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plans")
         .fetch_one(&state.pool)
         .await?;
+    // ── PLAN MIX, PLAN VALUE AND THE DEMAND THAT COULD NOT PAY (cron 2026-11-06) ────────────────
+    // The dashboard counted workspaces but could not say what they are on or what that is worth,
+    // and it said nothing about `checkout_sessions`: every refused purchase is recorded there under
+    // its OWN status (`provider_missing` — 19 rows on live when this was written, one per customer
+    // who pressed Buy and was turned away because no payment provider is set up) and no screen in
+    // this console read them, so the operator could not see that the demand exists.
+    //
+    // The probe/owner predicate is the SAME two arms the counters above use, so the card and the
+    // tenants list cannot disagree. The value is LIST PRICE of the plan each workspace holds
+    // (monthly-equivalent: a yearly plan counts as its annual price over twelve months) and is
+    // labelled as such in the console, because no money has been collected — `checkouts_paid` is
+    // reported beside it for exactly that reason.
+    let mix_rows: Vec<(String, String, String, f64, String)> = sqlx::query_as(
+        "SELECT COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
+           ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
+                    u.created_at ASC \
+           LIMIT 1), '') AS owner_email, \
+                COALESCE(p.slug, '') AS plan_slug, \
+                COALESCE(p.name, '') AS plan_name, \
+                COALESCE(p.price, 0)::float8 AS price, \
+                COALESCE(p.billing_cycle, 'month') AS billing_cycle \
+         FROM tenants t \
+         LEFT JOIN LATERAL ( \
+             SELECT tps.plan_id FROM tenant_plan_subscriptions tps \
+              WHERE tps.tenant_id = t.id AND tps.status = 'active' \
+              ORDER BY tps.start_date DESC LIMIT 1 \
+         ) s ON TRUE \
+         LEFT JOIN plans p ON p.id = s.plan_id \
+         WHERE $1::bool OR COALESCE(t.probe_harness, '') = '' OR t.probe_harness ~* '^CNRY'",
+    )
+    .bind(include_probe)
+    .fetch_all(&state.pool)
+    .await?;
+    let mut plan_mix: std::collections::BTreeMap<String, (String, f64, i64)> =
+        std::collections::BTreeMap::new();
+    let mut workspaces_paid: i64 = 0;
+    let mut plan_value_monthly: f64 = 0.0;
+    for (owner, slug, name, price, cycle) in &mix_rows {
+        if !counts_as_customer(include_probe, owner) || slug.is_empty() || *price <= 0.0 {
+            continue;
+        }
+        workspaces_paid += 1;
+        plan_value_monthly += if cycle.eq_ignore_ascii_case("year") {
+            price / 12.0
+        } else {
+            *price
+        };
+        let entry = plan_mix
+            .entry(slug.clone())
+            .or_insert_with(|| (name.clone(), *price, 0));
+        entry.2 += 1;
+    }
+    let plan_mix_json: Vec<Value> = plan_mix
+        .iter()
+        .map(|(slug, (name, price, count))| {
+            json!({ "slug": slug, "name": name, "price": price, "count": count })
+        })
+        .collect();
+    let open_plan_requests: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM plan_requests pr JOIN tenants t ON t.id = pr.tenant_id \
+          WHERE pr.status = 'open' AND ($1::bool OR COALESCE(t.probe_harness, '') = '')",
+    )
+    .bind(include_probe)
+    .fetch_one(&state.pool)
+    .await?;
+    let checkout_states: Vec<(String, i64)> =
+        sqlx::query_as("SELECT status, COUNT(*) FROM checkout_sessions GROUP BY status")
+            .fetch_all(&state.pool)
+            .await?;
+    let count_state = |wanted: &str| -> i64 {
+        checkout_states
+            .iter()
+            .filter(|(s, _)| s == wanted)
+            .map(|(_, n)| *n)
+            .sum()
+    };
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
     Ok(Json(json!({
         "total_tenants": total_tenants,
         "total_users": total_users,
         "total_affiliates": total_affiliates,
         "total_plans": total_plans,
+        "workspaces_paid": workspaces_paid,
+        "plan_value_monthly": round2(plan_value_monthly),
+        "plan_value_yearly": round2(plan_value_monthly * 12.0),
+        "plan_mix": plan_mix_json,
+        "open_plan_requests": open_plan_requests,
+        "checkouts_refused": count_state("provider_missing"),
+        "checkouts_paid": count_state("paid"),
     })))
 }
 
