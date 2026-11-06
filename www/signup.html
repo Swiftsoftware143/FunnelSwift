@@ -230,8 +230,18 @@ try{
       var r = await fetch('/api/v1/auth/initial-password', {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer ' + window.__signupToken}, body: JSON.stringify({password: pw})});
       var d = await r.json().catch(function(){ return {}; });
       if (!r.ok) throw new Error(d.message || d.error || 'Could not save that password.');
-      box.innerHTML = '<span style="color:#15803d"><strong>Password saved.</strong> Taking you to sign in\u2026</span>';
-      setTimeout(function(){ window.location = 'https://app.funnelswift.net/login.html' + (window.__signupEmail ? '?email=' + encodeURIComponent(window.__signupEmail) : ''); }, 900);
+      /* The API re-mints this tab's session (2026-11-06): choosing the first password moves the
+         account's session line, which kills the signup token that authenticated this very call —
+         so the customer used to be dumped on the sign-in form seconds after setting the password
+         they now have to type. The fresh token is handed over in the URL FRAGMENT (never sent to
+         a server), exactly like the signup form's own hand-off. */
+      if (d.token) {
+        box.innerHTML = '<span style="color:#15803d"><strong>Password saved.</strong> Opening your dashboard\u2026</span>';
+        setTimeout(function(){ window.location = 'https://app.funnelswift.net/#token=' + encodeURIComponent(d.token); }, 900);
+      } else {
+        box.innerHTML = '<span style="color:#15803d"><strong>Password saved.</strong> Taking you to sign in\u2026</span>';
+        setTimeout(function(){ window.location = 'https://app.funnelswift.net/login.html' + (window.__signupEmail ? '?email=' + encodeURIComponent(window.__signupEmail) : ''); }, 900);
+      }
     } catch (e) { box.innerHTML = '<span style="color:#b91c1c">' + String(e.message).replace(/[<>&]/g, '') + '</span>'; }
   }
 </script>

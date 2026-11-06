@@ -5145,7 +5145,12 @@ function CPF(){
     .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
       if(!r.ok) throw Error((d&&d.error)||("Error "+r.status));
       return d||{};})})
-    .then(function(){
+    .then(function(d){
+      /* The API re-mints this tab's session (2026-11-06): changing the password moves the account's
+         session line, which kills every older JWT — including the bearer this very page is holding,
+         so the customer was dropped on /login by the next API call mid-task. Adopting the fresh
+         token keeps them on the screen they just used. Same three lines as LGA() below. */
+      if(d && d.token){ T=d.token; try{localStorage.setItem("ws_fs_token",T)}catch(e){} }
       $("pf-np").value=""; $("pf-np2").value=""; $("pf-cp").value="";
       pfMsg("pf-pmsg","Password changed","ms");
     })
