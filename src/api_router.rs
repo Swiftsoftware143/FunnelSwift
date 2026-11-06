@@ -23,8 +23,9 @@ use crate::handlers::{
     mobile_notify_handler, ocr, plan_handler, plan_request_handler, platform_settings_handler,
     portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
     qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    support_request_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -920,6 +921,23 @@ pub fn create_router(
         .route(
             "/api/v1/admin/plan-requests/:id",
             put(plan_request_handler::admin_update),
+        )
+        // A workspace asks for HELP (migration 122, cron 2026-11-06). The fleet's other five apps
+        // all give a signed-in customer an in-product way to reach the team; this one's refusals
+        // told the customer to "contact support" and offered nothing to contact. `plan_requests`
+        // cannot carry it (its queue resolves by moving a plan), so a help request has its own row,
+        // its own answer, and the same operator-queue shape.
+        .route(
+            "/api/v1/support-requests",
+            get(support_request_handler::list_mine).post(support_request_handler::create),
+        )
+        .route(
+            "/api/v1/admin/support-requests",
+            get(support_request_handler::admin_list),
+        )
+        .route(
+            "/api/v1/admin/support-requests/:id",
+            put(support_request_handler::admin_update),
         )
         // Payment webhooks ARE registered: `/api/v1/webhooks/stripe` sits at the top of this
         // router with its own signature verification (kanban t_6e746b75 shipped it together with the

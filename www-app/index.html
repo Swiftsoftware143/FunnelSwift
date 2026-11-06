@@ -229,6 +229,10 @@ tr:hover{background:#f8fafc}
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
   <a data-tab="settings" onclick="S('settings')">Settings</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
+  <!-- cron 2026-11-06: GET|POST /api/v1/support-requests are live and tenant-scoped and NO console
+       called them, while this app's own checkout and plan refusals tell the customer to "contact
+       support" - a surface the product did not have. A backend route with no UI is a defect. -->
+  <a data-tab="support" onclick="S('support')">Support</a>
   <!-- kanban t_dc79fb2a: `affiliates` is the CALLER'S OWN referral programme. LA() renders the
        referral-signups panel and the shareable link for a non-admin, and it is the ONLY caller of
        GET /api/v1/affiliate-referrals (which binds the caller's own `tenants.affiliate_code`).
@@ -354,6 +358,7 @@ var helpContent={
   "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above, then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Pause</strong> keeps the page and its link exactly where they are but stops it taking responses: a visitor sees \u201cThis form is closed\u201d, and a submission from a page that was already open is refused. Use it when a campaign ends or a list is full \u2014 <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
   "afleads":'<h4>Affiliate Leads</h4><p>The leads each affiliate has brought in, so you can see who is producing. <strong>Admin only.</strong></p>'
 ,
+  "support":'<h4>Support</h4><p>Ask the team anything about this workspace and read the answer here. <strong>Send request</strong> files a subject and a message; the answer is written on the same request, so it is still here when you come back. A request that is still open can be answered by nobody but our team, and a second request with the same subject while the first is open is treated as the same ask, so a double press does not make two.</p>',
   "scan":'<h4>Card Scanner</h4><p>Photograph a business card and this reads the name, job title, company, email and phone off it, then saves them to your <strong>Leads</strong> with the source <strong>card scan</strong>. Every field stays editable before you save, because a scan can be wrong; if the card cannot be read, the screen says so and lets you type the details in instead, so nothing is lost.</p><ul><li><strong>Choose a photo</strong> of the card (up to 12 MB).</li><li><strong>Correct any field</strong> the scan got wrong.</li><li><strong>Save it as a lead</strong> - each scan counts against the card-scan allowance on your plan, and a plan that does not include scanning points you at the plans.</li><li><strong>Recent scans</strong> under the scanner keeps your last 20 readings, so a card you scanned but did not save is not lost - press <strong>Save as a lead</strong> on the entry.</li></ul>'};
 function toggleHelp() {
   var p=document.getElementById("helpPanel"), f=document.getElementById("helpFab");
@@ -401,7 +406,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",upgrade:"Upgrade Plan",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms"};
+var TI={dashboard:"Dashboard",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",support:"Support",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -768,12 +773,16 @@ function S(t){
      tap. Every renderer that IS declared here behaves exactly as before. */
   var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN,insights:LINS};
   if(typeof LWTL==="function") L.wtl=LWTL;
+  /* LSUP is declared in the same later block as LWTL, so naming it in the map above would throw
+     ReferenceError on any tap that lands while the page is still parsing (the LWTL lesson). */
+  if(typeof LSUP==="function") L.support=LSUP;
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   else if(t!=="upgrade"&&t!=="funnels"){
     var tries=0;
     (function waitForRenderer(){
       if(!document.querySelector("#ct .loading")) return;
       if(t==="wtl"&&typeof LWTL==="function"){ L.wtl=LWTL; LWTL(); return; }
+      if(t==="support"&&typeof LSUP==="function"){ L.support=LSUP; LSUP(); return; }
       if(++tries<8) setTimeout(waitForRenderer,300);
       else $("ct").innerHTML='<div class="cc"><p>This screen has not finished loading. Tap it again in a moment.</p></div>';
     })();
@@ -5810,6 +5819,50 @@ function tagLabel(id){
   if(!id)return "\u2014";
   var hit=(WTLTAGS||[]).filter(function(t){return String(t.id)===String(id);})[0];
   return hit?String(hit.name||""):("tag "+String(id).slice(0,8));
+}
+/* SUPPORT (cron 2026-11-06) — the workspace asks the team for help and reads the answer.
+   Routes: GET|POST /api/v1/support-requests (tenant-scoped in the handler, never from the body).
+   The row IS the record: the answer is written on the request the customer filed, so reload shows it. */
+var SUP_LABEL={open:"With our team",answered:"Answered",closed:"Closed"};
+function LSUP(){
+  api("/api/v1/support-requests").then(function(d){
+    var a=(d&&d.requests)||[];
+    var h='<div class="cc"><h3>Support</h3>';
+    h+='<p style="color:#64748b;font-size:12px;margin-bottom:14px">Ask the team anything about this workspace and read the answer here. Every request and its answer stay listed, so nothing depends on an email arriving.</p>';
+    h+='<div class="card" style="margin-bottom:14px"><h3>New request</h3>';
+    h+='<div class="fld"><label>Subject</label><input id="sup-sub" maxlength="120" placeholder="One line about what you need"></div>';
+    h+='<div class="fld"><label>Message</label><textarea id="sup-body" rows="4" maxlength="4000" placeholder="Tell us what happened and what you expected." style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-family:inherit;font-size:13px"></textarea></div>';
+    h+='<button class="btn" onclick="SUPSEND()">Send request</button>';
+    h+='<span id="sup-msg" style="display:none;margin-left:8px;font-size:12px"></span></div>';
+    h+='<div class="card"><h3>Your requests ('+a.length+')</h3>';
+    if(!a.length){h+='<p style="color:#64748b;padding:14px 0">Nothing yet &mdash; the request you send above appears here with the team\'s answer.</p>';}
+    else{a.forEach(function(r){
+      var bg=r.status==="answered"?"#dcfce7":(r.status==="open"?"#fef3c7":"#f1f5f9");
+      var fg=r.status==="answered"?"#166534":(r.status==="open"?"#92400e":"#475569");
+      h+='<div style="border-top:1px solid #e2e8f0;padding:12px 0">';
+      h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><strong>'+X(r.subject)+'</strong>';
+      h+='<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:'+bg+';color:'+fg+';font-weight:600">'+X(SUP_LABEL[r.status]||r.status)+'</span>';
+      h+='<span style="font-size:11px;color:#94a3b8">'+X(String(r.created_at||"").slice(0,16).replace("T"," "))+'</span></div>';
+      h+='<p style="font-size:13px;color:#475569;white-space:pre-wrap;margin:6px 0 0">'+X(r.body||"")+'</p>';
+      if(r.reply){h+='<div style="background:#f0fdf4;border-left:3px solid #22c55e;padding:8px 10px;margin-top:8px;border-radius:6px"><div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:2px">Our answer</div><p style="font-size:13px;color:#166534;white-space:pre-wrap;margin:0">'+X(r.reply)+'</p></div>';}
+      h+='</div>';
+    });}
+    h+='<p style="font-size:11px;color:#94a3b8;margin-top:10px">Need something else? Send another request above &mdash; every ask is its own row.</p></div></div>';
+    $("ct").innerHTML=h;
+  }).catch(function(e){
+    $("ct").innerHTML='<div class="cc"><h3>Support</h3><p style="color:#b91c1c;font-size:13px">Could not load your requests: '+X((e&&e.message)||"unknown error")+'</p></div>';
+  });
+}
+function SUPSEND(){
+  var s=$("sup-sub"), b=$("sup-body"), m=$("sup-msg");
+  function say(t,ok){ if(!m)return; m.style.display="block"; m.style.color=ok?"#166534":"#b91c1c"; m.textContent=t; }
+  if(m){m.style.display="none";m.textContent="";}
+  var subject=(s&&s.value||"").trim(), body=(b&&b.value||"").trim();
+  if(!subject){say("Give the request a short subject.",false);return;}
+  if(!body){say("Write your message.",false);return;}
+  api("/api/v1/support-requests",{method:"POST",body:JSON.stringify({subject:subject,body:body})})
+    .then(function(d){ LSUP(); })
+    .catch(function(e){ say((e&&e.message)||"Could not send the request.",false); });
 }
 function LWTL(){
   api("/api/v1/web-to-lead/configs").then(function(d){

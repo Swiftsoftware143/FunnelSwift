@@ -637,6 +637,10 @@ function buildNav() {
     // API. This is that screen, and the count rides in the label so an ask is visible without
     // opening it.
     sections.push(`<button type="button" class="nav-item ${STATE.view==='planRequests'?'active':''}" data-view="planRequests" aria-label="Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}"><span class="icon">🙋</span><span class="nav-text">Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}</span></button>`);
+    // cron 2026-11-06: the operator's queue for GET /api/v1/admin/support-requests. The tenant
+    // console can now FILE a help request, and a row nobody can answer is a customer waiting on a
+    // state no screen could move (the same defect the plan-request queue was built for).
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='supportRequests'?'active':''}" data-view="supportRequests" aria-label="Support Requests"><span class="icon">🛟</span><span class="nav-text">Support Requests</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants" aria-label="Tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings" aria-label="System Settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin" aria-label="Plans &amp; Features"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></button>`);
@@ -685,6 +689,7 @@ const viewRenderers = {
   tagRules: renderTagRules,
   checkoutSessions: renderCheckoutSessions,
   planRequests: renderPlanRequests,
+  supportRequests: renderSupportRequests,
 };
 
 async function renderView() {
@@ -746,6 +751,7 @@ function bindView(view) {
     case 'tagRules': bindTagRules(); break;
     case 'checkoutSessions': break;
     case 'planRequests': bindPlanRequests(); break;
+    case 'supportRequests': bindSupportRequests(); break;
     case 'cardAnalytics': bindCardAnalytics(); break;
     case 'cardUtmBuilder': bindCardUtmBuilder(); break;
     case 'cardLocations': bindCardLocations(); break;
@@ -6018,6 +6024,85 @@ function bindPlanRequests() {
         await api('/admin/plan-requests/' + encodeURIComponent(id),
           { method: 'PUT', body: JSON.stringify({ status, reply: planReqReplyValue(id) }) });
         showToast('Marked ' + status + moved, 'success');
+        renderApp();
+      } catch (e) {
+        b.disabled = false;
+        showToast((e && e.message) || 'Could not update the request', 'error');
+      }
+    });
+  });
+}
+
+// ── SUPPORT REQUESTS (cron 2026-11-06) ──
+// A workspace files a help request from its own Support screen. Read: GET /api/v1/admin/support-requests
+// Write: PUT /api/v1/admin/support-requests/:id — status and the reply travel in ONE write, so the
+// customer never reads a new state with the previous explanation still attached.
+const SUP_LABEL = {
+  open: 'Open — waiting on us',
+  answered: 'Answered — the customer can read it',
+  closed: 'Closed'
+};
+const SUP_BG = { open: '#fef3c7', answered: '#dcfce7', closed: '#f1f5f9' };
+const SUP_FG = { open: '#92400e', answered: '#166534', closed: '#475569' };
+function supChip(s) {
+  const k = String(s || 'open');
+  return '<span style="background:' + (SUP_BG[k] || '#f1f5f9') + ';color:' + (SUP_FG[k] || '#334155') +
+    ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' + x(SUP_LABEL[k] || k) + '</span>';
+}
+async function renderSupportRequests() {
+  let payload = { requests: [], open: 0 };
+  let err = '';
+  try { payload = await api('/admin/support-requests') || payload; }
+  catch (e) { err = (e && e.message) || 'Could not load the queue'; }
+  const list = Array.isArray(payload.requests) ? payload.requests : [];
+  const open = typeof payload.open === 'number' ? payload.open : list.filter(r => r.status === 'open').length;
+  const rowFor = (r) => {
+    const acts = r.status === 'closed'
+      ? '<span style="font-size:11px;color:var(--muted)">Closed</span>'
+      : ['answered', 'closed'].filter(st => st !== r.status).map(st =>
+        '<button class="btn" data-sr-id="' + x(r.id) + '" data-sr-status="' + st +
+        '" style="padding:4px 8px;font-size:11px;margin-left:4px">' + st + '</button>').join('');
+    return '<tr data-support-request="' + x(r.id) + '">' +
+      '<td><strong>' + x(r.tenant_name || r.tenant_id) + '</strong><div style="font-size:11px;color:var(--muted)">' +
+      x(r.requested_by || '') + '</div></td>' +
+      '<td><strong>' + x(r.subject) + '</strong>' +
+      (r.body ? '<div style="font-size:11px;color:var(--muted);max-width:340px;white-space:pre-wrap">' + x(r.body) + '</div>' : '') + '</td>' +
+      '<td>' + supChip(r.status) + '</td>' +
+      '<td>' + formatDate(r.created_at) + '</td>' +
+      '<td><input data-sr-reply="' + x(r.id) + '" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
+      'style="width:180px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:2px">' +
+      (r.replied_at ? 'sent ' + formatDate(r.replied_at) : 'not answered yet') + '</div></td>' +
+      '<td style="text-align:right;white-space:nowrap">' + acts + '</td></tr>';
+  };
+  return '<div>' +
+    '<h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Support Requests</h1>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">A workspace asks for help from its own Support screen. Write the answer here and mark it answered &mdash; the customer reads that sentence on the same request the next time the screen loads.</div>' +
+    (err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : '') +
+    (open ? '<div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;color:#92400e"><strong>' + open + '</strong> workspace' + (open === 1 ? ' is' : 's are') + ' waiting on an answer.</div>' : '') +
+    '<div class="card">' +
+    wiredTable(['Workspace', 'Request', 'State', 'Asked', 'Answer to the customer', ''], list.map(rowFor), 'No workspace has asked for help') +
+    '</div></div>';
+}
+function supReplyValue(id) {
+  const el = document.querySelector('input[data-sr-reply="' + id + '"]');
+  return el ? String(el.value || '') : '';
+}
+function bindSupportRequests() {
+  document.querySelectorAll('button[data-sr-id]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-sr-id');
+      const status = b.getAttribute('data-sr-status');
+      const reply = supReplyValue(id);
+      if (status === 'answered' && !reply.trim()) {
+        showToast('Write the answer before marking it answered', 'error');
+        return;
+      }
+      b.disabled = true;
+      try {
+        await api('/admin/support-requests/' + encodeURIComponent(id),
+          { method: 'PUT', body: JSON.stringify({ status, reply }) });
+        showToast('Marked ' + status, 'success');
         renderApp();
       } catch (e) {
         b.disabled = false;
