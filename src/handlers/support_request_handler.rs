@@ -515,3 +515,66 @@ pub async fn admin_update(
         "notify_detail": notify_detail,
     })))
 }
+
+/// A visitor who filed from the login page reads the answer (2026-11-06, cron `default`).
+#[derive(Deserialize)]
+pub struct PublicAnswerBody {
+    pub ticket_id: String,
+    #[serde(default)]
+    pub email: String,
+}
+
+/// `POST /api/v1/public/support-answer` — read the answer to a message filed from the login page.
+///
+/// WHY THIS EXISTS (measured 2026-11-06): `create_public` files a row that belongs to NO workspace,
+/// so the person who asked has no Support screen to sign in to. Their only copy of the operator's
+/// sentence was the notice mail — and when that mail bounces or is lost the answer is unreachable,
+/// while the form that filed it gives no way back. ADASwift and WorkflowSwift ship this read-back;
+/// this app mailed the answer but could not show it again.
+///
+/// The reference (an unguessable uuid) plus the address they filed with ARE the credential: anything
+/// that does not match BOTH answers ONE neutral 404, so the route cannot be used to test whether a
+/// reference exists. It reads a single workspace-less row and returns the subject, the status and
+/// the operator's answer — never the description, never a list, never a workspace row, never
+/// another visitor's row.
+pub async fn public_answer(
+    State(state): State<AppState>,
+    Json(body): Json<PublicAnswerBody>,
+) -> AppResult<Json<Value>> {
+    let missing = || {
+        AppError::NotFound(
+            "We have no message from that address with that reference. Check the reference and the \
+             email address you filed with."
+                .to_string(),
+        )
+    };
+    let id = Uuid::parse_str(body.ticket_id.trim()).map_err(|_| missing())?;
+    // The filing arm stores the address lower-cased, so the lookup normalises the same way —
+    // `Probe@Example.com ` must find the row filed as `probe@example.com`.
+    let email = body.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return Err(missing());
+    }
+    let row: Option<(String, String, String, String)> = sqlx::query_as(
+        "SELECT subject, status, COALESCE(reply, ''), COALESCE(replied_at::text, '') \
+           FROM support_requests \
+          WHERE id = $1 AND tenant_id IS NULL AND lower(requested_by) = $2",
+    )
+    .bind(id)
+    .bind(&email)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((subject, status, reply, replied_at)) = row else {
+        return Err(missing());
+    };
+    let reply = reply.trim().to_string();
+    Ok(Json(json!({
+        "id": id.to_string(),
+        "subject": subject,
+        "status": status,
+        // Empty means "not answered yet", which the page says in its own words rather than
+        // showing an empty green box.
+        "reply": (!reply.is_empty()).then_some(reply),
+        "replied_at": (!replied_at.is_empty()).then_some(replied_at),
+    })))
+}

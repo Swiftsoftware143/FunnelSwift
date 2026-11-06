@@ -184,6 +184,12 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // it writes ONE row with a NULL tenant, an address the visitor typed and a bounded message,
     // and refuses a fourth message from one address within the hour.
     "/api/v1/public/support-request",
+    // --- reading the ANSWER to that message (2026-11-06) ---------------------------------------
+    // The visitor who filed it is not signed in, so the answer cannot sit behind a session. The
+    // reference (an unguessable uuid) plus the address they filed with ARE the credential;
+    // anything that does not match BOTH answers one neutral 404. Narrow by construction: ONE
+    // workspace-less row, returning the subject, the status and the operator's answer.
+    "/api/v1/public/support-answer",
     // --- public lead capture / checkout -----------------------------------------
     // The lead-capture form on a served funnel posts here with no session (the visitor is
     // anonymous by construction); the handler scopes the write to the tenant it resolves from the

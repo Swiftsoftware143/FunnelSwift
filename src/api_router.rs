@@ -938,6 +938,13 @@ pub fn create_router(
             "/api/v1/public/support-request",
             post(support_request_handler::create_public),
         )
+        // Reading the ANSWER to a message filed from the login page (2026-11-06). The visitor is
+        // not signed in, so the answer cannot sit behind a session: the reference plus the address
+        // they filed with ARE the credential, and anything else answers one neutral 404.
+        .route(
+            "/api/v1/public/support-answer",
+            post(support_request_handler::public_answer),
+        )
         .route(
             "/api/v1/admin/support-requests",
             get(support_request_handler::admin_list),
