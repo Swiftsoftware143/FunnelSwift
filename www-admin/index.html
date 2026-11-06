@@ -141,6 +141,10 @@ let STATE = { view: 'dashboard', modal: null, data: {}, toast: null, subView: nu
 // re-rendered on every view switch: the sidebar label has to carry the count from the module, not
 // from a DOM node that the next render throws away. `var` so the boot IIFE cannot hit a TDZ.
 var PLAN_REQ_OPEN = 0;
+// The same for the support-request queue: the count must survive a re-render because the sidebar
+// label is rebuilt on every view switch, and the boot IIFE paints it before any view has rendered.
+var SUP_LIST = null;
+var SUP_OPEN = 0;
 
 // ── API ──
 async function api(path, opts={}) {
@@ -459,9 +463,12 @@ function doLogout() {
   // kanban cron-1019: put the count of waiting plan asks on the sidebar label before the operator
   // has to think of opening the screen. Fire-and-forget: a failure here must not delay the console.
   refreshPlanRequestBadge();
+  // The same for a customer's help request: it is answered by a person, so the person has to know
+  // it is there. Painted from its own cached read, so the two counts can never disagree.
+  refreshSupportBadge();
   // Re-check while the console stays open (kanban cron-1020): a buying request that arrives between
   // page loads now shows up on its own, within one interval, instead of waiting for a reload.
-  setInterval(() => { if (TOKEN) refreshPlanRequestBadge(); }, 45000);
+  setInterval(() => { if (TOKEN) { refreshPlanRequestBadge(); refreshSupportBadge(); } }, 45000);
   // A reload mid-impersonation must not silently swallow the banner: the operator needs to see
   // which account this session belongs to and the control that hands their own session back.
   if (localStorage.getItem(IMP_ORIGINAL_KEY)) {
@@ -640,7 +647,9 @@ function buildNav() {
     // cron 2026-11-06: the operator's queue for GET /api/v1/admin/support-requests. The tenant
     // console can now FILE a help request, and a row nobody can answer is a customer waiting on a
     // state no screen could move (the same defect the plan-request queue was built for).
-    sections.push(`<button type="button" class="nav-item ${STATE.view==='supportRequests'?'active':''}" data-view="supportRequests" aria-label="Support Requests"><span class="icon">🛟</span><span class="nav-text">Support Requests</span></button>`);
+    // The COUNT rides in the label for the same reason it does on Plan Requests: an ask that
+    // arrives while the console is open must not wait for the operator to think of opening a tab.
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='supportRequests'?'active':''}" data-view="supportRequests" aria-label="Support Requests${SUP_OPEN ? ' (' + SUP_OPEN + ')' : ''}"><span class="icon">🛟</span><span class="nav-text">Support Requests${SUP_OPEN ? ' (' + SUP_OPEN + ')' : ''}</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants" aria-label="Tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings" aria-label="System Settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin" aria-label="Plans &amp; Features"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></button>`);
@@ -768,6 +777,7 @@ async function renderDashboard() {
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">Dashboard</h1>
     <div id="preqCard"></div>
+    <div id="supCard"></div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-value">${stats?.total_leads||0}</div><div class="stat-label">Total Leads</div></div>
       <div class="stat-card"><div class="stat-value">${stats?.total_cards||0}</div><div class="stat-label">Cards Created</div></div>
@@ -816,7 +826,7 @@ function activityDetail(r){
   if(entLabel) return entLabel+(id?' '+id.slice(0,8):'');
   return '-';
 }
-function bindDashboard() { paintPlanRequests(); }
+function bindDashboard() { paintPlanRequests(); paintSupportRequests(); }
 
 // ── MY ACCOUNT ──
 async function renderMyAccount() {
@@ -6116,6 +6126,9 @@ function bindSupportRequests() {
         } else {
           showToast('Marked ' + status, 'success');
         }
+        // The row left the open queue on this save, so the label and the dashboard card must not
+        // keep counting it until the next 45s tick.
+        refreshSupportBadge();
         renderApp();
       } catch (e) {
         b.disabled = false;
@@ -6171,6 +6184,45 @@ function paintPlanRequests() {
   if (btn) btn.addEventListener('click', () => { STATE.view = 'planRequests'; STATE.subView = null; renderApp(); });
 }
 
+// The support-request twin of the block above, and the same defect it was written for: a customer
+// files "checkout will not take my card", the row lands in a queue nobody is looking at, and the
+// only signal was a tab with no number on it. One cached read paints BOTH the sidebar count and the
+// dashboard card, so they cannot disagree, and a workspace with nothing waiting gets no card.
+async function refreshSupportBadge() {
+  if (!USER || (USER.role !== 'admin' && !USER.is_admin)) return;
+  try {
+    const d = await api('/admin/support-requests');
+    SUP_LIST = Array.isArray(d && d.requests) ? d.requests : [];
+  } catch (e) { return; }
+  paintSupportRequests();
+}
+function paintSupportRequests() {
+  if (SUP_LIST === null) return;
+  const openRows = SUP_LIST.filter(r => r.status === 'open');
+  SUP_OPEN = openRows.length;
+  const nav = document.querySelector('.nav-item[data-view="supportRequests"]');
+  if (nav) {
+    const lbl = nav.querySelector('.nav-text');
+    if (lbl) lbl.textContent = 'Support Requests' + (SUP_OPEN ? ' (' + SUP_OPEN + ')' : '');
+    nav.style.background = SUP_OPEN ? 'rgba(239,68,68,.08)' : '';
+  }
+  const box = document.getElementById('supCard');
+  if (!box) return;
+  if (!openRows.length) { box.innerHTML = ''; return; }
+  const r = openRows[0];
+  const who = r.tenant_name || r.requested_by || '';
+  box.innerHTML = '<div class="card" data-support-requests-waiting="' + SUP_OPEN + '"'
+    + ' style="border-left:4px solid #ef4444;margin-bottom:16px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+    + '<div><div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Waiting on you</div>'
+    + '<div style="font-size:20px;font-weight:800">' + SUP_OPEN + ' support request' + (SUP_OPEN === 1 ? '' : 's') + '</div>'
+    + '<div style="color:#475569;font-size:13px;margin-top:2px">' + x(r.subject || '')
+    + (who ? ' &middot; ' + x(who) : '') + ' &middot; ' + formatDate(r.created_at) + '</div></div>'
+    + '<button class="btn" data-open-support-requests="1">Open the queue</button></div></div>';
+  const btn = box.querySelector('[data-open-support-requests]');
+  if (btn) btn.addEventListener('click', () => { STATE.view = 'supportRequests'; STATE.subView = null; renderApp(); });
+}
+
 </script>
 <script>
 /* Inline guide content for the FunnelSwift ADMIN CONSOLE (fleet standard, FS-10).
@@ -6208,6 +6260,7 @@ window.appGuidePages = {
   "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts. A workspace whose owner never received the first password we made for them carries a 'password never delivered' note under the owner's address, with a 'Send login' button: it makes a new password, emails it and signs that workspace out of its old sessions, and when the address is a test address that can never receive mail it shows the password on screen so you can pass it on.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts", "Give a workspace owner a login when their first password never arrived"] },
   "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
   "planRequests": { title: "Plan Requests", desc: "A workspace that wants a paid plan asks here — its own Upgrade screen files the request because this install cannot take a card. Nothing is charged. Move a request to contacted, done or declined, and the customer sees that state the next time their screen loads.", actions: ["See every request and the workspace it came from", "Mark a request contacted, done or declined", "The number on the label is how many are still waiting"] },
+  "supportRequests": { title: "Support Requests", desc: "A customer asks for help from the Support screen in their own console, and answers here. Saving a written answer emails it to the person who asked and also leaves it on their request, so they can read it again; a save that could not be emailed says so instead of pretending it went out. The number on the label, and the red card on the dashboard, count the requests still waiting on an answer.", actions: ["Read every request with the workspace it came from", "Write the answer and mark it answered", "Close a request that needs no answer", "The number on the label is how many are still waiting"] },
   "settings": { title: "Settings", desc: "This app's own configuration for your account — the mail server it sends through and the other integration slots.", actions: ["Set the mail server credentials", "Check whether email is configured", "Review the other settings"] },
   "superAdmin": { title: "Super Admin", desc: "Platform-wide controls, visible only to a platform administrator.", actions: ["Review the platform settings", "Check the features registry"] }
 };
