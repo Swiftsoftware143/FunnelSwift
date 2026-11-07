@@ -118,7 +118,7 @@ pub async fn upsert_provider_key(
 
     // A key is required unless the tenant is only recording a base URL for a provider that
     // already has one (the Integration Center's "update endpoint" flow).
-    let api_key = payload["api_key"].as_str().unwrap_or("").trim().to_string();
+    let api_key_raw = payload["api_key"].as_str().unwrap_or("").trim().to_string();
     let base_url = payload["base_url"]
         .as_str()
         .unwrap_or("")
@@ -137,6 +137,29 @@ pub async fn upsert_provider_key(
     .bind(&provider)
     .fetch_optional(&state.pool)
     .await?;
+
+    // THE MASKED ROUND-TRIP (measured live 2026-11-07 on the sibling payment-provider surface; the
+    // predicate is shared). The Integration Center lists every key as `api_key_masked` — prefix,
+    // ellipsis, last four — and until this guard a caller that echoed that value back replaced the
+    // working credential with the 15-character preview. The mask means what a blank field means on
+    // this route: KEEP the stored key. A mask with nothing stored is a 400 naming the mistake,
+    // because storing it would create a connection that can never authenticate.
+    let api_key = if crate::security::provider_key_crypto::is_mask_like(&api_key_raw) {
+        if exists
+            .as_ref()
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+        {
+            String::new()
+        } else {
+            return Err(AppError::Validation(
+                "That is the masked preview of a saved key, not the key itself — paste the full credential."
+                    .into(),
+            ));
+        }
+    } else {
+        api_key_raw
+    };
 
     match (&exists, api_key.is_empty()) {
         (None, true) => {

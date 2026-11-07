@@ -92,12 +92,12 @@ pub async fn upsert_payment_provider(
     let provider = payload["provider_type"]
         .as_str()
         .ok_or_else(|| AppError::Validation("provider_type required".into()))?;
-    let api_key = payload["api_key"].as_str().unwrap_or("").trim().to_string();
+    let api_key_raw = payload["api_key"].as_str().unwrap_or("").trim().to_string();
     // Stripe signs each delivery with a webhook signing secret that is DIFFERENT from the API key.
     // Without it the receiver can verify nothing, so it is collected here and encrypted exactly like
     // the API key: the column only ever holds 'enc:v1:' ciphertext and a write fails closed (500)
     // without the master key rather than storing a secret in the clear.
-    let webhook_secret = payload["webhook_secret"]
+    let webhook_secret_raw = payload["webhook_secret"]
         .as_str()
         .unwrap_or("")
         .trim()
@@ -119,6 +119,55 @@ pub async fn upsert_payment_provider(
     let tenant_id =
         crate::handlers::tenant_handler::require_existing_workspace(&state.pool, &auth.tenant_id)
             .await?;
+    // THE MASKED ROUND-TRIP (measured live 2026-11-07; see `provider_key_crypto::is_mask_like`).
+    // This route used to store whatever non-empty string it was handed, so re-saving the value the
+    // Provider Keys screen displays replaced a working key with the 15-character preview: the
+    // ciphertext column went 143 -> 115 bytes and the provider was then handed the display string
+    // (`Invalid API Key provided: sk_test_***0000`). An operator sees an unchanged screen, so the
+    // only clue is a provider refusal at checkout. A submitted mask now means the SAME thing a
+    // blank field means — keep the stored credential — and a mask with nothing stored is a 400 that
+    // names the mistake instead of saving a dead integration.
+    let existing: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT COALESCE(api_key,''), webhook_secret FROM payment_providers \
+          WHERE tenant_id = $1 AND provider_type = $2",
+    )
+    .bind(tenant_id)
+    .bind(provider)
+    .fetch_optional(&state.pool)
+    .await?;
+    let has_stored_key = existing
+        .as_ref()
+        .map(|(k, _)| !k.trim().is_empty())
+        .unwrap_or(false);
+    let has_stored_secret = existing
+        .as_ref()
+        .and_then(|(_, s)| s.as_deref())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    let (api_key, key_kept) =
+        match (crate::security::provider_key_crypto::is_mask_like(&api_key_raw), has_stored_key) {
+            (true, true) => (String::new(), true),
+            (true, false) => {
+                return Err(AppError::Validation(
+                    "That is the masked preview of a saved key, not the key itself — paste the full credential."
+                        .into(),
+                ))
+            }
+            (false, _) => (api_key_raw, false),
+        };
+    let webhook_secret = match (
+        crate::security::provider_key_crypto::is_mask_like(&webhook_secret_raw),
+        has_stored_secret,
+    ) {
+        (true, true) => String::new(),
+        (true, false) => {
+            return Err(AppError::Validation(
+                "That is the masked preview of a saved signing secret, not the secret itself — paste the full webhook signing secret."
+                    .into(),
+            ))
+        }
+        (false, _) => webhook_secret_raw,
+    };
     let stored_api_key = if api_key.is_empty() {
         String::new()
     } else {
@@ -152,9 +201,13 @@ pub async fn upsert_payment_provider(
     Ok((
         StatusCode::OK,
         Json(json!({
-            "message": "Provider saved",
+            "message": if key_kept { "Key unchanged" } else { "Provider saved" },
             "provider_type": provider,
-            "api_key_masked": crate::security::provider_key_crypto::mask(&api_key),
+            // A kept key has no mask available here: the column holds ciphertext and this route
+            // deliberately never opens it just to build a reply. `key_unchanged` is the honest
+            // signal, and the panel re-reads the list (which masks from the decrypted value).
+            "api_key_masked": if key_kept { Value::Null } else { json!(crate::security::provider_key_crypto::mask(&api_key)) },
+            "key_unchanged": key_kept,
             "webhook_secret_set": !webhook_secret.is_empty(),
         })),
     ))

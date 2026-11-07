@@ -208,8 +208,65 @@ pub fn mask(secret: &str) -> String {
     format!("{}…{}", head, tail)
 }
 
+/// True when a submitted credential is really the MASKED PREVIEW of a value already saved, rather
+/// than a new credential — the "masked round-trip".
+///
+/// Measured live 2026-11-07 against `payment_providers`: saving a key and then re-saving the value
+/// the panel displays (`sk_test_…0000`) replaced a 38-character credential with the 15-byte
+/// preview — the ciphertext column shrank 143 -> 115 bytes — and the provider then answered
+/// `Invalid API Key provided: sk_test_***0000`, i.e. it had been handed the DISPLAY STRING. The
+/// operator's screen looks unchanged while the integration is dead, and the only visible symptom is
+/// a cryptic provider refusal at checkout time.
+///
+/// Recognition is by MARKER, never by length: the read-back already contains an ellipsis
+/// ([`mask`] above), the mail-config panels use the bullet
+/// (`email_provider::SECRET_MASK`), and an operator who copies a provider's own error text brings
+/// the provider's asterisks with it. A real payment/integration credential is alphanumeric plus
+/// `_`/`-`, so none of the three markers can occur inside one.
+pub fn is_mask_like(v: &str) -> bool {
+    let t = v.trim();
+    t.contains('…') || t.contains('•') || t.contains('*')
+}
+
 // RETIRED (kanban t_0aaf0bc5): `encrypt_optional` / `keep_stored` existed for the NULLABLE
 // `target_software.api_key` column and its "blank means keep the stored key" update arm. Migration
 // 088 drops that table, and the credential that outlived it (`provider_keys.api_key`) is NOT NULL,
 // so `encrypt_for_storage` + `decrypt_from_storage` are the whole surface again. Removed rather than
 // left as dead code: an unused crypto helper is a future wiring mistake waiting to happen.
+
+#[cfg(test)]
+mod masked_round_trip_tests {
+    use super::*;
+
+    /// The exact value the Provider Keys screen displayed during the measured 2026-11-07 defect.
+    #[test]
+    fn the_displayed_mask_is_recognised() {
+        let shown = mask("sk_test_PROBE_FAKE_KEY_000000000000");
+        assert_eq!(shown, "sk_test_…0000");
+        assert!(is_mask_like(&shown));
+    }
+
+    /// A provider's own error text carries asterisks; copying it back is the same mistake.
+    #[test]
+    fn a_providers_masked_echo_is_recognised() {
+        assert!(is_mask_like("sk_test_***0000"));
+    }
+
+    /// The mail-config panels back their secret with bullets.
+    #[test]
+    fn the_bullet_mask_is_recognised() {
+        assert!(is_mask_like("••••••••"));
+    }
+
+    /// The short-credential form of `mask`, and the two spellings of "leave it alone", must not be
+    /// confused with a real credential — but a blank value must stay BLANK, because on both write
+    /// paths blank already means "keep the stored secret" and the mask arm reuses that meaning.
+    #[test]
+    fn real_credentials_and_blanks_are_not_masks() {
+        assert!(!is_mask_like("sk_test_PROBE_FAKE_KEY_000000000000"));
+        assert!(!is_mask_like("key-1a2b3c4d5e6f7a8b9c0d"));
+        assert!(!is_mask_like("sk_live_51Habcdefghijklmnop"));
+        assert!(!is_mask_like(""));
+        assert!(!is_mask_like("   "));
+    }
+}
