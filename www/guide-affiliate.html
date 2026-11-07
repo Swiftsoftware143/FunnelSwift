@@ -6,6 +6,8 @@
 <title>FunnelSwift Affiliate Guide</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
 <style>
+  /* 2026-11-07 AA: links inside prose were told apart from the text by colour alone (1.16:1) */
+  p a { text-decoration: underline; }
 
   :root {
     --indigo: #4f46e5; --indigo-light: #818cf8; --indigo-dark: #3730a3; --indigo-glow: rgba(79, 70, 229, 0.15);
@@ -75,8 +77,10 @@
   .badge-indigo { background: var(--indigo-glow); color: var(--indigo-light); }
   .badge-green { background: rgba(34,197,94,0.15); color: var(--success); }
   .badge-orange { background: rgba(249,115,22,0.15); color: var(--warning); }
-  .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
-  .badge-blue { background: rgba(59,130,246,0.15); color: var(--info); }
+  /* 2026-11-07 AA: --danger #ef4444 on this chip was 4.41:1 */
+  .badge-red { background: rgba(239,68,68,0.15); color: #f87171; }
+  /* 2026-11-07 AA: --info #3b82f6 on this chip was 4.43:1 */
+  .badge-blue { background: rgba(59,130,246,0.15); color: #60a5fa; }
 
   .step-list { list-style: none; counter-reset: step; }
   .step-list li { counter-increment: step; padding: 16px 16px 16px 52px; position: relative; margin-bottom: 8px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border); }
@@ -245,7 +249,8 @@
     <li><strong>Your standing rate</strong> — from your plan, when nothing more specific applies</li>
     <li><strong>The plan's rate</strong> — the default for your plan</li>
     <li><strong>A standard fallback</strong> if nothing else is configured</li>
-        <h3>Your Rate Rises Automatically</h3>
+  </ol>
+  <h3>Your Rate Rises Automatically</h3>
         <p>You do not have to ask for a better rate. Two things raise it by themselves, and you can see
         which one you are on, and why, in your affiliate dashboard:</p>
         <ul>
@@ -262,8 +267,6 @@
         <p>Your current rate, the reason for it, and the threshold for the next one are shown in your
         dashboard. The exact percentages and thresholds are set by the programme and can change; the
         numbers above are what is in force now.</p>
-
-  </ol>
 </div>
 
 <div class="card">

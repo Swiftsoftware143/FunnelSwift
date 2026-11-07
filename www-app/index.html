@@ -1770,7 +1770,7 @@ function LDV(id){
       var labels=["First Name","Last Name","Full Name","Email","Phone","Company","Status","Stage","Source","Notes","Created"];
       fields.forEach(function(k,i){
         var v=l[k]; if(v===null||v===undefined) v="-";
-        if(k==="created_at"&&v!=="-") v=String(v).slice(0,19);
+        if(k==="created_at"&&v!=="-") v=TSFMT(v,1);
         info.appendChild(El("div",{},[El("span",{style:"font-size:10px;color:#64748b;display:block"},labels[i]),El("span",{style:"font-size:13px;font-weight:500"},String(v))]));
       });
       // The lead's own detail names the page it was captured on, not just the word "funnel":
@@ -4022,7 +4022,7 @@ function LREF(){
       if(recent.length){
         h+='<div id="lref-recent" style="margin-top:12px"><table><tr><th>Referred signup</th><th>Code</th><th>When</th></tr>';
         recent.forEach(function(r){
-          h+='<tr><td>'+X(r.referred_email||"-")+(r.referred_tenant_name?' <span style="color:#64748b">('+X(r.referred_tenant_name)+')</span>':'')+'</td><td><code>'+X(r.referrer_code||"-")+'</code></td><td>'+X(r.created_at||"-")+'</td></tr>';
+          h+='<tr><td>'+X(r.referred_email||"-")+(r.referred_tenant_name?' <span style="color:#64748b">('+X(r.referred_tenant_name)+')</span>':'')+'</td><td><code>'+X(r.referrer_code||"-")+'</code></td><td>'+(r.created_at?TSFMT(r.created_at,1):"-")+'</td></tr>';
         });
         h+='</table></div>';
       }
@@ -4742,7 +4742,7 @@ function LWL(id){
       a.forEach(function(r){
         var st=r.status||"-";
         var cls=(st==="success")?"bg":((st==="failed")?"br":"bb");
-        var when=String(r.delivered_at||"").replace("T"," ").slice(0,19);
+        var when=TSFMT(r.delivered_at,1);
         h+='<tr><td>'+X(when||"-")+'</td><td><span class="badge bb">'+X(r.event||"-")+'</span></td><td><span class="badge '+cls+'">'+X(st)+'</span></td><td>'+(r.status_code==null?"-":X(String(r.status_code)))+'</td><td>'+X(String(r.attempt||1))+' / '+X(String(r.max_attempts||3))+'</td></tr>';
       });
       h+='</table>';
@@ -6078,6 +6078,6 @@ window.appGuidePages = {
      (measured: cf-cache-status HIT, age 4269, and the edge body still had 0 `seenAnyGuide`). A
      versioned query string is a NEW cache key, so the fix is visible on the next load; bump it
      whenever this file changes. -->
-<script src="/inline-guide-widget.js?v=20261024b"></script>
+<script src="/inline-guide-widget.js?v=20261106a"></script>
 </body>
 </html>

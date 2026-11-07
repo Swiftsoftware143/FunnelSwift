@@ -12,17 +12,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
 .c h1{font-size:22px;color:#1e1b4b;margin-bottom:4px}
 .c p.sub{font-size:13px;color:#64748b;margin-bottom:24px}
 .c input{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:12px;display:block;outline:none}
-.c input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
-.c button{width:100%;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
-.c button:hover{background:#4f46e5}
+.c input:focus{border-color:#4f46e5;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.c button{width:100%;padding:12px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+.c button:hover{background:#4338ca}
 .c button:disabled{opacity:.5}
 .msg{padding:10px;border-radius:6px;font-size:13px;margin-top:12px;display:none}
 .msg.e{background:#fee2e2;color:#991b1b;display:block}
-.msg.i{color:#6366f1;display:block}
+.msg.i{color:#4f46e5;display:block}
 .lk{margin-top:16px;font-size:12px;border-top:1px solid #f1f5f9;padding-top:14px}
-.lk a{color:#6366f1}
+.lk a{color:#4f46e5}
 .sup{margin-top:12px;font-size:12px;line-height:1.55;color:#6b7280}
-.sup a{color:#6366f1}
+.sup a{color:#4f46e5}
 </style>
 </head>
 <body>
@@ -40,8 +40,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
 (function(){try{if(!/[?&]expired=1/.test(location.search))return;var m=document.getElementById("m");
 if(m){m.className="msg i";m.textContent="Your session ended, so you were signed out. Sign in again to carry on.";}}catch(e){}})();
 </script>
-<div style="margin-top:14px;font-size:12px"><a href="#" id="fp-link" onclick="showForgot();return false" style="color:#6366f1">Forgot password?</a></div>
-<div style="margin-top:6px;font-size:12px"><a href="https://funnelswift.net/signup.html" style="color:#6366f1">New here? Create a free account</a></div>
+<div style="margin-top:14px;font-size:12px"><a href="#" id="fp-link" onclick="showForgot();return false" style="color:#4f46e5">Forgot password?</a></div>
+<div style="margin-top:6px;font-size:12px"><a href="https://funnelswift.net/signup.html" style="color:#4f46e5">New here? Create a free account</a></div>
 <div class="lk"><a href="https://admin.funnelswift.net/">Admin Portal</a> &middot; <a href="https://funnelswift.net/privacy">Privacy</a> &middot; <a href="https://funnelswift.net/terms">Terms</a></div>
 <p class="sup">Never received your password email, or still locked out after <a href="#" onclick="showForgot();return false">resetting it</a>? <a href="/contact.html">Send us a message here</a> and we will get you signed in.</p>
 </div>
@@ -56,13 +56,14 @@ if(m){m.className="msg i";m.textContent="Your session ended, so you were signed 
 <button id="fb" onclick="R()">Send reset code</button>
 <div id="fm" class="msg"></div>
 <div class="lk"><a href="#" onclick="showLogin();return false">&larr; Back to sign in</a></div>
+<div class="lk"><a href="#" id="to-reset" onclick="showReset();return false">Already have a reset code? Enter it here</a></div>
 <p class="sup">No code arriving? Check the spam folder first, then <a href="/contact.html">send us a message here</a> and we will get you back in.</p>
 </div>
 
 <div id="v-rs" style="display:none">
 <p class="sub" style="margin-bottom:16px">Enter the reset code from your email and choose a new password.</p>
-<input id="rc" type="text" placeholder="Reset code" autocomplete="one-time-code" onkeydown="if(event.key==='Enter'&&!document.getElementById('rb').disabled){event.preventDefault();RS();}">
-<input id="rpw" type="password" placeholder="New password (at least 8 characters)" onkeydown="if(event.key==='Enter'&&!document.getElementById('rb').disabled){event.preventDefault();RS();}">
+<input id="rc" type="text" aria-label="Reset code" placeholder="Reset code" autocomplete="one-time-code" onkeydown="if(event.key==='Enter'&&!document.getElementById('rb').disabled){event.preventDefault();RS();}">
+<input id="rpw" type="password" aria-label="New password" placeholder="New password (at least 8 characters)" onkeydown="if(event.key==='Enter'&&!document.getElementById('rb').disabled){event.preventDefault();RS();}">
 <button id="rb" onclick="RS()">Set new password</button>
 <div id="rm" class="msg"></div>
 <div class="lk"><a href="#" onclick="showLogin();return false">&larr; Back to sign in</a></div>
@@ -102,6 +103,17 @@ document.getElementById("v-li").style.display="none";
 document.getElementById("v-fp").style.display="block";
 document.getElementById("v-rs").style.display="none";
 document.getElementById("fe").focus();
+}
+/* Reach the reset-code pane WITHOUT a link that carries ?token= (2026-11-06). The reset email
+   tells a customer whose link did not open the form to "open {{login_url}} and paste the code
+   above" -- but this page had no control on any pane that showed the code box, so that
+   instruction led nowhere and a locked-out customer had to write to support. */
+function showReset(){
+document.getElementById("v-li").style.display="none";
+document.getElementById("v-fp").style.display="none";
+document.getElementById("v-rs").style.display="block";
+var m=document.getElementById("rm");if(m){m.className="msg i";m.textContent="Enter the reset code from your email and choose a new password.";}
+document.getElementById("rc").focus();
 }
 function showLogin(){
 document.getElementById("v-li").style.display="block";
