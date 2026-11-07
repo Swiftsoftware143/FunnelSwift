@@ -1060,6 +1060,16 @@ window._fsPasswordSave = async function () {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.message || (typeof d.error === 'string' ? d.error : '') || ('Error ' + r.status));
+    // The route moves users.sessions_valid_from past the token this tab is holding and re-mints a
+    // fresh one for the tab that pressed the button. Adopting it is what keeps the operator on the
+    // screen in front of them; measured 2026-11-07 on the sibling ADASwift console — without this
+    // the next request answered 401, the helper cleared the token and the operator landed on the
+    // sign-in form seconds after setting their password. A 200 with no token means the old
+    // credential is dead, so it is reported as a failure rather than a success the next click
+    // would contradict.
+    if (!d.token) throw new Error('The password was changed but no session was returned — sign in again.');
+    TOKEN = d.token;
+    try { localStorage.setItem('ws_fs_token', TOKEN); } catch (e) {}
     ['fsac-np', 'fsac-np2', 'fsac-cp'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     fsMsg('fsac-pwmsg', 'Password changed', true);
   } catch (e) { fsMsg('fsac-pwmsg', (e && e.message) || 'Could not change the password', false); }
