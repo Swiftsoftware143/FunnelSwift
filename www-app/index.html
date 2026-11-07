@@ -1243,7 +1243,11 @@ else if(T){
          about, not the dashboard three tabs away with no sign of the answer. Any other hash keeps
          the ordinary landing tab. */
       var want=(window.location.hash||"").replace(/^#/,"");
-      if(want==="support"){try{history.replaceState({},"","/app");}catch(e){}S("support");}
+      /* cron 2026-11-07: this used to open ONLY #support (the answer-mail link), so nothing
+         could land a customer on the screen a marketing page told them to visit. ANY tab the
+         console really has now opens from the hash; a hash naming no tab (a stale link, a
+         typo) keeps the ordinary dashboard landing, so it can never park "Loading...". */
+      if(want && want!=="dashboard" && TI[want]){try{history.replaceState({},"","/app");}catch(e){}S(want);}
       else{S("dashboard");}
       affBanner();   // David: banner the user can X out of, back on next login
     }
