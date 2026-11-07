@@ -677,9 +677,33 @@ fn get_inline(
             let reply = vars.get("reply").unwrap_or(&"").to_string();
             let status_word = vars.get("status_word").unwrap_or(&"answered").to_string();
             let subject = format!("Your {brand} support request - {asked}");
+            // WHERE THE ANSWER LIVES DEPENDS ON WHO ASKED (2026-11-06). This arm used to send
+            // EVERY reader to the account's Support screen - but a message filed from
+            // /contact.html belongs to no workspace, so that reader has no account to sign in to
+            // and no Support screen to open. The sentence pointed them at a door they cannot
+            // unlock, and the reference they were handed at filing time appeared nowhere in the
+            // mail, so the one route that WOULD work was never named. Branch on it.
+            let has_account = vars
+                .get("has_account")
+                .map(|v| v.to_string())
+                .unwrap_or_default()
+                == "true";
+            let read_back = if has_account {
+                format!(
+                    "You can read it any time on the Support screen in your account - sign in at {app_url} and open Support in the left-hand menu."
+                )
+            } else {
+                let reference = vars
+                    .get("reference")
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                format!(
+                    "You do not need an account to read it again: open {app_url}/contact.html and enter your reference {reference} together with the address you wrote from."
+                )
+            };
             let text = format!(
-                "Hi {0},\n\nYou asked us:\n\n{1}\n\nOur answer, from the {2} team:\n\n{3}\n\nYour request now reads {4}. You can read it any time on the Support screen in your account - sign in at {5} and open Support in the left-hand menu.\n\nReplying to this message reaches the same team, so you never have to file a second request to answer us back.\n\n- The {2} Team",
-                name, asked, brand, reply, status_word, app_url
+                "Hi {0},\n\nYou asked us:\n\n{1}\n\nOur answer, from the {2} team:\n\n{3}\n\nYour request now reads {4}. {5}\n\nReplying to this message reaches the same team, so you never have to file a second request to answer us back.\n\n- The {2} Team",
+                name, asked, brand, reply, status_word, read_back
             );
             (subject, Some(text), None)
         }
@@ -1033,24 +1057,47 @@ pub async fn send_plan_request_update_email(
 /// provider must not lose the operator's reply. A reserved/harness recipient is withheld by the
 /// send funnel (no provider request at all) and lands in `email_send_log` as `withheld`, so a
 /// probe answer is neither delivered nor misreported as delivered.
+/// ONE notice, in one value: `clippy::too_many_arguments` is law here, and the seven plain
+/// parameters were already six before the reference was added. `tenant_id = None` is a message
+/// filed from the CONTACT page — that reader has no workspace, so the copy must send them to the
+/// public read-back instead of a Support screen they cannot open.
+pub struct SupportReplyNotice<'a> {
+    pub tenant_id: Option<Uuid>,
+    pub to: &'a str,
+    pub name: &'a str,
+    pub subject_line: &'a str,
+    pub status_word: &'a str,
+    pub reply: &'a str,
+    /// The support request's own id — the reference the filing page hands the visitor and the
+    /// credential `POST /api/v1/public/support-answer` reads the answer back with.
+    pub reference: &'a str,
+}
+
 pub async fn send_support_reply_email(
     pool: &PgPool,
-    // `None` for a message filed from the LOGIN page: that visitor has no workspace, so the reply
-    // is branded with the app's own header (a nil account id resolves no stored branding) and the
-    // provider is resolved install-wide. The address the operator is answering is the one the
-    // visitor typed, which is why this arm can reply to someone who never signed in.
-    tenant_id: Option<Uuid>,
-    to: &str,
-    name: &str,
-    subject_line: &str,
-    status_word: &str,
-    reply: &str,
+    notice: SupportReplyNotice<'_>,
 ) -> Result<(), String> {
+    let SupportReplyNotice {
+        tenant_id,
+        to,
+        name,
+        subject_line,
+        status_word,
+        reply,
+        reference,
+    } = notice;
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("subject_line", subject_line);
     vars.insert("status_word", status_word);
     vars.insert("reply", reply);
+    vars.insert("reference", reference);
+    // `tenant_id.is_none()` is the contact-page visitor: no workspace, therefore no Support
+    // screen and no account to sign in to. The mail must say so.
+    vars.insert(
+        "has_account",
+        if tenant_id.is_some() { "true" } else { "false" },
+    );
     send_template_email_for_tenant(
         pool,
         tenant_id.unwrap_or_default(),
@@ -1094,6 +1141,55 @@ mod tests {
     }
 
     #[test]
+    fn support_reply_tells_a_contact_page_reader_where_the_answer_actually_is() {
+        // BOTH halves, because a one-armed assertion cannot tell a real branch from a hard-coded
+        // swap: a contact-page visitor has no workspace and no Support screen, and a workspace
+        // customer must not be sent to the public form instead of their own Support screen.
+        let guest = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("subject_line", "Cannot sign in"),
+            ("status_word", "answered"),
+            ("reply", "Your account is unlocked."),
+            ("reference", "ref-9f2a7c1e"),
+            ("has_account", "false"),
+        ]));
+        let (subject, text, _html) = get_inline("support_reply", &guest);
+        let text = text.unwrap_or_default();
+        assert!(subject.contains("Cannot sign in"), "subject was {subject}");
+        assert!(
+            text.contains("ref-9f2a7c1e"),
+            "the reference the reader needs was not quoted: {text}"
+        );
+        assert!(
+            text.contains("/contact.html"),
+            "a reader with no account was not told the page that works: {text}"
+        );
+        assert!(
+            !text.contains("Support screen in your account"),
+            "a reader with no account was sent to a screen they cannot open: {text}"
+        );
+
+        let customer = bound_vars(vars(&[
+            ("name", "Customer"),
+            ("subject_line", "Invoice"),
+            ("status_word", "answered"),
+            ("reply", "Refunded."),
+            ("reference", "ref-9f2a7c1e"),
+            ("has_account", "true"),
+        ]));
+        let (_subject, text, _html) = get_inline("support_reply", &customer);
+        let text = text.unwrap_or_default();
+        assert!(
+            text.contains("Support screen in your account"),
+            "a workspace customer lost their route to the answer: {text}"
+        );
+        assert!(
+            !text.contains("/contact.html"),
+            "a workspace customer was sent to the public form instead: {text}"
+        );
+    }
+
+    #[test]
     fn plan_request_update_arm_omits_the_note_block_when_there_is_no_note() {
         let v = bound_vars(vars(&[
             ("name", "Probe"),
@@ -1116,11 +1212,16 @@ mod tests {
     // here — the live probe can prove the recipient and the count, not the words.
     #[test]
     fn support_reply_arm_carries_the_answer_and_says_where_to_read_it() {
+        // A WORKSPACE customer: this arm keeps the Support-screen route it has always named. The
+        // contact-page reader's arm (no account, reference + /contact.html instead) is asserted
+        // separately in `support_reply_tells_a_contact_page_reader_where_the_answer_actually_is`.
         let v = bound_vars(vars(&[
             ("name", "Probe"),
             ("subject_line", "Checkout will not take my card"),
             ("status_word", "answered"),
             ("reply", "Stripe was in test mode; it is live again now."),
+            ("reference", "ref-9f2a7c1e"),
+            ("has_account", "true"),
         ]));
         let (subject, text, _html) = get_inline("support_reply", &v);
         let text = text.unwrap_or_default();

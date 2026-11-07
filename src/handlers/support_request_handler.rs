@@ -473,14 +473,21 @@ pub async fn admin_update(
             // exact misreport this fleet has retracted twice, so ask the same predicate the funnel
             // uses and keep `notified` false when it fires.
             let reserved = crate::security::probe_addr::harness_domain(&requested_by).is_some();
+            // The row's own id IS the reference the visitor was handed when they filed, and the
+            // one `POST /api/v1/public/support-answer` accepts. A contact-page reader gets it
+            // quoted in the mail so the answer stays reachable without an account.
+            let reference = row.get::<Uuid, _>("id").to_string();
             match crate::email::send_support_reply_email(
                 &state.pool,
-                tenant_id,
-                &requested_by,
-                &greeting,
-                &subject_line,
-                status_word,
-                written,
+                crate::email::SupportReplyNotice {
+                    tenant_id,
+                    to: &requested_by,
+                    name: &greeting,
+                    subject_line: &subject_line,
+                    status_word,
+                    reply: written,
+                    reference: &reference,
+                },
             )
             .await
             {
