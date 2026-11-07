@@ -1998,7 +1998,7 @@ async function renderAffiliates() {
         <td>${a.commission_rate?a.commission_rate+'%':'-'}</td>
         <td><span class="badge ${a.is_active?'badge-green':'badge-yellow'}">${a.is_active?'Active':'Inactive'}</span></td>
         <td>${formatDate(a.created_at||a.joined_at)}</td>
-        <td><button class="btn btn-secondary btn-xs" onclick="window._editAffiliate('${a.id}')">Edit</button></td>
+        <td style="white-space:nowrap"><button class="btn btn-secondary btn-xs" onclick="window._affCommissions('${a.id}')">Commissions</button> <button class="btn btn-secondary btn-xs" onclick="window._editAffiliate('${a.id}')">Edit</button></td>
       </tr>`).join('')}</tbody>
     </table></div></div>
   </div>`;
@@ -2091,6 +2091,66 @@ function bindAffiliateLeads() {
 }
 
 window._editAffiliate = function(id) { openAffiliateModal(id); };
+
+/* The operator's window into one affiliate's earnings (2026-11-07).
+   `GET /api/v1/affiliates/:id/commissions` has existed since the affiliate programme shipped, but no
+   screen ever called it: the Affiliates table offered Edit only, so "what has this person earned and
+   what do we still owe them?" could only be answered from a psql session — the Payouts screen records
+   money that was ALREADY paid, not what was earned. The server scopes the read to the caller's own
+   tenant, so this cannot show another workspace's money. */
+window._affCommissions = function(id) {
+  STATE.modal = { title: 'Commissions', content: '<div class="empty"><div class="icon">⏳</div></div>' };
+  STATE.modalData = { id };
+  renderApp();
+  setTimeout(async () => {
+    const body = document.getElementById('modal-body');
+    if (!body) return;
+    let rows = [], aff = null;
+    try {
+      const both = await Promise.all([
+        api('/affiliates/' + encodeURIComponent(id)).catch(() => null),
+        api('/affiliates/' + encodeURIComponent(id) + '/commissions')
+      ]);
+      aff = both[0];
+      rows = Array.isArray(both[1]) ? both[1] : ((both[1] && both[1].data) || []);
+    } catch (e) {
+      body.innerHTML = '<div class="empty"><div class="icon">⚠️</div><div class="title">Could not load the commissions</div><div class="desc">' + x(e.message) + '</div></div>';
+      return;
+    }
+    if (aff && aff.name) {
+      const t = document.querySelector('.modal-title');
+      if (t) t.textContent = 'Commissions — ' + aff.name;
+    }
+    const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+    const earned = rows.reduce((s, r) => s + num(r.amount), 0);
+    const unpaid = rows.filter(r => String(r.status || 'pending').toLowerCase() !== 'paid').reduce((s, r) => s + num(r.amount), 0);
+    const paid = earned - unpaid;
+    let tableRows = '';
+    rows.forEach(r => {
+      const settled = String(r.status || 'pending').toLowerCase() === 'paid';
+      tableRows += '<tr>'
+        + '<td>' + formatDate(r.created_at) + '</td>'
+        + '<td><strong>' + formatCurrency(num(r.amount)) + '</strong></td>'
+        + '<td><span class="badge ' + (settled ? 'badge-green' : 'badge-yellow') + '">' + x(r.status || 'pending') + '</span></td>'
+        + '<td>' + (r.lead_id ? '<code style="font-size:11px">' + x(String(r.lead_id).substring(0, 8)) + '</code>' : '-') + '</td>'
+        + '<td>' + (r.paid_at ? formatDate(r.paid_at) : '-') + '</td>'
+        + '</tr>';
+    });
+    const emptyState = '<div class="empty"><div class="icon">💵</div><div class="title">Nothing earned yet</div>'
+      + '<div class="desc">A commission lands here the moment this affiliate’s referral converts. Nothing has been paid out so far.</div></div>';
+    const table = '<div class="table-wrap"><table class="table"><thead><tr>'
+      + '<th>Earned</th><th>Amount</th><th>Status</th><th>Lead</th><th>Paid on</th>'
+      + '</tr></thead><tbody>' + tableRows + '</tbody></table></div>';
+    body.innerHTML = '<div class="stats-grid" style="margin-bottom:14px">'
+      + '<div class="stat-card"><div class="stat-value">' + formatCurrency(earned) + '</div><div class="stat-label">Earned</div></div>'
+      + '<div class="stat-card"><div class="stat-value">' + formatCurrency(unpaid) + '</div><div class="stat-label">Still owed</div></div>'
+      + '<div class="stat-card"><div class="stat-value">' + formatCurrency(paid) + '</div><div class="stat-label">Already paid</div></div>'
+      + '</div>'
+      + (rows.length === 0 ? emptyState : table)
+      + '<div style="display:flex;justify-content:flex-end;margin-top:12px">'
+      + '<button type="button" class="btn btn-secondary" onclick="window._closeModal()">Close</button></div>';
+  }, 0);
+};
 function openAffiliateModal(id) {
   STATE.modal = { title: id ? 'Edit Affiliate' : 'Add Affiliate', content: `<div class="empty"><div class="icon">⏳</div></div>` };
   STATE.modalData = { id };
@@ -6268,7 +6328,7 @@ window.appGuidePages = {
   "planAdmin": { title: "Plans", desc: "Manage subscription plans, pricing and the feature toggles each plan grants. Every plan is a set of permissions that decides what a tenant can use.", actions: ["Create or edit a plan", "Turn features on or off per plan", "Set the monthly and yearly price"] },
   "leads": { title: "Leads", desc: "Everyone who has signed up through one of your pages, with the tag and stage they are on. Use it to see how a funnel is performing.", actions: ["Filter leads by tag or stage", "Open a lead to see its detail", "Export the list"] },
   "tags": { title: "Tags", desc: "The labels that decide what a lead gets — a tag can be the trigger that provisions a free account in another SwiftSoftware product.", actions: ["Create a tag", "Assign a tag to a lead", "Set what a tag provisions"] },
-  "affiliates": { title: "Affiliates", desc: "The people who promote your products for a commission. Each affiliate gets a referral code and their own earnings record.", actions: ["Review the affiliate list", "Set an affiliate's rate", "Open an affiliate's referrals and payouts"] },
+  "affiliates": { title: "Affiliates", desc: "The people who promote your products for a commission. Each affiliate gets a referral code and their own earnings record.", actions: ["Review the affiliate list", "Set an affiliate's rate", "Open an affiliate's commissions — what they earned and what is still owed"] },
   "affiliateLeads": { title: "Affiliate Leads", desc: "Every lead the affiliate programme produced and which affiliate it belongs to. A lead nobody referred reads system — nobody is paid for it. Became affiliate marks a lead who later joined the programme themselves, and the Upgraded and Downgraded tiles count the people who changed plan after arriving. Platform administrators only.", actions: ["See the programme's totals and who is credited", "Search for a lead by name, email or affiliate", "Open the affiliate on a row to see their referrals and payouts"] },
   "affiliateProducts": { title: "Affiliate Products", desc: "Which of your products affiliates can promote, and the tag that credits the referral. A product points at a free plan — the customer arrives free and upgrades in app.", actions: ["Add a product to the catalogue", "Set the tag that credits the sale", "Set a product-level rate"] },
   "affiliatePayouts": { title: "Affiliate Payouts", desc: "What has been earned and what has been paid to your affiliates. Nothing is earned on a free plan — a referral pays once that customer becomes paying.", actions: ["Review commissions owed", "Record a payout", "See the running balance"] },
