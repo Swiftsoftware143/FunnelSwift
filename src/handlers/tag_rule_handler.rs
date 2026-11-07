@@ -46,18 +46,52 @@ fn check_storable_keys(payload: &Value, keys: &[(&str, usize)]) -> AppResult<()>
     Ok(())
 }
 
+/// `GET /api/v1/tag-rules` — the workspace's own automatic-tagging rules.
+///
+/// This used to answer only `(id, name, created_at)`, which is unusable as a management list: the
+/// console cannot show WHAT a rule does without its trigger tag, its action and its target tag, and
+/// those are the fields the operator edits. The rows now carry the whole rule with the tag NAMES
+/// resolved, so the screen needs one request instead of a client-side join. Scoped to the caller's
+/// OWN tenant (the system tenant's seeded rules apply fleet-wide but are not this workspace's to
+/// edit, and they are not listed here — an update/delete on one answers 404 by tenant).
 pub async fn list_tag_rules(
     auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = tenant_of(&auth);
-    let rows: Vec<(Uuid, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT id, COALESCE(name,''), created_at FROM tag_rules WHERE tenant_id = $1 ORDER BY created_at DESC",
+    let rows = sqlx::query(
+        "SELECT r.id, COALESCE(r.name,'') AS name, r.description, r.trigger_tag_id, \
+                t.name AS trigger_tag_name, r.action_type, r.action_tag_id, \
+                at.name AS action_tag_name, r.target_app, COALESCE(r.is_active,true) AS is_active, \
+                r.created_at \
+           FROM tag_rules r \
+           LEFT JOIN tags t ON t.id = r.trigger_tag_id \
+           LEFT JOIN tags at ON at.id = r.action_tag_id \
+          WHERE r.tenant_id = $1 \
+          ORDER BY r.created_at DESC",
     )
     .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(json!(rows)))
+    let items: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<Uuid, _>("id").ok(),
+                "name": r.try_get::<Option<String>, _>("name").unwrap_or(None),
+                "description": r.try_get::<Option<String>, _>("description").unwrap_or(None),
+                "trigger_tag_id": r.try_get::<Option<Uuid>, _>("trigger_tag_id").unwrap_or(None),
+                "trigger_tag_name": r.try_get::<Option<String>, _>("trigger_tag_name").unwrap_or(None),
+                "action_type": r.try_get::<Option<String>, _>("action_type").unwrap_or(None),
+                "action_tag_id": r.try_get::<Option<Uuid>, _>("action_tag_id").unwrap_or(None),
+                "action_tag_name": r.try_get::<Option<String>, _>("action_tag_name").unwrap_or(None),
+                "target_app": r.try_get::<Option<String>, _>("target_app").unwrap_or(None),
+                "is_active": r.try_get::<Option<bool>, _>("is_active").unwrap_or(Some(true)),
+                "created_at": r.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("created_at").unwrap_or(None),
+            })
+        })
+        .collect();
+    Ok(Json(json!(items)))
 }
 
 pub async fn create_tag_rule(
