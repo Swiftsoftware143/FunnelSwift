@@ -86,13 +86,13 @@
         <p class="yr">Free forever — no card required</p>
         <ul>
           <li class="head">Capture Free — lead capture</li>
-          <li>100 leads</li>
-          <li>2 tags</li>
-          <li>10 card scans a month</li>
-          <li>1 capture form</li>
+          <li><span data-role="lim" data-limit="leads">100</span> leads</li>
+          <li><span data-role="lim" data-limit="tags">2</span> tags</li>
+          <li><span data-role="lim" data-limit="ocr_scans">10</span> card scans a month</li>
+          <li><span data-role="lim" data-limit="forms">1</span> capture form</li>
           <li class="head">Kinetic Free — digital card</li>
-          <li>1,000 captured contacts</li>
-          <li>20 tags</li>
+          <li><span data-role="lim" data-limit="leads">1,000</span> captured contacts</li>
+          <li><span data-role="lim" data-limit="tags">20</span> tags</li>
           <li>Your own shareable card page</li>
         </ul>
         <a class="cta" href="/signup.html?plan=capture-free">Start with Capture — only the funnel free plan, 100 leads</a>
@@ -105,11 +105,11 @@
         <div class="price" data-plan="capture-starter"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
         <p class="yr" data-role="yr">or $89 a year (two months free)</p>
         <ul>
-          <li>100 leads</li>
-          <li>5 tags</li>
-          <li>1 custom domain</li>
-          <li>25 card scans a month — more than double the free 10</li>
-          <li>5 capture forms</li>
+          <li><span data-role="lim" data-limit="leads">100</span> leads</li>
+          <li><span data-role="lim" data-limit="tags">5</span> tags</li>
+          <li><span data-role="lim" data-limit="custom_domains">1</span> custom domain</li>
+          <li><span data-role="lim" data-limit="ocr_scans">25</span> card scans a month — more than double the free 10</li>
+          <li><span data-role="lim" data-limit="forms">5</span> capture forms</li>
           <li>CRM connection and automated routing</li>
         </ul>
         <a class="cta" href="/signup.html?plan=capture-starter">Get started</a>
@@ -121,8 +121,8 @@
         <div class="price" data-plan="kinetic-pro"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
         <p class="yr" data-role="yr">or $89 a year (two months free)</p>
         <ul>
-          <li>Unlimited captured contacts and tags</li>
-          <li>1 custom domain</li>
+          <li><span data-role="lim" data-limit="leads" data-word="unlimited">Unlimited</span> captured contacts and <span data-role="lim" data-limit="tags" data-word="unlimited">unlimited</span> tags</li>
+          <li><span data-role="lim" data-limit="custom_domains">1</span> custom domain</li>
           <li>Premium themes, custom fonts and colours</li>
           <li>Video background</li>
           <li>Remove FunnelSwift branding</li>
@@ -138,7 +138,7 @@
         <p class="yr" data-role="yr">or $290 a year (two months free)</p>
         <ul>
           <li>Everything in Capture Starter and Kinetic Pro</li>
-          <li>3 custom domains</li>
+          <li><span data-role="lim" data-limit="custom_domains">3</span> custom domains</li>
           <li>Dual routing — one lead, two partners</li>
           <li>Mini funnels and card gating</li>
           <li>Unlimited OCR card scanning</li>
@@ -154,7 +154,7 @@
         <p class="yr" data-role="yr">or $790 a year (two months free)</p>
         <ul>
           <li>Everything in Suite</li>
-          <li>10 custom domains</li>
+          <li><span data-role="lim" data-limit="custom_domains">10</span> custom domains</li>
           <li>White label — your brand, not ours</li>
           <li>Multi-tenant: one login, many client workspaces</li>
           <li>Webhooks, analytics and import / export</li>
@@ -204,12 +204,29 @@
       if (!plans.length) throw new Error('no plans returned');
       var byslug = {};
       plans.forEach(function (p) { byslug[p.slug] = p; });
-      var painted = 0, books = document.querySelectorAll('.price[data-plan]');
+      var painted = 0, limsPainted = 0, books = document.querySelectorAll('.price[data-plan]');
       for (var i = 0; i < books.length; i++) {
         var p = byslug[books[i].getAttribute('data-plan')];
         if (!p) continue;
         var amt = books[i].querySelector('[data-role="amt"]');
         if (amt) { amt.textContent = money(p.price); painted++; }
+        // The allowance numbers on this card come from the SAME plan row the app enforces, so a
+        // limit an operator changes in the console is what a buyer reads here (kanban t_lim_live).
+        var card = books[i].closest ? books[i].closest('.card') : null;
+        if (card && p.limits) {
+          var spans = card.querySelectorAll('[data-role="lim"]');
+          for (var j = 0; j < spans.length; j++) {
+            var field = spans[j].getAttribute('data-limit');
+            var v = p.limits[field];
+            if (v === null || typeof v === 'undefined') continue;
+            if (v < 0) {
+              spans[j].textContent = spans[j].getAttribute('data-word') || 'Unlimited';
+            } else if (v > 0) {
+              spans[j].textContent = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            }
+            limsPainted++;
+          }
+        }
         var yr = books[i].parentNode.querySelector('p.yr[data-role="yr"]');
         if (yr && p.annual_price > 0) {
           yr.textContent = 'or ' + money(p.annual_price) + ' a year'
@@ -218,8 +235,9 @@
       }
       if (out) {
         out.textContent = painted
-          ? 'Prices read live from this install\u2019s own plan records just now \u2014 '
-            + painted + ' plan' + (painted === 1 ? '' : 's') + ' confirmed.'
+          ? 'Prices and plan allowances read live from this install\u2019s own plan records just now \u2014 '
+            + painted + ' plan' + (painted === 1 ? '' : 's') + ' confirmed'
+            + (limsPainted ? ', ' + limsPainted + ' allowance' + (limsPainted === 1 ? '' : 's') + ' painted from the same records' : '') + '.'
           : 'Live prices were read, but no card on this page matched a plan this install sells.';
       }
     })

@@ -336,8 +336,11 @@ pub async fn list_plans(State(state): State<AppState>) -> AppResult<Json<Vec<Pla
 /// reads its amounts from here and keeps its authored copy.
 ///
 /// The payload is deliberately tiny and carries nothing a tenant owns: the plan name and slug the
-/// visitor clicks, the two prices the card prints, and the product side that groups them. No ids,
-/// no features, no limits — those stay on the authenticated `/api/v1/plans` the console reads.
+/// visitor clicks, the two prices the card prints, the product side that groups them, and the
+/// allowance caps each card prints (leads / tags / card scans / forms / custom domains) so the
+/// marketing page can paint the same record the app enforces instead of hand-authored numbers
+/// that drift. No ids, no feature flags, no purchase URLs — those stay on the authenticated
+/// `/api/v1/plans` the console reads.
 /// It sits on [`crate::auth::route_policy::PUBLIC_ROUTES`] on purpose: a stranger is exactly who
 /// needs a price.
 pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
@@ -345,7 +348,8 @@ pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde
         "SELECT name, slug, price::float8 AS price, \
                 COALESCE(annual_price, 0)::float8 AS annual_price, \
                 COALESCE(billing_cycle, 'month') AS billing_cycle, \
-                COALESCE(side, 'both') AS side \
+                COALESCE(side, 'both') AS side, \
+                max_leads, max_tags, max_ocr_scans, max_forms, max_custom_domains \
            FROM plans ORDER BY price, slug",
     )
     .fetch_all(&state.pool)
@@ -361,6 +365,14 @@ pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde
                 "annual_price": r.get::<f64, _>("annual_price"),
                 "billing_cycle": r.get::<String, _>("billing_cycle"),
                 "side": r.get::<String, _>("side"),
+                // The same caps the plan row enforces. `null`/`-1` means "no limit recorded".
+                "limits": {
+                    "leads": r.get::<Option<i32>, _>("max_leads"),
+                    "tags": r.get::<Option<i32>, _>("max_tags"),
+                    "ocr_scans": r.get::<Option<i32>, _>("max_ocr_scans"),
+                    "forms": r.get::<Option<i32>, _>("max_forms"),
+                    "custom_domains": r.get::<Option<i32>, _>("max_custom_domains"),
+                },
             })
         })
         .collect();
