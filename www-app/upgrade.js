@@ -511,7 +511,7 @@ function upgradeTo(slug){
         var operatorMsg = /provider|not configured/i.test(data.message);
         if(operatorMsg && PLANS[slug]){
           // THE REFUSAL ALREADY FILED IT (measured live 2026-11-01 in Chromium on this app).
-          // `POST /api/v1/checkout/create` answers 503 with `request_recorded: true` plus the row it
+          // `POST /api/v1/checkout/create` answers 424 (was 503 before 2026-11-07) with `request_recorded: true` plus the row it
           // wrote, so the SERVER records the ask in the very press that refuses the checkout. This
           // page ignored that flag and posted /api/v1/plan-requests a SECOND time; the server deduped
           // the twin onto the row it had just written, `requestPlan` read `status: 'existing'`, and

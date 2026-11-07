@@ -355,11 +355,18 @@ pub async fn checkout_status(
 /// written, and a comment that contradicts the code is how the next reader mis-plans. The arms now:
 ///
 /// * no active `payment_providers` row for the CALLER and none owned by a platform-operator account
-///   -> 503 `payment_provider_not_configured`, naming where the key belongs
+///   -> 424 `payment_provider_not_configured`, naming where the key belongs
 ///   ([`resolve_plan_provider`] documents the two-arm resolution: the buyer's own merchant account
 ///   first, then the operator's — a plan is sold by the platform TO a workspace)
 /// * a provider row that is not Stripe -> 501 `checkout_not_implemented`, naming the provider
-/// * a Stripe row whose key cannot be read -> 503 `payment_provider_not_configured`
+/// * a Stripe row whose key cannot be read -> 424 `payment_provider_not_configured`
+///   (2026-11-07: both arms above were 503. Nothing is unavailable — the app is answering
+///   correctly and a CONFIGURATION is missing, which is the same class as the Stripe refusal
+///   below. A 5xx here is also counted as an outage by every uptime check and by this app's own
+///   tower log, so the operator's own monitoring was being trained to ignore the one signal that
+///   says "you have not connected payments". The buyer-facing sentence, `configured:false` and
+///   the `payment_provider_not_configured` code are unchanged — clients key on the code, and
+///   `upgrade.js` paints `message`.)
 /// * Stripe ACCEPTED the session -> 201 `{url, session_id, plan}` + a `checkout_sessions` row
 /// * Stripe REFUSED / unreachable -> **424** `checkout_session_failed` carrying Stripe's own message
 ///   (never 502 — the CDN replaces such a body; see the arm's comment below)
@@ -817,7 +824,9 @@ pub async fn create_checkout_session(
                 );
             }
             Ok((
-                StatusCode::SERVICE_UNAVAILABLE,
+                // 424, not 503 (2026-11-07): a missing configuration is not a dead service — see
+                // this module's arm list. Clients key on the `error` code and on `message`.
+                StatusCode::FAILED_DEPENDENCY,
                 Json(json!({
                     "error": if paused { "payment_provider_paused" } else { "payment_provider_not_configured" },
                     // BUYER-FIRST (2026-10-22). This sentence is read by the CUSTOMER on the upgrade
@@ -931,7 +940,9 @@ pub async fn create_checkout_session(
             let Some(secret_key) = key else {
                 tracing::error!("checkout/create REFUSED: stripe provider row has no usable api_key for tenant {tenant_id}");
                 return Ok((
-                    StatusCode::SERVICE_UNAVAILABLE,
+                    // Same class as the arm above: a stored key that cannot be read is a
+                    // CONFIGURATION fault, not an outage (2026-11-07).
+                    StatusCode::FAILED_DEPENDENCY,
                     Json(json!({
                         "error": "payment_provider_not_configured",
                         "message": "A Stripe provider exists but its secret key is missing or unreadable, so no session was created and no charge can occur. An admin must re-enter the key in the admin panel.",
