@@ -36,7 +36,14 @@
 //! are plain `require_auth`; the two admin arms are additionally role-checked by
 //! `admin_surface_denied`. Nothing about the boundary moved: only the numbers.
 //!
-//! 226 `.route(..)` mounts / 225 unique paths, classified three ways:
+//! 228 `.route(..)` mounts / 227 unique paths, classified three ways:
+//!
+//! (The 2026-11-06 recount also folds in TWO public `/api` mounts that the same day's contact-page
+//! work landed without bumping this census — `POST /api/v1/public/support-request` (a visitor with
+//! no account files a help request) and `POST /api/v1/public/support-answer` (that visitor reads
+//! the operator's answer back with the reference they were given). Both are anonymous BY
+//! CONSTRUCTION and each is narrow in its own handler, so the boundary is unchanged: the public
+//! bucket moved 21 -> 23 and the API total 200 -> 202, while the private count stayed at 176.)
 //!
 //! (The 2026-11-04 recount folds in TWO private `/api` mounts, `GET|PUT
 //! /api/v1/admin/platform-settings` — the System Settings screen's installation-wide controls,
@@ -416,7 +423,7 @@ mod tests {
                 private,
                 served
             ),
-            (226, 225, 200, 21, 3, 176, 26),
+            (228, 227, 202, 23, 3, 176, 26),
             "the census in the module docs no longer matches the router"
         );
     }
