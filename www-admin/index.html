@@ -2562,6 +2562,11 @@ async function renderCommissionGroups() {
   try { products = await api('/affiliate-products'); } catch(e) { products = []; }
   if (!Array.isArray(groups)) groups = groups.data || groups.groups || [];
   if (!Array.isArray(products)) products = products.data || products.products || [];
+  /* The calculator's affiliate picker. Read-only list; a refusal leaves an empty picker, never a
+     broken screen. */
+  let affiliates = [];
+  try { affiliates = await api('/affiliates'); } catch(e) { affiliates = []; }
+  if (!Array.isArray(affiliates)) affiliates = affiliates.data || affiliates.affiliates || [];
   /* kanban t_5c2a9bde + t_db5d07aa: a plan-derived product (`plan_stated`) is NOT offered in EITHER form.
      Its rate IS its plan's rate (kanban t_92bd5eb6, migration 076): POST /api/v1/affiliate-product-rates/bulk
      refuses the WHOLE request with a 409 naming the plan to edit, and — kanban t_db5d07aa — so do the group
@@ -2624,6 +2629,32 @@ async function renderCommissionGroups() {
           </td>
         </tr>`).join('')}</tbody>
       </table></div></div>`}
+
+    <div class="card" id="commission-preview-card">
+      <h2 style="font-size:16px;font-weight:600;margin-bottom:10px">What would this pay?</h2>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:10px">The same rules the commission
+      ledger uses, in the same order: an affiliate&rsquo;s own override, then a group rate, then the
+      product&rsquo;s own rate, then the plan&rsquo;s. The answer comes from the server, so it can never
+      disagree with what is actually paid.</p>
+      <form id="commission-preview-form">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Sale amount</label>
+            <input class="input" name="amount" type="number" step="0.01" min="0" required placeholder="e.g. 199"></div>
+          <div class="form-group"><label class="form-label">Product (optional)</label>
+            <select class="input" name="product_id">
+              <option value="">Not product specific</option>
+              ${products.map(p => `<option value="${x(p.id)}">${x(p.name || p.product_name || '-')}</option>`).join('')}
+            </select></div>
+          <div class="form-group"><label class="form-label">Affiliate (optional)</label>
+            <select class="input" name="affiliate_id">
+              <option value="">No affiliate &mdash; the general rate</option>
+              ${affiliates.map(a => `<option value="${x(a.affiliate_id || a.id)}">${x(a.name || a.full_name || a.email || '-')}</option>`).join('')}
+            </select></div>
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm">Show the payout</button>
+      </form>
+      <div id="commission-preview-out" style="margin-top:12px;font-size:14px"></div>
+    </div>
 
     <div class="card">
       <h2 style="font-size:16px;font-weight:600;margin-bottom:10px">Set a rate for selected products</h2>
@@ -2689,6 +2720,37 @@ function bindCommissionGroups() {
       showToast('Rate set on ' + done + ' product(s)' + (skipped ? ' — ' + skipped + ' not reachable' : ''), (skipped && !done) ? 'error' : 'success');
       renderView();
     } catch(e) { showToast(e.message, 'error'); }
+  });
+  /* kanban cron-2026-11-08 — GET /api/v1/affiliate-commission-rules/preview had NO caller in any
+     served root: the operator could set a rate but never see what it pays. This form asks the
+     server (the same resolve() the ledger uses) and prints its own rate and sentence. */
+  document.getElementById('commission-preview-form')?.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+    const amount = Number(fd.get('amount'));
+    const out = document.getElementById('commission-preview-out');
+    const money = v => '$' + (Number(v) || 0).toFixed(2);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      if (out) out.innerHTML = '<span style="color:#b91c1c">Enter a sale amount above zero.</span>';
+      return;
+    }
+    const qs = new URLSearchParams({ amount: String(amount) });
+    const pid = String(fd.get('product_id') || '').trim();
+    const aid = String(fd.get('affiliate_id') || '').trim();
+    if (pid) qs.set('product_id', pid);
+    if (aid) qs.set('affiliate_id', aid);
+    if (out) out.innerHTML = '<span style="color:var(--muted)">Working it out&hellip;</span>';
+    try {
+      const r = await api('/affiliate-commission-rules/preview?' + qs.toString());
+      const rate = Number((r && r.rate) || 0);
+      const pay = Number((r && r.commission) || 0);
+      if (out) out.innerHTML = '<div><strong>' + money(pay) + '</strong> on a ' + money(amount)
+        + ' sale &mdash; at ' + rate + '%.</div>'
+        + (r && r.explanation ? '<div style="color:var(--muted);font-size:12px;margin-top:4px">Rate from '
+            + x(r.explanation) + '</div>' : '');
+    } catch(e) {
+      if (out) out.innerHTML = '<span style="color:#b91c1c">' + x(e.message || 'Could not work that out') + '</span>';
+    }
   });
 }
 window._deleteCommissionGroup = async function(id) {
