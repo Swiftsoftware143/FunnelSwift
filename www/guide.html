@@ -302,6 +302,11 @@
       <p>From the Tags section, you can create new tags, assign colors, and organize them into groups. Tags applied to leads in FunnelSwift are automatically pushed to CoreSwift CRM as well.</p>
       <p>The group drop-down in a tag's editor always offers <strong>— No group —</strong>. Choosing it and saving removes the tag from its group. A tag whose group is shared from the system taxonomy shows that group by name, or by its id when this workspace cannot name it.</p>
 
+      <h3 id="tag-automation">Tag automation — rules that change tags by themselves</h3>
+      <p><strong>Tag Automation</strong> in the sidebar is where a workspace writes its own tagging rules. A rule has three parts: the tag that triggers it, what to do, and the tag it applies. When a lead is given the trigger tag — from the board, a form, another app or the API — the server applies the rule straight away, so nobody has to remember the second tag.</p>
+      <p>The three actions are <strong>also add a tag</strong> (the lead keeps everything it had and gains one), <strong>remove a tag</strong>, and <strong>replace every tag with one</strong>. The switch beside a rule pauses it without deleting it; Delete stops it for good and leaves the tags already on your leads exactly as they were.</p>
+      <p>Under the rule list, <strong>Recent tag changes</strong> shows every tag added or removed on your leads, newest first, including the ones a rule made — so you can always see what changed a lead and when. The shared rules the platform ships (for example “Sold removes Qualified”) run for every workspace and are managed centrally, so they do not appear in your own list.</p>
+
       <h2 id="affiliates">🤝 Affiliates</h2>
       <p>Manage affiliate partners. Each affiliate gets a unique auto-generated ID. Configure commission rates, track payouts, and route leads to their external systems via webhooks. Affiliate performance is visible on the dashboard.</p>
 

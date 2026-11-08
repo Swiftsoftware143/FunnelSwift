@@ -1381,6 +1381,20 @@ pub async fn assign_lead_tags(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    // A body that names NOTHING used to answer 200 `{"message":"Tags updated"}` while changing
+    // nothing at all: measured 2026-11-08 on the live route, a request shaped `{"tag_ids":[...]}`
+    // (ids, when this route takes NAMES) came back 200 `"rules_applied":0,"tags":[]` and the lead's
+    // tags were untouched. A caller has no way to tell that from success, so this is refused with
+    // the shape it does read. An empty `tags` alongside a real `remove` is still a normal request.
+    if req.tags.is_empty() && req.remove.is_empty() {
+        return Err(AppError::BadRequest(
+            "Nothing to change: this route takes tag NAMES \u{2014} the ones to put on the lead in \
+             \"tags\" and the ones to take off in \"remove\". A field it does not read (for example \
+             \"tag_ids\") is refused here instead of answering as though the tags were updated."
+                .into(),
+        ));
+    }
+
     let triggered_by = req
         .triggered_by
         .clone()

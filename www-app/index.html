@@ -210,6 +210,7 @@ tr:hover{background:#f8fafc}
        defect, and so is a guide that promises a measurement the product cannot show. -->
   <a data-tab="insights" onclick="S('insights')">Insights</a>
   <a data-tab="tags" onclick="S('tags')">My Tags</a>
+  <a data-tab="tagrules" onclick="S('tagrules')">Tag Automation</a>
   <a data-tab="tg" onclick="S('tg')">My Tag Groups</a>
   <!-- "My Affiliate" is the TENANT's own programme screen (join the programme, pick what you promote,
        see what you earned). It used to live only inside `#acc-affiliates` below, which the shell
@@ -334,6 +335,7 @@ var helpContent={
   "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Every card has a public URL, and they all live on the card host — <b>www.kntcrd.com</b> — not on the address you are signed in to:</p><ul><li><code>www.kntcrd.com/k/slug</code> — Kinetic Card (original)</li><li><code>www.kntcrd.com/b/slug</code> — Bio Link</li><li><code>www.kntcrd.com/c/slug</code> — Digital Business Card</li><li><code>www.kntcrd.com/m/slug</code> — Micro Page</li><li><code>www.kntcrd.com/f/slug</code> — Mini Funnel</li><li><code>www.kntcrd.com/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
   "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> created by an admin and shared with every account.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are admin-managed and shared across all tenants — they do not provision anything in other apps</li></ul>',
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
+  "tagrules":'<h4>Tag Automation</h4><p>Rules that change a lead for you the moment a trigger tag goes on it. The rule runs on the server as the tag is applied, so a lead form, a card scan, a bulk action or the API all set it off \u2014 there is nothing to run by hand.</p><ul><li><strong>Create rule</strong> picks the trigger tag, what happens (<strong>also add a tag</strong>, <strong>remove a tag</strong>, or <strong>replace every tag with one</strong>) and the tag it acts on.</li><li>The switch in <strong>Active</strong> pauses a rule without deleting it; <strong>Delete</strong> removes it for good. A paused rule is skipped.</li><li>The shared rules the platform ships (for example &quot;Sold removes Qualified&quot;) are managed centrally and still run for your leads; the rules you write apply to this workspace only.</li><li><strong>Recent tag changes</strong> lists every tag added or removed on your leads, newest first, including the ones a rule made.</li></ul>',
   "apr":'<h4>Products to Promote</h4><p>The products you can promote as an affiliate. Each row shows its category, price and the commission you earn. Contact an admin to change the catalogue.</p>',
   "ap":'<h4>Affiliate Products</h4><p>The platform affiliate product catalogue. Each product has a name, price and commission rate.</p><p><strong>Type:</strong> Product (physical/digital) or Service (consulting, cleaning, etc.) — pick the right type when creating.</p>',
   "integrations":'<h4>Integration Center</h4><p>Connect FunnelSwift to the tools you use. Each card is a provider from the live catalogue — enter your own provider key (BYOK), add a Base URL when the provider needs one, then <strong>Connect</strong>. <strong>Test connection</strong> probes the provider for real (CoreSwift: queries the hub).</p><ul><li><strong>CoreSwift CRM</strong> — native and inbound: every captured funnel opt-in is pushed into CoreSwift as a contact. Without a key the opt-in still succeeds locally.</li><li><strong>Coming Soon</strong> cards are listed for information only — FunnelSwift has no code that reads their key yet, so the card has no key box and the API refuses one.</li><li><strong>Set up elsewhere</strong> cards are read from another screen: the email rows (SMTP / Mailgun / SendGrid / Sendiio) use the Email Provider setting, which you set for <strong>this workspace</strong> in <strong>Settings → Email provider</strong> (the link on the card takes you there).</li><li><strong>Keys are per-workspace</strong> and read back masked — the raw key is never returned.</li></ul>',
@@ -420,7 +422,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",support:"Support",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms"};
+var TI={dashboard:"Dashboard",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",support:"Support",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms",tagrules:"Tag Automation"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -790,6 +792,8 @@ function S(t){
   /* LSUP is declared in the same later block as LWTL, so naming it in the map above would throw
      ReferenceError on any tap that lands while the page is still parsing (the LWTL lesson). */
   if(typeof LSUP==="function") L.support=LSUP;
+  /* Tag Automation's renderer lives in a later <script> block, same hazard as LWTL/LSUP. */
+  if(typeof LTR==="function") L.tagrules=LTR;
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   else if(t!=="upgrade"&&t!=="funnels"){
     var tries=0;
@@ -797,6 +801,7 @@ function S(t){
       if(!document.querySelector("#ct .loading")) return;
       if(t==="wtl"&&typeof LWTL==="function"){ L.wtl=LWTL; LWTL(); return; }
       if(t==="support"&&typeof LSUP==="function"){ L.support=LSUP; LSUP(); return; }
+      if(t==="tagrules"&&typeof LTR==="function"){ L.tagrules=LTR; LTR(); return; }
       if(++tries<8) setTimeout(waitForRenderer,300);
       else $("ct").innerHTML='<div class="cc"><p>This screen has not finished loading. Tap it again in a moment.</p></div>';
     })();
@@ -3229,6 +3234,127 @@ function LT(){
 /* Helper: show message in modal */
 function showMsg(text, cls){
   var m=$("mm"); m.className="msg "+cls; m.textContent=text;
+}
+
+/* === TAG AUTOMATION (server-side tag rules) ====================================================
+   The rule table, its engine and its CRUD routes shipped long ago — `evaluate_tag_rules` runs on
+   every lead tag change (`lead_handler`) and the live database already carries a working rule
+   ("Sold removes Qualified"). What was missing was the tenant's side of it: no screen listed a rule,
+   created one, paused one or deleted one, so an operator could not see the automation that was
+   changing their leads' tags. Same for the audit trail: `GET /api/v1/tag-change-log` has a reader
+   and three writers and no screen. This is that screen.
+   Reads  GET  /api/v1/tag-rules       (whole rule, tag names resolved by the server)
+   Writes POST /api/v1/tag-rules       {name, trigger_tag_id, action_type, action_tag_id}
+          PUT  /api/v1/tag-rules/:id   {is_active}
+          DEL  /api/v1/tag-rules/:id
+   Reads  GET  /api/v1/tag-change-log  (the workspace's own trail, newest first, 200 rows max) */
+var TR_ACTIONS=[["add_tag","also add a tag"],["remove_tag","remove a tag"],["replace","replace every tag with one"]];
+function LTR(){
+  Promise.all([api("/api/v1/tag-rules"),api("/api/v1/tags"),api("/api/v1/tag-change-log")]).then(function(res){
+    var rules=Array.isArray(res[0])?res[0]:((res[0]&&res[0].data)?res[0].data:[]);
+    var tags=Array.isArray(res[1])?res[1]:((res[1]&&res[1].data)?res[1].data:[]);
+    var log=Array.isArray(res[2])?res[2]:((res[2]&&res[2].data)?res[2].data:[]);
+    var ct=$("ct"); ct.innerHTML="";
+
+    var cc=El("div",{"class":"cc"});
+    cc.appendChild(El("h3",{},"Tag Automation"));
+    cc.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin-bottom:12px"},
+      "When a lead is given a trigger tag, FunnelSwift changes its tags for you — the rule runs on the server the moment the tag is applied, whether that happens from the board, a form or another app."));
+
+    /* ---- new rule form ---------------------------------------------------------------- */
+    var box=El("div",{style:"background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:18px"});
+    box.appendChild(El("p",{"class":"section-label"}, "NEW RULE"));
+    var opts=function(sel){var h='<option value="">— choose a tag —</option>';tags.forEach(function(t){h+='<option value="'+X(t.id)+'">'+X(t.name)+'</option>';});return h;};
+    box.appendChild(El("div",{style:"display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end"},
+      '<div style="flex:1 1 200px;min-width:180px"><label style="font-size:11px;color:#64748b;display:block">Rule name</label>'+
+      '<input id="tr-name" placeholder="Qualified becomes Sold" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px"></div>'+
+      '<div style="flex:1 1 160px;min-width:150px"><label style="font-size:11px;color:#64748b;display:block">When a lead gets</label>'+
+      '<select id="tr-trigger" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+opts()+'</select></div>'+
+      '<div style="flex:1 1 170px;min-width:160px"><label style="font-size:11px;color:#64748b;display:block">Then</label>'+
+      '<select id="tr-action" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+
+      TR_ACTIONS.map(function(a){return '<option value="'+a[0]+'">'+a[1]+'</option>';}).join("")+'</select></div>'+
+      '<div style="flex:1 1 160px;min-width:150px"><label style="font-size:11px;color:#64748b;display:block">This tag</label>'+
+      '<select id="tr-target" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+opts()+'</select></div>'));
+    var createBtn=El("button",{"class":"btn btn-primary btn-sm",style:"margin-top:10px",onclick:function(){createTagRule();}},"Create rule");
+    box.appendChild(createBtn);
+    box.appendChild(El("p",{style:"color:#94a3b8;font-size:11px;margin-top:8px"},
+      "A rule applies to this workspace only. Turn it off instead of deleting it if you want to pause it."));
+    cc.appendChild(box);
+
+    /* ---- the rules this workspace owns ------------------------------------------------ */
+    cc.appendChild(El("p",{"class":"section-label"},"YOUR RULES ("+rules.length+")"));
+    if(!rules.length){
+      cc.appendChild(El("p",{style:"color:#94a3b8;font-size:12px;padding:4px 2px"},
+        "No rules of your own yet. The shared ones the platform ships (for example \u201CSold removes Qualified\u201D) are managed centrally and still run for you."));
+    }else{
+      var tbl=El("table");
+      tbl.innerHTML="<tr><th>Rule</th><th>What it does</th><th>Active</th><th></th></tr>";
+      rules.forEach(function(r){
+        var tr=El("tr");
+        var act=(r.action_type==="add_tag")?"adds":(r.action_type==="remove_tag"?"removes":(r.action_type==="replace"?"replaces every tag with":"runs"));
+        tr.innerHTML="<td><b>"+X(r.name||"(untitled)")+"</b><br><span style='color:#94a3b8;font-size:11px'>when a lead gets "+X(r.trigger_tag_name||"a deleted tag")+"</span></td>"+
+          "<td style='font-size:12px'>"+X(act)+(r.action_tag_name?(" <b>"+X(r.action_tag_name)+"</b>"):"")+
+          (r.is_active?"":" <span style='color:#b91c1c;font-size:11px'>(paused)</span>")+"</td>";
+        var cb=El("input",{type:"checkbox",checked:(r.is_active?"checked":null),style:"cursor:pointer",onchange:function(){toggleTagRule(r.id,!r.is_active);}});
+        var td1=El("td",{},[cb]); tr.appendChild(td1);
+        var del=El("button",{"class":"btn btn-sm",style:"color:#b91c1c",onclick:function(){deleteTagRule(r.id,r.name);}},"Delete");
+        tr.appendChild(El("td",{},[del]));
+        tbl.appendChild(tr);
+      });
+      cc.appendChild(tbl);
+    }
+    ct.appendChild(cc);
+
+    /* ---- what the automation actually did -------------------------------------------- */
+    var lc=El("div",{"class":"cc"});
+    lc.appendChild(El("h3",{},"Recent tag changes"));
+    lc.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin-bottom:10px"},
+      "Every tag added or removed on your leads, newest first, including the ones a rule made."));
+    if(!log.length){
+      lc.appendChild(El("p",{style:"color:#94a3b8;font-size:12px"},"Nothing recorded yet."));
+    }else{
+      var lt=El("table");
+      lt.innerHTML="<tr><th>When</th><th>Lead</th><th>Added</th><th>Removed</th><th>By</th></tr>";
+      log.slice(0,40).forEach(function(e){
+        var f=function(v){
+          if(!v)return "";
+          var a=Array.isArray(v)?v:String(v).split(",");
+          return a.filter(function(x){return x!==null&&x!=="";}).map(function(x){return "<span style='background:#eef2ff;color:#3730a3;padding:1px 6px;border-radius:4px;font-size:11px'>"+X(x)+"</span>";}).join(" ");
+        };
+        lt.innerHTML+="<tr><td style='font-size:11px;white-space:nowrap'>"+X(TSFMT(e.created_at,1)||"")+"</td>"+
+          "<td style='font-size:12px'>"+X(e.lead_name||e.lead_email||"lead removed")+"</td>"+
+          "<td>"+f(e.added_tags)+"</td><td>"+f(e.removed_tags)+"</td>"+
+          "<td style='font-size:11px;color:#64748b'>"+X(e.triggered_by||"")+"</td></tr>";
+      });
+      lc.appendChild(lt);
+    }
+    ct.appendChild(lc);
+  }).catch(function(e){
+    $("ct").innerHTML="";
+    $("ct").appendChild(El("div",{"class":"cc"},'<h3>Tag Automation</h3><p style="color:#b91c1c">This screen could not load: '+X(e&&e.message?e.message:"unknown error")+'</p>'));
+  });
+}
+function createTagRule(){
+  var name=($("tr-name").value||"").trim();
+  var trig=$("tr-trigger").value, act=$("tr-action").value, tgt=$("tr-target").value;
+  if(!name){showMsg("Give the rule a name","me");return;}
+  if(!trig){showMsg("Choose the tag that triggers the rule","me");return;}
+  if(!tgt){showMsg("Choose the tag the rule applies","me");return;}
+  var body={name:name,trigger_tag_id:trig,action_type:act,action_tag_id:tgt};
+  api("/api/v1/tag-rules",{method:"POST",body:JSON.stringify(body)}).then(function(){
+    showMsg("Rule created","ms"); LTR();
+  }).catch(function(e){showMsg("Could not create the rule: "+(e&&e.message?e.message:"unknown error"),"me");});
+}
+function toggleTagRule(id,active){
+  api("/api/v1/tag-rules/"+id,{method:"PUT",body:JSON.stringify({is_active:!!active})}).then(function(){
+    showMsg(active?"Rule switched on":"Rule paused","ms"); LTR();
+  }).catch(function(e){showMsg("Could not change the rule: "+(e&&e.message?e.message:"unknown error"),"me");});
+}
+function deleteTagRule(id,name){
+  if(!confirm("Delete the rule \u201C"+(name||"this rule")+"\u201D? Leads already tagged keep their tags."))return;
+  api("/api/v1/tag-rules/"+id,{method:"DELETE"}).then(function(){
+    showMsg("Rule deleted","ms"); LTR();
+  }).catch(function(e){showMsg("Could not delete the rule: "+(e&&e.message?e.message:"unknown error"),"me");});
 }
 
 /* === TAG GROUPS (User) === */
