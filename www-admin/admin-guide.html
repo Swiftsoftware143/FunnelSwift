@@ -618,6 +618,11 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <p>The same screen has a <strong>&ldquo;set a rate for selected products&rdquo;</strong> box for changing one
         product's own rate, or several at once, without making a group. Deleting a group never deletes its
         products &mdash; they simply go back to their own rates.</p>
+        <p><strong>&ldquo;What would this pay?&rdquo;</strong> on the same screen answers the money question
+        before you commit to a rate: type a sale amount (and optionally pick a product and an affiliate) and it
+        shows the payout and which rule won &mdash; the affiliate's own override, a group rate, the product's
+        rate or the plan's. The answer is computed by the same rule chain the commission ledger uses, so it
+        cannot disagree with what is actually paid.</p>
       </div>
 
       <div class="card">
