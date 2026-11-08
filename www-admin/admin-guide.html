@@ -226,7 +226,7 @@
           <tr><td><code>max_tag_groups</code></td><td>Number (groups)</td><td>Tag groups — POST /api/v1/tag-groups</td></tr>
           <tr><td><code>max_integrations</code></td><td>Number (connections)</td><td>Integration Center connections — POST /api/v1/provider-keys</td></tr>
           <tr><td><code>max_affiliates</code></td><td>Number (accounts)</td><td>Affiliate accounts — POST /api/v1/affiliates, POST /api/v1/affiliate/signup</td></tr>
-          <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — the seat allowance a workspace is shown, and a live gate. Set it per plan in <strong>Plans → Edit → Max Team Members</strong> (blank = unlimited, 1 = the owner alone). A workspace owner adds a teammate in <strong>Settings → Your team</strong> (<code>POST /api/v1/team/invite</code>); the server counts the workspace's active people against this row and, when no seat is free, refuses with <code>402 Team members limit reached (1/1). Upgrade to increase your limit.</code> rather than minting a login nobody may use. The same screen and the same refusal read their number from ONE resolver, so the allowance a customer is shown and the refusal they would get cannot disagree. Corrected 2026-10-31: the Plans editor used to render no field for this column while its own submit handler coerced the value, so every plan — Agency / Scale included — sat at the column default of 1; the console now renders the field, the dashboard prints the allowance as "N of M seats used", and a full plan offers the upgrade link instead of a dead press.</td></tr>
+          <tr><td><code>max_team_members</code></td><td>Number (members)</td><td>Team members — the seat allowance a workspace is shown, and a live gate. Set it per plan in <strong>Plans → Edit → Max Team Members</strong> (blank = unlimited, 1 = the owner alone). A workspace owner adds a teammate on the workspace console's own <strong>Team</strong> screen (<code>POST /api/v1/team/invite</code>); the server counts the workspace's active people against this row and, when no seat is free, refuses rather than minting a login nobody may use — and the sentence it shows is the true one: when no plan on the installation sells more seats than the workspace already has, the refusal says the allowance is used up and to ask us for more, instead of pointing at an upgrade that would add nothing. (Corrected 2026-11-08: this row used to name a <em>Settings → Your team</em> screen that did not exist, and quoted the old generic 402 text.) The same screen and the same refusal read their number from ONE resolver, so the allowance a customer is shown and the refusal they would get cannot disagree. Corrected 2026-10-31: the Plans editor used to render no field for this column while its own submit handler coerced the value, so every plan — Agency / Scale included — sat at the column default of 1; the console now renders the field, the dashboard prints the allowance as "N of M seats used", and a full plan offers the upgrade link instead of a dead press.</td></tr>
           <tr><td><code>has_webhooks</code></td><td>Toggle</td><td>Webhooks — POST /api/v1/webhooks</td></tr>
           <tr><td><code>has_import_export</code></td><td>Toggle</td><td>Lead import and export — POST /api/v1/leads/import, GET /api/v1/leads/export</td></tr>
           <tr><td><code>has_dual_routing</code></td><td>Toggle</td><td>Dual routing — a plan-page marker only, with no gate of its own: multi-destination delivery is what the <strong>Webhooks</strong> engine does (POST /api/v1/webhooks, gated by <code>has_webhooks</code>). The resource this key used to switch on was retired on 2026-10-02 (kanban t_0aaf0bc5).</td></tr>
@@ -471,7 +471,24 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       <h2 id="teammates">👥 Team &amp; Roles — the people in a workspace</h2>
 
       <div class="card">
-        <h3>Where it is</h3>
+        <h3>The customer's own Team screen</h3>
+        <p>A workspace does not need the platform operator to grow. The workspace console has a
+        <strong>Team</strong> screen (sidebar, right under <strong>Dashboard</strong>) with three
+        parts: the seat sentence for this workspace, the people who can sign in to it with the
+        owner marked, and <strong>+ Add a teammate</strong> (name, email, role). Adding someone
+        creates their own sign-in and emails them a temporary password, which they change after
+        signing in.</p>
+        <p>Two things it will not do. It does not offer the platform <code>admin</code> role — a
+        workspace owner handing that out would grant authority over every other customer, so the
+        server refuses it and names the field. And it does not press into a plan that has no seat
+        left: the seat line says the allowance is in use, and where no plan on the installation
+        sells more seats the screen says to ask us for more rather than offering an upgrade that
+        adds nothing. Only the workspace owner (the account the signup created) or a company admin
+        can add someone; anyone else is told so by the server.</p>
+      </div>
+
+      <div class="card">
+        <h3>Where the OPERATOR does it</h3>
         <p><strong>Tenants</strong> → the <strong>“N users”</strong> button on a workspace's row opens
         <strong>People in &lt;workspace&gt;</strong>. That panel is the whole team: who is in the
         workspace, what each of them is allowed to do, and three actions — <strong>+ Add user</strong>,

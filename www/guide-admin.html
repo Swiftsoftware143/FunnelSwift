@@ -105,6 +105,7 @@
       <a href="#template-gating" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔒</span> Template Gating</a>
       <a href="#branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🏷️</span> Branding Toggle</a>
       <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎨</span> Email Branding</a>
+      <a href="#team" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👥</span> Team</a>
       <a href="#my-account" class="section-title" onclick="closeMobile()">Account</a>
       <a href="#my-account" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">👤</span> My Account</a>
       <a href="#system-tags" class="section-title" onclick="closeMobile()">System Tags</a>
@@ -425,6 +426,31 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
           <li><strong>Additive by construction:</strong> a tenant with no name and no logo gets byte-identical
             mail to before the feature existed, so it is safe for every existing account.</li>
         </ul>
+      </div>
+
+      <!-- ============ TEAM ============ -->
+      <h2 id="team">👥 Team — the people who can sign in to a workspace</h2>
+      <div class="card">
+        <h3>What the screen does</h3>
+        <p>The workspace console has a <strong>Team</strong> screen, directly under
+        <strong>Dashboard</strong>. It shows the seats the plan includes, the people already in the
+        workspace with the owner marked, and <strong>Add a teammate</strong> — a name, an email and a
+        role. Adding someone creates their own sign-in and emails them a temporary password, which
+        they change after signing in. Only the workspace owner (the account the signup created) or a
+        company admin can add a person.</p>
+        <h3>What it deliberately will not do</h3>
+        <ul>
+          <li><strong>No platform role.</strong> The picker offers Member, Business user and Company
+            admin only. Handing out <code>admin</code> would open every other customer's data, so the
+            server refuses it and names the field.</li>
+          <li><strong>No dead upgrade.</strong> When every seat the plan includes is in use, the
+            screen says so — and where no plan on the installation sells more seats it tells the
+            customer to ask us for more instead of offering an upgrade that would add nothing. The
+            seat count on the screen and the refusal the server returns come from one resolver, so
+            they can never disagree.</li>
+        </ul>
+        <p>Before 2026-11-08 this door existed on the server with no screen at all: a workspace could
+        only grow if the platform operator added the person by hand.</p>
       </div>
 
       <!-- ============ MY ACCOUNT ============ -->
