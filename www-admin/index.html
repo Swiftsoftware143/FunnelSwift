@@ -583,6 +583,13 @@ function buildNav() {
   // Main nav (both roles)
   const mainItems = [
     { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+    // The Team screen (2026-11-08). `POST /api/v1/team/invite` shipped 2026-10-31 and
+    // `GET /api/v1/team/members` carries the seat allowance with the list, but the console had NO
+    // caller for the invite door and used the list only to fill the lead owner picker — so a
+    // workspace could not see its own people or add one, and the plan's `max_team_members`
+    // allowance bounded nothing a customer could reach. David's rule: a backend route with no UI
+    // is a defect.
+    { id: 'team', icon: '👥', label: 'Team' },
     { id: 'portfolio', icon: '🏢', label: 'Portfolio Companies' },
     { id: 'plans', icon: '💳', label: 'Plans' },
     { id: 'leads', icon: '👥', label: 'Leads' },
@@ -664,6 +671,7 @@ const viewRenderers = {
   cardUtmBuilder: renderCardUtmBuilder,
   cardLocations: renderCardLocations,
   dashboard: renderDashboard,
+  team: renderTeam,
   myAccount: renderMyAccount,
   portfolio: renderPortfolio,
   plans: renderPlans,
@@ -733,6 +741,7 @@ function bindShell() {
 function bindView(view) {
   switch(view) {
     case 'dashboard': bindDashboard(); break;
+    case 'team': bindTeam(); break;
     case 'myAccount': bindMyAccount(); break;
     case 'portfolio': bindPortfolio(); break;
     case 'plans': bindPlans(); break;
@@ -1574,6 +1583,135 @@ function openPlanModal(id) {
     // Toggle clicks
     document.querySelectorAll('.toggle[data-toggle]').forEach(t=>{ t.onclick = function(){ this.classList.toggle('on'); }; });
   }, 100);
+}
+
+// ── TEAM ──
+// The customer's own people. `POST /api/v1/team/invite` (2026-10-31) is the door that lets a
+// workspace grow without the platform operator, and `GET /api/v1/team/members` answers the people
+// AND the seat allowance (`seats: {used, limit, best_limit}`) — both shipped with no screen, so the
+// only caller of the list was the lead owner picker and nobody could add a colleague at all.
+const TEAM_ROLE_LABEL = {
+  user: 'Member',
+  business_user: 'Business user',
+  company_admin: 'Company admin',
+  admin: 'Platform admin',
+};
+function teamRoleLabel(r) {
+  const k = String(r || '').toLowerCase();
+  return TEAM_ROLE_LABEL[k] || (k ? k.replace(/_/g, ' ') : 'Member');
+}
+// The seat sentence says what is TRUE for this install. `best_limit` is the largest seat count any
+// plan on this installation sells: when it is no bigger than what the workspace already has,
+// "upgrade to add a teammate" is a dead end and must not be said (measured 2026-11-05 — every plan
+// carried max_team_members = 1, so a customer on the top plan was told to upgrade to nothing).
+function teamSeatSentence(seats, fallbackUsed, err) {
+  if (err) return 'The seat allowance could not be read just now — reload this screen to try again.';
+  const used = (seats && seats.used != null) ? seats.used : fallbackUsed;
+  const limit = (seats && seats.limit != null) ? seats.limit : null;
+  const best = (seats && seats.best_limit != null) ? seats.best_limit : null;
+  const people = n => n + (n === 1 ? ' person' : ' people');
+  if (limit == null) return people(used) + ' can sign in to this workspace. Your plan sets no seat limit.';
+  if (used < limit) return people(used) + ' of ' + limit + ' seats in use — ' + (limit - used) + ' free.';
+  let s = 'Every seat your plan includes is in use (' + used + ' of ' + limit + ').';
+  if (best != null && best > limit) s += ' A bigger plan includes more seats — open Upgrade to move to one.';
+  else s += ' No plan on this installation includes more seats than that, so send us a message and we will add them for you.';
+  return s;
+}
+async function renderTeam() {
+  let data = null, err = '';
+  try { data = await api('/team/members'); } catch (e) { err = e.message || 'Could not read the team'; }
+  const members = Array.isArray(data) ? data : ((data && data.members) || []);
+  const seats = (data && data.seats) || null;
+  const planName = (USER && USER.planObj && (USER.planObj.name || USER.planObj.plan_name)) || '';
+  const rows = members.length
+    ? members.map(m => `<tr>
+        <td><strong>${x(m.name || m.email || 'Teammate')}</strong>${m.is_owner ? ' <span style="background:var(--primary);color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px">Owner</span>' : ''}</td>
+        <td>${x(m.email || '')}</td>
+        <td>${x(teamRoleLabel(m.role))}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="3" class="empty">${err ? x(err) : 'Only you are in this workspace so far.'}</td></tr>`;
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Team</h1>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 14px">The people who can sign in to this workspace, and the seats your plan includes${planName ? ' — you are on ' + x(planName) : ''}.</p>
+    <div class="card">
+      <div class="card-header"><span class="card-title">👥 Seats</span></div>
+      <p style="font-size:13px;margin:0;color:var(--text)">${x(teamSeatSentence(seats, members.length, err))}</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">People in this workspace</span></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">➕ Add a teammate</span></div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">They get their own sign-in. We email a temporary password, and they change it after signing in. Only the workspace owner or a company admin can add people.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 160px;gap:12px">
+        <div><div class="form-label">Name</div><input class="input" id="team-name" maxlength="243" placeholder="Their name"></div>
+        <div><div class="form-label">Email</div><input class="input" id="team-email" type="email" maxlength="254" placeholder="name@company.com"></div>
+        <div><div class="form-label">Role</div>
+          <select class="input" id="team-role">
+            <option value="user">Member</option>
+            <option value="business_user">Business user</option>
+            <option value="company_admin">Company admin</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" id="team-invite-btn" type="button">Add teammate</button>
+        <span id="team-msg" role="status" aria-live="polite" style="font-size:12px;margin-left:8px"></span>
+      </div>
+    </div>
+  </div>`;
+}
+function bindTeam() {
+  const btn = document.getElementById('team-invite-btn');
+  if (!btn) return;
+  const msg = () => document.getElementById('team-msg');
+  const say = (text, bad) => {
+    const el = msg();
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = bad ? '#b91c1c' : '#047857';
+  };
+  btn.onclick = async () => {
+    const nameEl = document.getElementById('team-name');
+    const emailEl = document.getElementById('team-email');
+    const roleEl = document.getElementById('team-role');
+    const name = (nameEl && nameEl.value || '').trim();
+    const email = (emailEl && emailEl.value || '').trim();
+    const role = (roleEl && roleEl.value) || 'user';
+    if (!email) { say('Enter the address to send the invitation to.', true); return; }
+    btn.disabled = true;
+    say('Adding…', false);
+    try {
+      // Deliberately NOT the shared api() helper: it turns every 402 into the generic
+      // "Upgrade required" toast, and the seat refusal's own sentence is the whole point here
+      // (it names the allowance and, where true, that no plan sells more seats).
+      const res = await fetch(API_BASE + '/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+        body: JSON.stringify({ name: name, email: email, role: role }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        say(body.message || (typeof body.error === 'string' ? body.error : '') || ('Could not add that teammate (' + res.status + ')'), true);
+      } else if (body.withheld) {
+        say('Added. Mail to that address is withheld here; the temporary password is ' + (body.handover_password || '(none)') + '.', false);
+      } else if (body.credentials_emailed) {
+        say('Added — we emailed a temporary password to ' + email + '.', false);
+      } else {
+        say('Added, but the email did not go out' + (body.detail ? ' (' + body.detail + ')' : '') + '. The temporary password is ' + (body.handover_password || '(none)') + '.', true);
+      }
+      if (res.ok) { if (emailEl) emailEl.value = ''; if (nameEl) nameEl.value = ''; setTimeout(renderApp, 1200); }
+    } catch (e) {
+      say('Could not add that teammate: ' + (e.message || 'the request failed'), true);
+    }
+    btn.disabled = false;
+  };
 }
 
 // ── LEADS ──
@@ -6389,6 +6527,7 @@ function paintSupportRequests() {
    touching the path or the hash — so every key here is a STATE.view id and the widget is told
    which screen is open by renderView() and by the sync below. */
 window.appGuidePages = {
+  "team": { title: "Team", desc: "The people who can sign in to this workspace, and the seats your plan includes. The owner is marked so you can tell an owner from a member at a glance. Adding a teammate creates their own sign-in and emails them a temporary password they change after signing in; only the workspace owner or a company admin can add people, and a plan with every seat taken says so instead of offering a button that cannot work.", actions: ["Read how many seats your plan includes", "Check who is already in the workspace and their role", "Enter a name and email, choose a role, then press Add teammate"] },
   "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data.", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Check My Account for your plan and profile"] },
   "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, the address you sign in with, your password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your sign-in email (we email a confirmation link)", "Change your password", "See the plan you are on"] },
   "portfolio": { title: "Portfolio", desc: "The capture pages your account has published. Each card is a live page a visitor can open and claim.", actions: ["Open a card to edit its content and design", "Publish or unpublish a card", "Copy a card's public link"] },
