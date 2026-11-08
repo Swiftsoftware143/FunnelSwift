@@ -289,10 +289,14 @@ function renderUpgrade(plans){
     return Number(p && p.price) > 0 && p.purchase_url && String(p.purchase_url).trim() !== '';
   });
   if (!anyBuyable && (plans || []).some(function(p){ return Number(p && p.price) > 0; })) {
-    html += '<div data-payments-closed="1" style="margin:0 0 16px;padding:12px 14px;background:#fffbeb;'
+    // The sentence must name the button the customer can actually see (2026-11-08): when the till's
+    // own read says this install cannot charge, the paid tiles say "Request this plan", so telling
+    // the reader to press "Upgrade" would point at a control that is not on the screen.
+    var shutNow = (typeof PAYCFG !== 'undefined' && PAYCFG && PAYCFG.configured === false);
+    html += '<div data-payments-closed="1" data-payments-closed-manner="' + (shutNow ? 'request' : 'upgrade') + '" style="margin:0 0 16px;padding:12px 14px;background:#fffbeb;'
           + 'border:1px solid #fde68a;border-radius:10px;color:#92400e;font-size:13.5px;line-height:1.45">'
           + '<strong>Payments are not open yet.</strong> Pick the plan you want below and press '
-          + '<strong>Upgrade</strong> — your request is recorded against this workspace and the team '
+          + '<strong>' + (shutNow ? 'Request this plan' : 'Upgrade') + '</strong> — your request is recorded against this workspace and the team '
           + 'moves you onto that plan as soon as billing opens. Nothing is charged today.'
           + '</div>';
   }
@@ -399,7 +403,18 @@ function renderUpgrade(plans){
         html += '<button data-switch-plan="'+esc(p.slug)+'" onclick="switchFreePlan(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#fff;color:#4338ca;border:1px solid #6366f1;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Switch to this plan</button>';
       }
     } else {
-      html += '<button data-upgrade-plan="'+esc(p.slug)+'" onclick="upgradeTo(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
+      // ASK THE TILL, NOT THE CUSTOMER (2026-11-08). `PAYCFG` is this page's read of
+      // GET /api/v1/checkout/status; `configured === false` means the install holds no payment
+      // provider, and with no plan carrying a hosted page (`anyBuyable`) a press of "Upgrade" can
+      // ONLY be refused. Measured live: two `checkout/create REFUSED: no active payment provider`
+      // ERROR lines today, each written by a customer pressing this exact button. The paid tile now
+      // offers the request path the page already uses for a paid→free move, so one press files the
+      // request without a purchase attempt that cannot succeed. A null PAYCFG (probe failed) keeps
+      // the Upgrade button, so a slow status call never hides a working purchase.
+      var tillShut = !anyBuyable && (typeof PAYCFG !== 'undefined' && PAYCFG && PAYCFG.configured === false);
+      html += tillShut
+        ? '<button data-request-plan="'+esc(p.slug)+'" onclick="requestPlan(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#fff;color:#4338ca;border:1px solid #6366f1;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Request this plan</button>'
+        : '<button data-upgrade-plan="'+esc(p.slug)+'" onclick="upgradeTo(\''+esc(p.slug)+'\')" style="width:100%;padding:10px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Upgrade</button>';
     }
     html += '</div></div>';
   });
