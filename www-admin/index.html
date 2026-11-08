@@ -3603,10 +3603,16 @@ async function renderSuperAdmin() {
   const money = v => (Number(v) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   const mix = Array.isArray(stats.plan_mix) ? stats.plan_mix : [];
   const nrefused = Number(stats.checkouts_refused) || 0;
+  const nrefusedTest = Number(stats.checkouts_refused_test) || 0;
   const npaid = Number(stats.checkouts_paid) || 0;
   const nreq = Number(stats.open_plan_requests) || 0;
-  const note = nrefused + (nrefused === 1 ? ' checkout was' : ' checkouts were') + ' turned away because no payment provider is set up, ' +
-    npaid + ' paid, ' + nreq + (nreq === 1 ? ' plan request is' : ' plan requests are') + ' waiting for an answer.';
+  // CUSTOMER demand only (2026-11-08): the API now reports our own test/harness attempts
+  // separately (checkouts_refused_test), so this sentence can no longer sell our own clicking
+  // back to the operator as buyers who were turned away. When there are any, say how many were
+  // set aside rather than dropping them silently.
+  const note = nrefused + (nrefused === 1 ? ' customer checkout was' : ' customer checkouts were') + ' turned away because no payment provider is set up, ' +
+    npaid + ' paid, ' + nreq + (nreq === 1 ? ' plan request is' : ' plan requests are') + ' waiting for an answer.' +
+    (nrefusedTest ? ' ' + nrefusedTest + (nrefusedTest === 1 ? ' attempt' : ' attempts') + ' from your own test and harness accounts are excluded from that customer count.' : '');
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚙️ Super Admin Dashboard</h1>
