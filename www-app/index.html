@@ -1344,6 +1344,14 @@ function D(){
         var over=(uu!==null&&typeof lim==="number"&&lim>0&&uu>lim)?" \u26a0":"";
         var zeroAllow=(lim!==null&&lim!==undefined&&Number(lim)===0);bits.push(X(pairs[pi][0])+" "+((zeroAllow||uu===null)?limTxt:(uu+" / "+limTxt))+over);}
       h+='<div style="color:#64748b;font-size:12px;margin-top:4px">'+bits.join(" \u00b7 ")+'</div>';
+      /* 2026-11-08 — an allowance the customer has USED UP was only ever a fraction in the strip
+         above ("Tags 2 / 2"), so the one screen that decides whether they buy made them read a
+         number and guess. This names it in the same words the refusal uses and offers the plans.
+         Every figure is the pair already read for the strip; nothing is computed here. */
+      var usedUp=[];
+      for(var pi2=0;pi2<pairs.length;pi2++){var lim2=cp[pairs[pi2][1]],uu2=(USG&&USG[pairs[pi2][2]]!==undefined)?USG[pairs[pi2][2]]:null;
+        if(pairs[pi2][1]!=="max_team_members"&&uu2!==null&&typeof lim2==="number"&&lim2>0&&uu2>=lim2) usedUp.push(pairs[pi2][0].toLowerCase()+" ("+uu2+"/"+lim2+")");}
+      if(usedUp.length){h+='<div style="color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:12px;margin-top:8px;max-width:60ch">You have used all of your '+X(usedUp.join(", "))+' on '+X(pn)+'. Removing one frees a slot \u2014 or <a href="#" onclick="S(\'upgrade\');return false;" style="color:#92400e;font-weight:700">see the plans that include more</a>.</div>';}
     }
     /* Tell the truth BEFORE the press when the install cannot take money. `configured === false` is
        the same ladder arm that answers the sale 503, so this sentence and the refusal cannot
