@@ -607,17 +607,55 @@ pub async fn admin_stats(
     .bind(include_probe)
     .fetch_one(&state.pool)
     .await?;
-    let checkout_states: Vec<(String, i64)> =
-        sqlx::query_as("SELECT status, COUNT(*) FROM checkout_sessions GROUP BY status")
-            .fetch_all(&state.pool)
-            .await?;
-    let count_state = |wanted: &str| -> i64 {
+    // ── CUSTOMER DEMAND VS OUR OWN TESTING (2026-11-08) ────────────────────────────────────────
+    // This count used to be a bare `SELECT status, COUNT(*) FROM checkout_sessions GROUP BY status`,
+    // so every attempt made by the operator while checking the flow, and every harness checkout,
+    // was reported to the operator as a CUSTOMER who was turned away. Measured live: the dashboard
+    // said "20 checkouts were turned away because no payment provider is set up" while 19 of the 20
+    // belonged to the fleet's own accounts (swiftsoftware143@…, david@funnelswift.net) and the
+    // twentieth to a tagged harness workspace — ZERO real customers had tried. A demand figure that
+    // is mostly our own clicking is worse than no figure: it reads as lost revenue.
+    //
+    // Split it with the SAME two notions the rest of the fleet already defines — the
+    // `probe_harness` tag (probe_sweep owns that meaning) and the fleet-identity addresses
+    // probe_sweep protects by name — and report BOTH halves, so nothing is hidden: the card states
+    // the customer number and says beside it how many of our own attempts were set aside.
+    // `include_probe=1` still folds everything back into the customer number, exactly like the
+    // counters above.
+    let checkout_states: Vec<(String, i64, i64)> = sqlx::query_as(
+        "WITH s AS ( \
+            SELECT cs.status, \
+                   ($1::bool OR NOT ( \
+                        COALESCE(t.probe_harness, '') <> '' \
+                     OR lower(COALESCE(o.owner_email, '')) LIKE ANY (ARRAY[ \
+                            'swiftsoftware143%', 'certifiedtb143%', \
+                            '%@swiftsoftware.com', '%@swiftsoftware.net', '%@funnelswift.net']) \
+                   )) AS is_customer \
+              FROM checkout_sessions cs \
+              LEFT JOIN tenants t ON t.id = cs.tenant_id \
+              LEFT JOIN LATERAL ( \
+                    SELECT u.email AS owner_email FROM users u WHERE u.tenant_id = cs.tenant_id \
+                     ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
+                              u.created_at ASC \
+                     LIMIT 1) o ON true \
+         ) \
+         SELECT status, \
+                COUNT(*) FILTER (WHERE is_customer), \
+                COUNT(*) FILTER (WHERE NOT is_customer) \
+           FROM s GROUP BY status",
+    )
+    .bind(include_probe)
+    .fetch_all(&state.pool)
+    .await?;
+    // (customer attempts, our own test/harness attempts) for one checkout status.
+    let count_state = |wanted: &str| -> (i64, i64) {
         checkout_states
             .iter()
-            .filter(|(s, _)| s == wanted)
-            .map(|(_, n)| *n)
-            .sum()
+            .filter(|(s, _, _)| s == wanted)
+            .fold((0i64, 0i64), |acc, (_, c, t)| (acc.0 + c, acc.1 + t))
     };
+    let (refused_customer, refused_test) = count_state("provider_missing");
+    let (paid_customer, paid_test) = count_state("paid");
     let round2 = |v: f64| (v * 100.0).round() / 100.0;
     Ok(Json(json!({
         "total_tenants": total_tenants,
@@ -629,8 +667,14 @@ pub async fn admin_stats(
         "plan_value_yearly": round2(plan_value_monthly * 12.0),
         "plan_mix": plan_mix_json,
         "open_plan_requests": open_plan_requests,
-        "checkouts_refused": count_state("provider_missing"),
-        "checkouts_paid": count_state("paid"),
+        // CUSTOMERS, and (beside them) how many of our OWN attempts were set aside. Both are
+        // reported so the number is honest in both directions: a big customer number is real
+        // demand, and a big test number says the flow was exercised without pretending somebody
+        // wanted to buy.
+        "checkouts_refused": refused_customer,
+        "checkouts_refused_test": refused_test,
+        "checkouts_paid": paid_customer,
+        "checkouts_paid_test": paid_test,
     })))
 }
 
