@@ -130,6 +130,8 @@
       <a href="#guide-tag-rules" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">⚙️</span> Tag Rules</a>
       <a href="#guide-checkout-sessions" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🧾</span> Checkout Sessions</a>
       <a href="#guide-plans-features" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎚️</span> Plans &amp; Features</a>
+      <a href="#guide-utm-builder" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔗</span> UTM Builder</a>
+      <a href="#guide-support-requests" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🛟</span> Support Requests</a>
       <a href="#api" class="section-title" onclick="closeMobile()">API Reference</a>
       <a href="#api" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔌</span> Admin API Endpoints</a>
       <a href="#faq" class="section-title" onclick="closeMobile()">Support</a>
@@ -1068,6 +1070,43 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
         capability without moving them to a new tier — that is what the override is for. The plan
         requests your customers file appear on their own screen and are approved from the Tenants
         list above.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-utm-builder">🔗 UTM Builder</h3>
+        <p>Put tracking labels on a Kinetic card's link so you can tell which channel brought each
+        visitor. Reach it from a card's own detail screen with the <strong>🔗 UTM Builder</strong> button,
+        or open UTM Builder from the tools list and pick the card there.</p>
+        <p>Five labels are stored on the card itself: <strong>source</strong> (newsletter, facebook,
+        google), <strong>medium</strong> (email, cpc, social), <strong>campaign</strong> (summer_sale),
+        <strong>content</strong> (banner_a) and <strong>term</strong>. <strong>💾 Save UTM</strong> writes them
+        to the card, and a card that already carries a source shows a green <strong>UTM Set</strong>
+        badge in the picker, so a labelled card is obvious at a glance.</p>
+        <p><strong>🔗 Generate Tracked URL</strong> builds the shareable link from what is saved &mdash;
+        the workspace's own card address with the labels appended as query parameters &mdash; and
+        <strong>📋 Copy</strong> puts it on the clipboard. Share the tracked link instead of the plain
+        card link: views of the tracked URL are what the Analytics and Location screens count, so an
+        untracked link still shows the views but not which channel they came from.</p>
+        <p>The screen is filled from the labels stored on the card, not from the page's memory, so
+        opening it again shows what is actually saved and a save never writes over labels with blanks.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-support-requests">🛟 Support Requests</h3>
+        <p>The queue of help requests your customers file from the <strong>Support</strong> tab in
+        their own console. The nav label carries the number still waiting, and a red-bordered card
+        at the top of the dashboard shows the same count with the newest subject and an
+        <strong>Open the queue</strong> button, so the queue is visible without going looking for it.</p>
+        <p>Each row is one request: the subject, the message, the workspace it came from and when it
+        arrived. The field on the row is where you write the answer. <strong>The answer and the status
+        are saved in one write</strong> &mdash; answering emails the reply to the person who asked and
+        also leaves it on their request, so they can read it again when they come back. A save whose
+        email could not go out says so on the screen instead of pretending it was sent: an answer the
+        customer was never told about is not an answered request.</p>
+        <p>Marking a request <strong>answered</strong> without writing a reply is refused, so a request
+        cannot leave the queue with no answer on it. A request that needs no answer can be
+        <strong>closed</strong> instead; answered and closed both take it out of the waiting count.
+        There is no delete &mdash; the row is the record of what the customer asked.</p>
       </div>
 
       <!-- ============ API ============ -->
