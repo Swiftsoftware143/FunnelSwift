@@ -40,6 +40,17 @@ pub struct PlatformSettings {
     pub registration_open: bool,
     #[serde(default)]
     pub default_plan_slug: Option<String>,
+    /// Where the OPERATOR is told that a customer asked to buy a plan.
+    ///
+    /// Why it belongs to the operator, not the customer (2026-11-09): `POST /api/v1/plan-requests`
+    /// mails the person who filed the ask, and the row is what the console's queue reads — but
+    /// nothing told the person who can act on it. On an installation whose payment provider is not
+    /// configured (the only installation there is today) that request IS the buying path, so a
+    /// request nobody sees is a sale nobody makes. Empty/absent means no alert is sent, which is the
+    /// shipped default: the destination is the operator's own address and must be his to set, not
+    /// something this code invents.
+    #[serde(default)]
+    pub operator_alert_email: Option<String>,
 }
 
 fn default_registration_open() -> bool {
@@ -51,6 +62,7 @@ impl Default for PlatformSettings {
         Self {
             registration_open: true,
             default_plan_slug: None,
+            operator_alert_email: None,
         }
     }
 }

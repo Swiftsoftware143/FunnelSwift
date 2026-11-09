@@ -30,6 +30,11 @@ pub struct UpdateSettings {
     pub registration_open: bool,
     #[serde(default)]
     pub default_plan_slug: Option<String>,
+    /// Where to mail the operator when a customer files a plan request. ABSENT means "leave the
+    /// stored address alone" (a client that predates the field must not wipe it), an EMPTY string
+    /// means "stop emailing me", and a value replaces it.
+    #[serde(default)]
+    pub operator_alert_email: Option<String>,
 }
 
 /// `GET /api/v1/admin/platform-settings`
@@ -63,6 +68,7 @@ pub async fn get_settings(auth: AuthUser, State(state): State<AppState>) -> AppR
         "settings": {
             "registration_open": settings.registration_open,
             "default_plan_slug": settings.default_plan_slug,
+            "operator_alert_email": settings.operator_alert_email,
         },
         "default_plan": default_plan,
         "seatable_plans": plans
@@ -111,6 +117,30 @@ pub async fn update_settings(
     let settings = PlatformSettings {
         registration_open: body.registration_open,
         default_plan_slug: slug,
+        // ABSENT keeps the stored address (a client that predates this field must not wipe it);
+        // an EMPTY string clears it; anything else must look like an address. Kept looser than any
+        // mailer: this refuses only what could never be a destination, so a valid address the
+        // provider accepts is never refused here.
+        operator_alert_email: match body.operator_alert_email.as_deref().map(str::trim) {
+            None => {
+                platform_settings::load(&state.pool)
+                    .await
+                    .operator_alert_email
+            }
+            Some("") => None,
+            Some(v) => {
+                if v.contains(char::is_whitespace)
+                    || !v.contains('@')
+                    || v.starts_with('@')
+                    || v.ends_with('@')
+                {
+                    return Err(AppError::Validation(
+                        "operator_alert_email: that is not an email address".into(),
+                    ));
+                }
+                Some(v.to_string())
+            }
+        },
     };
     platform_settings::save(&state.pool, &settings)
         .await
@@ -131,6 +161,7 @@ pub async fn update_settings(
         "settings": {
             "registration_open": saved.registration_open,
             "default_plan_slug": saved.default_plan_slug,
+            "operator_alert_email": saved.operator_alert_email,
         },
     })))
 }

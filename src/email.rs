@@ -889,6 +889,65 @@ pub async fn send_plan_request_received_email(
     .await
 }
 
+/// Tell the OPERATOR that a workspace asked to buy a plan (2026-11-09).
+///
+/// `POST /api/v1/plan-requests` already mails the person who filed the ask; this is the other half
+/// of the same event, and it was missing: nothing told the person who can actually move the row. On
+/// an installation with no payment provider configured the request IS the buying path, so an ask
+/// nobody is told about is a sale nobody makes.
+///
+/// The destination is the operator's own address, stored in the platform settings
+/// (`operator_alert_email`, set from Admin → System Settings). An unset address sends nothing —
+/// this code never invents a mailbox. Deliberately sent through the SYSTEM mail configuration
+/// (`None`), not the asking workspace's, because this message is platform mail: it must arrive even
+/// when the customer's own mail server is the thing that is broken.
+///
+/// Best effort by design: a mail failure must never lose the request — the row is already written
+/// and the console's queue reads it — so the caller logs and keeps its 201.
+pub async fn send_plan_request_operator_alert(
+    pool: &PgPool,
+    workspace: &str,
+    plan_name: &str,
+    requester_email: &str,
+    note: &str,
+) -> Result<(), String> {
+    let settings = crate::platform_settings::load(pool).await;
+    let Some(to) = settings
+        .operator_alert_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return Ok(());
+    };
+    let note = if note.trim().is_empty() {
+        "(none)"
+    } else {
+        note.trim()
+    };
+    let subject = format!("A customer asked to buy {plan_name}");
+    let text = format!(
+        "{workspace} asked to be moved onto {plan_name}.\n\n\
+         Requested by: {requester_email}\n\
+         Plan: {plan_name}\n\
+         Note from the customer: {note}\n\n\
+         The request is waiting in the admin console (Plans -> Plan requests). Moving it to done \
+         puts that workspace on the plan."
+    );
+    let html = format!(
+        "<p><strong>{}</strong> asked to be moved onto <strong>{}</strong>.</p>\
+         <p>Requested by: {}</p>\
+         <p>Note from the customer: {}</p>\
+         <p>The request is waiting in the admin console (Plans &rarr; Plan requests). Moving it to \
+         <em>done</em> puts that workspace on the plan.</p>",
+        crate::templates::html_escape(workspace),
+        crate::templates::html_escape(plan_name),
+        crate::templates::html_escape(requester_email),
+        crate::templates::html_escape(note),
+    );
+    dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
+}
+
 /// Tell a workspace owner that a visitor just filled in one of their public funnels (2026-11-01).
 ///
 /// Called from `POST /funnel/:slug/submit`, after the `leads` row and its `lead.created` webhook
