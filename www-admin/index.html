@@ -4619,13 +4619,14 @@ async function renderSettings() {
           ${notApplied}
         </div>
         <div style="padding:12px 0;border-top:1px solid var(--border)">
-          <label for="ps-alert-email" style="font-weight:600;display:block;margin-bottom:4px">Email me when a customer asks to buy a plan</label>
+          <label for="ps-alert-email" style="font-weight:600;display:block;margin-bottom:4px">Email me when a customer signs up, asks to buy, or needs an answer</label>
           <input id="ps-alert-email" class="input" type="email" autocomplete="off" placeholder="you@yourcompany.com" value="${esc(alertEmail)}" style="max-width:420px">
           <div style="color:var(--muted);font-size:13px;margin-top:6px">
-            While the installation cannot take a card, a customer's "Request this plan" is how a sale
-            reaches you — the ask is recorded in the Plan requests queue, and this is the address that
-            is emailed the moment one arrives. Leave it empty and no alert is sent; the queue still
-            records every ask.
+            Three things reach this address the moment they happen: a new workspace signs up, a
+            customer asks to buy a plan (while the installation cannot take a card, that ask is how a
+            sale reaches you), and a customer writes to support. Each one is also recorded in its own
+            list — Tenants, Plan requests and Support requests — so leaving the address empty only
+            stops the emails, never the records.
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:8px">

@@ -368,6 +368,34 @@ pub async fn register(
         }
     }
 
+    // ── TELL THE OPERATOR A CUSTOMER ARRIVED (2026-11-09) ───────────────────────────────────────
+    // Same event as the public door's alert: an account, a tenant and a plan now exist and nobody
+    // was told. Best effort — the rows are committed, so a mail failure is logged and the 201
+    // stands. A probe/harness request stays silent for the same two reasons its credentials mail
+    // does, so machinery can never mail the operator.
+    let signup_is_probe = crate::probe_harness::from_headers(&headers).is_some()
+        || crate::security::probe_addr::harness_domain(&email).is_some();
+    if !signup_is_probe {
+        let seated_plan = plan
+            .to_json()
+            .get("plan_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if let Err(e) = crate::email::send_signup_operator_alert(
+            &state.pool,
+            tenant_id,
+            &req.name,
+            &email,
+            &seated_plan,
+            "POST /api/v1/auth/register",
+        )
+        .await
+        {
+            tracing::warn!(email = %email, error = %e, "register: operator alert was not sent");
+        }
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({

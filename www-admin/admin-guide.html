@@ -570,15 +570,20 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         it on "use the signup page's own plan" and behaviour is exactly as it was before this control
         existed.</p>
 
-        <h4>Email me when a customer asks to buy a plan</h4>
-        <p>While this installation has no payment provider connected, a customer cannot pay by card:
-        their <strong>Request this plan</strong> is how a sale reaches you. Every ask is recorded in
-        the <strong>Plan Requests</strong> list either way, and this box is the address that is
-        emailed the moment one arrives — whether the person asked from the pricing page at signup,
-        from their own Upgrade screen, or when the Upgrade button had to fall back to filing a
-        request. Leave it empty and no alert is sent; the list still records every ask. The alert is
-        platform mail: it goes out through the installation's own mail settings, so it still arrives
-        when a customer's own mail server is the thing that is broken.</p>
+        <h4>Email me when a customer signs up, asks to buy a plan, or needs an answer</h4>
+        <p>Three events are mailed to this address the moment they happen. A <strong>new workspace
+        signs up</strong>: the workspace name, its owner, the plan it was seated on and which signup
+        page it came from, so a new customer is never invisible until you happen to open the tenant
+        list. A customer <strong>asks to buy a plan</strong>: while this installation has no payment
+        provider connected a customer cannot pay by card, so their <strong>Request this plan</strong>
+        is how a sale reaches you — whether they asked from the pricing page at signup, from their own
+        Upgrade screen, or when the Upgrade button had to fall back to filing a request. And a
+        customer <strong>writes to support</strong>: the request needs an answer from the Support
+        screen, and this mail is what tells you it exists. Every one of them is recorded in its own
+        list (Tenants, Plan Requests, Support Requests) either way, so leaving the box empty only
+        stops the emails, never the records. The alert is platform mail: it goes out through the
+        installation's own mail settings, so it still arrives when a customer's own mail server is
+        the thing that is broken. Probe and test signups never alert — machinery cannot mail you.</p>
 
         <h4>What is deliberately not on this screen</h4>
         <p>Prices, lead caps and gated features live under <strong>Plans</strong>; per-customer limits

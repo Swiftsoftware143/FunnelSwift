@@ -959,6 +959,94 @@ pub async fn send_plan_request_operator_alert(
     dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
 }
 
+/// Tell the OPERATOR that a new workspace just signed up (2026-11-09).
+///
+/// WHY THIS EXISTS (measured 2026-11-09): both signup doors mint a tenant, a user, a plan
+/// subscription and mail the customer their first password — and NOTHING told the person who runs
+/// the install. The plan-request and support-request arms next door already mail
+/// `operator_alert_email`; a new customer is the same kind of news (somebody is now using the
+/// product), and the operator's own dashboard is the only place it appears, so the arrival of a
+/// customer is invisible until somebody happens to open the console.
+///
+/// Recipient = the operator's own `operator_alert_email` (Admin -> System Settings). An unset
+/// address sends nothing; this code never invents a mailbox. Sent through the SYSTEM mail
+/// configuration (`None`), never the new workspace's, because the workspace has no sender identity
+/// yet and the message is platform mail.
+///
+/// Never called for a probe/harness signup: the caller gates on the same two suppression reasons
+/// the credentials mail uses, so machinery cannot mail the operator.
+///
+/// Best effort by design: the account is already committed, and a mail failure must never turn a
+/// successful signup into an error. The caller logs and keeps its 201.
+pub async fn send_signup_operator_alert(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    owner_name: &str,
+    owner_email: &str,
+    plan_name: &str,
+    source: &str,
+) -> Result<(), String> {
+    let settings = crate::platform_settings::load(pool).await;
+    let Some(to) = settings
+        .operator_alert_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return Ok(());
+    };
+    // The workspace name is what the operator recognises; a blank one falls back to the owner's
+    // address, never to an invented label.
+    let workspace: String = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT NULLIF(btrim(name), '') FROM tenants WHERE id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("tenant name lookup: {e}"))?
+    .flatten()
+    .unwrap_or_else(|| owner_email.to_string());
+    let who = if owner_name.trim().is_empty() {
+        owner_email.to_string()
+    } else {
+        format!("{} ({})", owner_name.trim(), owner_email)
+    };
+    let source = if source.trim().is_empty() {
+        "unknown"
+    } else {
+        source.trim()
+    };
+    let plan_name = if plan_name.trim().is_empty() {
+        "no plan attached"
+    } else {
+        plan_name.trim()
+    };
+    let subject = format!("New workspace: {workspace}");
+    let text = format!(
+        "A new workspace signed up.\n\n\
+         Workspace: {workspace}\n\
+         Owner: {who}\n\
+         Plan: {plan_name}\n\
+         Source: {source}\n\n\
+         Their login credentials were emailed to the owner. The workspace is in the admin console \
+         (Tenants) and on the dashboard."
+    );
+    let html = format!(
+        "<p>A new workspace signed up.</p>\
+         <p><strong>{}</strong><br>\
+         Owner: {}<br>\
+         Plan: {}<br>\
+         Source: {}</p>\
+         <p>Their login credentials were emailed to the owner. The workspace is in the admin console \
+         (Tenants) and on the dashboard.</p>",
+        crate::templates::html_escape(&workspace),
+        crate::templates::html_escape(&who),
+        crate::templates::html_escape(plan_name),
+        crate::templates::html_escape(source),
+    );
+    dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
+}
+
 /// Tell the OPERATOR that a customer wrote to support (2026-11-09).
 ///
 /// WHY THIS EXISTS (measured live 2026-11-09): `POST /api/v1/support-requests` and its public twin

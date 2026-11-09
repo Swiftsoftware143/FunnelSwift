@@ -605,6 +605,33 @@ pub async fn public_signup(
         }
     }
 
+    // ── TELL THE OPERATOR A CUSTOMER ARRIVED (2026-11-09) ───────────────────────────────────────
+    // The account, its tenant, its plan and its credentials mail are all done by now; nobody was
+    // told. The plan-request and support-request arms already mail `operator_alert_email`, and a
+    // new workspace is the one event the operator most wants to see. Best effort: the signup is
+    // already committed, so a mail failure is logged and the 201 stands. A probe/harness request
+    // is silent exactly like its credentials mail — machinery must never mail the operator.
+    if !withheld {
+        let seated_plan = plan
+            .to_json()
+            .get("plan_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if let Err(e) = crate::email::send_signup_operator_alert(
+            &state.pool,
+            tenant_id,
+            &name,
+            &email,
+            &seated_plan,
+            &source,
+        )
+        .await
+        {
+            tracing::warn!(email = %email, error = %e, "signup: operator alert was not sent");
+        }
+    }
+
     // Log source if provided
     if !source.is_empty() {
         tracing::info!(
