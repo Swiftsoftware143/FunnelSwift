@@ -4584,6 +4584,7 @@ async function renderSettings() {
   const open = s.registration_open !== false;
   const plans = Array.isArray(d.seatable_plans) ? d.seatable_plans : [];
   const cur = s.default_plan_slug || '';
+  const alertEmail = s.operator_alert_email || '';
   const dp = d.default_plan || null;
   const opts = [`<option value="">— use the signup page&#39;s own plan —</option>`]
     .concat(plans.map(p => `<option value="${esc(p.slug)}"${p.slug === cur ? ' selected' : ''}>${esc(p.name)} — ${esc(p.slug)} (${esc(p.side)} side)</option>`))
@@ -4617,6 +4618,16 @@ async function renderSettings() {
           </div>
           ${notApplied}
         </div>
+        <div style="padding:12px 0;border-top:1px solid var(--border)">
+          <label for="ps-alert-email" style="font-weight:600;display:block;margin-bottom:4px">Email me when a customer asks to buy a plan</label>
+          <input id="ps-alert-email" class="input" type="email" autocomplete="off" placeholder="you@yourcompany.com" value="${esc(alertEmail)}" style="max-width:420px">
+          <div style="color:var(--muted);font-size:13px;margin-top:6px">
+            While the installation cannot take a card, a customer's "Request this plan" is how a sale
+            reaches you — the ask is recorded in the Plan requests queue, and this is the address that
+            is emailed the moment one arrives. Leave it empty and no alert is sent; the queue still
+            records every ask.
+          </div>
+        </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
           <button class="btn btn-primary" id="ps-save">Save settings</button>
           <span id="ps-msg" style="font-size:13px"></span>
@@ -4635,6 +4646,7 @@ async function renderSettings() {
 }
 function bindSettings() {
   const box = $('ps-reg-open'), sel = $('ps-default-plan'), btn = $('ps-save'), msg = $('ps-msg');
+  const alertIn = $('ps-alert-email');
   if (!box || !btn) return;
   // The label states the CURRENT state, which only changes on save — so repaint it as the operator
   // ticks the box, rather than leaving the words disagreeing with the control.
@@ -4649,7 +4661,7 @@ function bindSettings() {
     try {
       const out = await api('/admin/platform-settings', {
         method: 'PUT',
-        body: JSON.stringify({ registration_open: !!box.checked, default_plan_slug: sel ? (sel.value || null) : null }),
+        body: JSON.stringify({ registration_open: !!box.checked, default_plan_slug: sel ? (sel.value || null) : null, operator_alert_email: alertIn ? (alertIn.value || '') : null }),
       });
       const s = (out && out.settings) || {};
       // The status line is painted by this render, and renderView() below replaces the pane — so a

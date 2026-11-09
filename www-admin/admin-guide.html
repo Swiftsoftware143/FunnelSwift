@@ -551,7 +551,8 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       <div class="card">
         <h3>What this screen controls</h3>
         <p>Everything else in this console acts on <em>your own workspace</em>. This screen acts on
-        the installation: two controls that apply to every new signup, wherever it comes from.</p>
+        the installation: two controls that decide what a new signup becomes, wherever it comes from,
+        and one that tells you the moment a customer wants to buy.</p>
 
         <h4>New signups are OPEN / CLOSED</h4>
         <p>Open is the normal state: anyone can create a workspace from the public signup pages. Close
@@ -569,6 +570,16 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         it on "use the signup page's own plan" and behaviour is exactly as it was before this control
         existed.</p>
 
+        <h4>Email me when a customer asks to buy a plan</h4>
+        <p>While this installation has no payment provider connected, a customer cannot pay by card:
+        their <strong>Request this plan</strong> is how a sale reaches you. Every ask is recorded in
+        the <strong>Plan Requests</strong> list either way, and this box is the address that is
+        emailed the moment one arrives — whether the person asked from the pricing page at signup,
+        from their own Upgrade screen, or when the Upgrade button had to fall back to filing a
+        request. Leave it empty and no alert is sent; the list still records every ask. The alert is
+        platform mail: it goes out through the installation's own mail settings, so it still arrives
+        when a customer's own mail server is the thing that is broken.</p>
+
         <h4>What is deliberately not on this screen</h4>
         <p>Prices, lead caps and gated features live under <strong>Plans</strong>; per-customer limits
         and feature overrides live under <strong>Tenants</strong>. A "max workspaces per user" cap is
@@ -576,7 +587,7 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         neither admit nor refuse anything, and a control that cannot change anything is worse than no
         control at all.</p>
 
-        <p class="muted"><strong>Saving</strong> writes the pair in one statement, so the installation
+        <p class="muted"><strong>Saving</strong> writes all of it in one statement, so the installation
         can never be left half-configured. The screen reads the saved values back from the server
         after saving, which is why the status line under the button is a statement about the database
         rather than about what you typed.</p>
