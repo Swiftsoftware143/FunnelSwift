@@ -143,6 +143,23 @@ pub async fn create(
     .fetch_one(&state.pool)
     .await?;
 
+    // Tell the OPERATOR (2026-11-09): until this arm existed the row was written, the customer got
+    // its acknowledgement, and nobody was told — the message waited for someone to open the
+    // console. Best effort: the row is already the record, so a mail failure is logged, never
+    // turned into a failed request.
+    if let Err(e) = crate::email::send_support_request_operator_alert(
+        &state.pool,
+        Some(tenant_id),
+        "",
+        &auth.email,
+        &subject,
+        &message,
+    )
+    .await
+    {
+        tracing::error!("support-request operator alert not sent (tenant {tenant_id}): {e}");
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({
@@ -253,6 +270,21 @@ pub async fn create_public(
     .bind(&message)
     .fetch_one(&state.pool)
     .await?;
+
+    // Tell the OPERATOR (2026-11-09). This is the arm a LOCKED-OUT customer uses, so an unseen
+    // message here is a person with no way back in. Best effort: the row is the record.
+    if let Err(e) = crate::email::send_support_request_operator_alert(
+        &state.pool,
+        None,
+        &name,
+        &email,
+        &subject,
+        &message,
+    )
+    .await
+    {
+        tracing::error!("public support-request operator alert not sent: {e}");
+    }
 
     Ok((
         StatusCode::CREATED,

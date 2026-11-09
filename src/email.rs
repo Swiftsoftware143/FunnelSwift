@@ -959,6 +959,85 @@ pub async fn send_plan_request_operator_alert(
     dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
 }
 
+/// Tell the OPERATOR that a customer wrote to support (2026-11-09).
+///
+/// WHY THIS EXISTS (measured live 2026-11-09): `POST /api/v1/support-requests` and its public twin
+/// both write the row and both return 201, and NOTHING told the person who answers them — no mail,
+/// no alert, no cron. The queue in the admin console was the only place the message existed, so a
+/// support request sat unseen until somebody happened to open the screen. The plan-request arm next
+/// door already mails `operator_alert_email` for exactly this reason; a help request is the same
+/// promise with a higher cost when it is missed.
+///
+/// Recipient = the operator's own `operator_alert_email` (Admin -> System Settings). An unset
+/// address sends nothing: this code never invents a mailbox, and the address is the operator's to
+/// choose. Sent through the SYSTEM mail configuration (`None`), never the asking workspace's, so it
+/// still arrives when the customer's own mail server is the broken thing.
+///
+/// Best effort by design: the row is already written and the console's queue reads it, so a mail
+/// failure must never turn a filed request into a 500. The caller logs and keeps its 201.
+pub async fn send_support_request_operator_alert(
+    pool: &PgPool,
+    tenant_id: Option<Uuid>,
+    from_name: &str,
+    from_email: &str,
+    subject_line: &str,
+    message: &str,
+) -> Result<(), String> {
+    let settings = crate::platform_settings::load(pool).await;
+    let Some(to) = settings
+        .operator_alert_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return Ok(());
+    };
+    // Who wrote in: the workspace's name when the request carries one, the writer's own name when
+    // they gave it, and the address as the last honest fallback.
+    let who = match tenant_id {
+        Some(tid) => {
+            let tenant: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+                "SELECT NULLIF(btrim(name), '') FROM tenants WHERE id = $1",
+            )
+            .bind(tid)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("tenant name lookup: {e}"))?
+            .flatten();
+            tenant.unwrap_or_else(|| from_email.to_string())
+        }
+        None => {
+            if from_name.trim().is_empty() {
+                format!("A visitor (not signed in): {from_email}")
+            } else {
+                format!("{} (not signed in): {}", from_name.trim(), from_email)
+            }
+        }
+    };
+    let subject = format!("A support request needs an answer: {subject_line}");
+    let text = format!(
+        "{who} wrote to support.\n\n\
+         Subject: {subject_line}\n\
+         Reply to: {from_email}\n\n\
+         {message}\n\n\
+         Answer it in the admin console (Support -> Support requests). The customer sees the answer \
+         on their own Support screen and is mailed a copy."
+    );
+    let html = format!(
+        "<p><strong>{}</strong> wrote to support.</p>\
+         <p>Subject: {}</p>\
+         <p>Reply to: {}</p>\
+         <pre style=\"white-space:pre-wrap;font-family:inherit\">{}</pre>\
+         <p>Answer it in the admin console (Support &rarr; Support requests). The customer sees the \
+         answer on their own Support screen and is mailed a copy.</p>",
+        crate::templates::html_escape(&who),
+        crate::templates::html_escape(subject_line),
+        crate::templates::html_escape(from_email),
+        crate::templates::html_escape(message),
+    );
+    dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
+}
+
 /// Tell a workspace owner that a visitor just filled in one of their public funnels (2026-11-01).
 ///
 /// Called from `POST /funnel/:slug/submit`, after the `leads` row and its `lead.created` webhook
