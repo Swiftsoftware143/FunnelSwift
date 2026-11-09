@@ -171,29 +171,19 @@ pub async fn create(
     // worked — but nothing told the person who works it, and while no payment provider is configured
     // this request IS the buying path. Best effort for the same reason as the receipt: the ask is
     // already on record, so a mail failure must not turn a recorded sale into an error page.
-    let workspace_name: Option<String> =
-        sqlx::query_scalar::<_, Option<String>>("SELECT name FROM tenants WHERE id = $1")
-            .bind(tenant_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .flatten()
-            .map(|n| n.trim().to_string())
-            .filter(|n| !n.is_empty());
-    if let Some(workspace) = workspace_name {
-        if let Err(e) = crate::email::send_plan_request_operator_alert(
-            &state.pool,
-            &workspace,
-            &plan_name,
-            &auth.email,
-            &note,
-        )
-        .await
-        {
-            tracing::warn!(
-                plan = %slug, tenant = %workspace,
-                "plan-request operator alert was not sent: {e}"
-            );
-        }
+    if let Err(e) = crate::email::send_plan_request_operator_alert(
+        &state.pool,
+        tenant_id,
+        &plan_name,
+        &auth.email,
+        &note,
+    )
+    .await
+    {
+        tracing::warn!(
+            plan = %slug, tenant = %tenant_id,
+            "plan-request operator alert was not sent: {e}"
+        );
     }
 
     Ok((

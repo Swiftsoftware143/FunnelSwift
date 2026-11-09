@@ -118,6 +118,23 @@ pub async fn file_chosen_plan_request(
         door = door,
         "signup: the paid plan this caller chose is recorded as a plan request"
     );
+    // TELL THE OPERATOR (2026-11-09): the signup door is the COMMON way a paid ask arrives (a
+    // visitor picks a plan on the pricing card and signs up), so an alert only on the in-app
+    // "Request this plan" button would miss most of them. Best effort — the row is on record.
+    if let Err(e) = crate::email::send_plan_request_operator_alert(
+        pool,
+        tenant_id,
+        &plan_name,
+        requested_by,
+        "Chosen on the pricing page at signup.",
+    )
+    .await
+    {
+        tracing::warn!(
+            requested_by = %requested_by, plan = %slug, door = door,
+            "signup: the plan-request operator alert was not sent: {e}"
+        );
+    }
     Ok(Some(json!({
         "id": r.get::<Uuid, _>("id"),
         "plan_slug": slug,

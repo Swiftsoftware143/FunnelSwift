@@ -906,7 +906,7 @@ pub async fn send_plan_request_received_email(
 /// and the console's queue reads it — so the caller logs and keeps its 201.
 pub async fn send_plan_request_operator_alert(
     pool: &PgPool,
-    workspace: &str,
+    tenant_id: Uuid,
     plan_name: &str,
     requester_email: &str,
     note: &str,
@@ -920,6 +920,17 @@ pub async fn send_plan_request_operator_alert(
     else {
         return Ok(());
     };
+    // The workspace name is what the operator recognises; a missing/blank name falls back to the
+    // address of the person who asked, never to a made-up label.
+    let workspace: String = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT NULLIF(btrim(name), '') FROM tenants WHERE id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("tenant name lookup: {e}"))?
+    .flatten()
+    .unwrap_or_else(|| requester_email.to_string());
     let note = if note.trim().is_empty() {
         "(none)"
     } else {
@@ -940,7 +951,7 @@ pub async fn send_plan_request_operator_alert(
          <p>Note from the customer: {}</p>\
          <p>The request is waiting in the admin console (Plans &rarr; Plan requests). Moving it to \
          <em>done</em> puts that workspace on the plan.</p>",
-        crate::templates::html_escape(workspace),
+        crate::templates::html_escape(&workspace),
         crate::templates::html_escape(plan_name),
         crate::templates::html_escape(requester_email),
         crate::templates::html_escape(note),

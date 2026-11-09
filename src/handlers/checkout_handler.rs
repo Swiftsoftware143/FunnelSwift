@@ -2066,12 +2066,31 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
     .await;
 
     match written {
-        Ok(id) => Some(json!({
-            "id": id.to_string(),
-            "plan_slug": plan_slug,
-            "plan_name": plan_name,
-            "already_open": false,
-        })),
+        Ok(id) => {
+            // TELL THE OPERATOR (2026-11-09): this arm files the ask automatically when a customer
+            // presses Upgrade and no payment provider is configured, so it is the second common way
+            // a paid ask arrives. Best effort — the row is already on record.
+            if let Err(e) = crate::email::send_plan_request_operator_alert(
+                db,
+                tenant_id,
+                plan_name,
+                requested_by,
+                "Filed when the customer pressed Upgrade and no payment provider was configured.",
+            )
+            .await
+            {
+                tracing::warn!(
+                    plan = %plan_slug, tenant = %tenant_id,
+                    "checkout: plan-request operator alert was not sent: {e}"
+                );
+            }
+            Some(json!({
+                "id": id.to_string(),
+                "plan_slug": plan_slug,
+                "plan_name": plan_name,
+                "already_open": false,
+            }))
+        }
         Err(e) => {
             tracing::error!("checkout/create: could not file the plan request: {e:?}");
             None
