@@ -1445,7 +1445,7 @@ async function renderPlans() {
     <div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Team</th><th>Features</th><th>Actions</th></tr></thead>
       <tbody>${plans.map(p=>`<tr>
-        <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div>${p.purchase_url?'<div style="font-size:11px;color:#15803d;margin-top:2px">💳 hosted payment link</div>':''}</td>
+        <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div>${p.purchase_url?'<div style="font-size:11px;color:#15803d;margin-top:2px">💳 hosted payment link</div>':(p.price>0?'<div style="font-size:11px;color:#92400e;margin-top:2px" title="A paid plan needs a way to be paid: open Edit and paste the checkout address your payment provider gives you for this price. Until then a buyer who picks it asks the team instead of paying.">⚠ no payment link — cannot be bought yet</div>':'')}</td>
         <td>${p.price>0?formatCurrency(p.price):'Free'}</td>
         <td><span class="badge badge-blue">${x(p.billing_cycle||'month')}</span></td>
         <td>${fmtPlanLimit(p.max_cards)}</td>
