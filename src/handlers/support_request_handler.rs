@@ -351,11 +351,24 @@ pub async fn admin_list(
         .map(|s| s.trim().to_lowercase())
         .filter(|s| STATUSES.contains(&s.as_str()));
 
+    // `include_probe` admits a HARNESS-TAGGED workspace — only ONE of the two arms `admin_stats`
+    // applies. A workspace minted before `probe_harness` existed, or one whose owner sits on a
+    // reserved test domain, carries no tag and still is not a customer; the owner arm is applied in
+    // Rust below so this queue and the dashboard counter cannot disagree.
+    let include_probe = params
+        .get("include_probe")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
     let rows = sqlx::query(
         "SELECT sr.id, sr.subject, sr.body, sr.status, sr.reply,
                 sr.replied_at::text AS replied_at, sr.requested_by,
                 sr.created_at::text AS created_at,
-                COALESCE(t.name, 'Website visitor') AS tenant_name, t.id AS tenant_id
+                COALESCE(t.name, 'Website visitor') AS tenant_name, t.id AS tenant_id,
+                COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
+                   ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
+                            u.created_at ASC \
+                   LIMIT 1), '') AS owner_email
            FROM support_requests sr
            LEFT JOIN tenants t ON t.id = sr.tenant_id
           WHERE ($1::text IS NULL OR sr.status = $1::text)
@@ -364,14 +377,19 @@ pub async fn admin_list(
           LIMIT 200",
     )
     .bind(status_filter.as_deref())
-    .bind(
-        params
-            .get("include_probe")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false),
-    )
+    .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
+
+    // Arm two: the OWNER ADDRESS. A visitor with no workspace (tenant_id NULL) has no owner email and
+    // is always a real person, so it is kept.
+    let rows: Vec<_> = rows
+        .into_iter()
+        .filter(|r| {
+            include_probe
+                || !crate::coreswift::is_reserved_test_email(&r.get::<String, _>("owner_email"))
+        })
+        .collect();
 
     let requests: Vec<Value> = rows
         .iter()

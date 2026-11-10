@@ -327,10 +327,23 @@ pub async fn admin_list(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
+    // The `include_probe` flag admits a HARNESS-TAGGED workspace. It is only ONE of the two arms the
+    // dashboard counters use (`admin_handler::admin_stats` spells both out): a workspace minted
+    // before `probe_harness` existed, or one whose owner sits on a reserved test domain, carries no
+    // tag and still is not a customer. Counting only the SQL arm here is what made this counter
+    // disagree with the rows beside it, so the queue applies the owner arm in Rust, below.
+    let include_probe = params
+        .get("include_probe")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     let rows = sqlx::query(
         "SELECT pr.id, pr.plan_slug, pr.plan_name, pr.note, pr.status, pr.reply,
                 pr.replied_at::text AS replied_at, pr.requested_by,
-                pr.created_at::text AS created_at, t.name AS tenant_name, t.id AS tenant_id
+                pr.created_at::text AS created_at, t.name AS tenant_name, t.id AS tenant_id,
+                COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
+                   ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
+                            u.created_at ASC \
+                   LIMIT 1), '') AS owner_email
            FROM plan_requests pr
            JOIN tenants t ON t.id = pr.tenant_id
           WHERE $1::bool
@@ -338,14 +351,19 @@ pub async fn admin_list(
           ORDER BY (pr.status = 'open') DESC, pr.created_at DESC
           LIMIT 200",
     )
-    .bind(
-        params
-            .get("include_probe")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false),
-    )
+    .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
+
+    // Arm two: the OWNER ADDRESS, the same predicate `admin_stats` applies, so the number on the
+    // dashboard and the rows in this queue cannot drift apart again.
+    let rows: Vec<_> = rows
+        .into_iter()
+        .filter(|r| {
+            include_probe
+                || !crate::coreswift::is_reserved_test_email(&r.get::<String, _>("owner_email"))
+        })
+        .collect();
 
     let requests: Vec<Value> = rows
         .iter()
