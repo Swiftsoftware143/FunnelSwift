@@ -65,14 +65,15 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   200 mounts  /api/**           199 unique after the duplicate `/api/v1/linkedin/auth`
-//!                                 mount (POST + DELETE on one path, legal in axum)
-//!     21        public            -> PUBLIC_ROUTES below (the two card-QR image READs
+//!   200 mounts  /api/**           200 unique paths, no duplicate (the retired
+//!                                 `/api/v1/linkedin/auth` pair — POST + DELETE on one path — was
+//!                                 the last duplicate; the stub trio is gone, 2026-11-10)
+//!     23        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header; the
 //!                                    public price list joined on 2026-10-30)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    176        private           -> require_auth: app JWT, tenant-status checked
+//!    174        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (44 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -82,6 +83,13 @@
 //!                                    — they render a public page or accept a public form post
 //!                                    keyed by a public slug.
 //! ```
+//!
+//! 2026-11-10: three routes left the API surface — `POST|DELETE /api/v1/linkedin/auth` and
+//! `GET /api/v1/linkedin/auth/status` were an inert stub (they answered success while
+//! `linkedin_auths` stayed at 0 rows and no served page called them), so they were RETIRED rather
+//! than left to lie. That is the `202 -> 200` API mounts and the `176 -> 174` private bucket. The
+//! numbers above are MEASURED from the router by the census test below, not carried forward: the
+//! block had drifted to 200/199/21/176 against a real 228/227/23/176 before this recount.
 //!
 //!
 //! The count moved TWICE on 2026-10-18 and only one of the two bumped this census: the
@@ -395,7 +403,7 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 225 mounts, 200 of them on the API surface. If a route is
+    /// The census the module docs quote: 226 mounts, 200 of them on the API surface. If a route is
     /// added or removed, this test is the reminder to re-measure the docs above with it.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
@@ -423,7 +431,7 @@ mod tests {
                 private,
                 served
             ),
-            (228, 227, 202, 23, 3, 176, 26),
+            (226, 226, 200, 23, 3, 174, 26),
             "the census in the module docs no longer matches the router"
         );
     }

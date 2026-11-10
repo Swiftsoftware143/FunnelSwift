@@ -19,13 +19,12 @@ use crate::handlers::{
     affiliate_tracking_handler, branding_handler, bulk_handler, campaigns_handler,
     checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
     dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
-    insight_handler, kinetic_handler, lead_handler, linkedin, linkedin_auth_handler,
-    mobile_notify_handler, ocr, plan_handler, plan_request_handler, platform_settings_handler,
-    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
-    support_request_handler, tag_group_handler, tag_handler, tag_rule_handler,
-    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
-    workflowswift_push,
+    insight_handler, kinetic_handler, lead_handler, linkedin, mobile_notify_handler, ocr,
+    plan_handler, plan_request_handler, platform_settings_handler, portfolio_handler,
+    product_category_handler, provider_keys_handler, public_signup_handler, qr_handler,
+    seo_handler, settings_handler, site_handler, site_settings_handler, support_request_handler,
+    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
+    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -1095,22 +1094,17 @@ pub fn create_router(
         // feature whose allowance the plan strip shows must be auditable by the customer; the
         // read is tenant-scoped in the handler, so there is no id in the path to spoof.
         .route("/api/v1/ocr/scans", get(ocr::list_scans))
-        // LinkedIn - profile lookup
+        // LinkedIn - profile lookup. The three `/api/v1/linkedin/auth*` routes that lived here are
+        // RETIRED (2026-11-10): they were an inert stub — `store_linkedin_auth` ignored its payload
+        // and answered `{"message":"LinkedIn auth stored"}`, the status arm answered a constant
+        // `not_configured`, and the delete arm a constant `deleted`, so every caller was told it had
+        // worked and `linkedin_auths` (migration 009) stayed at 0 rows. Nothing in this app, its
+        // mirror or its docs called them: connecting a real LinkedIn account needs an OAuth
+        // credential this install does not hold, so the honest surface is the URL-only lookup below
+        // (which states its own limits) — not a save that saves nothing.
         .route(
             "/api/v1/leads/linkedin-lookup",
             post(linkedin::handle_linkedin_lookup),
-        )
-        .route(
-            "/api/v1/linkedin/auth",
-            post(linkedin_auth_handler::store_linkedin_auth),
-        )
-        .route(
-            "/api/v1/linkedin/auth/status",
-            get(linkedin_auth_handler::get_linkedin_auth_status),
-        )
-        .route(
-            "/api/v1/linkedin/auth",
-            delete(linkedin_auth_handler::delete_linkedin_auth),
         )
         .route(
             "/api/v1/web-to-lead/configs",
