@@ -684,7 +684,9 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
     // Get current plan subscription
     let current_plan: Option<serde_json::Value> = sqlx::query_as::<_, (serde_json::Value,)>(
         r#"
-            SELECT row_to_json(p.*)::jsonb
+            SELECT (row_to_json(p.*)::jsonb
+                    || jsonb_build_object('billing_cycle',
+                           COALESCE(tps.billing_cycle, p.billing_cycle)))::jsonb
             FROM plans p
             JOIN tenant_plan_subscriptions tps ON tps.plan_id = p.id
             WHERE tps.tenant_id::text = $1 AND tps.status = 'active'

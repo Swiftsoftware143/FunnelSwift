@@ -549,7 +549,7 @@ pub async fn update_tenant(
     {
         let plan_id = Uuid::parse_str(raw)
             .map_err(|_| AppError::BadRequest("Valid plan_id is required".into()))?;
-        set_active_plan(&state.pool, id, plan_id).await?;
+        set_active_plan(&state.pool, id, plan_id, None).await?;
     }
     Ok(Json(json!({"message": "Tenant updated"})))
 }
@@ -713,6 +713,8 @@ pub async fn assign_plan(
     if exists == 0 {
         return Err(AppError::NotFound("Tenant not found".into()));
     }
-    set_active_plan(&state.pool, id, plan_id).await?;
+    // The term is optional: a caller that names none gets the catalogue default, exactly as before.
+    let cycle = req.get("billing_cycle").and_then(|v| v.as_str());
+    set_active_plan(&state.pool, id, plan_id, cycle).await?;
     Ok(Json(json!({"message": "Plan assigned"})))
 }

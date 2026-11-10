@@ -830,7 +830,26 @@ pub(crate) async fn set_active_plan(
     pool: &sqlx::PgPool,
     tenant_id: Uuid,
     plan_id: Uuid,
+    billing_cycle: Option<&str>,
 ) -> AppResult<(Uuid, String)> {
+    // THE TERM THIS SUBSCRIPTION IS CHARGED ON (migration 125, 2026-11-10). Until this parameter the
+    // plan moved and the term did not: a customer who filed a YEARLY ask was activated on the
+    // catalogue default ('month' on every plan), so the operator invoiced a term nobody chose. The
+    // caller that knows the customer's choice (the plan-request `done` arm) passes it; every other
+    // caller passes None, which keeps the meaning it always had. Vocabulary is the one this column
+    // shares with `plans.billing_cycle` — 'month' | 'year' — never 'monthly'/'yearly'.
+    let term: &str = match billing_cycle.map(str::trim).map(str::to_ascii_lowercase) {
+        None => "month",
+        Some(ref raw) => match raw.as_str() {
+            "year" | "yearly" | "annual" | "annually" | "yr" => "year",
+            "month" | "monthly" | "mo" | "" => "month",
+            other => {
+                return Err(AppError::BadRequest(format!(
+                    "billing_cycle must be \"month\" or \"year\" — got \"{other}\""
+                )))
+            }
+        },
+    };
     // Get the new plan slug before activating
     let new_plan_slug: String = sqlx::query_scalar("SELECT slug FROM plans WHERE id = $1")
         .bind(plan_id)
@@ -859,12 +878,13 @@ pub(crate) async fn set_active_plan(
 
     let subscription_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date)
-           VALUES ($1, $2, $3, 'active', NOW())"#,
+        r#"INSERT INTO tenant_plan_subscriptions (id, tenant_id, plan_id, status, start_date, billing_cycle)
+           VALUES ($1, $2, $3, 'active', NOW(), $4)"#,
     )
     .bind(subscription_id)
     .bind(tenant_id)
     .bind(plan_id)
+    .bind(term)
     .execute(pool)
     .await?;
 
@@ -919,9 +939,11 @@ pub async fn admin_assign_plan(
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or_else(|| AppError::BadRequest("Valid plan_id is required".into()))?;
 
-    // Get the new plan slug before activating
+    // Get the new plan slug before activating. The term is optional here: the Tenants screen's
+    // picker sends none, and the plan-request fulfilment path sends the customer's own answer.
+    let cycle = req.get("billing_cycle").and_then(|v| v.as_str());
     let (subscription_id, _new_plan_slug) =
-        set_active_plan(&state.pool, tenant_id, plan_id).await?;
+        set_active_plan(&state.pool, tenant_id, plan_id, cycle).await?;
 
     // Auto-apply the Sold tag to all leads in this tenant when the plan just activated is a PAID
     // one. The paid test is `plans.price > 0` inside the callee (kanban t_3641f326): the old

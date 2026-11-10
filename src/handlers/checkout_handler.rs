@@ -527,7 +527,7 @@ pub async fn create_checkout_session(
                             }
                         }
                         let (_, new_slug) =
-                            set_active_plan(&state.pool, tenant_id, free_plan_id).await?;
+                            set_active_plan(&state.pool, tenant_id, free_plan_id, None).await?;
                         tracing::info!(
                             tenant = %tenant_id,
                             to = %new_slug,
@@ -1643,6 +1643,20 @@ pub async fn stripe_webhook(
         .pointer("/metadata/plan_id")
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok());
+    // THE TERM THAT WAS PAID FOR (2026-11-10, migration 125). `checkout/create` writes the interval it
+    // charged into `checkout_sessions.metadata->>'billing_cycle'`; before migration 125 the activated
+    // subscription stored no term at all, so a customer who PAID for a year was recorded monthly and
+    // the operator's invoice would say so. Read from OUR OWN row (never from the provider payload,
+    // which the customer cannot alter and which may not carry it), and stay silent when it is absent.
+    let stripe_session_id = object.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let paid_term: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT metadata->>'billing_cycle' FROM checkout_sessions
+          WHERE provider_type = 'stripe' AND provider_session_id = $1",
+    )
+    .bind(stripe_session_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .flatten();
 
     let outcome: Result<&str, String> = match event_type.as_str() {
         "checkout.session.completed" => match meta_plan {
@@ -1650,6 +1664,7 @@ pub async fn stripe_webhook(
                 &state.pool,
                 meta_tenant,
                 plan_id,
+                paid_term.as_deref(),
             )
             .await
             {
@@ -1693,6 +1708,7 @@ pub async fn stripe_webhook(
                         &state.pool,
                         meta_tenant,
                         free_id,
+                        None,
                     )
                     .await
                     {

@@ -576,6 +576,17 @@ pub async fn admin_update(
     // is reported back so the screen can say the plan did not move, instead of implying it did.
     let mut plan_applied = false;
     let mut plan_note: Option<String> = None;
+    // THE TERM THE CUSTOMER ASKED FOR TRAVELS WITH THE MOVE (2026-11-10). `plan_requests` has carried
+    // 'monthly' | 'yearly' since migration 124; before this the fulfilment moved the plan and left the
+    // subscription on the catalogue default, so a YEARLY ask became a monthly subscription the moment
+    // the operator closed it. Read from the row we just updated, mapped to the subscription's own
+    // vocabulary ('month' | 'year').
+    let asked_term: String =
+        sqlx::query_scalar::<_, String>("SELECT billing_cycle FROM plan_requests WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?
+            .unwrap_or_else(|| "monthly".to_string());
     if new_status == "done" && old_status != "done" {
         let target: Option<(Uuid, String)> =
             sqlx::query_as("SELECT id, slug FROM plans WHERE slug = $1")
@@ -602,6 +613,7 @@ pub async fn admin_update(
                         &state.pool,
                         tenant_id,
                         plan_id,
+                        Some(asked_term.as_str()),
                     )
                     .await
                     {
