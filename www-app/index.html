@@ -5223,7 +5223,7 @@ function LPROF(){
     h+='<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
     h+='<img id="pf-av" class="pf-av" alt="Your profile picture" src="'+X(av)+'" style="'+(av?"":"display:none")+'">';
     h+='<span id="pf-avph" class="pf-av" style="display:'+(av?"none":"flex")+';align-items:center;justify-content:center;color:#64748b;font-size:28px;font-weight:700">'+X(initial)+'</span>';
-    h+='<div><label for="pf-file" style="display:block;font-size:12px;color:#64748b;margin-bottom:2px">Profile picture</label><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
+    h+='<div><label for="pf-file" style="display:block;font-size:12px;color:#64748b;margin-bottom:2px">Choose a picture to upload</label><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
     h+='<p style="font-size:11px;color:#94a3b8;margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>';
     h+='<button class="btn btn-sm" onclick="UPF()">Upload picture</button>';
     h+='<button class="btn btn-sm" id="pf-avdel" style="'+(av?"":"display:none;")+'margin-left:6px" onclick="RPF()">Remove picture</button>';
