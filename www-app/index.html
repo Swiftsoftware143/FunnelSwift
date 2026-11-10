@@ -5811,9 +5811,24 @@ function TMLOAD(msg,kind){
          both in words, and a control that can only fail is not a control). The sentence the server
          returns is printed verbatim. */
       var removable=!m.is_owner && String(m.id)!==String(you);
+      /* ROLE CHANGE (2026-11-10). The invite door handed out a role and Remove took the seat back,
+         but nothing could MOVE a person between the roles — a promotion meant removing and
+         re-inviting them, which deactivates the row, mints a fresh password and mails it. The
+         select is offered only on a row the server will accept (never the owner, never your own
+         login: the API refuses both in words, and a control that can only fail is not a control). */
+      var roleNow=String(m.role||"user");
+      var roleSel="";
+      if(removable){
+        roleSel='<select data-tm-role-for="'+X(m.id)+'" data-tm-email="'+X(m.email||"")+'" title="Change what this teammate can do" style="font-size:11px;padding:2px 5px;border:1px solid #d1d5db;border-radius:5px;margin-left:8px">'
+          +'<option value="user"'+((roleNow==="user")?" selected":"")+'>Member</option>'
+          +'<option value="company_admin"'+((roleNow==="company_admin")?" selected":"")+'>Company admin</option>'
+          +'<option value="business_user"'+((roleNow==="business_user")?" selected":"")+'>Business user</option>'
+          +((roleNow!=="user"&&roleNow!=="company_admin"&&roleNow!=="business_user")?'<option value="'+X(roleNow)+'" selected>'+X(teamRoleWord(m))+'</option>':"")
+          +'</select>';
+      }
       h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;align-items:center">'
         +'<span>'+X(m.name||m.email)+' <span style="color:#94a3b8;font-size:11px">'+X(m.email||"")+'</span></span>'
-        +'<span style="color:#94a3b8;font-size:11px;white-space:nowrap">'+X(teamRoleWord(m))
+        +'<span style="color:#94a3b8;font-size:11px;white-space:nowrap">'+X(teamRoleWord(m))+roleSel
         +(removable?' <a href="#" style="color:#dc2626;margin-left:8px" data-tm-remove="'+X(m.id)+'" data-tm-email="'+X(m.email||"")+'">Remove</a>':'')
         +'</span></div>';
     });
@@ -5863,6 +5878,13 @@ function TMLOAD(msg,kind){
       a.addEventListener("click",function(ev){
         ev.preventDefault();
         TMDEL(a.getAttribute("data-tm-remove"),a.getAttribute("data-tm-email"));
+      });
+    });
+    /* The role selects are wired here for the same reason: they are markup, so the listener can
+       only be attached once they exist. */
+    Array.prototype.forEach.call(box.querySelectorAll("[data-tm-role-for]"),function(sel){
+      sel.addEventListener("change",function(){
+        TMSET(sel.getAttribute("data-tm-role-for"),sel.getAttribute("data-tm-email"),sel.value,sel);
       });
     });
     if(msg){ var s=$("tm-note")||$("tm-msg"); if(s){ s.style.color=(kind==="e")?"#dc2626":"#059669"; s.textContent=msg; } }
@@ -5917,6 +5939,32 @@ function TMDEL(id,email){
          than showing an error for a state that is already what the customer asked for. */
       var why=(e&&e.message)||"That teammate could not be removed.";
       if(msg){ msg.style.color="#dc2626"; msg.textContent=why; }
+    });
+}
+
+/* === Change a teammate's role (2026-11-10) ===================================================
+   PATCH /api/v1/team/members/:id with {role}. The server decides who may do it and refuses the
+   owner and your own login in words; every refusal is printed verbatim rather than paraphrased, and
+   the pane repaints from the reload so what it shows can never disagree with the row. On failure the
+   select is put back to the value the row actually holds, so the screen never claims a change that
+   did not happen. */
+function TMSET(id,email,role,sel){
+  if(!id||!role) return;
+  var box=$("lm-team");
+  var back=(sel&&sel.getAttribute("data-tm-was"))||"";
+  if(sel){ sel.disabled=true; }
+  api("/api/v1/team/members/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({role:role})})
+    .then(function(d){
+      var word={user:"Member",company_admin:"Company admin",business_user:"Business user"}[d&&d.role]||(d&&d.role)||role;
+      TMLOAD(d&&d.unchanged
+        ? (email?email:"That teammate")+" already had that role."
+        : (email?email:"That teammate")+" is now a "+word+".","" );
+    })
+    .catch(function(e){
+      var why=(e&&(e.planMessage||e.message))||"That role could not be changed.";
+      if(sel){ sel.disabled=false; if(back) sel.value=back; }
+      var n=$("tm-note");
+      if(n){ n.style.color="#dc2626"; n.textContent=why; }
     });
 }
 

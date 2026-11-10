@@ -303,9 +303,16 @@ pub fn create_router(
         // the wrong person had no way to take the seat back — the only door was the platform
         // operator's. Authority, the owner/self refusals and the deactivation live in the handler;
         // the route is PRIVATE by default (it is not in `auth::route_policy::PUBLIC_ROUTES`).
+        // The ROLE-CHANGE twin (2026-11-10). Invite handed out a role and removal took the seat
+        // back, but nothing could move a person between the roles: a promotion meant removing and
+        // re-inviting them, which mints a fresh password and mails it. PATCH shares the path with
+        // DELETE so the pane has one row and one id to act on; authority, the self and owner
+        // refusals and the vocabulary gate live in the handler. PRIVATE by default (it is not in
+        // `auth::route_policy::PUBLIC_ROUTES`).
         .route(
             "/api/v1/team/members/:id",
-            axum::routing::delete(crate::handlers::team_handler::remove_teammate),
+            axum::routing::delete(crate::handlers::team_handler::remove_teammate)
+                .patch(crate::handlers::team_handler::update_teammate_role),
         )
         .route(
             "/api/v1/leads/:id/stage",

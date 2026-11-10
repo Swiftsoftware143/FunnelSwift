@@ -200,6 +200,126 @@ pub async fn remove_teammate(
     })))
 }
 
+/// `PATCH /api/v1/team/members/:id` — change what a colleague is allowed to do (2026-11-10).
+///
+/// The invite door lets a workspace owner choose a role and the removal door lets them take a seat
+/// back, but nothing could CHANGE a role: promoting the teammate who joined as a member, or standing
+/// an over-privileged colleague down, meant removing them and inviting them again — which deactivates
+/// the row, mints a fresh password and mails it. This is that missing door.
+///
+/// The invite door's three rules apply here unchanged and in the same order:
+///   * AUTHORITY — the creator, an appointed `company_admin`, or the platform operator
+///     ([`may_invite`]); the tenant comes from the session, never from the body.
+///   * VOCABULARY — [`customer_role`], so `admin` (platform authority, which opens every
+///     `/api/v1/admin/*` handler) is a 400 that names the workspace roles rather than a column value
+///     no workspace gate recognises.
+///   * OWNERSHIP — the target must be ACTIVE in THIS workspace; a row anywhere else is a 404, never
+///     a 403, because a refusal that confirms the row exists is a leak.
+///
+/// Two refusals are this door's own, and both exist so a control cannot appear to have worked:
+///   * the CALLER's own role — the workspace must always keep somebody who can administer it, and
+///     the screen must not offer a person a way to lock themselves out;
+///   * the workspace OWNER's role — [`is_workspace_creator`] decides who administers this workspace
+///     from the ROW's age, not from `users.role`, so writing the column would move the role while the
+///     authority stayed put: the pane would keep painting "Owner" and the press would look ignored.
+///
+/// No seat is spent or freed — the row already exists and stays active — so `max_team_members` is
+/// deliberately NOT consulted: enforcing it here would refuse a legitimate change on a full plan.
+pub async fn update_teammate_role(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<Value>,
+) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::Unauthorized("Invalid tenant".into()))?;
+
+    if !may_invite(&state, &auth, tenant_id).await? {
+        return Err(AppError::Forbidden(
+            "Only the workspace owner or a company admin can change a teammate's role".into(),
+        ));
+    }
+
+    // Parsed before any read, so an unsafe value cannot reach the UPDATE whatever the row says.
+    let role = customer_role(req.get("role").and_then(|v| v.as_str()))?;
+
+    let me = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user".into()))?;
+    if id == me {
+        return Err(AppError::BadRequest(
+            "That is your own login. Ask another admin in this workspace to change your role — a \
+             workspace must always keep somebody who can administer it."
+                .into(),
+        ));
+    }
+
+    let target: Option<(String, String)> = sqlx::query_as(
+        "SELECT role::text, email FROM users \
+          WHERE id = $1 AND tenant_id = $2 AND is_active = true",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (previous, email) = target.ok_or_else(|| {
+        AppError::NotFound("That teammate is not active in this workspace.".into())
+    })?;
+
+    if is_workspace_creator(&state, tenant_id, id).await? {
+        return Err(AppError::Forbidden(
+            "The workspace owner keeps owner access — their role cannot be changed from here."
+                .into(),
+        ));
+    }
+
+    // Idempotent: asking for the role the person already holds is success, not a no-op error, so a
+    // double press (or two admins at once) reads as done instead of as a failure.
+    if previous == role {
+        let seats = seat_tally(&state, tenant_id).await?;
+        return Ok(Json(json!({
+            "updated": false,
+            "unchanged": true,
+            "email": email,
+            "role": role,
+            "seats": seats,
+        })));
+    }
+
+    sqlx::query(
+        "UPDATE users SET role = $1, updated_at = NOW() \
+          WHERE id = $2 AND tenant_id = $3 AND is_active = true",
+    )
+    .bind(&role)
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    let seats = seat_tally(&state, tenant_id).await?;
+    Ok(Json(json!({
+        "updated": true,
+        "email": email,
+        "previous": previous,
+        "role": role,
+        "seats": seats,
+    })))
+}
+
+/// Used/limit seats from the same resolver the list and the invite gate read, so a repaint after a
+/// change cannot disagree with the counter that was on screen before it.
+async fn seat_tally(state: &AppState, tenant_id: Uuid) -> AppResult<Value> {
+    let used: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+    let limit = features::resolved_limit(state, tenant_id, "max_team_members")
+        .await
+        .ok()
+        .flatten();
+    Ok(json!({ "used": used, "limit": limit }))
+}
+
 /// The fleet's generic limit sentence ends "Upgrade to increase your limit." — a DEAD END when the
 /// workspace already holds the largest seat allowance any plan on this installation sells.
 ///
