@@ -331,6 +331,74 @@ fn check_tenant_text(value: Option<&str>, field: &str) -> crate::error::AppResul
     }
 }
 
+/// `PATCH /api/v1/workspace` — rename the caller's OWN workspace.
+///
+/// MEASURED 2026-11-10: `tenants.name` had exactly one writer, the platform operator's
+/// `PUT /api/v1/tenants/:id` (gated on `auth.is_admin`). Signup DERIVES the name from the person
+/// ("Dana's Workspace"), so a customer whose business name was typed wrong — or who simply wants
+/// their brand on the workspace — had no door at all, and the console never even showed them the
+/// name they were stuck with.
+///
+/// Owner-only. A teammate (`user` / `business_user`) is not the owner of the workspace and keeps a
+/// read-only view; the platform operator renames through the admin route, and this door refuses
+/// while impersonating so an impersonation session cannot quietly rename a customer's workspace.
+///
+/// The SLUG is deliberately untouched: it is the workspace's public funnel address, so a rename
+/// must never break a link that is already in circulation.
+pub async fn rename_own_workspace(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Json(req): Json<serde_json::Value>,
+) -> AppResult<Json<serde_json::Value>> {
+    if auth.impersonating.is_some() {
+        return Err(AppError::Forbidden(
+            "A workspace cannot be renamed from an impersonation session — the operator renames it \
+             from the Tenants screen."
+                .into(),
+        ));
+    }
+    let role = auth.role.trim().to_ascii_lowercase();
+    if !(auth.is_admin || role == "admin" || role == "company_admin") {
+        return Err(AppError::Forbidden(
+            "Only a workspace owner can rename this workspace.".into(),
+        ));
+    }
+    // Trim first: a name of spaces is a blank name, not a one-character name. Newlines and other
+    // control characters would break every surface that prints the name (the operator's tenant
+    // list, the credentials mail), so they are refused rather than stored.
+    let raw = req
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if raw.chars().count() < 2 {
+        return Err(AppError::UnprocessableEntity(
+            "Give the workspace a name of at least 2 characters.".into(),
+        ));
+    }
+    if raw.chars().any(|c| c.is_control()) {
+        return Err(AppError::UnprocessableEntity(
+            "A workspace name cannot contain line breaks or control characters.".into(),
+        ));
+    }
+    check_tenant_text(Some(raw), "name")?;
+
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::Unauthorized("This session carries no workspace.".into()))?;
+    let name: Option<String> = sqlx::query_scalar(
+        "UPDATE tenants SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING name",
+    )
+    .bind(raw)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    match name {
+        Some(name) => Ok(Json(json!({ "status": "ok", "name": name }))),
+        None => Err(AppError::NotFound("Workspace not found".into())),
+    }
+}
+
 pub async fn create_tenant(
     auth: AuthUser,
     State(state): State<AppState>,

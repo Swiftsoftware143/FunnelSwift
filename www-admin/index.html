@@ -842,6 +842,12 @@ async function renderMyAccount() {
   const plan = USER.planObj || {};
   const av = USER.avatar_url || '';
   const initial = ((USER.name || USER.email || '?') + '?').charAt(0).toUpperCase();
+  // YOUR WORKSPACE (2026-11-10). `tenants.name` had exactly ONE writer — the admin-gated
+  // `PUT /api/v1/tenants/:id` — so the name signup derived from the person ("Dana's Workspace")
+  // was permanent, and no screen in this console ever showed it. `PATCH /api/v1/workspace` is the
+  // owner's own door; the public address under it is READ-ONLY because the slug is the workspace's
+  // funnel link and a rename must never move it. A teammate sees the same name, not an editor.
+  const canRenameWs = isSuperAdmin() || ['admin', 'company_admin'].includes(String(USER.role || '').toLowerCase());
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">My Account</h1>
     <div class="card">
@@ -866,6 +872,17 @@ async function renderMyAccount() {
         <div><div class="form-label">Company</div><input class="input" id="fsac-co" maxlength="255" value="${x(USER.company||'')}" placeholder="Your company"></div>
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsProfileSave()">Save</button><span id="fsac-pmsg" style="font-size:12px;margin-left:8px"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🏷️ Your workspace</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="form-label">Workspace name</div><input class="input" id="fsac-ws" maxlength="255" value="${x(USER.tenant_name||'')}" placeholder="Your business name" ${canRenameWs?'':'disabled'}></div>
+        <div><div class="form-label">Public address</div><input class="input" id="fsac-wsslug" value="${x(USER.tenant_slug||'')}" disabled></div>
+      </div>
+      ${canRenameWs
+        ? `<div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsWorkspaceSave()">Save</button><span id="fsac-wsmsg" style="font-size:12px;margin-left:8px"></span></div>
+           <p style="font-size:11px;color:var(--muted);margin:8px 0 0">The name this workspace is known by in the console and on the mail sent for it. Changing it never changes your public address, so no link moves.</p>`
+        : `<p style="font-size:11px;color:var(--muted);margin:8px 0 0">The workspace owner can rename this.</p>`}
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">🔒 Change Password</span></div>
@@ -1049,6 +1066,19 @@ window._fsProfileSave = async function () {
     USER.name = n.trim(); USER.company = c.trim(); USER.username = un.trim();
     fsMsg('fsac-pmsg', 'Saved', true);
   } catch (e) { fsMsg('fsac-pmsg', (e && e.message) || 'Could not save', false); }
+};
+window._fsWorkspaceSave = async function () {
+  const el = document.getElementById('fsac-ws');
+  const name = el ? el.value.trim() : '';
+  if (name.length < 2) { fsMsg('fsac-wsmsg', 'Enter a workspace name of at least 2 characters', false); return; }
+  fsMsg('fsac-wsmsg', 'Saving\u2026', null);
+  try {
+    // PATCH /api/v1/workspace (2026-11-10): the owner's own rename door. The slug is untouched by
+    // the server, so the public funnel address this workspace already published keeps working.
+    const d = await api('/workspace', { method: 'PATCH', body: JSON.stringify({ name }) });
+    if (d && d.name) { USER.tenant_name = d.name; }
+    fsMsg('fsac-wsmsg', 'Saved', true);
+  } catch (e) { fsMsg('fsac-wsmsg', (e && e.message) || 'Could not save', false); }
 };
 window._fsPasswordSave = async function () {
   const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };

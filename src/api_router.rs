@@ -977,6 +977,15 @@ pub fn create_router(
         // -> 201 plus the session row. The arm's only 501 is the explicit `checkout_not_implemented`
         // arm for a configured provider that is NOT Stripe (kanban t_6e746b75), so "there is no live
         // checkout" was never the state. The routes below are tenancy, not payments.
+        // A workspace's OWN name (2026-11-10). `tenants.name` had exactly one writer — the
+        // admin-gated `PUT /api/v1/tenants/:id` — so a customer whose business name was entered
+        // wrong at signup could never correct it, and no screen even showed it to them. Owner-only
+        // (`rename_own_workspace`), and it never touches the slug: that is the public funnel
+        // address, so a rename can never break a link already in circulation.
+        .route(
+            "/api/v1/workspace",
+            axum::routing::patch(tenant_handler::rename_own_workspace),
+        )
         // Tenant management
         .route(
             "/api/v1/tenants",

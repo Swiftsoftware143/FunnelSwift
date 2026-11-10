@@ -749,9 +749,28 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         },
     };
 
+    // THE WORKSPACE'S OWN NAME AND ADDRESS (2026-11-10). Until now `/auth/me` described the PERSON
+    // (name, company, picture) and the plan, and said nothing about the workspace the person is
+    // signed in to — so the console could not show it and `PATCH /api/v1/workspace` (the rename door
+    // added the same day) would have had no screen to live on. `tenant_name` is the display name the
+    // owner can now change; `tenant_slug` is the workspace's public funnel address, read-only here on
+    // purpose (renaming must never move a link). Both are the caller's OWN tenant, taken from the
+    // session, never from the request.
+    let workspace: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT name, slug FROM tenants WHERE id::text = $1")
+            .bind(&auth.tenant_id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
     Json(json!({
         "user_id": auth.user_id,
         "tenant_id": auth.tenant_id,
+        "tenant_name": workspace
+            .as_ref()
+            .map(|(n, _)| n.clone())
+            .unwrap_or_default(),
+        "tenant_slug": workspace.as_ref().and_then(|(_, s)| s.clone()),
         "email": user_info
             .as_ref()
             .and_then(|(_, _, _, _, e)| e.clone())
