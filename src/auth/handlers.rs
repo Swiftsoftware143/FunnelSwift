@@ -719,6 +719,17 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         .and_then(|n| n.as_str())
         .map(str::to_string);
     let plan_assigned = plan_name.is_some();
+    // The plan's SLUG — the fleet's identifier for a tier. Every sibling app publishes it on its own
+    // `/auth/me` (measured 2026-11-09: ADASwift `plan_slug: "free"`, IncentiveSwift a flat
+    // `plan_name`, both alongside the display name), and the tag→free-account provisioning contract
+    // names a plan by `source_app` + `plan_slug`. This route published only the display NAME, so a
+    // client had to parse the whole `current_plan` jsonb to learn which tier the workspace holds.
+    // Additive on purpose: `current_plan` stays exactly as it was, so no existing reader changes.
+    let plan_slug: Option<String> = current_plan
+        .as_ref()
+        .and_then(|p| p.get("slug"))
+        .and_then(|s| s.as_str())
+        .map(str::to_string);
 
     // The level the GATES enforce when no plan row is assigned (`features::effective_plan`, the one
     // resolver every limit now reads). Without this the dashboard told a plan-less workspace "its
@@ -754,6 +765,9 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         "impersonating": auth.impersonating,
         "current_plan": current_plan,
         "plan_name": plan_name,
+        // The tier's slug, the same identifier the provisioning flow and every sibling app use
+        // (null when this workspace holds no subscription — `plan_assigned` says which case it is).
+        "plan_slug": plan_slug,
         // false => this workspace holds NO active subscription. The console says "No plan
         // assigned" instead of guessing a tier; the operator's Tenants list prints the same state,
         // and the operator fixes it with POST /api/v1/tenants/:id/plan.
