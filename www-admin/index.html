@@ -847,7 +847,10 @@ async function renderMyAccount() {
   // was permanent, and no screen in this console ever showed it. `PATCH /api/v1/workspace` is the
   // owner's own door; the public address under it is READ-ONLY because the slug is the workspace's
   // funnel link and a rename must never move it. A teammate sees the same name, not an editor.
-  const canRenameWs = isSuperAdmin() || ['admin', 'company_admin'].includes(String(USER.role || '').toLowerCase());
+  // `is_workspace_owner` is the SERVER's own answer (creator / appointed company_admin / platform
+  // operator). A role guess is wrong here: signup writes role "user" for the person who created the
+  // workspace, so checking roles would hide the control from the only person allowed to use it.
+  const canRenameWs = isSuperAdmin() || USER.is_workspace_owner === true;
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">My Account</h1>
     <div class="card">

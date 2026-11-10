@@ -763,6 +763,17 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
             .await
             .unwrap_or(None);
 
+    // Owns the workspace? The SAME rule the team doors and `PATCH /api/v1/workspace` use (creator,
+    // appointed company_admin, or the platform operator). Without it the console had to guess from
+    // `role`, and FunnelSwift signup writes `role = "user"` for the very person who created the
+    // workspace — so a role guess hides the rename control from the only person allowed to use it.
+    let owns_workspace = match tenant_uuid {
+        Some(tid) => crate::handlers::team_handler::is_workspace_owner(&state, &auth, tid)
+            .await
+            .unwrap_or(false),
+        None => false,
+    };
+
     Json(json!({
         "user_id": auth.user_id,
         "tenant_id": auth.tenant_id,
@@ -771,6 +782,7 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
             .map(|(n, _)| n.clone())
             .unwrap_or_default(),
         "tenant_slug": workspace.as_ref().and_then(|(_, s)| s.clone()),
+        "is_workspace_owner": owns_workspace,
         "email": user_info
             .as_ref()
             .and_then(|(_, _, _, _, e)| e.clone())

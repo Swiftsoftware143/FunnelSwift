@@ -67,6 +67,22 @@ async fn may_invite(state: &AppState, auth: &AuthUser, tenant_id: Uuid) -> AppRe
     is_workspace_creator(state, tenant_id, user_id).await
 }
 
+/// Whether this session OWNS the workspace: its creator, an appointed `company_admin`, or the
+/// platform operator — the same rule [`may_invite`] applies to the teammate doors, named for the
+/// decision rather than for one door.
+///
+/// MEASURED 2026-11-10: this cannot be a role check. FunnelSwift signup writes `role = "user"` for
+/// the person who creates the workspace (`auth::handlers::register`), so a brand-new customer's own
+/// owner is literally a `user`; a role list would lock every new workspace out of its own settings.
+/// The creator is the OLDEST active person in the tenant, which is what this resolves.
+pub(crate) async fn is_workspace_owner(
+    state: &AppState,
+    auth: &AuthUser,
+    tenant_id: Uuid,
+) -> AppResult<bool> {
+    may_invite(state, auth, tenant_id).await
+}
+
 pub async fn invite_teammate(
     auth: AuthUser,
     State(state): State<AppState>,

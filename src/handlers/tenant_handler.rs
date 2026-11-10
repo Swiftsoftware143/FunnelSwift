@@ -339,9 +339,12 @@ fn check_tenant_text(value: Option<&str>, field: &str) -> crate::error::AppResul
 /// their brand on the workspace — had no door at all, and the console never even showed them the
 /// name they were stuck with.
 ///
-/// Owner-only. A teammate (`user` / `business_user`) is not the owner of the workspace and keeps a
-/// read-only view; the platform operator renames through the admin route, and this door refuses
-/// while impersonating so an impersonation session cannot quietly rename a customer's workspace.
+/// Owner-only. Ownership cannot be a role list: this app's signup writes `role = "user"` for the
+/// person who creates the workspace, so the check is [`crate::handlers::team_handler::is_workspace_owner`]
+/// — the creator, an appointed `company_admin`, or the platform operator — the same rule the
+/// teammate doors apply. A teammate keeps a read-only view. The platform operator renames through
+/// the admin route, and this door refuses while impersonating so an impersonation session cannot
+/// quietly rename a customer's workspace.
 ///
 /// The SLUG is deliberately untouched: it is the workspace's public funnel address, so a rename
 /// must never break a link that is already in circulation.
@@ -357,10 +360,11 @@ pub async fn rename_own_workspace(
                 .into(),
         ));
     }
-    let role = auth.role.trim().to_ascii_lowercase();
-    if !(auth.is_admin || role == "admin" || role == "company_admin") {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::Unauthorized("This session carries no workspace.".into()))?;
+    if !crate::handlers::team_handler::is_workspace_owner(&state, &auth, tenant_id).await? {
         return Err(AppError::Forbidden(
-            "Only a workspace owner can rename this workspace.".into(),
+            "Only the workspace owner or a company admin can rename this workspace.".into(),
         ));
     }
     // Trim first: a name of spaces is a blank name, not a one-character name. Newlines and other
@@ -383,8 +387,6 @@ pub async fn rename_own_workspace(
     }
     check_tenant_text(Some(raw), "name")?;
 
-    let tenant_id = Uuid::parse_str(&auth.tenant_id)
-        .map_err(|_| AppError::Unauthorized("This session carries no workspace.".into()))?;
     let name: Option<String> = sqlx::query_scalar(
         "UPDATE tenants SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING name",
     )
