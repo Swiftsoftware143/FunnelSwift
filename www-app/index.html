@@ -1387,7 +1387,7 @@ function D(){
     var chipFg=st==='done'?'#166534':(st==='declined'?'#991b1b':(st==='contacted'?'#1e40af':(st==='withdrawn'?'#475569':'#92400e')));
     var h='<div class="card" data-plan-request-card="'+X(q.id)+'" style="margin-bottom:16px">';
     h+='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">';
-    h+='<div><h3 style="margin:0 0 2px">Your plan request</h3><div style="font-size:16px;font-weight:700">'+X(q.plan_name||q.plan_slug||'')+'</div>';
+    h+='<div><h3 style="margin:0 0 2px">Your plan request</h3><div style="font-size:16px;font-weight:700">'+X(q.plan_name||q.plan_slug||'')+(q.billing_cycle?' <span data-plan-request-term="'+X(q.billing_cycle)+'" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+(q.billing_cycle==='yearly'?'#dcfce7':'#f1f5f9')+';color:'+(q.billing_cycle==='yearly'?'#166534':'#475569')+'">'+X(q.billing_cycle==='yearly'?'Yearly':'Monthly')+'</span>':'')+'</div>';
     h+='<div style="color:#64748b;font-size:12px;margin-top:2px">Filed '+TSFMT(q.created_at,0)+'</div></div>';
     h+='<span data-plan-request-state="'+X(st)+'" style="background:'+chipBg+';color:'+chipFg+';padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">'+X(label)+'</span></div>';
     if(q.reply){h+='<div style="margin-top:10px;background:#f8fafc;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;font-size:13px;color:#334155;white-space:pre-wrap"><strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'+X(q.reply)+'</div>';}
@@ -6015,7 +6015,7 @@ function SG(id,returnTab,isSystem){
 
 
 </script>
-<script src="/upgrade.js?v=20261108a"></script>
+<script src="/upgrade.js?v=20261110a"></script>
 <!-- Cookie Consent Banner -->
 <div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;background:#0f172a;color:#e2e8f0;z-index:99999;padding:16px 24px;font-family:system-ui,sans-serif;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.4);display:none">
   <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
