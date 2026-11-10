@@ -5223,30 +5223,30 @@ function LPROF(){
     h+='<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
     h+='<img id="pf-av" class="pf-av" alt="Your profile picture" src="'+X(av)+'" style="'+(av?"":"display:none")+'">';
     h+='<span id="pf-avph" class="pf-av" style="display:'+(av?"none":"flex")+';align-items:center;justify-content:center;color:#64748b;font-size:28px;font-weight:700">'+X(initial)+'</span>';
-    h+='<div><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
+    h+='<div><label for="pf-file" style="display:block;font-size:12px;color:#64748b;margin-bottom:2px">Profile picture</label><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
     h+='<p style="font-size:11px;color:#94a3b8;margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>';
     h+='<button class="btn btn-sm" onclick="UPF()">Upload picture</button>';
     h+='<button class="btn btn-sm" id="pf-avdel" style="'+(av?"":"display:none;")+'margin-left:6px" onclick="RPF()">Remove picture</button>';
     h+='<span id="pf-avmsg" class="msg" style="margin:6px 0 0"></span></div></div></div>';
     /* details */
     h+='<div class="card" style="margin-bottom:14px"><h3>Your details</h3>';
-    h+='<div class="fld"><label>Name</label><input id="pf-name" maxlength="243" value="'+X(nm)+'" placeholder="Your name"></div>';
-    h+='<div class="fld"><label>Company</label><input id="pf-co" maxlength="255" value="'+X(co)+'" placeholder="Your company"></div>';
-h+='<div class="fld"><label>Username</label><input id="pf-user" maxlength="255" value="'+X(un)+'" placeholder="Optional"><p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Optional. A short name the console can show in place of your full name. Clear it to remove it.</p></div>';
-    h+='<div class="fld"><label>Sign-in email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">This is the address you sign in with, and where every message from us goes.</p></div>';
+    h+='<div class="fld"><label for="pf-name">Name</label><input id="pf-name" maxlength="243" value="'+X(nm)+'" placeholder="Your name"></div>';
+    h+='<div class="fld"><label for="pf-co">Company</label><input id="pf-co" maxlength="255" value="'+X(co)+'" placeholder="Your company"></div>';
+h+='<div class="fld"><label for="pf-user">Username</label><input id="pf-user" maxlength="255" value="'+X(un)+'" placeholder="Optional"><p style="font-size:11px;color:#94a3b8;margin:4px 0 0">Optional. A short name the console can show in place of your full name. Clear it to remove it.</p></div>';
+    h+='<div class="fld"><label for="pf-email">Sign-in email</label><input id="pf-email" value="'+X((U&&U.email)||"")+'" disabled style="background:#f8fafc;color:#94a3b8"><p style="font-size:11px;color:#94a3b8;margin-top:4px">This is the address you sign in with, and where every message from us goes.</p></div>';
     h+='<button class="btn" onclick="SPF()">Save</button><span id="pf-msg" class="msg" style="margin-left:8px"></span>';
     /* Change of sign-in address (cron 2026-10-18). Before this the line above read "cannot be
        changed here" and nothing in the app could change it — signup is name+email only, so one
        typo meant an account that could never receive another message. The change is PROVEN: the
        link goes to the NEW address and only that mailbox can complete it. */
     h+='<div style="border-top:1px solid #e2e8f0;margin-top:16px;padding-top:14px">';
-    h+='<div class="fld"><label>Change sign-in email</label><input id="pf-newemail" type="email" autocomplete="email" placeholder="new@example.com"><p style="font-size:11px;color:#94a3b8;margin-top:4px">We send a confirmation link to the new address. Nothing changes until you open it, so a typo here cannot lock you out.</p></div>';
+    h+='<div class="fld"><label for="pf-newemail">Change sign-in email</label><input id="pf-newemail" type="email" autocomplete="email" placeholder="new@example.com"><p style="font-size:11px;color:#94a3b8;margin-top:4px">We send a confirmation link to the new address. Nothing changes until you open it, so a typo here cannot lock you out.</p></div>';
     h+='<button class="btn btn-sm" onclick="RQE()">Send confirmation link</button><span id="pf-emsg" class="msg" style="margin-left:8px"></span></div>';
     /* password: the new password, its confirmation, and the CURRENT password LAST as the check */
     h+='<div class="card"><h3>Change Password</h3>';
-    h+='<div class="fld"><label>New password</label><input id="pf-np" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>';
-    h+='<div class="fld"><label>Confirm new password</label><input id="pf-np2" type="password" autocomplete="new-password"></div>';
-    h+='<div class="fld"><label>Current password (verifies it is you)</label><input id="pf-cp" type="password" autocomplete="current-password"></div>';
+    h+='<div class="fld"><label for="pf-np">New password</label><input id="pf-np" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>';
+    h+='<div class="fld"><label for="pf-np2">Confirm new password</label><input id="pf-np2" type="password" autocomplete="new-password"></div>';
+    h+='<div class="fld"><label for="pf-cp">Current password (verifies it is you)</label><input id="pf-cp" type="password" autocomplete="current-password"></div>';
     h+='<button class="btn" onclick="CPF()">Save</button><span id="pf-pmsg" class="msg" style="margin-left:8px"></span></div>';
     /* Devices (cron 2026-11-01). Sessions are bearer tokens; one sold or lost phone stays signed in
        until the account's session line moves. This button moves it and hands THIS tab a fresh
