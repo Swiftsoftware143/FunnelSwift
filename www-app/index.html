@@ -170,7 +170,7 @@ tr:hover{background:#f8fafc}
          print the raw role word ("User"), which is the stray label David reported — the tier is
          what belongs under the account name. -->
     <div style="display:flex;align-items:center;gap:9px;margin:8px 0 2px">
-      <img id="uav" class="uav" alt="" style="display:none">
+      <img id="uav" class="uav" alt="Your profile picture" style="display:none">
       <span id="uavph" class="uav-ph">?</span>
       <div style="min-width:0">
         <p id="ue" style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Loading...</p>
@@ -3064,7 +3064,7 @@ function MFC(data){
     h+='<div style="position:relative;z-index:2;width:100%;max-width:320px;text-align:center">';
 
     if(av && av.trim()){
-      h+='<img src="'+X(av)+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin:0 auto 16px;display:block;box-shadow:0 0 0 3px '+ac+', 0 0 20px '+ac+'44;animation:pulse-glow 2s ease-in-out infinite" onerror="this.style.display=\'none\'">';
+      h+='<img src="'+X(av)+'" alt="'+X(nm||'')+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin:0 auto 16px;display:block;box-shadow:0 0 0 3px '+ac+', 0 0 20px '+ac+'44;animation:pulse-glow 2s ease-in-out infinite" onerror="this.style.display=\'none\'">';
     }else{
       // Avatar placeholder with gradient circle
       h+='<div style="width:72px;height:72px;border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;background:'+ac+';box-shadow:0 0 0 3px '+ac+', 0 0 20px '+ac+'44;font-size:28px;font-weight:800;color:'+tc+'">'+t[0].toUpperCase()+'</div>';
@@ -5221,7 +5221,7 @@ function LPROF(){
     /* picture */
     h+='<div class="card" style="margin-bottom:14px"><h3>Profile picture</h3>';
     h+='<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
-    h+='<img id="pf-av" class="pf-av" alt="" src="'+X(av)+'" style="'+(av?"":"display:none")+'">';
+    h+='<img id="pf-av" class="pf-av" alt="Your profile picture" src="'+X(av)+'" style="'+(av?"":"display:none")+'">';
     h+='<span id="pf-avph" class="pf-av" style="display:'+(av?"none":"flex")+';align-items:center;justify-content:center;color:#64748b;font-size:28px;font-weight:700">'+X(initial)+'</span>';
     h+='<div><input type="file" id="pf-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">';
     h+='<p style="font-size:11px;color:#94a3b8;margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>';
