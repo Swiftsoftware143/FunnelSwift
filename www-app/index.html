@@ -5801,12 +5801,21 @@ function TMLOAD(msg,kind){
   var box=$("lm-team"); if(!box) return;
   api("/api/v1/team/members").then(function(d){
     var ms=(d&&d.members)||[];
+    var you=(d&&d.you)||null;
     var h='<div style="font-size:12px;color:#334155">';
     if(!ms.length){ h+='<p style="color:#94a3b8">Nobody yet.</p>'; }
     ms.forEach(function(m){
-      h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9">'
+      /* REMOVE (2026-11-10). The invite door shipped without a removal twin, so an owner who added
+         the wrong person had no way to take the seat back. Offered only on a row the server will
+         actually accept: never the workspace owner, never the caller's own login (the API refuses
+         both in words, and a control that can only fail is not a control). The sentence the server
+         returns is printed verbatim. */
+      var removable=!m.is_owner && String(m.id)!==String(you);
+      h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;align-items:center">'
         +'<span>'+X(m.name||m.email)+' <span style="color:#94a3b8;font-size:11px">'+X(m.email||"")+'</span></span>'
-        +'<span style="color:#94a3b8;font-size:11px">'+X(teamRoleWord(m))+'</span></div>';
+        +'<span style="color:#94a3b8;font-size:11px;white-space:nowrap">'+X(teamRoleWord(m))
+        +(removable?' <a href="#" style="color:#dc2626;margin-left:8px" data-tm-remove="'+X(m.id)+'" data-tm-email="'+X(m.email||"")+'">Remove</a>':'')
+        +'</span></div>';
     });
     h+='</div>';
     /* THE ALLOWANCE IS PRINTED, NOT DISCOVERED (2026-10-31). `GET /api/v1/team/members` now carries
@@ -5842,6 +5851,14 @@ function TMLOAD(msg,kind){
     box.innerHTML=h;
     var up=$("tm-upgrade");
     if(up){ up.addEventListener("click",function(ev){ ev.preventDefault(); S("plans"); }); }
+    /* The Remove links are wired AFTER the paint, exactly like the upgrade link above: they are
+       created as markup, so a listener can only be attached once the element exists. */
+    Array.prototype.forEach.call(box.querySelectorAll("[data-tm-remove]"),function(a){
+      a.addEventListener("click",function(ev){
+        ev.preventDefault();
+        TMDEL(a.getAttribute("data-tm-remove"),a.getAttribute("data-tm-email"));
+      });
+    });
     if(msg){ var s=$("tm-msg"); if(s){ s.style.color=(kind==="e")?"#dc2626":"#059669"; s.textContent=msg; } }
   }).catch(function(e){ box.innerHTML='<p class="msg me">Could not load your team: '+X(e.message||String(e))+'</p>'; });
 }
@@ -5868,6 +5885,31 @@ function TMADD(){
       /* A 402 carries the server's own sentence on `planMessage` (`api()`'s upgrade arm); `message`
          there is only the code "upgrade_required", which is not something to show a customer. */
       var why=(e&&(e.planMessage||e.message))||"That teammate could not be added.";
+      if(msg){ msg.style.color="#dc2626"; msg.textContent=why; }
+    });
+}
+
+/* === Remove a teammate (2026-11-10) ===========================================================
+   The invite door's missing half. DELETE /api/v1/team/members/:id deactivates the person: their
+   login stops working on their next request (the auth boundary refuses an inactive row) and the
+   seat is freed. Confirm first — this is a revocation, not a rename — and print the server's own
+   sentence for every refusal (owner, self, not in this workspace) instead of paraphrasing it. */
+function TMDEL(id,email){
+  if(!id) return;
+  if(!confirm("Remove "+(email||"this person")+" from your workspace? They will be signed out and will not be able to sign in again unless you add them back.")) return;
+  var msg=$("tm-msg");
+  if(msg){ msg.style.color="#64748b"; msg.textContent="Removing…"; }
+  api("/api/v1/team/members/"+encodeURIComponent(id),{method:"DELETE"})
+    .then(function(d){
+      var s=(d&&d.seats)||null;
+      var note="Removed "+(d&&d.email?d.email:email)+". They can no longer sign in to this workspace"
+        +(s&&s.limit!==null&&typeof s.limit!=="undefined"?" — "+Number(s.used)+" of "+Number(s.limit)+" seats now used.":".");
+      TMLOAD(note,"");
+    })
+    .catch(function(e){
+      /* 404 = already gone (two tabs, or another admin got there first): say so plainly rather
+         than showing an error for a state that is already what the customer asked for. */
+      var why=(e&&e.message)||"That teammate could not be removed.";
       if(msg){ msg.style.color="#dc2626"; msg.textContent=why; }
     });
 }

@@ -866,6 +866,10 @@ pub async fn team_members(
 
     Ok(Json(json!({
         "members": members,
+        // WHO IS ASKING (2026-11-10). The pane's new Remove control must not offer to remove the
+        // caller's own login (the server refuses it in words), so the id the boundary already read
+        // travels with the list instead of being re-derived on the screen.
+        "you": auth.user_id,
         "seats": {
             "used": used,
             "limit": seat_limit,

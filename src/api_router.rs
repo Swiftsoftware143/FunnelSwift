@@ -299,6 +299,14 @@ pub fn create_router(
             "/api/v1/team/invite",
             post(crate::handlers::team_handler::invite_teammate),
         )
+        // The REMOVAL twin (2026-11-10). The invite door shipped without one, so an owner who added
+        // the wrong person had no way to take the seat back — the only door was the platform
+        // operator's. Authority, the owner/self refusals and the deactivation live in the handler;
+        // the route is PRIVATE by default (it is not in `auth::route_policy::PUBLIC_ROUTES`).
+        .route(
+            "/api/v1/team/members/:id",
+            axum::routing::delete(crate::handlers::team_handler::remove_teammate),
+        )
         .route(
             "/api/v1/leads/:id/stage",
             post(lead_handler::update_lead_stage),

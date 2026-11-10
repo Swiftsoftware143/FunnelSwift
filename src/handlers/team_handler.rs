@@ -28,7 +28,10 @@
 //! operator console runs, so the address rule, the duplicate check, the generated password, the
 //! credentials mail and the withheld/handover contract cannot drift between the two doors.
 
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -108,6 +111,93 @@ pub async fn invite_teammate(
         obj.insert("role".to_string(), json!(role));
     }
     mint_workspace_user(&state, tenant_id, &body).await
+}
+
+/// `DELETE /api/v1/team/members/:id` — take a colleague's access away (2026-11-10).
+///
+/// The invite door had no counterpart: a workspace owner could add a person but never revoke them,
+/// so the only way out of a workspace was to ask the platform operator. Authority is the SAME rule
+/// the invite door enforces ([`may_invite`]) — its creator, an appointed `company_admin`, or the
+/// platform operator — because a door that can add must be the door that can remove.
+///
+/// The write is a DEACTIVATION, not a row delete. Two reasons, both measured:
+///   * `users` is referenced by the workspace's own history (`leads.assigned_to`, the audit
+///     columns), so a hard delete either fails on the FK or silently rewrites who owned what.
+///   * It IS revocation here: `global_auth::user_session_state` reads the row on every request and
+///     refuses an inactive account with 401 (`Ok(_) => SESSION_REVOKED`), so the token they hold
+///     stops working on their very next call. `sessions_valid_from` moves in the same statement so
+///     a session minted a second before the removal cannot be replayed if the row is ever
+///     reactivated.
+///
+/// A row in ANOTHER workspace is a 404, not a 403: the tenant is in the WHERE clause, so the
+/// answer cannot confirm that somebody else's teammate exists.
+pub async fn remove_teammate(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::Unauthorized("Invalid tenant".into()))?;
+
+    if !may_invite(&state, &auth, tenant_id).await? {
+        return Err(AppError::Forbidden(
+            "Only the workspace owner or a company admin can remove a teammate".into(),
+        ));
+    }
+
+    let me = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user".into()))?;
+    if id == me {
+        return Err(AppError::BadRequest(
+            "That is your own login. Sign out instead of removing yourself from the workspace."
+                .into(),
+        ));
+    }
+    // The workspace would have no door to add an owner back, so the creator is not removable
+    // through this control — the same rule the list's `is_owner` flag states on screen.
+    if is_workspace_creator(&state, tenant_id, id).await? {
+        return Err(AppError::Forbidden(
+            "The workspace owner cannot be removed from the workspace.".into(),
+        ));
+    }
+
+    let target: Option<String> = sqlx::query_scalar(
+        "SELECT email FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = true",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let email = target.ok_or_else(|| {
+        AppError::NotFound("That teammate is not active in this workspace.".into())
+    })?;
+
+    sqlx::query(
+        "UPDATE users SET is_active = false, sessions_valid_from = NOW(), updated_at = NOW() \
+          WHERE id = $1 AND tenant_id = $2 AND is_active = true",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    // The seats travel back with the answer, from the same resolver the list and the invite gate
+    // use, so the pane can repaint its counter without a second read that could disagree.
+    let used: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+    let limit = features::resolved_limit(&state, tenant_id, "max_team_members")
+        .await
+        .ok()
+        .flatten();
+
+    Ok(Json(json!({
+        "removed": true,
+        "email": email,
+        "seats": { "used": used, "limit": limit },
+    })))
 }
 
 /// The fleet's generic limit sentence ends "Upgrade to increase your limit." — a DEAD END when the
