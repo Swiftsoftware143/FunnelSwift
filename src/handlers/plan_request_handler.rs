@@ -38,6 +38,21 @@ pub struct CreateBody {
     pub plan_slug: String,
     #[serde(default)]
     pub note: String,
+    /// Which billing term the customer chose on the Upgrade screen — `month`/`monthly` or
+    /// `year`/`yearly`. OPTIONAL and defaulting to monthly, so every existing caller (and every
+    /// request filed before this field existed) keeps exactly the meaning it had.
+    #[serde(default)]
+    pub billing_cycle: Option<String>,
+}
+
+/// `9.0` renders as `$9`, `89.5` as `$89.50` — a price on a buying surface never prints a float
+/// tail it does not need.
+fn money(p: f64) -> String {
+    if (p.fract()).abs() < 0.005 {
+        format!("${p:.0}")
+    } else {
+        format!("${p:.2}")
+    }
 }
 
 #[derive(Deserialize)]
@@ -70,13 +85,33 @@ pub async fn create(
         return Err(AppError::BadRequest("plan_slug is required".into()));
     }
 
-    let plan: Option<(String, f64)> =
-        sqlx::query_as("SELECT name, price::float8 FROM plans WHERE slug = $1")
-            .bind(&slug)
-            .fetch_optional(&state.pool)
-            .await?;
-    let (plan_name, price) =
+    let plan: Option<(String, f64, f64)> = sqlx::query_as(
+        "SELECT name, price::float8, COALESCE(annual_price, 0)::float8 FROM plans WHERE slug = $1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (plan_name, price, annual_price) =
         plan.ok_or_else(|| AppError::NotFound(format!("No plan with slug '{slug}'")))?;
+
+    // ── WHICH BILLING TERM THE CUSTOMER CHOSE (2026-11-10) ──────────────────────────────────────
+    // The Upgrade screen has priced a yearly term from `plans.annual_price` since 2026-10-24, but
+    // the request it files carried no term at all, so a customer who picked "Yearly — 2 months
+    // free" landed in the operator's queue as a monthly ask. Optional and defaulting to monthly:
+    // every caller that names no term keeps the meaning it always had.
+    let billing_cycle: String = match body.billing_cycle.as_deref().map(str::trim) {
+        None | Some("") => "monthly".to_string(),
+        Some(raw) => match raw.to_ascii_lowercase().as_str() {
+            "month" | "monthly" | "mo" => "monthly".to_string(),
+            "year" | "yearly" | "annual" | "annually" | "yr" => "yearly".to_string(),
+            other => {
+                return Err(AppError::BadRequest(format!(
+                    "billing_cycle must be \"month\" or \"year\" — got \"{other}\". Nothing was charged."
+                )))
+            }
+        },
+    };
+
     if price <= 0.0 {
         // A $0 PLAN IS NOT A PURCHASE — but it can be a DOWNGRADE (2026-11-01). The flat refusal
         // here was right for a workspace already running on a $0 tier (there is nothing to buy, and
@@ -96,13 +131,51 @@ pub async fn create(
         }
     }
 
+    // A TERM THE CATALOGUE DOES NOT PRICE IS NOT SELLABLE (2026-11-10). `annual_price` is 0 for a
+    // tier with no yearly figure, and recording a "yearly" ask for one would put a term in the
+    // operator's queue that has no price to invoice. Name it instead of filing it.
+    if billing_cycle == "yearly" && annual_price <= 0.0 && price > 0.0 {
+        return Err(AppError::BadRequest(format!(
+            "{plan_name} has no yearly price — request it monthly, or ask our team for a yearly figure."
+        )));
+    }
+
+    let term_label = if billing_cycle == "yearly" {
+        "Yearly"
+    } else {
+        "Monthly"
+    };
+    let term_price = if billing_cycle == "yearly" {
+        annual_price
+    } else {
+        price
+    };
+    let term_unit = if billing_cycle == "yearly" {
+        "year"
+    } else {
+        "month"
+    };
+    // What every human-facing leg of this request calls the ask: the plan, the term, and the money
+    // that term costs. Used for the customer's receipt, the operator's alert and the reply text, so
+    // they cannot contradict each other or the row in the database.
+    let plan_display = if term_price > 0.0 {
+        format!(
+            "{plan_name} — {term_label} ({} / {term_unit})",
+            money(term_price)
+        )
+    } else {
+        format!("{plan_name} — {term_label}")
+    };
+
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM plan_requests
-          WHERE tenant_id = $1 AND plan_slug = $2 AND status IN ('open','contacted')
+          WHERE tenant_id = $1 AND plan_slug = $2 AND billing_cycle = $3
+            AND status IN ('open','contacted')
           ORDER BY created_at DESC LIMIT 1",
     )
     .bind(tenant_id)
     .bind(&slug)
+    .bind(&billing_cycle)
     .fetch_optional(&state.pool)
     .await?;
     if let Some(id) = existing {
@@ -111,16 +184,21 @@ pub async fn create(
             Json(json!({
                 "id": id,
                 "status": "existing",
-                "message": "Your request is already with our team."
+                "billing_cycle": billing_cycle,
+                "message": format!(
+                    "Your request for {} is already with our team.",
+                    plan_display
+                )
             })),
         ));
     }
 
     let note: String = body.note.trim().chars().take(1000).collect();
     let row = sqlx::query(
-        "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, status, created_at::text AS created_at",
+        "INSERT INTO plan_requests
+             (tenant_id, user_id, requested_by, plan_slug, plan_name, note, billing_cycle)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, status, billing_cycle, created_at::text AS created_at",
     )
     .bind(tenant_id)
     .bind(user_id)
@@ -128,6 +206,7 @@ pub async fn create(
     .bind(&slug)
     .bind(&plan_name)
     .bind(&note)
+    .bind(&billing_cycle)
     .fetch_one(&state.pool)
     .await?;
 
@@ -155,7 +234,7 @@ pub async fn create(
         tenant_id,
         &auth.email,
         &greeting,
-        &plan_name,
+        &plan_display,
         &note,
     )
     .await
@@ -174,7 +253,7 @@ pub async fn create(
     if let Err(e) = crate::email::send_plan_request_operator_alert(
         &state.pool,
         tenant_id,
-        &plan_name,
+        &plan_display,
         &auth.email,
         &note,
     )
@@ -193,6 +272,12 @@ pub async fn create(
             "status": row.get::<String, _>("status"),
             "plan_slug": slug,
             "plan_name": plan_name,
+            // The term is part of the answer, not just of the row: the screen says which term was
+            // filed, so the confirmation cannot promise a monthly ask to someone who chose yearly.
+            "billing_cycle": billing_cycle,
+            "term_label": term_label,
+            "term_price": term_price,
+            "plan_label": plan_display,
             "created_at": row.get::<String, _>("created_at"),
             // Whether the customer's receipt actually went out, so the Upgrade screen can say
             // "we emailed you a copy" only when it is true.
@@ -205,7 +290,8 @@ pub async fn create(
 pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
     let tenant_id = parse_tenant(&auth)?;
     let rows = sqlx::query(
-        "SELECT id, plan_slug, plan_name, note, status, reply, replied_at::text AS replied_at,
+        "SELECT id, plan_slug, plan_name, note, status, reply, billing_cycle,
+                replied_at::text AS replied_at,
                 created_at::text AS created_at
            FROM plan_requests WHERE tenant_id = $1
           ORDER BY created_at DESC LIMIT 50",
@@ -221,6 +307,7 @@ pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResu
                 "id": r.get::<Uuid, _>("id"),
                 "plan_slug": r.get::<String, _>("plan_slug"),
                 "plan_name": r.get::<String, _>("plan_name"),
+                "billing_cycle": r.get::<String, _>("billing_cycle"),
                 "note": r.get::<String, _>("note"),
                 "status": r.get::<String, _>("status"),
                 "reply": r.get::<String, _>("reply"),
@@ -337,7 +424,7 @@ pub async fn admin_list(
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     let rows = sqlx::query(
-        "SELECT pr.id, pr.plan_slug, pr.plan_name, pr.note, pr.status, pr.reply,
+        "SELECT pr.id, pr.plan_slug, pr.plan_name, pr.billing_cycle, pr.note, pr.status, pr.reply,
                 pr.replied_at::text AS replied_at, pr.requested_by,
                 pr.created_at::text AS created_at, t.name AS tenant_name, t.id AS tenant_id,
                 COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
@@ -375,6 +462,7 @@ pub async fn admin_list(
                 "requested_by": r.get::<String, _>("requested_by"),
                 "plan_slug": r.get::<String, _>("plan_slug"),
                 "plan_name": r.get::<String, _>("plan_name"),
+                "billing_cycle": r.get::<String, _>("billing_cycle"),
                 "note": r.get::<String, _>("note"),
                 "status": r.get::<String, _>("status"),
                 "reply": r.get::<String, _>("reply"),
