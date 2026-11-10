@@ -5848,6 +5848,12 @@ function TMLOAD(msg,kind){
       +'<button class="btn btn-sm" onclick="TMADD()">Add teammate</button>'
       +'<span id="tm-msg" style="font-size:11px;color:#64748b"></span></div>';
     }
+    /* THE ANSWER NEEDS A HOME OF ITS OWN (2026-11-10). `#tm-msg` lives inside the invite FORM, and
+       the form is only rendered while a seat is free — so the sentence that confirms a REMOVAL
+       ("Removed x@y — 1 of 1 seats now used") had nowhere to appear exactly when it was needed:
+       removing the last teammate fills the plan again and takes the form away with it. This slot is
+       always painted, so every arm of TMLOAD can speak. */
+    h+='<div id="tm-note" style="font-size:12px;margin-top:8px"></div>';
     box.innerHTML=h;
     var up=$("tm-upgrade");
     if(up){ up.addEventListener("click",function(ev){ ev.preventDefault(); S("plans"); }); }
@@ -5859,7 +5865,7 @@ function TMLOAD(msg,kind){
         TMDEL(a.getAttribute("data-tm-remove"),a.getAttribute("data-tm-email"));
       });
     });
-    if(msg){ var s=$("tm-msg"); if(s){ s.style.color=(kind==="e")?"#dc2626":"#059669"; s.textContent=msg; } }
+    if(msg){ var s=$("tm-note")||$("tm-msg"); if(s){ s.style.color=(kind==="e")?"#dc2626":"#059669"; s.textContent=msg; } }
   }).catch(function(e){ box.innerHTML='<p class="msg me">Could not load your team: '+X(e.message||String(e))+'</p>'; });
 }
 function TMADD(){
