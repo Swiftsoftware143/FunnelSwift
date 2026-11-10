@@ -1324,6 +1324,22 @@ function D(){
     var h='<div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
     h+='<div><h3 style="margin:0 0 2px">Your Plan</h3>';
     h+='<div style="font-size:20px;font-weight:800">'+X(unassigned?"No plan assigned":pn)+'</div>';
+    /* THE TERM THIS WORKSPACE IS BILLED ON (2026-11-10). `/auth/me` now carries the subscription's OWN
+       term (`tenant_plan_subscriptions.billing_cycle`, migration 125) inside `current_plan`, because
+       until this the customer had to INFER their term from the price and the operator's queue was the
+       only place it was written down. Rendered only for a PAID row: the free tiers' 'month' default
+       would otherwise tell a non-paying workspace it is billed monthly, which is the same class of
+       lie as calling it "Free". A missing or unknown term renders nothing. */
+    if(cp&&Number(cp.price)>0){
+      var cyc=String(cp.billing_cycle||'');
+      if(cyc==='year'||cyc==='month'){
+        var cycAmt=(cyc==='year'?(cp.annual_price||cp.price):cp.price);
+        h+='<div data-plan-term="'+X(cyc)+'" style="color:#475569;font-size:13px;margin-top:2px">Billed '
+          +(cyc==='year'?'yearly':'monthly')
+          +(Number(cycAmt)>0?(' \u2014 $'+Number(cycAmt).toFixed(2)+(cyc==='year'?' / year':' / month')):'')
+          +'</div>';
+      }
+    }
     if(unassigned){h+='<div style="color:#92400e;font-size:12px;margin-top:4px;max-width:52ch">'+(u&&u.plan_effective_name?('This workspace has no plan chosen yet, so it runs on '+X(u.plan_effective_name)+' \u2014 the tier this app applies to a workspace without a plan. '):('This workspace has no plan chosen yet, so its limits are not set. '))+'Choose a plan and our team puts it on your workspace \u2014 nothing is charged until you ask.</div>';}
     if(cp){
       /* kanban cron-1016 — GET /api/v1/me/usage answered this workspace's own live counts and had
