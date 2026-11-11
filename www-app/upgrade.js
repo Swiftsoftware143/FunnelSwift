@@ -149,18 +149,27 @@ async function requestPlan(slug){
   if(!p) return;
   var token = T || '';
   PREQ_MSG = null;
+  /* THE TERM THE CUSTOMER PICKED IS PART OF THE ASK (2026-11-10). This screen has offered a
+     "Yearly — 2 months free" switch since 2026-10-24 and prices it from `plans.annual_price`, but
+     the request posted the slug ALONE — so on this install (no payment provider: the request IS
+     the buying path) a customer who chose Yearly filed an ask the operator could only read as
+     monthly, and would be invoiced for a term they had not chosen. */
+  var useYear = (TERM === 'year' && Number(p.annual_price||0) > 0);
+  var cycle = useYear ? 'year' : 'month';
   try {
     var r = await fetch(window.location.origin+'/api/v1/plan-requests', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body:JSON.stringify({plan_slug:slug})
+      body:JSON.stringify({plan_slug:slug, billing_cycle:cycle})
     });
     var d = {};
     try { d = await r.json(); } catch(e) { d = {}; }
     if(!r.ok){
       PREQ_MSG = {ok:false, text:(d && (d.message||d.error)) || ('The request could not be sent (server answered '+r.status+'). Nothing was charged.')};
     } else if(d && d.status === 'existing'){
-      PREQ_MSG = {ok:true, text:'Your request for the '+p.name+' plan is already with our team.'};
+      // The server answers with the plan AND the term it already holds, so the chip cannot claim a
+      // monthly ask to somebody who chose yearly.
+      PREQ_MSG = {ok:true, text:(d && d.message) || ('Your request for the '+p.name+' plan is already with our team.')};
     } else {
       /* cron 2026-10-20 — the server now mails the filer a receipt. Say so only when the send
          actually happened: `acknowledged:false` means the row is on record and the mail did not go
@@ -171,7 +180,8 @@ async function requestPlan(slug){
          the console promise a copy nothing had queued. The promise needs a positive `true`, which
          is what ADASwift, IncentiveSwift and MissedCall already require. */
       var mailed = (d && d.acknowledged === true) ? ' We have emailed you a copy of this request.' : '';
-      PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan and confirm here. Nothing was charged.'+mailed};
+      var termWord = useYear ? ' on the yearly term (2 months free)' : ' on the monthly term';
+      PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan'+termWord+' and confirm here. Nothing was charged.'+mailed};
     }
     PREQ_OFFER = null;
   } catch(e) {
@@ -200,6 +210,7 @@ async function loadAdminRequests(){
       h += '<div data-admin-plan-request="'+esc(q.id)+'" style="padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">'
         + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center">'
         + '<div><strong>'+esc(q.tenant_name)+'</strong> · '+esc(q.plan_name || q.plan_slug)
+        + ' <span data-term-chip="'+esc(q.billing_cycle||'monthly')+'" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+(q.billing_cycle==='yearly'?'#dcfce7':'#f1f5f9')+';color:'+(q.billing_cycle==='yearly'?'#166534':'#475569')+'">'+esc(q.billing_cycle==='yearly'?'Yearly':'Monthly')+'</span>'
         + '<div style="color:#94a3b8;font-size:11px">'+esc(q.requested_by||'')+' · '+esc(String(q.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'
         + '<div style="display:flex;gap:6px;align-items:center">'+reqChip(q.status);
       ['contacted','done','declined'].forEach(function(s){

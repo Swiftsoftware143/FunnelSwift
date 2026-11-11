@@ -498,8 +498,8 @@ function renderLogin() {
         <p style="font-size:13px;color:var(--muted)">Sign in to manage your account</p>
       </div>
       <div id="login-error" style="background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none"></div>
-      <div class="form-group"><label class="form-label">Email</label><input class="input" id="login-email" type="email" placeholder="you@yourcompany.com" autocomplete="email"></div>
-      <div class="form-group"><label class="form-label">Password</label><input class="input" id="login-pass" type="password" placeholder="Enter password" autocomplete="current-password"></div>
+      <div class="form-group"><label class="form-label">Email</label><input aria-label="Email" class="input" id="login-email" type="email" placeholder="you@yourcompany.com" autocomplete="email"></div>
+      <div class="form-group"><label class="form-label">Password</label><input aria-label="Password" class="input" id="login-pass" type="password" placeholder="Enter password" autocomplete="current-password"></div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px" id="login-btn">Sign In</button>
       <div style="text-align:center;margin-top:14px;font-size:13px"><a href="https://app.funnelswift.net/login.html?forgot=1" style="color:#6366f1">Forgot password?</a></div>
     </div>
@@ -859,7 +859,7 @@ async function renderMyAccount() {
         <img id="fsac-av" alt="Your profile picture" style="width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--bg-secondary);display:${av?'':'none'}"${av?` src="${x(av)}"`:''}>
         <span id="fsac-avph" style="width:72px;height:72px;border-radius:50%;background:var(--primary);color:#fff;display:${av?'none':'flex'};align-items:center;justify-content:center;font-size:28px;font-weight:700">${x(initial)}</span>
         <div>
-          <input type="file" id="fsac-file" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">
+          <input type="file" id="fsac-file" aria-label="Choose a profile picture to upload" accept="image/png,image/jpeg,image/gif,image/webp" style="font-size:12px">
           <p style="font-size:11px;color:var(--muted);margin:4px 0 6px">PNG, JPEG, GIF or WebP, up to 2 MB.</p>
           <button class="btn btn-primary btn-sm" onclick="window._fsAvatarUpload()">Upload picture</button>
           <button class="btn btn-sm" id="fsac-avdel" style="${av?'':'display:none'};margin-left:6px" onclick="window._fsAvatarRemove()">Remove picture</button>
@@ -870,17 +870,17 @@ async function renderMyAccount() {
     <div class="card">
       <div class="card-header"><span class="card-title">✏️ Your details</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div class="form-label">Name</div><input class="input" id="fsac-name" maxlength="243" value="${x(USER.name||'')}" placeholder="Your name"></div>
-        <div><div class="form-label">Username</div><input class="input" id="fsac-user" maxlength="255" value="${x(USER.username||'')}" placeholder="Optional"></div>
-        <div><div class="form-label">Company</div><input class="input" id="fsac-co" maxlength="255" value="${x(USER.company||'')}" placeholder="Your company"></div>
+        <div><div class="form-label">Name</div><input aria-label="Name" class="input" id="fsac-name" maxlength="243" value="${x(USER.name||'')}" placeholder="Your name"></div>
+        <div><div class="form-label">Username</div><input aria-label="Username" class="input" id="fsac-user" maxlength="255" value="${x(USER.username||'')}" placeholder="Optional"></div>
+        <div><div class="form-label">Company</div><input aria-label="Company" class="input" id="fsac-co" maxlength="255" value="${x(USER.company||'')}" placeholder="Your company"></div>
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsProfileSave()">Save</button><span id="fsac-pmsg" style="font-size:12px;margin-left:8px"></span></div>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">🏷️ Your workspace</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div class="form-label">Workspace name</div><input class="input" id="fsac-ws" maxlength="255" value="${x(USER.tenant_name||'')}" placeholder="Your business name" ${canRenameWs?'':'disabled'}></div>
-        <div><div class="form-label">Public address</div><input class="input" id="fsac-wsslug" value="${x(USER.tenant_slug||'')}" disabled></div>
+        <div><div class="form-label">Workspace name</div><input aria-label="Workspace name" class="input" id="fsac-ws" maxlength="255" value="${x(USER.tenant_name||'')}" placeholder="Your business name" ${canRenameWs?'':'disabled'}></div>
+        <div><div class="form-label">Public address</div><input aria-label="Public address" class="input" id="fsac-wsslug" value="${x(USER.tenant_slug||'')}" disabled></div>
       </div>
       ${canRenameWs
         ? `<div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsWorkspaceSave()">Save</button><span id="fsac-wsmsg" style="font-size:12px;margin-left:8px"></span></div>
@@ -890,9 +890,9 @@ async function renderMyAccount() {
     <div class="card">
       <div class="card-header"><span class="card-title">🔒 Change Password</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div class="form-label">New password</div><input class="input" type="password" id="fsac-np" autocomplete="new-password" placeholder="At least 8 characters"></div>
-        <div><div class="form-label">Confirm new password</div><input class="input" type="password" id="fsac-np2" autocomplete="new-password"></div>
-        <div><div class="form-label">Current password (verifies it is you)</div><input class="input" type="password" id="fsac-cp" autocomplete="current-password"></div>
+        <div><div class="form-label">New password</div><input aria-label="New password" class="input" type="password" id="fsac-np" autocomplete="new-password" placeholder="At least 8 characters"></div>
+        <div><div class="form-label">Confirm new password</div><input aria-label="Confirm new password" class="input" type="password" id="fsac-np2" autocomplete="new-password"></div>
+        <div><div class="form-label">Current password (verifies it is you)</div><input aria-label="Current password (verifies it is you)" class="input" type="password" id="fsac-cp" autocomplete="current-password"></div>
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="window._fsPasswordSave()">Save</button><span id="fsac-pwmsg" style="font-size:12px;margin-left:8px"></span></div>
     </div>
@@ -925,7 +925,7 @@ async function renderMyAccount() {
         that link, and the link expires in two hours.
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><div class="form-label">New email address</div><input class="input" id="fsac-ec" type="email" maxlength="254" autocomplete="email" placeholder="you@yourbusiness.com"></div>
+        <div><div class="form-label">New email address</div><input aria-label="New email address" class="input" id="fsac-ec" type="email" maxlength="254" autocomplete="email" placeholder="you@yourbusiness.com"></div>
       </div>
       <div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="fsac-ec-btn" onclick="window._fsEmailChangeSend()">Send confirmation link</button><span id="fsac-ecmsg" style="font-size:12px;margin-left:8px"></span></div>
     </div>
@@ -1290,16 +1290,16 @@ function openPortfolioModal(id) {
     if (!body) return;
     body.innerHTML = `<form id="portfolio-form">
       <div class="form-group"><label class="form-label">Company name</label>
-        <input class="input" name="name" value="${x(co.name||'')}" maxlength="120" required></div>
+        <input aria-label="Company name" class="input" name="name" value="${x(co.name||'')}" maxlength="120" required></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Short name (in the URL)</label>
-          <input class="input" name="slug" value="${x(co.slug||'')}" pattern="[a-z0-9-]+" maxlength="60" required>
+          <input aria-label="Short name (in the URL)" class="input" name="slug" value="${x(co.slug||'')}" pattern="[a-z0-9-]+" maxlength="60" required>
           <div style="font-size:11px;color:var(--muted)">lowercase letters, numbers and dashes only</div></div>
         <div class="form-group"><label class="form-label">Contact email</label>
-          <input class="input" name="email" type="email" value="${x(co.email||'')}" placeholder="name@company.com"></div>
+          <input aria-label="Contact email" class="input" name="email" type="email" value="${x(co.email||'')}" placeholder="name@company.com"></div>
       </div>
       <div class="form-group"><label class="form-label">Description</label>
-        <textarea class="input" name="description" rows="3" maxlength="500" placeholder="What this company does">${x(co.description||'')}</textarea></div>
+        <textarea aria-label="Description" class="input" name="description" rows="3" maxlength="500" placeholder="What this company does">${x(co.description||'')}</textarea></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         ${id?`<button type="button" class="btn btn-danger" onclick="window._deletePortfolio('${id}')">Delete</button>`:''}
@@ -1579,15 +1579,15 @@ function openPlanModal(id) {
     if (!body) return;
     const f = (k, def) => plan[k] !== undefined ? plan[k] : def;
     body.innerHTML = `<form id="plan-form">
-      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(f('name',''))}" required></div><div class="form-group"><label class="form-label">Slug</label><input class="input" name="slug" value="${x(f('slug',''))}" required></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(f('name',''))}" required></div><div class="form-group"><label class="form-label">Slug</label><input aria-label="Slug" class="input" name="slug" value="${x(f('slug',''))}" required></div></div>
       <div class="form-row"><div class="form-group"><label class="form-label">Price ($)</label><input class="input" name="price" type="number" step="0.01" value="${f('price',0)}"></div><div class="form-group"><label class="form-label">Annual Price ($)</label><input class="input" name="annual_price" type="number" step="0.01" value="${f('annual_price','')}"></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Billing Cycle</label><select class="input" name="billing_cycle"><option value="month" ${f('billing_cycle')==='month'?'selected':''}>Monthly</option><option value="year" ${f('billing_cycle')==='year'?'selected':''}>Yearly</option><option value="lifetime" ${f('billing_cycle')==='lifetime'?'selected':''}>Lifetime</option></select></div><div class="form-group"><label class="form-label">Side</label><select class="input" name="side"><option value="main" ${(f('side')==='main'||f('side')==='capture')?'selected':''}>Capture (main)</option><option value="kinetic" ${f('side')==='kinetic'?'selected':''}>Kinetic</option><option value="both" ${f('side')==='both'?'selected':''}>Both sides</option></select></div></div>
-      <div class="form-group" style="margin-top:8px"><label class="form-label">Payment link (optional)</label><input class="input" name="purchase_url" type="url" placeholder="https://buy.stripe.com/..." value="${x(f('purchase_url','')||'')}"><div style="font-size:11px;color:var(--muted);margin-top:4px">A hosted payment page for this plan (a Stripe Payment Link, a PayPal button, anything that takes the money). With no payment provider key on this installation, pressing Upgrade sends the buyer here instead of refusing \u2014 paste one and this plan can be sold today. The plan is switched on by hand from the plan-request queue once the payment lands.</div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Max Cards</label><input class="input" name="max_cards" type="number" value="${f('max_cards','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Leads</label><input class="input" name="max_leads" type="number" value="${f('max_leads','')}" placeholder="Unlimited"></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Max Tags</label><input class="input" name="max_tags" type="number" value="${f('max_tags','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Forms</label><input class="input" name="max_forms" type="number" value="${f('max_forms','')}" placeholder="Unlimited"></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Max Team Members</label><input class="input" name="max_team_members" type="number" value="${f('max_team_members','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Custom Domains</label><input class="input" name="max_custom_domains" type="number" value="${f('max_custom_domains','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Billing Cycle</label><select aria-label="Billing Cycle" class="input" name="billing_cycle"><option value="month" ${f('billing_cycle')==='month'?'selected':''}>Monthly</option><option value="year" ${f('billing_cycle')==='year'?'selected':''}>Yearly</option><option value="lifetime" ${f('billing_cycle')==='lifetime'?'selected':''}>Lifetime</option></select></div><div class="form-group"><label class="form-label">Side</label><select aria-label="Side" class="input" name="side"><option value="main" ${(f('side')==='main'||f('side')==='capture')?'selected':''}>Capture (main)</option><option value="kinetic" ${f('side')==='kinetic'?'selected':''}>Kinetic</option><option value="both" ${f('side')==='both'?'selected':''}>Both sides</option></select></div></div>
+      <div class="form-group" style="margin-top:8px"><label class="form-label">Payment link (optional)</label><input aria-label="Payment link (optional)" class="input" name="purchase_url" type="url" placeholder="https://buy.stripe.com/..." value="${x(f('purchase_url','')||'')}"><div style="font-size:11px;color:var(--muted);margin-top:4px">A hosted payment page for this plan (a Stripe Payment Link, a PayPal button, anything that takes the money). With no payment provider key on this installation, pressing Upgrade sends the buyer here instead of refusing \u2014 paste one and this plan can be sold today. The plan is switched on by hand from the plan-request queue once the payment lands.</div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Cards</label><input aria-label="Max Cards" class="input" name="max_cards" type="number" value="${f('max_cards','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Leads</label><input aria-label="Max Leads" class="input" name="max_leads" type="number" value="${f('max_leads','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Tags</label><input aria-label="Max Tags" class="input" name="max_tags" type="number" value="${f('max_tags','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Forms</label><input aria-label="Max Forms" class="input" name="max_forms" type="number" value="${f('max_forms','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Team Members</label><input aria-label="Max Team Members" class="input" name="max_team_members" type="number" value="${f('max_team_members','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Custom Domains</label><input aria-label="Max Custom Domains" class="input" name="max_custom_domains" type="number" value="${f('max_custom_domains','')}" placeholder="Unlimited"></div></div>
       <div style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Team Members is how many logins this plan allows in one workspace: 1 is the owner alone, leave it blank for unlimited. The customer's own dashboard reads the same number as "Team used / allowed".</div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Max QR Codes</label><input class="input" name="max_qr_codes" type="number" value="${f('max_qr_codes','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max OCR Scans</label><input class="input" name="max_ocr_scans" type="number" value="${f('max_ocr_scans','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max QR Codes</label><input aria-label="Max QR Codes" class="input" name="max_qr_codes" type="number" value="${f('max_qr_codes','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max OCR Scans</label><input aria-label="Max OCR Scans" class="input" name="max_ocr_scans" type="number" value="${f('max_ocr_scans','')}" placeholder="Unlimited"></div></div>
       <div style="margin-top:12px"><div class="form-label" style="margin-bottom:8px">Feature Toggles</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${['has_webhooks','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
@@ -1683,10 +1683,10 @@ async function renderTeam() {
       <div class="card-header"><span class="card-title">➕ Add a teammate</span></div>
       <p style="font-size:12px;color:var(--muted);margin:0 0 10px">They get their own sign-in. We email a temporary password, and they change it after signing in. Only the workspace owner or a company admin can add people.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr 160px;gap:12px">
-        <div><div class="form-label">Name</div><input class="input" id="team-name" maxlength="243" placeholder="Their name"></div>
-        <div><div class="form-label">Email</div><input class="input" id="team-email" type="email" maxlength="254" placeholder="name@company.com"></div>
+        <div><div class="form-label">Name</div><input aria-label="Name" class="input" id="team-name" maxlength="243" placeholder="Their name"></div>
+        <div><div class="form-label">Email</div><input aria-label="Email" class="input" id="team-email" type="email" maxlength="254" placeholder="name@company.com"></div>
         <div><div class="form-label">Role</div>
-          <select class="input" id="team-role">
+          <select aria-label="Role" class="input" id="team-role">
             <option value="user">Member</option>
             <option value="business_user">Business user</option>
             <option value="company_admin">Company admin</option>
@@ -1834,7 +1834,7 @@ async function renderLeads() {
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <h1 style="font-size:22px;font-weight:700">Leads</h1>
       <div class="btn-group">
-        <div class="search-bar"><span class="search-icon">🔍</span><input class="input" id="lead-search" placeholder="Search all leads..." style="width:200px" value="${x(term)}"></div>
+        <div class="search-bar"><span class="search-icon">🔍</span><input class="input" id="lead-search" aria-label="Search all leads" placeholder="Search all leads..." style="width:200px" value="${x(term)}"></div>
         <input type="file" id="import-leads-file" accept=".csv,text/csv" style="display:none">
         <button class="btn btn-secondary btn-sm" id="import-leads-btn">📤 Import CSV</button>
         <button class="btn btn-secondary btn-sm" id="export-leads-btn">📥 Export CSV</button>
@@ -2011,11 +2011,11 @@ function openLeadModal(id) {
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="lead-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(lead.name||'')}"></div>
-      <div class="form-group"><label class="form-label">Email</label><input class="input" name="email" type="email" value="${x(lead.email||'')}"></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Phone</label><input class="input" name="phone" value="${x(lead.phone||'')}"></div><div class="form-group"><label class="form-label">Source</label><input class="input" name="source" value="${x(lead.source||'')}"></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Stage</label><select class="input" name="stage">${leadStageOptions(lead.stage || 'New')}</select></div><div class="form-group"><label class="form-label">Tags</label><div id="lead-tag-picker" style="max-height:110px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px"><span style="color:var(--muted)">Loading tags…</span></div></div></div>
-      <div class="form-group"><label class="form-label">Notes</label><textarea class="input" name="notes" rows="3" style="resize:vertical">${x(lead.notes||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(lead.name||'')}"></div>
+      <div class="form-group"><label class="form-label">Email</label><input aria-label="Email" class="input" name="email" type="email" value="${x(lead.email||'')}"></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Phone</label><input aria-label="Phone" class="input" name="phone" value="${x(lead.phone||'')}"></div><div class="form-group"><label class="form-label">Source</label><input aria-label="Source" class="input" name="source" value="${x(lead.source||'')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Stage</label><select aria-label="Stage" class="input" name="stage">${leadStageOptions(lead.stage || 'New')}</select></div><div class="form-group"><label class="form-label">Tags</label><div id="lead-tag-picker" style="max-height:110px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px"><span style="color:var(--muted)">Loading tags…</span></div></div></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea aria-label="Notes" class="input" name="notes" rows="3" style="resize:vertical">${x(lead.notes||'')}</textarea></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Lead</button>
@@ -2112,8 +2112,8 @@ function openTagModal(id) {
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="tag-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(tag.name||'')}" required></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(tag.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select class="input" name="group_id">${tagGroupOptions(tag.group_id)}</select></div></div>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(tag.name||'')}" required></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input aria-label="Color" class="input" name="color" type="color" value="${x(tag.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select aria-label="Group" class="input" name="group_id">${tagGroupOptions(tag.group_id)}</select></div></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         ${id?`<button type="button" class="btn btn-danger" onclick="window._deleteTag('${id}')">Delete</button>`:''}
@@ -2242,7 +2242,7 @@ async function renderAffiliateLeads() {
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
         <h2 style="font-size:16px;font-weight:600">Leads</h2>
-        <input id="aff-lead-search" class="input" style="max-width:280px" placeholder="Filter by name, email or affiliate" />
+        <input id="aff-lead-search" class="input" aria-label="Filter affiliate leads by name, email or affiliate" style="max-width:280px" placeholder="Filter by name, email or affiliate" />
       </div>
       ${leads.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Lead</th><th>Affiliate</th><th>Became affiliate</th><th>Plan</th><th>Status</th><th>Commission</th><th>Last movement</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table></div>
         <p style="font-size:12px;color:#94a3b8;margin-top:8px">Showing the newest ${leads.length} of ${num(s.total)} (the API returns the latest 200).</p>`
@@ -2332,12 +2332,12 @@ function openAffiliateModal(id) {
               catch(e) { return failEdit(e, 'Could not load the affiliate'); } }
     const body = document.getElementById('modal-body');
     if (!body) return;
-    const statusSel = id ? `<div class="form-group"><label class="form-label">Status</label><select class="input" name="is_active"><option value="true" ${a.is_active!==false?'selected':''}>Active</option><option value="false" ${a.is_active===false?'selected':''}>Inactive</option></select></div>` : '';
+    const statusSel = id ? `<div class="form-group"><label class="form-label">Status</label><select aria-label="Status" class="input" name="is_active"><option value="true" ${a.is_active!==false?'selected':''}>Active</option><option value="false" ${a.is_active===false?'selected':''}>Inactive</option></select></div>` : '';
     body.innerHTML = `<form id="affiliate-form">
-      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(a.name||a.full_name||'')}" required></div><div class="form-group"><label class="form-label">Email</label><input class="input" name="email" type="email" value="${x(a.email||'')}"></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="commission_rate" type="number" step="0.1" value="${a.commission_rate||''}"></div>${statusSel}</div>
-      <div class="form-group"><label class="form-label">Industry</label><input class="input" name="industry" value="${x(a.industry||'')}"></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Override rate (%)</label><input class="input" name="override_commission_rate" type="number" step="0.1" min="0" max="100" value="${a.override_commission_rate!=null?a.override_commission_rate:''}"></div><div class="form-group"><label class="form-label">Override note (why)</label><input class="input" name="override_note" value="${x(a.override_note||'')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(a.name||a.full_name||'')}" required></div><div class="form-group"><label class="form-label">Email</label><input aria-label="Email" class="input" name="email" type="email" value="${x(a.email||'')}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input aria-label="Commission Rate (%)" class="input" name="commission_rate" type="number" step="0.1" value="${a.commission_rate||''}"></div>${statusSel}</div>
+      <div class="form-group"><label class="form-label">Industry</label><input aria-label="Industry" class="input" name="industry" value="${x(a.industry||'')}"></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Override rate (%)</label><input aria-label="Override rate (%)" class="input" name="override_commission_rate" type="number" step="0.1" min="0" max="100" value="${a.override_commission_rate!=null?a.override_commission_rate:''}"></div><div class="form-group"><label class="form-label">Override note (why)</label><input aria-label="Override note (why)" class="input" name="override_note" value="${x(a.override_note||'')}"></div></div>
       <p style="color:var(--muted);font-size:12px;margin:0 0 6px">An override beats every group, product and plan rate for this person. The normal rate is set automatically by performance bands — leave the override blank to use it.</p>
       <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" name="clear_override" ${a.override_commission_rate!=null?'':'disabled'}> Remove the existing override${a.override_commission_rate!=null?' (currently '+a.override_commission_rate+'%)':''}</label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
@@ -2425,9 +2425,9 @@ function openAffiliateProductModal(id) {
        the form does not send the key at all: a save can then never race the plan's own rate. */
     const rateLocked = !!p.plan_stated;
     body.innerHTML = `<form id="product-form">
-      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(p.name||p.product_name||'')}" ${isAdmin?'':'readonly'}></div><div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(p.url||'')}" ${isAdmin?'':'readonly'}></div></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="input" name="default_commission_rate" type="number" step="0.1" value="${p.default_commission_rate||p.commission_rate||''}" ${isAdmin && !rateLocked?'':'readonly'}>${rateLocked?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Comes from its plan ${x(p.plan_name||p.plan_slug||'')} — edit the plan to change it.</div>`:''}</div><div class="form-group"><label class="form-label">Third Party</label><select class="input" name="is_third_party" ${isAdmin?'':'disabled'}><option value="false" ${!p.is_third_party?'selected':''}>No</option><option value="true" ${p.is_third_party?'selected':''}>Yes</option></select></div></div>
-      <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" rows="2" ${isAdmin?'':'readonly'}>${x(p.description||'')}</textarea></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(p.name||p.product_name||'')}" ${isAdmin?'':'readonly'}></div><div class="form-group"><label class="form-label">URL</label><input aria-label="URL" class="input" name="url" value="${x(p.url||'')}" ${isAdmin?'':'readonly'}></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Commission Rate (%)</label><input aria-label="Commission Rate (%)" class="input" name="default_commission_rate" type="number" step="0.1" value="${p.default_commission_rate||p.commission_rate||''}" ${isAdmin && !rateLocked?'':'readonly'}>${rateLocked?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Comes from its plan ${x(p.plan_name||p.plan_slug||'')} — edit the plan to change it.</div>`:''}</div><div class="form-group"><label class="form-label">Third Party</label><select aria-label="Third Party" class="input" name="is_third_party" ${isAdmin?'':'disabled'}><option value="false" ${!p.is_third_party?'selected':''}>No</option><option value="true" ${p.is_third_party?'selected':''}>Yes</option></select></div></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea aria-label="Description" class="input" name="description" rows="2" ${isAdmin?'':'readonly'}>${x(p.description||'')}</textarea></div>
       <!-- kanban t_2b82d8f0: the System Tag link (affiliate attribution). A product with no tag can be
            promoted but never attributed: tag_logic::attribute_affiliate_on_tags (src/tag_logic.rs:319)
            resolves every active product whose system_tag_id equals the tag the lead received. Options are
@@ -2435,7 +2435,7 @@ function openAffiliateProductModal(id) {
            surface. "(No system tag)" clears the link; the API needs the explicit additive
            clear_system_tag flag for that, because a bare null KEEPS the stored tag (a backtick in
            this comment would terminate the template literal that builds this form). -->
-      <div class="form-group"><label class="form-label">System Tag</label><select class="input" name="system_tag_id" id="product-system-tag" ${isAdmin?'':'disabled'}><option value="">(No system tag)</option>${p.system_tag_id?`<option value="${x(p.system_tag_id)}" selected>${x(p.system_tag_name||'Current system tag')}</option>`:''}</select><div style="font-size:11px;color:var(--muted);margin-top:4px">Attributes this product to the affiliate who brought a lead carrying the tag.</div></div>
+      <div class="form-group"><label class="form-label">System Tag</label><select aria-label="System Tag" class="input" name="system_tag_id" id="product-system-tag" ${isAdmin?'':'disabled'}><option value="">(No system tag)</option>${p.system_tag_id?`<option value="${x(p.system_tag_id)}" selected>${x(p.system_tag_name||'Current system tag')}</option>`:''}</select><div style="font-size:11px;color:var(--muted);margin-top:4px">Attributes this product to the affiliate who brought a lead carrying the tag.</div></div>
       ${isAdmin?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0 0"><span class="toggle ${p.is_active!==false?'on':''}" id="product-active-toggle"></span> Active<div style="font-size:11px;color:var(--muted)">A retired product is not promoted and attributes no commission. One system tag routes one active product, so activating this one may be refused while another holds its tag.</div></label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
@@ -2592,13 +2592,13 @@ window._openPayoutModal = function() {
     }
     body.innerHTML = `<form id="payout-form">
       <div class="form-group"><label class="form-label">Affiliate</label>
-        <select class="input" name="affiliate_user_id" required>
+        <select aria-label="Affiliate" class="input" name="affiliate_user_id" required>
           ${payable.map(a=>`<option value="${x(a.user_id)}">${x(a.name||a.email||'Affiliate')} — ${x(a.email||'')}</option>`).join('')}
         </select></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Amount</label><input class="input" name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00"></div>
+        <div class="form-group"><label class="form-label">Amount</label><input aria-label="Amount" class="input" name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00"></div>
         <div class="form-group"><label class="form-label">Method</label>
-          <select class="input" name="method">
+          <select aria-label="Method" class="input" name="method">
             <option value="bank_transfer">Bank transfer</option>
             <option value="paypal">PayPal</option>
             <option value="stripe">Stripe</option>
@@ -2686,14 +2686,14 @@ function openBandModal(id) {
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="band-form">
-      <div class="form-group"><label class="form-label">Label</label><input class="input" name="label" value="${x(b.label||'')}" required placeholder="e.g. Growing"></div>
+      <div class="form-group"><label class="form-label">Label</label><input aria-label="Label" class="input" name="label" value="${x(b.label||'')}" required placeholder="e.g. Growing"></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Minimum paying customers</label><input class="input" name="min_paying_customers" type="number" min="0" step="1" value="${b.min_paying_customers!=null?b.min_paying_customers:0}"></div>
-        <div class="form-group"><label class="form-label">Minimum apps per customer</label><input class="input" name="min_apps_per_customer" type="number" min="1" step="1" value="${b.min_apps_per_customer!=null?b.min_apps_per_customer:1}"></div>
+        <div class="form-group"><label class="form-label">Minimum paying customers</label><input aria-label="Minimum paying customers" class="input" name="min_paying_customers" type="number" min="0" step="1" value="${b.min_paying_customers!=null?b.min_paying_customers:0}"></div>
+        <div class="form-group"><label class="form-label">Minimum apps per customer</label><input aria-label="Minimum apps per customer" class="input" name="min_apps_per_customer" type="number" min="1" step="1" value="${b.min_apps_per_customer!=null?b.min_apps_per_customer:1}"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Rate (%)</label><input class="input" name="rate" type="number" min="0" max="100" step="0.1" value="${b.rate!=null?b.rate:''}" required></div>
-        <div class="form-group"><label class="form-label">Sort order</label><input class="input" name="sort_order" type="number" step="1" value="${b.sort_order!=null?b.sort_order:0}"></div>
+        <div class="form-group"><label class="form-label">Rate (%)</label><input aria-label="Rate (%)" class="input" name="rate" type="number" min="0" max="100" step="0.1" value="${b.rate!=null?b.rate:''}" required></div>
+        <div class="form-group"><label class="form-label">Sort order</label><input aria-label="Sort order" class="input" name="sort_order" type="number" step="1" value="${b.sort_order!=null?b.sort_order:0}"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0 0"><span class="toggle ${b.is_active!==false?'on':''}" id="band-active-toggle"></span> Active</label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
@@ -2769,9 +2769,9 @@ async function renderCommissionGroups() {
       <form id="group-form">
         <div class="form-row">
           <div class="form-group"><label class="form-label">Group name</label>
-            <input class="input" name="name" placeholder="e.g. Software bundle" required></div>
+            <input aria-label="Group name" class="input" name="name" placeholder="e.g. Software bundle" required></div>
           <div class="form-group"><label class="form-label">Rate for the whole group (%)</label>
-            <input class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" placeholder="e.g. 35"></div>
+            <input aria-label="Rate for the whole group (%)" class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" placeholder="e.g. 35"></div>
         </div>
         <div class="form-group"><label class="form-label">Which products are the same?</label>
           ${ratable.length === 0 ? '<p style="color:var(--muted);font-size:12px">No products with a rate of their own yet.</p>' : `
@@ -2810,14 +2810,14 @@ async function renderCommissionGroups() {
       <form id="commission-preview-form">
         <div class="form-row">
           <div class="form-group"><label class="form-label">Sale amount</label>
-            <input class="input" name="amount" type="number" step="0.01" min="0" required placeholder="e.g. 199"></div>
+            <input aria-label="Sale amount" class="input" name="amount" type="number" step="0.01" min="0" required placeholder="e.g. 199"></div>
           <div class="form-group"><label class="form-label">Product (optional)</label>
-            <select class="input" name="product_id">
+            <select aria-label="Product (optional)" class="input" name="product_id">
               <option value="">Not product specific</option>
               ${products.map(p => `<option value="${x(p.id)}">${x(p.name || p.product_name || '-')}</option>`).join('')}
             </select></div>
           <div class="form-group"><label class="form-label">Affiliate (optional)</label>
-            <select class="input" name="affiliate_id">
+            <select aria-label="Affiliate (optional)" class="input" name="affiliate_id">
               <option value="">No affiliate &mdash; the general rate</option>
               ${affiliates.map(a => `<option value="${x(a.affiliate_id || a.id)}">${x(a.name || a.full_name || a.email || '-')}</option>`).join('')}
             </select></div>
@@ -2843,7 +2843,7 @@ async function renderCommissionGroups() {
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">New rate for the ticked products (%)</label>
-            <input class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" required placeholder="e.g. 25"></div>
+            <input aria-label="New rate for the ticked products (%)" class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" required placeholder="e.g. 25"></div>
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Set Rate</button>
       </form>
@@ -2948,11 +2948,11 @@ window._editCommissionGroup = function(id) {
     if (!body) return;
     body.innerHTML = `<form id="group-edit-form">
       <div class="form-group"><label class="form-label">Group name</label>
-        <input class="input" name="name" value="${x(g.name || '')}" required></div>
+        <input aria-label="Group name" class="input" name="name" value="${x(g.name || '')}" required></div>
       <div class="form-group"><label class="form-label">Rate for the whole group (%)</label>
-        <input class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" value="${g.commission_rate != null ? g.commission_rate : ''}" placeholder="e.g. 35"></div>
+        <input aria-label="Rate for the whole group (%)" class="input" name="commission_rate" type="number" step="0.1" min="0" max="100" value="${g.commission_rate != null ? g.commission_rate : ''}" placeholder="e.g. 35"></div>
       <div class="form-group"><label class="form-label">Description</label>
-        <textarea class="input" name="description" rows="2">${x(g.description || '')}</textarea></div>
+        <textarea aria-label="Description" class="input" name="description" rows="2">${x(g.description || '')}</textarea></div>
       <label style="display:flex;gap:8px;align-items:center;font-size:13px">
         <input type="checkbox" name="clear_rate"> Remove the group rate — every member falls back to its own rate</label>
       <p style="font-size:12px;color:var(--muted);margin-top:8px">Changing the rate here re-rates the
@@ -3077,17 +3077,17 @@ async function renderEmailTemplates() {
         <div id="ep-last-send" style="font-size:12px;margin:-4px 0 12px"></div>
         <div id="ep-history" style="margin:0 0 16px"></div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
-          <div class="form-group"><label class="form-label">Provider</label><select class="input" id="ep-provider"></select></div>
-          <div class="form-group"><label class="form-label">From name</label><input class="input" id="ep-from-name" placeholder="FunnelSwift"></div>
-          <div class="form-group"><label class="form-label">From address</label><input class="input" id="ep-from-address" placeholder="you@yourdomain.com"></div>
-          <div class="form-group"><label class="form-label">Domain (Mailgun)</label><input class="input" id="ep-domain" placeholder="mg.yourdomain.com"></div>
-          <div class="form-group"><label class="form-label">API URL (optional)</label><input class="input" id="ep-api-url" placeholder="https://api.mailgun.net/v3/…/messages"></div>
-          <div class="form-group"><label class="form-label">API key</label><input class="input" id="ep-api-key" placeholder="paste the provider key"></div>
-          <div class="form-group"><label class="form-label">SMTP host</label><input class="input" id="ep-smtp-host" placeholder="smtp.yourdomain.com"></div>
-          <div class="form-group"><label class="form-label">SMTP port</label><input class="input" id="ep-smtp-port" placeholder="587"></div>
-          <div class="form-group"><label class="form-label">SMTP username</label><input class="input" id="ep-smtp-username"></div>
-          <div class="form-group"><label class="form-label">SMTP password</label><input class="input" type="password" id="ep-smtp-password"></div>
-          <div class="form-group"><label class="form-label">SMTP encryption</label><select class="input" id="ep-smtp-encryption"><option value="">STARTTLS (default)</option><option value="tls">TLS</option><option value="none">None — plain, no TLS (internal relay)</option></select></div>
+          <div class="form-group"><label class="form-label">Provider</label><select aria-label="Provider" class="input" id="ep-provider"></select></div>
+          <div class="form-group"><label class="form-label">From name</label><input aria-label="From name" class="input" id="ep-from-name" placeholder="FunnelSwift"></div>
+          <div class="form-group"><label class="form-label">From address</label><input aria-label="From address" class="input" id="ep-from-address" placeholder="you@yourdomain.com"></div>
+          <div class="form-group"><label class="form-label">Domain (Mailgun)</label><input aria-label="Domain (Mailgun)" class="input" id="ep-domain" placeholder="mg.yourdomain.com"></div>
+          <div class="form-group"><label class="form-label">API URL (optional)</label><input aria-label="API URL (optional)" class="input" id="ep-api-url" placeholder="https://api.mailgun.net/v3/…/messages"></div>
+          <div class="form-group"><label class="form-label">API key</label><input aria-label="API key" class="input" id="ep-api-key" placeholder="paste the provider key"></div>
+          <div class="form-group"><label class="form-label">SMTP host</label><input aria-label="SMTP host" class="input" id="ep-smtp-host" placeholder="smtp.yourdomain.com"></div>
+          <div class="form-group"><label class="form-label">SMTP port</label><input aria-label="SMTP port" class="input" id="ep-smtp-port" placeholder="587"></div>
+          <div class="form-group"><label class="form-label">SMTP username</label><input aria-label="SMTP username" class="input" id="ep-smtp-username"></div>
+          <div class="form-group"><label class="form-label">SMTP password</label><input aria-label="SMTP password" class="input" type="password" id="ep-smtp-password"></div>
+          <div class="form-group"><label class="form-label">SMTP encryption</label><select aria-label="SMTP encryption" class="input" id="ep-smtp-encryption"><option value="">STARTTLS (default)</option><option value="tls">TLS</option><option value="none">None — plain, no TLS (internal relay)</option></select></div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px">
           <button class="btn btn-primary btn-sm" id="ep-save">Save email provider</button>
@@ -3364,12 +3364,12 @@ function openEmailTemplateModal(id) {
         (left.length ? '<div style="margin-top:8px;font-size:12px;color:#b45309">&#9888; These placeholders would be sent LITERALLY: ' + x(Array.from(new Set(left)).join(', ')) + ' - use the double-brace form.</div>' : '');
     };
     body.innerHTML = `<form id="email-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
-      <div class="form-group"><label class="form-label">Subject</label><input class="input" name="subject" value="${x(t.subject||'')}"></div>
-      <div class="form-group"><label class="form-label">Type</label><select class="input" name="template_type" onchange="window._etMergeHint()">${names.map(n => `<option value="${x(n)}" ${n === cur ? 'selected' : ''}>${x(n)}</option>`).join('')}</select>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(t.name||'')}" required></div>
+      <div class="form-group"><label class="form-label">Subject</label><input aria-label="Subject" class="input" name="subject" value="${x(t.subject||'')}"></div>
+      <div class="form-group"><label class="form-label">Type</label><select aria-label="Type" class="input" name="template_type" onchange="window._etMergeHint()">${names.map(n => `<option value="${x(n)}" ${n === cur ? 'selected' : ''}>${x(n)}</option>`).join('')}</select>
         <div id="et-merge" style="font-size:12px;color:var(--muted);margin-top:6px"></div></div>
-      <div class="form-group"><label class="form-label">Body (plain text)</label><textarea class="input" name="body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.body||'')}</textarea></div>
-      <div class="form-group"><label class="form-label">HTML body (optional — when non-empty this is what the recipient sees)</label><textarea class="input" name="html_body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.html_body||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Body (plain text)</label><textarea aria-label="Body (plain text)" class="input" name="body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.body||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">HTML body (optional — when non-empty this is what the recipient sees)</label><textarea aria-label="HTML body (optional — when non-empty this is what the recipient sees)" class="input" name="html_body" rows="6" style="font-family:monospace;font-size:12px;resize:vertical">${x(t.html_body||'')}</textarea></div>
       <div class="form-group" style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="is_default" id="et-default" ${defOn ? 'checked' : ''}><label class="form-label" for="et-default" style="margin:0">Default for this type — one default per type, ticking it replaces the current one</label></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._etPreview()">Preview</button>
@@ -3441,8 +3441,8 @@ function openCampaignModal(id) {
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="campaign-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(c.name||'')}" required></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Type</label><select class="input" name="type"><option value="email" ${(c.type||c.campaign_type||'email')==='email'?'selected':''}>Email</option><option value="sms" ${(c.type||c.campaign_type)==='sms'?'selected':''}>SMS</option></select></div><div class="form-group"><label class="form-label">Status</label><select class="input" name="status"><option value="draft" ${(c.status||'draft')==='draft'?'selected':''}>Draft</option><option value="active" ${c.status==='active'?'selected':''}>Active</option><option value="paused" ${c.status==='paused'?'selected':''}>Paused</option></select></div></div>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(c.name||'')}" required></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Type</label><select aria-label="Type" class="input" name="type"><option value="email" ${(c.type||c.campaign_type||'email')==='email'?'selected':''}>Email</option><option value="sms" ${(c.type||c.campaign_type)==='sms'?'selected':''}>SMS</option></select></div><div class="form-group"><label class="form-label">Status</label><select aria-label="Status" class="input" name="status"><option value="draft" ${(c.status||'draft')==='draft'?'selected':''}>Draft</option><option value="active" ${c.status==='active'?'selected':''}>Active</option><option value="paused" ${c.status==='paused'?'selected':''}>Paused</option></select></div></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'}</button>
@@ -3541,9 +3541,9 @@ function openWebhookModal(id) {
        it used to send `active`, a key no request struct accepts (serde ignored it) and no response
        carries (`w.active` was always undefined, so every row printed Active). */
     body.innerHTML = `<form id="webhook-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(w.name||'')}" placeholder="Lead notifications" required></div>
-      <div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${x(w.url||'')}" placeholder="https://..." required></div>
-      <div class="form-group"><label class="form-label">Events (comma separated)</label><input class="input" name="events" value="${x((w.events||[]).join(', '))}" placeholder="lead.created, tag.updated"><div style="font-size:12px;color:#64748b;margin-top:4px">Delivered automatically while the webhook is Active. The server publishes the events it can emit at <code>/api/v1/webhook-events</code>; a name it does not list never fires.</div></div>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(w.name||'')}" placeholder="Lead notifications" required></div>
+      <div class="form-group"><label class="form-label">URL</label><input aria-label="URL" class="input" name="url" value="${x(w.url||'')}" placeholder="https://..." required></div>
+      <div class="form-group"><label class="form-label">Events (comma separated)</label><input aria-label="Events (comma separated)" class="input" name="events" value="${x((w.events||[]).join(', '))}" placeholder="lead.created, tag.updated"><div style="font-size:12px;color:#64748b;margin-top:4px">Delivered automatically while the webhook is Active. The server publishes the events it can emit at <code>/api/v1/webhook-events</code>; a name it does not list never fires.</div></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px"><span class="toggle ${w.is_active!==false?'on':''}" id="webhook-active-toggle"></span> Active</label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
@@ -3652,16 +3652,16 @@ async function renderProviderKeys() {
       <form id="provider-key-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
         <div class="form-group" style="margin:0;min-width:170px">
           <label class="form-label">Provider</label>
-          <input class="input" name="provider" list="provider-catalog" placeholder="e.g. coreswift" required>
+          <input aria-label="Provider" class="input" name="provider" list="provider-catalog" placeholder="e.g. coreswift" required>
           <datalist id="provider-catalog">${_providerCatalog.map(p => `<option value="${x(p)}">`).join('')}</datalist>
         </div>
         <div class="form-group" style="margin:0;min-width:220px;flex:1">
           <label class="form-label">API Key</label>
-          <input class="input" name="api_key" type="password" placeholder="paste the provider key" autocomplete="off" required>
+          <input aria-label="API Key" class="input" name="api_key" type="password" placeholder="paste the provider key" autocomplete="off" required>
         </div>
         <div class="form-group" style="margin:0;min-width:200px;flex:1">
           <label class="form-label">Base URL (optional)</label>
-          <input class="input" name="base_url" placeholder="https://api.example.com">
+          <input aria-label="Base URL (optional)" class="input" name="base_url" placeholder="https://api.example.com">
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Save Key</button>
       </form>
@@ -3699,16 +3699,16 @@ async function renderProviderKeys() {
       <form id="payment-provider-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
         <div class="form-group" style="margin:0;min-width:170px">
           <label class="form-label">Provider type</label>
-          <input class="input" name="provider_type" list="payment-catalog" placeholder="e.g. stripe" required>
+          <input aria-label="Provider type" class="input" name="provider_type" list="payment-catalog" placeholder="e.g. stripe" required>
           <datalist id="payment-catalog"><option value="stripe"><option value="paypal"><option value="mintbird"><option value="groovesell"></datalist>
         </div>
         <div class="form-group" style="margin:0;min-width:260px;flex:1">
           <label class="form-label">Secret key</label>
-          <input class="input" name="api_key" type="password" placeholder="paste the payment secret key" autocomplete="off">
+          <input aria-label="Secret key" class="input" name="api_key" type="password" placeholder="paste the payment secret key" autocomplete="off">
         </div>
         <div class="form-group" style="margin:0;min-width:260px;flex:1">
           <label class="form-label">Webhook signing secret</label>
-          <input class="input" name="webhook_secret" type="password" placeholder="whsec_… — required, or no payment can be verified" autocomplete="off">
+          <input aria-label="Webhook signing secret" class="input" name="webhook_secret" type="password" placeholder="whsec_… — required, or no payment can be verified" autocomplete="off">
         </div>
         <button type="submit" class="btn btn-primary btn-sm">Save Provider</button>
         <button type="button" class="btn btn-secondary btn-sm" id="payment-test-btn" title="Asks Stripe whether the key in the box works, without saving it.">Test key</button>
@@ -4025,17 +4025,17 @@ function openSysTagModal(id) {
     if (!body) return;
     body.innerHTML = `<form id="systag-form">
       <input type="hidden" name="is_system" value="true">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(t.name||'')}" required></div>
-      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select class="input" name="group_id">${tagGroupOptions(t.group_id)}</select></div></div>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(t.name||'')}" required></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Color</label><input aria-label="Color" class="input" name="color" type="color" value="${x(t.color||'#6366f1')}"></div><div class="form-group"><label class="form-label">Group</label><select aria-label="Group" class="input" name="group_id">${tagGroupOptions(t.group_id)}</select></div></div>
       <!-- kanban t_847f9d63: the tag -> FREE ACCOUNT mapping, editable here instead of seed-only.
            Target app is the app slug the tag names; Free plan slug is the plan seated there when a
            lead is tagged with this tag. Leaving either empty clears the mapping. -->
       <div class="form-row">
         <div class="form-group"><label class="form-label">Target app</label>
-          <select class="input" name="source_app"><option value="">— none —</option>${['coreswift','incentiveswift','workflowswift','adaswift','missedcallrespondr','funnelswift'].map(s=>`<option value="${s}" ${(t.source_app||'').toLowerCase()===s?'selected':''}>${s}</option>`).join('')}</select>
+          <select aria-label="Target app" class="input" name="source_app"><option value="">— none —</option>${['coreswift','incentiveswift','workflowswift','adaswift','missedcallrespondr','funnelswift'].map(s=>`<option value="${s}" ${(t.source_app||'').toLowerCase()===s?'selected':''}>${s}</option>`).join('')}</select>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">The software this tag signs a lead up for.</div></div>
         <div class="form-group"><label class="form-label">Free plan slug</label>
-          <input class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="free">
+          <input aria-label="Free plan slug" class="input" name="plan_slug" value="${x(t.plan_slug||'')}" placeholder="free">
           <div style="font-size:11px;color:var(--muted);margin-top:4px">The plan that app seats the new account on.</div></div>
       </div>
       <div class="form-group">
@@ -4136,7 +4136,7 @@ function openTagGroupModal(id) {
     const body = document.getElementById('modal-body');
     if (!body) return;
     body.innerHTML = `<form id="group-form">
-      <div class="form-group"><label class="form-label">Name</label><input class="input" name="name" value="${x(g.name||'')}" required></div>
+      <div class="form-group"><label class="form-label">Name</label><input aria-label="Name" class="input" name="name" value="${x(g.name||'')}" required></div>
       <!-- kanban t_02f8fd6d: no Description field. The tag_groups table has no such column
            (id, tenant_id, name, is_collapsible, sort_order, created_at — migrations/000001_initial.sql)
            and the update request struct has no such field, so the textarea wrote a key PUT
@@ -4317,7 +4317,7 @@ async function renderTenants() {
     ${TENANT_RESEND_MSG?'<div class="card" style="border-left:4px solid #b45309;padding:12px 14px;margin-bottom:14px;font-size:13px">'+TENANT_RESEND_MSG+'</div>':''}<div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th title="When anyone in this workspace last signed in. 'not recorded' means the app has no sign-in for it — the column started empty, so an older workspace can read that way even if its owner has used it.">Last sign-in</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
       <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}">
-        <td><input type="checkbox" class="tn-chk" value="${t.id}"></td>
+        <td><input type="checkbox" class="tn-chk" aria-label="Select ${x(t.name||t.company_name||'this workspace')}" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
         <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}${t.owner_credentials_undelivered?'<div style="margin-top:4px"><span class="badge badge-yellow" title="The first password we minted for this owner was never delivered - a provider refusal, or a reserved test address withheld at source. Nobody has ever read it, so this workspace cannot be signed into until you send a new one.">password never delivered</span></div>':''}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
@@ -4341,9 +4341,9 @@ async function renderTenants() {
         ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
         : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td>${u.last_login_at?x(formatDate(u.last_login_at)):'<span style="color:var(--muted)">never</span>'}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span></td><td><button class="btn btn-ghost tu-resend" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Email this teammate a fresh password and switch the old one off" style="font-size:12px;padding:2px 8px;margin-right:6px">Resend login</button><button class="btn btn-ghost tu-remove" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Remove this teammate from the workspace" style="font-size:12px;padding:2px 8px">Remove</button></td></tr>`).join('')}</tbody></table></div>`)}
       <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
-        <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input class="input" id="tu-name" placeholder="Their name"></div>
-        <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input class="input" id="tu-email" placeholder="them@company.com"></div>
-        <div style="min-width:170px"><label style="font-size:12px;color:var(--muted)">Role</label><select class="input" id="tu-role"><option value="user" selected>Member</option><option value="company_admin">Company admin</option><option value="admin">Admin (full access)</option><option value="business_user">Business user</option></select></div>
+        <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input aria-label="Name" class="input" id="tu-name" placeholder="Their name"></div>
+        <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input aria-label="Email" class="input" id="tu-email" placeholder="them@company.com"></div>
+        <div style="min-width:170px"><label style="font-size:12px;color:var(--muted)">Role</label><select aria-label="Role" class="input" id="tu-role"><option value="user" selected>Member</option><option value="company_admin">Company admin</option><option value="admin">Admin (full access)</option><option value="business_user">Business user</option></select></div>
         <button class="btn btn-sm" id="tu-add">Add user</button>
       </div>
       <div id="tu-msg" style="margin-top:10px;font-size:13px">${TENANT_USERS_MSG||''}</div>
@@ -4643,7 +4643,7 @@ async function renderSettings() {
         </div>
         <div style="padding:12px 0">
           <label for="ps-default-plan" style="font-weight:600;display:block;margin-bottom:4px">Default plan for a new workspace</label>
-          <select id="ps-default-plan" class="input" style="max-width:420px">${opts}</select>
+          <select aria-label="Default plan for a new workspace" id="ps-default-plan" class="input" style="max-width:420px">${opts}</select>
           <div style="color:var(--muted);font-size:13px;margin-top:6px">
             Applied only when a signup names no plan of its own — a visitor who picked a plan on the
             pricing page always gets what they chose. Only free (price-0) plans are offered: a default
@@ -4653,7 +4653,7 @@ async function renderSettings() {
         </div>
         <div style="padding:12px 0;border-top:1px solid var(--border)">
           <label for="ps-alert-email" style="font-weight:600;display:block;margin-bottom:4px">Email me when a customer signs up, asks to buy, or needs an answer</label>
-          <input id="ps-alert-email" class="input" type="email" autocomplete="off" placeholder="you@yourcompany.com" value="${esc(alertEmail)}" style="max-width:420px">
+          <input aria-label="Email me when a customer signs up, asks to buy, or needs an answer" id="ps-alert-email" class="input" type="email" autocomplete="off" placeholder="you@yourcompany.com" value="${esc(alertEmail)}" style="max-width:420px">
           <div style="color:var(--muted);font-size:13px;margin-top:6px">
             Three things reach this address the moment they happen: a new workspace signs up, a
             customer asks to buy a plan (while the installation cannot take a card, that ask is how a
@@ -4749,8 +4749,8 @@ async function renderLeadCapture() {
       <div class="card-header"><span class="card-title">New capture form</span></div>
       <div style="padding:16px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-group"><label class="form-label">Form name (internal)</label><input class="input" id="wtl-name" maxlength="80" placeholder="e.g. Website sidebar"></div>
-          <div class="form-group"><label class="form-label">Headline on the form</label><input class="input" id="wtl-title" maxlength="80" placeholder="Get Started"></div>
+          <div class="form-group"><label class="form-label">Form name (internal)</label><input aria-label="Form name (internal)" class="input" id="wtl-name" maxlength="80" placeholder="e.g. Website sidebar"></div>
+          <div class="form-group"><label class="form-label">Headline on the form</label><input aria-label="Headline on the form" class="input" id="wtl-title" maxlength="80" placeholder="Get Started"></div>
         </div>
         <div class="form-group" style="margin-top:6px"><label class="form-label">Fields shown</label>
           <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px">
@@ -4760,7 +4760,7 @@ async function renderLeadCapture() {
             <label><input type="checkbox" id="wtl-f-company"> Company</label>
           </div></div>
         <div class="form-group"><label class="form-label">Tag every captured lead with</label>
-          <select class="input" id="wtl-tag"><option value="">— no tag —</option>${tagOpts}</select></div>
+          <select aria-label="Tag every captured lead with" class="input" id="wtl-tag"><option value="">— no tag —</option>${tagOpts}</select></div>
         <button class="btn btn-primary btn-sm" id="wtl-create">Create form</button>
       </div>
     </div>
@@ -4841,11 +4841,11 @@ async function renderEmailBranding() {
         <div style="display:grid;grid-template-columns:1fr 220px;gap:16px;align-items:start">
           <div>
             <div class="form-group"><label class="form-label">Brand display name</label>
-              <input class="input" id="brand-name" maxlength="60" value="${name}" placeholder="e.g. Acme Capital"></div>
+              <input aria-label="Brand display name" class="input" id="brand-name" maxlength="60" value="${name}" placeholder="e.g. Acme Capital"></div>
             <div class="form-group"><label class="form-label">Brand colour</label>
               <div style="display:flex;gap:8px;align-items:center">
-                <input type="color" id="brand-color-picker" value="${color}" style="width:44px;height:34px;padding:2px;border:1px solid var(--border);border-radius:8px;background:#fff">
-                <input class="input" id="brand-color" value="${color}" placeholder="#4f46e5">
+                <input aria-label="Brand colour" type="color" id="brand-color-picker" value="${color}" style="width:44px;height:34px;padding:2px;border:1px solid var(--border);border-radius:8px;background:#fff">
+                <input class="input" id="brand-color" aria-label="Brand colour hex value" value="${color}" placeholder="#4f46e5">
               </div>
               <div style="font-size:11px;color:#94a3b8;margin-top:4px">A hex colour such as #4f46e5. It draws the rule under your logo.</div>
             </div>
@@ -5368,23 +5368,23 @@ async function renderCardUtmBuilder() {
       <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label class="form-label">UTM Source</label>
-          <input class="input" id="utm-source" value="${x(card?.utm_source||'')}" placeholder="e.g. newsletter, facebook, google">
+          <input aria-label="UTM Source" class="input" id="utm-source" value="${x(card?.utm_source||'')}" placeholder="e.g. newsletter, facebook, google">
         </div>
         <div class="form-group">
           <label class="form-label">UTM Medium</label>
-          <input class="input" id="utm-medium" value="${x(card?.utm_medium||'')}" placeholder="e.g. email, cpc, social">
+          <input aria-label="UTM Medium" class="input" id="utm-medium" value="${x(card?.utm_medium||'')}" placeholder="e.g. email, cpc, social">
         </div>
         <div class="form-group">
           <label class="form-label">UTM Campaign</label>
-          <input class="input" id="utm-campaign" value="${x(card?.utm_campaign||'')}" placeholder="e.g. summer_sale, product_launch">
+          <input aria-label="UTM Campaign" class="input" id="utm-campaign" value="${x(card?.utm_campaign||'')}" placeholder="e.g. summer_sale, product_launch">
         </div>
         <div class="form-group">
           <label class="form-label">UTM Content</label>
-          <input class="input" id="utm-content" value="${x(card?.utm_content||'')}" placeholder="e.g. banner_a, sidebar_link">
+          <input aria-label="UTM Content" class="input" id="utm-content" value="${x(card?.utm_content||'')}" placeholder="e.g. banner_a, sidebar_link">
         </div>
         <div class="form-group" style="grid-column:span 2">
           <label class="form-label">UTM Term</label>
-          <input class="input" id="utm-term" value="${x(card?.utm_term||'')}" placeholder="e.g. funnel+swift+cards">
+          <input aria-label="UTM Term" class="input" id="utm-term" value="${x(card?.utm_term||'')}" placeholder="e.g. funnel+swift+cards">
         </div>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px">
@@ -5396,7 +5396,7 @@ async function renderCardUtmBuilder() {
       <div id="utm-url-area" style="margin-top:16px;${trackingUrl?'':'display:none'}">
         <label class="form-label">Tracked URL</label>
         <div style="display:flex;gap:8px">
-          <input class="input" id="utm-url-display" value="${x(trackingUrl)}" readonly style="font-family:monospace;font-size:12px">
+          <input aria-label="Tracked URL" class="input" id="utm-url-display" value="${x(trackingUrl)}" readonly style="font-family:monospace;font-size:12px">
           <button class="btn btn-primary btn-sm" id="copy-url-btn">📋 Copy</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:4px">Share this URL to track clicks and views with UTM parameters</div>
@@ -5568,8 +5568,8 @@ async function renderPlanAdmin() {
       <!-- route: POST /api/v1/admin/plans/assign -->
       <div class="card-subtitle">Move a tenant onto a plan.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <select id="planadmin-assign-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
-        <select id="planadmin-assign-plan" class="input" style="min-width:200px"><option value="">— select plan —</option>${plans.map(p => `<option value="${x(p.id)}">${x(p.name)} — ${formatCurrency(p.price)}</option>`).join('')}</select>
+        <select id="planadmin-assign-tenant" class="input" aria-label="Workspace to move onto a new plan" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
+        <select id="planadmin-assign-plan" class="input" aria-label="Plan to assign" style="min-width:200px"><option value="">— select plan —</option>${plans.map(p => `<option value="${x(p.id)}">${x(p.name)} — ${formatCurrency(p.price)}</option>`).join('')}</select>
         <button class="btn btn-primary btn-sm" id="planadmin-assign-btn">Assign Plan</button>
       </div>
       <div id="planadmin-assign-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
@@ -5580,9 +5580,9 @@ async function renderPlanAdmin() {
       <div class="card-subtitle">Override one feature for a single tenant.</div>
       <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Override <strong>one</strong> feature for a single tenant. This is the highest-precedence lever: it wins over the plan's own number for this tenant only (tenant override &gt; plan row &gt; plan column). For a limit key use <code>-1</code> unlimited, <code>0</code> disabled, <code>&gt;0</code> capped. For a boolean key use <code>1</code> on, <code>0</code> off. Leave the value blank to <strong>clear</strong> the override so the plan decides again. The key must be one the gates read — a retired or unknown name is refused (400), like the matrix above.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <select id="planadmin-ov-tenant" class="input" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
-        <input id="planadmin-ov-key" class="input" placeholder="feature_key (e.g. max_leads)" style="min-width:220px">
-        <input id="planadmin-ov-val" class="input" type="number" placeholder="limit_value (blank = clear)" style="width:220px">
+        <select id="planadmin-ov-tenant" class="input" aria-label="Workspace to override a feature for" style="min-width:260px"><option value="">— select tenant —</option>${tenantOpts}</select>
+        <input id="planadmin-ov-key" class="input" aria-label="Feature key to override (for example max_leads)" placeholder="feature_key (e.g. max_leads)" style="min-width:220px">
+        <input id="planadmin-ov-val" class="input" type="number" aria-label="Feature limit for this workspace (leave blank to clear the override)" placeholder="limit_value (blank = clear)" style="width:220px">
         <button class="btn btn-primary btn-sm" id="planadmin-ov-save">Set / Clear Override</button>
         <button class="btn btn-secondary btn-sm" id="planadmin-ov-load">Load Existing</button>
       </div>
@@ -5849,7 +5849,7 @@ function wiredErr(body, e) {
 }
 
 function wiredInput(id, placeholder, type, value) {
-  return '<input class="input" id="' + id + '" type="' + (type || 'text') + '" placeholder="' + x(placeholder || '') + '" value="' + x(value === undefined || value === null ? '' : value) + '" style="max-width:320px">';
+  return '<input class="input" id="' + id + '" type="' + (type || 'text') + '" aria-label="' + x(placeholder || 'Field') + '" placeholder="' + x(placeholder || '') + '" value="' + x(value === undefined || value === null ? '' : value) + '" style="max-width:320px">';
 }
 
 function wiredTable(cols, rows, empty) {
@@ -5996,7 +5996,7 @@ async function wiredAffiliateDetail() {
   try { affs = await api('/affiliates') || []; } catch (e) { }
   if (!Array.isArray(affs)) affs = affs.data || [];
   body.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
-    '<select class="input" id="wired-aff-sel" style="max-width:320px"><option value="">Choose an affiliate…</option>' +
+    '<select class="input" id="wired-aff-sel" aria-label="Affiliate to show" style="max-width:320px"><option value="">Choose an affiliate…</option>' +
     affs.map(a => '<option value="' + x(a.id) + '">' + x(a.name || a.email || a.id) + '</option>').join('') + '</select>' +
     '<button class="btn" id="wired-aff-rate">Show rate &amp; reason</button><button class="btn btn-primary" id="wired-aff-load">Load commissions</button>' +
     '<span id="wired-aff-msg" style="font-size:12px"></span></div><div id="wired-aff-out"></div>';
@@ -6059,7 +6059,7 @@ async function renderSiteSettings() {
         ${wiredInput('wired-ss-key', 'seo_site_name')}
         <button class="btn" id="wired-ss-load">Load</button>
       </div>
-      <textarea class="input" id="wired-ss-value" rows="4" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder='{"value": "..."} or a plain string'></textarea>
+      <textarea class="input" id="wired-ss-value" aria-label="Value for the setting (JSON, or a plain string)" rows="4" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder='{"value": "..."} or a plain string'></textarea>
       <div style="margin-top:8px"><button class="btn btn-primary" id="wired-ss-save">Save setting</button><span id="wired-ss-msg" style="font-size:12px;margin-left:10px"></span></div>
     </div>
     <div class="card">
@@ -6155,12 +6155,12 @@ async function renderTagRules() {
       <div id="wired-tr-list">${wiredTable(['Name', 'Created', ''], rules.map(r => `<tr><td>${x(r.name)}</td><td>${formatDate(r.created_at)}</td><td><button class="btn" data-rule-toggle="${x(r.id)}">Deactivate</button> <button class="btn" data-rule-del="${x(r.id)}">Delete</button></td></tr>`), 'No tag rules')}</div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         ${wiredInput('wired-tr-name', 'Rule name')}
-        <select class="input" id="wired-tr-trigger" style="max-width:220px">${'<option value="">Trigger tag…</option>' + tags.map(t => `<option value="${x(t.id)}">${x(t.name || t.id)}</option>`).join('')}</select>
-        <select class="input" id="wired-tr-action" style="max-width:200px">
+        <select class="input" id="wired-tr-trigger" aria-label="Tag that triggers the rule" style="max-width:220px">${'<option value="">Trigger tag…</option>' + tags.map(t => `<option value="${x(t.id)}">${x(t.name || t.id)}</option>`).join('')}</select>
+        <select class="input" id="wired-tr-action" aria-label="What the rule does" style="max-width:200px">
           <option value="">Action…</option><option value="add_tag">add_tag</option><option value="remove_tag">remove_tag</option><option value="route_lead">route_lead</option><option value="notify">notify</option>
         </select>
-        <select class="input" id="wired-tr-actiontag" style="max-width:220px"><option value="">Action tag (optional)…</option>${tagOpts()}</select>
-        <select class="input" id="wired-tr-app" style="max-width:200px"><option value="funnelswift">funnelswift</option><option value="coreswift">coreswift</option><option value="incentiveswift">incentiveswift</option></select>
+        <select class="input" id="wired-tr-actiontag" aria-label="Tag the rule adds or removes (optional)" style="max-width:220px"><option value="">Action tag (optional)…</option>${tagOpts()}</select>
+        <select class="input" id="wired-tr-app" aria-label="App the rule applies to" style="max-width:200px"><option value="funnelswift">funnelswift</option><option value="coreswift">coreswift</option><option value="incentiveswift">incentiveswift</option></select>
         <button class="btn btn-primary" id="wired-tr-add">Create rule</button><span id="wired-tr-msg" style="font-size:12px"></span>
       </div>
     </div>
@@ -6299,7 +6299,7 @@ async function renderPlanRequests() {
       '<td>' + planReqChip(r.status) + '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
       '<td><div style="display:flex;gap:4px;align-items:center">' +
-      '<input data-pr-reply="' + x(r.id) + '" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
+      '<input data-pr-reply="' + x(r.id) + '" aria-label="Your reply to this plan request" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
       'style="width:150px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">' +
       '<button class="btn" data-pr-save-reply="' + x(r.id) + '" data-pr-cur="' + x(r.status) + '" ' +
       'style="padding:3px 6px;font-size:11px">Save</button></div>' +
@@ -6422,7 +6422,7 @@ async function renderSupportRequests() {
       (r.body ? '<div style="font-size:11px;color:var(--muted);max-width:340px;white-space:pre-wrap">' + x(r.body) + '</div>' : '') + '</td>' +
       '<td>' + supChip(r.status) + '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
-      '<td><input data-sr-reply="' + x(r.id) + '" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
+      '<td><input data-sr-reply="' + x(r.id) + '" aria-label="Your reply to this request" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
       'style="width:180px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">' +
       '<div style="font-size:10px;color:var(--muted);margin-top:2px">' +
       (r.replied_at ? 'sent ' + formatDate(r.replied_at) : 'not answered yet') + '</div></td>' +
