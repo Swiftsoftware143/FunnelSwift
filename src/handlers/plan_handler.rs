@@ -401,6 +401,73 @@ fn require_hosted_payment_url(raw: &str) -> AppResult<()> {
     ))
 }
 
+/// THE DEAD LINK REFUSED AT SAVE TIME (2026-11-11).
+///
+/// `require_hosted_payment_url` above proves the SHAPE of a payment link; it cannot tell a live page
+/// from a slug that was retired, mistyped, or pasted from a different product. Measured live on this
+/// app: `PUT /api/v1/plans/{id}` stored `https://buy.stripe.com/probe-dead-…` and answered "Plan
+/// updated" — so the plan stayed on sale-by-link and a buyer pressing Upgrade was handed a 404. That
+/// is the same defect that made every CoreSwift plan page dead (card: "every paid plan's payment
+/// page answers 404"), and the fix belongs at the moment the operator pastes the link, not in the
+/// buyer's face.
+///
+/// The verdict is deliberately CONSERVATIVE — it refuses only what is definitively dead:
+/// * a transport failure that proves there is no such host (`is_connect`: DNS failure, refused
+///   connection);
+/// * a `404 Not Found` / `410 Gone` from the host that answered.
+///
+/// Anything else is accepted, including `2xx`/`3xx`, and the 4xx a real payment page returns to a
+/// robot (`401`, `403`, `405`, `429`) — refusing those would block the operator's working Stripe /
+/// PayPal page for a reason that has nothing to do with the money reaching him. A TIMEOUT is not a
+/// verdict either: we could not look, so the save goes through rather than failing on our own
+/// network hiccup. The probe never follows more than 6 redirects and never takes longer than 6 s, so
+/// an operator's save is not held hostage by a slow host.
+async fn require_hosted_payment_url_resolves(raw: &str) -> AppResult<()> {
+    let url = raw.trim().to_string();
+    if url.is_empty() {
+        return Ok(());
+    }
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .redirect(reqwest::redirect::Policy::limited(6))
+        .user_agent(
+            "Mozilla/5.0 (compatible; FunnelSwift-link-check/1.0; +https://funnelswift.net)",
+        )
+        .build()
+    {
+        Ok(c) => c,
+        // A client we cannot build is OUR problem, not the operator's: never block the save on it.
+        Err(_) => return Ok(()),
+    };
+    let verdict = match client.get(&url).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            if status == 404 || status == 410 {
+                Some(format!(
+                    "the payment page answered {status} (it does not exist any more)"
+                ))
+            } else {
+                None
+            }
+        }
+        Err(e) if e.is_connect() => Some(
+            "the address could not be reached at all (no such site, or the connection was refused)"
+                .to_string(),
+        ),
+        // Timeout or a mid-flight failure: we could not verify it, so we do not refuse it.
+        Err(_) => None,
+    };
+    match verdict {
+        None => Ok(()),
+        Some(why) => Err(AppError::BadRequest(format!(
+            "That payment link did not work, so it was NOT saved: {why}. A buyer pressing Upgrade on \
+             this plan would have landed on that broken page. Open the link in your own browser \
+             first, copy the address a buyer should see, and paste that — or leave the box empty if \
+             this plan is not sold by link."
+        ))),
+    }
+}
+
 pub async fn create_plan(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -412,8 +479,10 @@ pub async fn create_plan(
     if let Some(f) = &req.features {
         reject_retired_feature_keys(f)?;
     }
-    if let Some(url) = req.purchase_url.as_deref() {
-        require_hosted_payment_url(url)?;
+    if let Some(url) = req.purchase_url.clone() {
+        require_hosted_payment_url(&url)?;
+        // A link that is well-formed but dead is refused here, before it can be offered to a buyer.
+        require_hosted_payment_url_resolves(&url).await?;
     }
     let plan_id = Uuid::new_v4();
     // Column list == placeholder list == bind list, or this INSERT dies before it runs. It was
@@ -513,8 +582,10 @@ pub async fn update_plan(
         .await?
         .ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
 
-    if let Some(url) = req.purchase_url.as_deref() {
-        require_hosted_payment_url(url)?;
+    if let Some(url) = req.purchase_url.clone() {
+        require_hosted_payment_url(&url)?;
+        // A link that is well-formed but dead is refused here, before it can be offered to a buyer.
+        require_hosted_payment_url_resolves(&url).await?;
     }
     // A plan edit that does not mention the link must KEEP the stored one, exactly as
     // `payment_provider` next door does (`req.payment_provider.or(existing.payment_provider)`).
