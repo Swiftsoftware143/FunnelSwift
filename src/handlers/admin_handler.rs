@@ -832,12 +832,20 @@ pub async fn list_tenant_users(
             bool,
             String,
             Option<chrono::DateTime<chrono::Utc>>,
+            bool,
         ),
     >(
         // `last_login_at` (migration 118) is what tells an operator the difference between a
         // customer who never got in (the welcome mail with their password never arrived) and one
         // who signed in and went quiet. NULL = never signed in; it is never backfilled.
-        r#"SELECT id, email, first_name, last_name, role, is_active, name, last_login_at
+        // `password_undelivered` (migration 119) is the OPERATOR'S SIGNAL for the same situation
+        // before anyone has tried to sign in (2026-11-11): the register door mints the first
+        // password and sets this when the credentials mail does not go out, and it clears when the
+        // person chooses a password. Until it was published here the pane listed every teammate
+        // identically, so the only way to learn whose first mail never arrived was a support
+        // ticket. The resend action lives in this very row and can put it right.
+        r#"SELECT id, email, first_name, last_name, role, is_active, name, last_login_at,
+                  password_undelivered
            FROM users WHERE tenant_id = $1
            ORDER BY created_at DESC"#,
     )
@@ -848,7 +856,17 @@ pub async fn list_tenant_users(
     let result: Vec<Value> = users
         .into_iter()
         .map(
-            |(id, email, first_name, last_name, role, is_active, name, last_login_at)| {
+            |(
+                id,
+                email,
+                first_name,
+                last_name,
+                role,
+                is_active,
+                name,
+                last_login_at,
+                password_undelivered,
+            )| {
                 json!({
                     "id": id.to_string(),
                     "email": email,
@@ -858,6 +876,7 @@ pub async fn list_tenant_users(
                     "role": role,
                     "is_active": is_active,
                     "last_login_at": last_login_at.map(|t| t.to_rfc3339()),
+                    "password_undelivered": password_undelivered,
                 })
             },
         )
