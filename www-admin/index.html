@@ -785,6 +785,7 @@ async function renderDashboard() {
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">Dashboard</h1>
+    <div id="payCard"></div>
     <div id="preqCard"></div>
     <div id="supCard"></div>
     <div class="stats-grid">
@@ -835,7 +836,7 @@ function activityDetail(r){
   if(entLabel) return entLabel+(id?' '+id.slice(0,8):'');
   return '-';
 }
-function bindDashboard() { paintPlanRequests(); paintSupportRequests(); }
+function bindDashboard() { paintPlanRequests(); paintSupportRequests(); refreshPaymentHealth(); }
 
 // ── MY ACCOUNT ──
 async function renderMyAccount() {
@@ -6564,6 +6565,44 @@ function paintSupportRequests() {
     + '<button class="btn" data-open-support-requests="1">Open the queue</button></div></div>';
   const btn = box.querySelector('[data-open-support-requests]');
   if (btn) btn.addEventListener('click', () => { STATE.view = 'supportRequests'; STATE.subView = null; renderApp(); });
+}
+
+// ── CHECKOUT HEALTH: the operator finally learns that nobody can pay (2026-11-11) ─────────────
+// A workspace that presses Upgrade while no payment provider is active is refused BEFORE any charge
+// (`POST /checkout/create` -> 424 payment_provider_not_configured). The buyer is told nothing was
+// charged; the refusal is also logged. The OPERATOR was told nothing UNPROMPTED: the Provider Keys
+// screen shows an empty list to anyone who opens it, and otherwise the only signal was a line in
+// `docker logs`, which no one reads until a customer complains. Measured live 2026-11-10 at 23:14 and
+// 23:18 (-0500): two real checkout attempts by one workspace were refused for exactly this reason
+// while `payment_providers` held 0 rows, and nothing on the dashboard said so.
+// This card turns that state into something the operator sees on the dashboard they already open,
+// with the one control that fixes it.
+// NON-VACUITY: painted ONLY when the read SUCCEEDED and returned zero rows. A failed read paints
+// nothing — "I could not check" must never be shown as "you cannot take money", and a connected
+// installation must see no card at all. The copy names the platform account on purpose: a workspace
+// that brought its own merchant key can still be charged, so the card must not claim otherwise.
+var PAY_PROVIDERS = null;
+async function refreshPaymentHealth() {
+  if (!USER || (USER.role !== 'admin' && !USER.is_admin)) return;
+  try {
+    const rows = await api('/payment-providers');
+    PAY_PROVIDERS = Array.isArray(rows) ? rows : [];
+  } catch (e) { return; }
+  paintPaymentHealth();
+}
+function paintPaymentHealth() {
+  if (PAY_PROVIDERS === null) return;
+  const box = document.getElementById('payCard');
+  if (!box) return;
+  if (PAY_PROVIDERS.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="card" data-payment-provider-missing="1" style="border-left:4px solid #dc2626;margin-bottom:16px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+    + '<div><div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Checkout is switched off</div>'
+    + '<div style="font-size:20px;font-weight:800">Buyers cannot pay</div>'
+    + '<div style="color:#475569;font-size:13px;margin-top:2px">No payment provider is connected on the platform account, so every workspace without its own key is refused at checkout before any charge is made. Add the platform\'s Stripe or PayPal key and those buyers can pay again.</div></div>'
+    + '<button class="btn" data-open-provider-keys="1">Connect a payment provider</button></div></div>';
+  const btn = box.querySelector('[data-open-provider-keys]');
+  if (btn) btn.addEventListener('click', () => { STATE.view = 'providerKeys'; STATE.subView = null; renderApp(); });
 }
 
 </script>
