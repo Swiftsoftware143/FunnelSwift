@@ -931,6 +931,19 @@ pub async fn send_plan_request_operator_alert(
     .map_err(|e| format!("tenant name lookup: {e}"))?
     .flatten()
     .unwrap_or_else(|| requester_email.to_string());
+    // A FLEET PROBE MUST NEVER RING THE OPERATOR (kanban t_f17b5802): the recipient here is the
+    // operator whatever address the requester gave, so a walk that files a request pages a human.
+    // The predicate is on the REQUESTER: reserved domain, harness local part, or a
+    // harness-shaped workspace name. The request row still lands in the console queue.
+    if let Some(reason) =
+        crate::security::probe_addr::synthetic_requester(requester_email, &workspace)
+    {
+        tracing::info!(
+            reason = %reason,
+            "plan-request operator alert WITHHELD — the requester is a synthetic identity"
+        );
+        return Ok(());
+    }
     let note = if note.trim().is_empty() {
         "(none)"
     } else {
@@ -1102,6 +1115,14 @@ pub async fn send_support_request_operator_alert(
             }
         }
     };
+    // A FLEET PROBE MUST NEVER RING THE OPERATOR (kanban t_f17b5802). Requester, not route.
+    if let Some(reason) = crate::security::probe_addr::synthetic_requester(from_email, &who) {
+        tracing::info!(
+            reason = %reason,
+            "support operator alert WITHHELD — the filer is a synthetic identity"
+        );
+        return Ok(());
+    }
     let subject = format!("A support request needs an answer: {subject_line}");
     let text = format!(
         "{who} wrote to support.\n\n\
