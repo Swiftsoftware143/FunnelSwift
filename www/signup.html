@@ -218,7 +218,8 @@ try{
     return '<div style="margin-top:12px;padding:12px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;text-align:left">'
       + '<strong style="font-size:14px">Choose your password now</strong>'
       + '<div style="font-size:13px;color:#334155;margin:6px 0">You are already signed up \u2014 set the password you will use to sign in:</div>'
-      + '<input id="initPw" type="password" minlength="8" placeholder="At least 8 characters" style="width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px">'
+      + '<label for="initPw" style="display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:4px">Choose your password</label>'
+      + '<input id="initPw" type="password" minlength="8" aria-label="Choose your password" placeholder="At least 8 characters" style="width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px">'
       + '<button type="button" onclick="saveInitialPassword()" style="margin-top:8px;width:100%;padding:9px 10px;border:0;border-radius:6px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer">Save password</button>'
       + '<div id="initPwMsg" style="font-size:13px;margin-top:8px"></div></div>';
   }
