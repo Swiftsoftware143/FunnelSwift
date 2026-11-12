@@ -286,6 +286,7 @@ pub async fn register(
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
         impersonating: None,
+        wsid: None,
     };
 
     let token = encode(
@@ -534,6 +535,7 @@ pub async fn login(
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
         impersonating: None,
+        wsid: None,
     };
 
     let token = encode(
@@ -1022,6 +1024,7 @@ pub(crate) async fn reissue_session(
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
         impersonating: None,
+        wsid: None,
     };
     encode(
         &Header::default(),
@@ -1551,6 +1554,7 @@ pub async fn logout_all(
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
         impersonating: None,
+        wsid: None,
     };
     let token = encode(
         &Header::default(),

@@ -40,6 +40,12 @@ pub struct Claims {
     pub iss: Option<String>,
     #[serde(default)]
     pub impersonating: Option<String>,
+    /// The workspace this session is working in (`workspaces.id`). `None` on a token minted
+    /// before the switcher shipped, or on an impersonation token — such a session resolves to the
+    /// account's default workspace at the door that needs it. Switching re-mints the session with
+    /// this set.
+    #[serde(default)]
+    pub wsid: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

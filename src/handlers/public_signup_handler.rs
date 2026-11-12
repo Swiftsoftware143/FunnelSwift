@@ -702,6 +702,7 @@ pub async fn public_signup(
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
         impersonating: None,
+        wsid: None,
     };
 
     let token = encode(

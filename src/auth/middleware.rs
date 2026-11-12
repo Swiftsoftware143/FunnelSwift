@@ -21,6 +21,7 @@ pub struct AuthUser {
     pub is_admin: bool,
     pub token: String,
     pub impersonating: Option<String>,
+    pub wsid: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -85,6 +86,7 @@ where
             role: token_data.claims.role,
             token: token_str,
             impersonating: token_data.claims.impersonating,
+            wsid: token_data.claims.wsid,
         })
     }
 }

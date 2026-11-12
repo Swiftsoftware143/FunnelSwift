@@ -435,6 +435,7 @@ pub async fn impersonate(
         aud: Some("funnelswift-api".to_string()),
         iss: Some("funnelswift".to_string()),
         impersonating: Some(auth.user_id.clone()),
+        wsid: None,
     };
 
     let token = encode(

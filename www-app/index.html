@@ -274,7 +274,7 @@ tr:hover{background:#f8fafc}
   </div>
 </div>
 <div class="main">
-  <div class="header"><h1 id="pt">Dashboard</h1><div style="display:flex;gap:8px;align-items:center"><button onclick="toggleHelp()" style="background:var(--primary, #6366f1);color:#fff;border:none;border-radius:100px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s" id="helpBtn">💡 Help</button></div></div>
+  <div class="header"><h1 id="pt">Dashboard</h1><div style="display:flex;gap:8px;align-items:center"><div style="position:relative"><button onclick="toggleWsMenu()" title="Workspaces" style="background:#fff;color:#1e1b4b;border:1px solid #e2e8f0;border-radius:100px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">🗂️ <span id="wsCurrentName">Workspace</span> <span style="font-size:10px">▾</span></button><div id="wsMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:1000;padding:4px 0"></div></div><button onclick="toggleHelp()" style="background:var(--primary, #6366f1);color:#fff;border:none;border-radius:100px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s" id="helpBtn">💡 Help</button></div></div>
   <div class="ct" id="ct"><div class="loading">Loading...</div></div>
 </div>
 <div class="help-panel" id="helpPanel"><div class="help-header"><strong id="helpTitle">Quick Help</strong><button onclick="toggleHelp()" aria-label="Close help" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div><div class="help-body" id="helpBody">Select a section for help tips.</div></div>
@@ -6338,7 +6338,7 @@ window.appGuidePages = {
   insights:    { title: "Insights", desc: "Which traffic source actually converts. Every lead counts under the source recorded when it was captured, so giving each channel its own link slug makes the comparison per channel. The window switch re-reads the same numbers over 7, 30 or 90 days, and the tables break them down by source, by day and by where each lead now stands.", actions: ["Pick a 7, 30 or 90 day window", "Give each channel its own link slug", "Read the conversion rate per source"] },
   tagrules:    { title: "Tag Automation", desc: "Rules that change a lead for you the moment a trigger tag goes on it. The rule runs on the server as the tag is applied, so a lead form, a card scan, a bulk action or the API all set it off \u2014 there is nothing to run by hand. The rules the platform ships are managed centrally and still run for your leads; the rules you write apply to this workspace only.", actions: ["Create a rule", "Pause it with its Active switch", "Read Recent tag changes, including the ones a rule made"] },
   support:     { title: "Support", desc: "Ask the team anything about this workspace and read the answer here. A request keeps its whole conversation, so it is still here when you come back, and the answer is also emailed to the address you are signed in with. A second request with the same subject while the first is open is treated as the same ask, so a double press does not make two.", actions: ["Send a request", "Read the answer on the same request", "Come back to an open request at any time"] },
-  workspaces:  { title: "Workspaces", desc: "A workspace is a separate drawer inside this one business account, so one sign-in can run more than one brand, client or location. Every account starts with My Workspace, which is the default a new sign-in opens; Make default on another one changes that. Two workspaces cannot share a name, and your plan says how many you may have. You can rename and delete them, but the account must always keep at least one, so the last one cannot be deleted.", actions: ["Create a workspace", "Rename one you already run", "Make default the one you open most", "Delete one you no longer use"] },
+  workspaces:  { title: "Workspaces", desc: "A workspace is a separate drawer inside this one business account, so one sign-in can run more than one brand, client or location. Use the 🗂️ menu in the top bar to switch between them, or to add, rename, make one the default, or delete one. Every account starts with My Workspace, which is the default a new sign-in opens; Make default on another one changes that. Two workspaces cannot share a name, and your plan says how many you may have. The account must always keep at least one workspace, so the last one cannot be deleted, and the one you are signed into cannot be deleted until you switch away.", actions: ["Switch workspaces from the top-bar 🗂️ menu", "Create a workspace", "Rename one you already run", "Make default the one you open most", "Delete one you no longer use"] },
   inbox:       { title: "Inbox", desc: "Your own addresses on your own domain. Add the domain you already own, paste the exact records the screen prints at your DNS provider, then Check again until the domain reads Receiving — mail cannot arrive before that. The Mailgun (or SMTP) credential you enter is stored encrypted. Create the addresses you want, and read the mail in the client at inbox.funnelswift.net, which is the same account. A branded inbox.yourbusiness.com address is not offered yet.", actions: ["Add your domain and paste its records", "Press Check again until it says Receiving", "Create the addresses you want", "Open inbox.funnelswift.net to read the mail"] }
 
 };
@@ -6358,7 +6358,7 @@ window.appGuidePages = {
 <script>
 /* ── Workspaces ───────────────────────────────────────────────────────────────────────────────
    GET|POST /api/v1/workspaces, PATCH|DELETE /api/v1/workspaces/:id, POST /:id/default. */
-var WS = { items: [] };
+var WS = { items: [], current: null, busy: false };
 
 function wsMsg(text, ok) {
   var el = $("wsMsg");
@@ -6397,6 +6397,7 @@ function loadWorkspaces() {
 function renderWorkspaces() {
   var el = $("wsList");
   if (!el) return;
+  var admin = wsCanManage();
   if (!WS.items.length) {
     el.innerHTML = '<div style="color:#64748b;font-size:13px">No workspaces yet — create the first one below.</div>';
     return;
@@ -6407,9 +6408,9 @@ function renderWorkspaces() {
       + "<div><strong>" + X(w.name) + "</strong>"
       + (w.is_default ? ' <span style="background:#eef2ff;color:#3730a3;font-size:11px;padding:1px 8px;border-radius:10px">Default</span>' : "")
       + "</div><div style=\"display:flex;gap:8px\">"
-      + (w.is_default ? "" : '<button class="btn" onclick="setDefaultWorkspace(\'' + id + "')\">Make default</button>")
-      + '<button class="btn" onclick="renameWorkspace(\'' + id + "')\">Rename</button>"
-      + '<button class="btn" onclick="deleteWorkspace(\'' + id + "')\">Delete</button>"
+      + (admin && !w.is_default ? '<button class="btn" onclick="setDefaultWorkspace(\'' + id + "')\">Make default</button>" : "")
+      + (admin ? '<button class="btn" onclick="renameWorkspace(\'' + id + "')\">Rename</button>" : "")
+      + (admin ? '<button class="btn" onclick="deleteWorkspace(\'' + id + "')\">Delete</button>" : "")
       + "</div></div>";
   }).join("");
 }
@@ -6451,6 +6452,145 @@ function deleteWorkspace(id) {
     .then(function () { wsMsg("Workspace deleted.", true); loadWorkspaces(); })
     .catch(function (e) { wsMsg(e.message, false); });
 }
+
+/* ── Top-bar workspace switcher ──────────────────────────────────────────────────────────────
+   Switch / add / rename / delete / make-default, from the header. A member sees Switch + Add;
+   the owner/admin also sees Rename / Delete / Make default — the server enforces the same rule. */
+function wsCanManage() {
+  return !!(U && (U.is_workspace_owner || U.is_admin));
+}
+
+function paintWsSwitcher() {
+  var el = $("wsCurrentName");
+  if (el) el.textContent = WS.current ? WS.current.name : "Workspace";
+}
+
+async function loadWsSwitcher() {
+  try {
+    var d = await api("/api/v1/workspaces");
+    WS.items = (d && d.workspaces) || [];
+  } catch (e) { WS.items = []; }
+  var cur = null;
+  try { cur = JSON.parse(localStorage.getItem("ws_fs_workspace") || "null"); } catch (e) {}
+  var match = null;
+  if (cur && cur.id) match = WS.items.filter(function (w) { return w.id === cur.id; })[0];
+  if (!match) match = WS.items.filter(function (w) { return w.is_default; })[0] || WS.items[0] || null;
+  WS.current = match;
+  if (match) { try { localStorage.setItem("ws_fs_workspace", JSON.stringify(match)); } catch (e) {} }
+  paintWsSwitcher();
+  if ($("wsList")) renderWorkspaces();
+}
+
+function toggleWsMenu() {
+  var m = $("wsMenu");
+  if (!m) return;
+  if (m.style.display !== "none") { m.style.display = "none"; return; }
+  renderWsMenu();
+  m.style.display = "block";
+}
+
+function wsBtn(label, onclick, danger) {
+  return '<button onclick="' + onclick + '" style="background:#fff;color:' + (danger ? "#b91c1c" : "#1e1b4b") + ';border:1px solid ' + (danger ? "#fecaca" : "#e2e8f0") + ';border-radius:8px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer">' + label + '</button>';
+}
+
+function renderWsMenu() {
+  var m = $("wsMenu");
+  if (!m) return;
+  var admin = wsCanManage();
+  var h = '<div style="padding:8px 14px 4px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Workspaces</div>';
+  if (!WS.items.length) h += '<div style="padding:6px 14px;font-size:13px;color:#64748b">No workspaces yet.</div>';
+  WS.items.forEach(function (w, i) {
+    var cur = WS.current && WS.current.id === w.id;
+    h += '<div style="display:flex;align-items:center;gap:6px;padding:6px 14px 2px">'
+      + '<span style="flex:1;font-weight:' + (cur ? "600" : "400") + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + X(w.name) + '</span>'
+      + (w.is_default ? '<span style="font-size:10px;color:#64748b">default</span>' : '')
+      + (cur ? '<span style="font-size:12px">&#10003;</span>' : '') + '</div>';
+    h += '<div style="display:flex;gap:4px;padding:2px 14px 8px;border-bottom:1px solid #eef2f7">'
+      + (cur ? '' : wsBtn("Switch", "wsSwitch(" + i + ")"))
+      + (admin ? wsBtn("Rename", "wsRename(" + i + ")") : '')
+      + (admin && !w.is_default ? wsBtn("Make default", "wsMakeDefault(" + i + ")") : '')
+      + (admin ? wsBtn("Delete", "wsDelete(" + i + ")", true) : '')
+      + '</div>';
+  });
+  h += '<div style="border-top:1px solid #eef2f7;margin:4px 0 0"></div>';
+  h += '<button onclick="wsAdd()" style="width:100%;text-align:left;background:none;border:none;padding:8px 14px;font-size:13px;font-weight:600;color:#1e1b4b;cursor:pointer">➕ Add workspace</button>';
+  m.innerHTML = h;
+}
+
+async function wsSwitch(idx) {
+  var w = WS.items[idx];
+  if (!w || WS.busy) return;
+  WS.busy = true;
+  try {
+    var d = await api("/api/v1/workspaces/" + w.id + "/switch", { method: "POST" });
+    var tok = d.token;
+    if (!tok) throw new Error("No token returned");
+    T = tok;
+    localStorage.setItem("ws_fs_token", tok);
+    try { localStorage.setItem("ws_fs_workspace", JSON.stringify(d.workspace || w)); } catch (e) {}
+    window.location.reload();
+  } catch (e) {
+    alert((e && e.message) ? e.message : "Could not switch workspace");
+  } finally { WS.busy = false; }
+}
+
+async function wsAdd() {
+  if (WS.busy) return;
+  var name = (window.prompt("Name for the new workspace") || "").trim();
+  if (!name) return;
+  WS.busy = true;
+  try {
+    await api("/api/v1/workspaces", { method: "POST", body: JSON.stringify({ name: name }) });
+    await loadWsSwitcher();
+    renderWsMenu();
+  } catch (e) {
+    alert((e && e.message) ? e.message : "Could not add workspace");
+  } finally { WS.busy = false; }
+}
+
+async function wsRename(idx) {
+  var w = WS.items[idx];
+  if (!w || WS.busy) return;
+  var name = (window.prompt("New name for this workspace:", w.name) || "").trim();
+  if (!name || name === w.name) return;
+  WS.busy = true;
+  try {
+    await api("/api/v1/workspaces/" + w.id, { method: "PATCH", body: JSON.stringify({ name: name }) });
+    await loadWsSwitcher();
+    renderWsMenu();
+  } catch (e) {
+    alert((e && e.message) ? e.message : "Could not rename workspace");
+  } finally { WS.busy = false; }
+}
+
+async function wsMakeDefault(idx) {
+  var w = WS.items[idx];
+  if (!w || WS.busy) return;
+  WS.busy = true;
+  try {
+    await api("/api/v1/workspaces/" + w.id + "/default", { method: "POST" });
+    await loadWsSwitcher();
+    renderWsMenu();
+  } catch (e) {
+    alert((e && e.message) ? e.message : "Could not change the default workspace");
+  } finally { WS.busy = false; }
+}
+
+async function wsDelete(idx) {
+  var w = WS.items[idx];
+  if (!w || WS.busy) return;
+  if (!window.confirm('Delete "' + w.name + '"? Your account must keep at least one workspace.')) return;
+  WS.busy = true;
+  try {
+    await api("/api/v1/workspaces/" + w.id, { method: "DELETE" });
+    await loadWsSwitcher();
+    renderWsMenu();
+  } catch (e) {
+    alert((e && e.message) ? e.message : "Could not delete workspace");
+  } finally { WS.busy = false; }
+}
+
+loadWsSwitcher();
 
 /* ── Inbox ────────────────────────────────────────────────────────────────────────────────────
    GET|POST /api/v1/private-email/domains (+ /:id/verify, /:id/records), /boxes, /messages. */
