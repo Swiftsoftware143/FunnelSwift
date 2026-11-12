@@ -549,7 +549,23 @@ pub async fn update_tenant(
     {
         let plan_id = Uuid::parse_str(raw)
             .map_err(|_| AppError::BadRequest("Valid plan_id is required".into()))?;
+        // Same rule as the assign route: a person moving a workspace tells the customer (2026-11-12).
+        let previous_slug = crate::plan_movement::current_plan(&state.pool, id)
+            .await
+            .map(|(slug, _)| slug);
         set_active_plan(&state.pool, id, plan_id, None).await?;
+        let (notified, notify_reason) = crate::handlers::plan_handler::notify_plan_change(
+            &state.pool,
+            id,
+            plan_id,
+            previous_slug.as_deref(),
+        )
+        .await;
+        return Ok(Json(json!({
+            "message": "Tenant updated",
+            "notified": notified,
+            "notify_reason": notify_reason,
+        })));
     }
     Ok(Json(json!({"message": "Tenant updated"})))
 }
@@ -715,6 +731,22 @@ pub async fn assign_plan(
     }
     // The term is optional: a caller that names none gets the catalogue default, exactly as before.
     let cycle = req.get("billing_cycle").and_then(|v| v.as_str());
+    // A person moving a workspace onto a plan must tell the customer (2026-11-12): read what they
+    // are leaving first, so a repeat save of the same plan mails nobody.
+    let previous_slug = crate::plan_movement::current_plan(&state.pool, id)
+        .await
+        .map(|(slug, _)| slug);
     set_active_plan(&state.pool, id, plan_id, cycle).await?;
-    Ok(Json(json!({"message": "Plan assigned"})))
+    let (notified, notify_reason) = crate::handlers::plan_handler::notify_plan_change(
+        &state.pool,
+        id,
+        plan_id,
+        previous_slug.as_deref(),
+    )
+    .await;
+    Ok(Json(json!({
+        "message": "Plan assigned",
+        "notified": notified,
+        "notify_reason": notify_reason,
+    })))
 }

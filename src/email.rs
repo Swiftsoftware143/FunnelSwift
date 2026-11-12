@@ -513,6 +513,19 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // A PERSON MOVED THE CUSTOMER ONTO A PLAN (2026-11-12). Self-serve checkout needs a payment
+        // provider and no install in this fleet has one yet, so nearly every paid seat is given BY
+        // HAND from the operator console. That switch used to be silent: the tier changed and the
+        // customer's only clue was a screen whose allowances had moved. This arm is what the
+        // operator's assign action sends once the plan has actually moved; nothing is charged, so it
+        // says so, and it points at the plan screen rather than the marketing site.
+        "plan_changed" => {
+            let subject = format!("Your {APP_NAME} plan is now {plan_name}");
+            let text = format!(
+                "Hi {name},\n\nYour workspace has been moved onto the {plan_name} plan. Our team made this change for you, and nothing was charged to your card for it.\n\nOpen {app_url}/dashboard/ and choose Plan & Billing to see exactly what the plan includes and when it renews. If you expected a different plan, reply to this message and we will put it right.\n\n- The {APP_NAME} Team"
+            );
+            (subject, Some(text), None)
+        }
         "password_reset" => {
             let subject = "Password Reset Request".to_string();
             // The customer must be TOLD where to enter the code — and in this app the ONLY route to

@@ -5641,8 +5641,15 @@ function bindPlanAdmin() {
     ab.disabled = true; if (msg) msg.textContent = 'Assigning…';
     try {
       const r = await api('/admin/plans/assign', { method: 'POST', body: JSON.stringify({ tenant_id, plan_id }) });
-      if (msg) msg.textContent = '✓ ' + (r.message || 'Plan assigned');
-      showToast('Plan assigned', 'success');
+      // The app now tells the customer their plan moved (2026-11-12), so say whether that mail went
+      // out instead of leaving the operator guessing what the customer knows.
+      const told = r && r.notified === true ? ' The customer has been emailed about the change.'
+        : (r && r.notify_reason === 'unchanged') ? ' The workspace was already on that plan, so no email was sent.'
+        : (r && r.notify_reason === 'no_recipient') ? ' No customer email address was found, so nobody was told.'
+        : (r && r.notify_reason === 'mail_failed') ? ' The customer could NOT be emailed — the plan is set, so tell them yourself.'
+        : '';
+      if (msg) msg.textContent = '✓ ' + (r.message || 'Plan assigned') + told;
+      showToast(r.notified === true ? 'Plan assigned — customer emailed' : 'Plan assigned', 'success');
     } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
     ab.disabled = false;
   };
