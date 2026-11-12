@@ -551,6 +551,10 @@ function renderShell() {
       ${nav}
       <div class="nav-footer">
         ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - tenants, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
+        <div style="display:flex;gap:12px;padding:8px 0 10px;border-top:1px solid var(--border);margin-top:8px">
+          <a href="https://swiftsoftware.net/updates" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">📰 Updates</a>
+          <a href="https://swiftsoftware.net/roadmap" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">🗺️ Roadmap</a>
+        </div>
         <div class="nav-user">
           <div class="avatar"${u.avatar_url?` style="background-image:url('${x(u.avatar_url)}');background-size:cover;background-position:center"`:''}>${u.avatar_url?'':initials}</div>
           <div style="flex:1;min-width:0">
@@ -657,6 +661,9 @@ function buildNav() {
     // The COUNT rides in the label for the same reason it does on Plan Requests: an ask that
     // arrives while the console is open must not wait for the operator to think of opening a tab.
     sections.push(`<button type="button" class="nav-item ${STATE.view==='supportRequests'?'active':''}" data-view="supportRequests" aria-label="Support Requests${SUP_OPEN ? ' (' + SUP_OPEN + ')' : ''}"><span class="icon">🛟</span><span class="nav-text">Support Requests${SUP_OPEN ? ' (' + SUP_OPEN + ')' : ''}</span></button>`);
+    // Submit Feedback queue (kanban B209, t_2b4e36f9): the platform-only reader of GET /api/v1/feedback.
+    // Admin-only, because the route answers 403 to anything but the platform operator.
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='feedback'?'active':''}" data-view="feedback" aria-label="Feedback"><span class="icon">💬</span><span class="nav-text">Feedback</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants" aria-label="Tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings" aria-label="System Settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin" aria-label="Plans &amp; Features"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></button>`);
@@ -707,6 +714,7 @@ const viewRenderers = {
   checkoutSessions: renderCheckoutSessions,
   planRequests: renderPlanRequests,
   supportRequests: renderSupportRequests,
+  feedback: renderFeedback,
 };
 
 async function renderView() {
@@ -770,6 +778,7 @@ function bindView(view) {
     case 'checkoutSessions': break;
     case 'planRequests': bindPlanRequests(); break;
     case 'supportRequests': bindSupportRequests(); break;
+    case 'feedback': break;
     case 'cardAnalytics': bindCardAnalytics(); break;
     case 'cardUtmBuilder': bindCardUtmBuilder(); break;
     case 'cardLocations': bindCardLocations(); break;
@@ -6699,9 +6708,102 @@ window.appGuidePages = {
   "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
   "planRequests": { title: "Plan Requests", desc: "A workspace that wants a paid plan asks here — its own Upgrade screen files the request because this install cannot take a card. Nothing is charged. Move a request to contacted, done or declined, and the customer sees that state the next time their screen loads.", actions: ["See every request and the workspace it came from", "Mark a request contacted, done or declined", "The number on the label is how many are still waiting"] },
   "supportRequests": { title: "Support Requests", desc: "A customer asks for help from the Support screen in their own console, and answers here. Saving a written answer emails it to the person who asked and also leaves it on their request, so they can read it again; a save that could not be emailed says so instead of pretending it went out. The number on the label, and the red card on the dashboard, count the requests still waiting on an answer.", actions: ["Read every request with the workspace it came from", "Write the answer and mark it answered", "Close a request that needs no answer", "The number on the label is how many are still waiting"] },
+  "feedback": { title: "Feedback", desc: "Everything customers told us through the Submit Feedback button — an idea, a bug or a complaint, with the account, person, app and screen it came from. Platform administrators only.", actions: ["Read each idea, bug or complaint", "See which screen and account it came from", "Follow up with the person who sent it"] },
   "settings": { title: "Settings", desc: "This app's own configuration for your account — the mail server it sends through and the other integration slots.", actions: ["Set the mail server credentials", "Check whether email is configured", "Review the other settings"] },
   "superAdmin": { title: "Super Admin", desc: "Platform-wide controls, visible only to a platform administrator.", actions: ["Review the platform settings", "Check the features registry"] }
 };
+// ── Submit Feedback (kanban B209, t_2b4e36f9) ─────────────────────────────────────────────
+// A "Submit Feedback" button visible on every screen. It captures WHO (the signed-in session),
+// WHICH ACCOUNT (the session's tenant), WHICH APP (FunnelSwift, recorded server-side) and WHICH
+// SCREEN (STATE.view) — so nothing arrives anonymous or untraceable. The team reads it on the
+// platform-only Feedback tab (renderFeedback below). Linked Updates + Roadmap open the one
+// canonical URL fleet-wide (sidebar footer).
+(function () {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'feedbackFab';
+  btn.setAttribute('aria-label', 'Submit feedback');
+  btn.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:9000;display:flex;align-items:center;gap:8px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:28px;padding:12px 18px;font-size:.9rem;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:inherit';
+  btn.innerHTML = '💬 Feedback';
+  btn.onclick = window._openFeedbackModal;
+  document.body.appendChild(btn);
+})();
+
+window._openFeedbackModal = function () {
+  if (!TOKEN) { showToast('Sign in to send feedback', 'error'); return; }
+  const screen = String(STATE.view || '');
+  STATE.modal = {
+    title: 'Submit Feedback',
+    content: '<div>'
+      + '<p style="color:var(--muted);font-size:.85rem;margin:0 0 12px">Tell us what is on your mind — an idea, a bug, or a complaint. It is sent with your account and the screen you are on, so we can follow up.</p>'
+      + '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+      + '<button type="button" class="btn btn-secondary btn-sm" data-kind="idea" onclick="window._selectFeedbackKind(\'idea\', this)">💡 Idea</button>'
+      + '<button type="button" class="btn btn-secondary btn-sm" data-kind="bug" onclick="window._selectFeedbackKind(\'bug\', this)">🐞 Bug</button>'
+      + '<button type="button" class="btn btn-secondary btn-sm" data-kind="complaint" onclick="window._selectFeedbackKind(\'complaint\', this)">⚠️ Complaint</button>'
+      + '</div>'
+      + '<div style="font-size:.75rem;color:var(--muted);margin-bottom:6px">Screen: ' + x(screen) + '</div>'
+      + '<textarea id="feedbackMsg" class="input" rows="5" style="resize:vertical" placeholder="What happened, or what should we build?"></textarea>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'
+      + '<button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>'
+      + '<button type="button" class="btn btn-primary" id="feedbackSendBtn" onclick="window._submitFeedback()">Send feedback</button>'
+      + '</div>'
+      + '</div>'
+  };
+  renderApp();
+  window.__feedbackKind = 'idea';
+};
+
+window._selectFeedbackKind = function (kind, el) {
+  window.__feedbackKind = kind;
+  document.querySelectorAll('[data-kind]').forEach(function (b) {
+    b.style.background = (b === el) ? 'var(--primary)' : '';
+    b.style.color = (b === el) ? '#fff' : '';
+    b.style.borderColor = (b === el) ? 'var(--primary)' : '';
+  });
+};
+
+window._submitFeedback = async function () {
+  const msg = document.getElementById('feedbackMsg');
+  const btn = document.getElementById('feedbackSendBtn');
+  if (!msg || !msg.value.trim()) { showToast('Please write a message', 'error'); return; }
+  const kind = window.__feedbackKind || 'idea';
+  if (btn) btn.disabled = true;
+  try {
+    await api('/feedback', { method: 'POST', body: JSON.stringify({ kind: kind, screen: String(STATE.view || ''), message: msg.value.trim() }) });
+    window._closeModal();
+    showToast('Thanks — your feedback was sent', 'success');
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    showToast('Could not send: ' + (e.message || 'please try again'), 'error');
+  }
+};
+
+// ── Feedback tab (platform operator read) ────────────────────────────────────────────────
+async function renderFeedback() {
+  let payload = { feedback: [] };
+  let err = '';
+  try { payload = await api('/feedback') || payload; }
+  catch (e) { err = (e && e.message) || 'Could not load the queue'; }
+  const items = Array.isArray(payload.feedback) ? payload.feedback : [];
+  return '<div>'
+    + '<h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Feedback</h1>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">What customers told us — idea, bug or complaint, with the account, person, app and screen it came from.</div>'
+    + (err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : '')
+    + (items.length
+      ? items.map(function (f) {
+          const who = [f.name, f.email].filter(Boolean).join(' · ') || 'unknown';
+          return '<div class="card" style="margin-bottom:12px">'
+            + '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap">'
+            + '<strong>' + x(f.kind) + '</strong>'
+            + '<span style="color:var(--muted);font-size:.75rem">' + x(f.app) + ' · ' + x(f.screen) + ' · ' + x(f.created_at) + '</span>'
+            + '</div>'
+            + '<p style="margin:0 0 6px;white-space:pre-wrap">' + x(f.message) + '</p>'
+            + '<div style="color:var(--muted);font-size:.78rem">' + x(who) + '</div>'
+            + '</div>';
+        }).join('')
+      : '<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No feedback yet.</div>')
+    + '</div>';
+}
 </script>
 <script src="/inline-guide-widget.js?v=20261110b"></script>
 <script>

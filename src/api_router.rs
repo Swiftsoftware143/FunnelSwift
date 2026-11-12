@@ -150,6 +150,10 @@ pub fn create_router(
             "/api/v1/workspaces",
             crate::workspaces::router(state.clone()),
         )
+        // ── Submit Feedback (kanban B209, t_2b4e36f9) ───────────────────────────────────────
+        // Same shape as workspaces: a sub-router under `/api/v1`, so the ONE global `require_auth`
+        // layer is its credential boundary; each handler scopes/gates its own SQL.
+        .nest("/api/v1/feedback", crate::feedback::router(state.clone()))
         .nest(
             "/api/v1/private-email",
             crate::private_email::router(state.clone()),
