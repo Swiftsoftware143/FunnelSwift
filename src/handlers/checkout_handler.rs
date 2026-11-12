@@ -690,6 +690,7 @@ pub async fn create_checkout_session(
                                 plan_slug: &plan_slug,
                                 plan_name: name,
                                 plan_price: asked_for,
+                                billing_cycle: if yearly { "year" } else { "month" },
                                 payment_link: Some(url.as_str()),
                             },
                         )
@@ -758,6 +759,7 @@ pub async fn create_checkout_session(
                             plan_slug: &plan_slug,
                             plan_name: name,
                             plan_price: asked_for,
+                            billing_cycle: if yearly { "year" } else { "month" },
                             payment_link: None,
                         },
                     )
@@ -2015,6 +2017,13 @@ struct UpgradeAsk<'a> {
     plan_slug: &'a str,
     plan_name: &'a str,
     plan_price: f64,
+    /// WHICH TERM THE BUYER ASKED FOR (2026-11-12), `"month"` or `"year"`. The console and the till
+    /// have carried the term since 2026-10-24 — `checkout_sessions.metadata` records it and the sale
+    /// is priced from `annual_price` — but this row was written with `plan_requests`' own default
+    /// (`'monthly'`), so a yearly ask reached the operator's queue labelled monthly. Measured live:
+    /// a `billing_cycle: "year"` press for suite recorded `amount 290.00` and `billing_cycle "year"`
+    /// on the session while the request row read `monthly`.
+    billing_cycle: &'a str,
     /// The hosted payment page the buyer was handed to, when the plan carries one.
     payment_link: Option<&'a str>,
 }
@@ -2027,6 +2036,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
         plan_slug,
         plan_name,
         plan_price,
+        billing_cycle,
         payment_link,
     } = ask;
     let open: Option<Uuid> = match sqlx::query_scalar(
@@ -2047,17 +2057,37 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
     };
 
     if let Some(id) = open {
+        // The newest press wins the TERM on an ask that is still open: the buy is the same plan, and
+        // the operator must seat the term the customer last chose, not the one they chose first.
+        if let Err(e) = sqlx::query(
+            "UPDATE plan_requests SET billing_cycle = $2, updated_at = now() \
+              WHERE id = $1 AND billing_cycle <> $2",
+        )
+        .bind(id)
+        .bind(billing_cycle)
+        .execute(db)
+        .await
+        {
+            tracing::error!("checkout/create: could not refresh the open request's term: {e:?}");
+        }
         return Some(json!({
             "id": id.to_string(),
             "plan_slug": plan_slug,
             "plan_name": plan_name,
+            "billing_cycle": billing_cycle,
             "already_open": true,
         }));
     }
 
+    let unit = if billing_cycle == "year" {
+        "year"
+    } else {
+        "month"
+    };
     let written: Result<Uuid, sqlx::Error> = sqlx::query_scalar(
-        "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note) \
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note, \
+                                    billing_cycle) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
     )
     .bind(tenant_id)
     .bind(user_id)
@@ -2065,7 +2095,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
     .bind(plan_slug)
     .bind(plan_name)
     .bind(format!(
-        "This workspace pressed Upgrade on the {plan_name} plan (${plan_price:.0}/month) and no \
+        "This workspace pressed Upgrade on the {plan_name} plan (${plan_price:.0}/{unit}) and no \
          payment provider is configured, so nothing was charged and nothing can be billed. Filed \
          automatically by the checkout refusal arm, so the ask survives even if the customer closes \
          the tab. Resolving this request seats the workspace on the plan.{}",
@@ -2078,6 +2108,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
             None => String::new(),
         }
     ))
+    .bind(billing_cycle)
     .fetch_one(db)
     .await;
 

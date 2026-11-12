@@ -1370,7 +1370,9 @@ function planIsCurrent(p) {
 window._startUpgrade = async function (slug) {
   if (!slug) return;
   try {
-    const r = await api('/checkout/create', { method: 'POST', body: JSON.stringify({ plan_slug: slug }) });
+    // The term travels with the press; the till prices the sale from the plan row (annual_price for
+    // a year), so nothing here sets a price the server would trust.
+    const r = await api('/checkout/create', { method: 'POST', body: JSON.stringify({ plan_slug: slug, billing_cycle: PLAN_TERM === 'year' ? 'year' : 'month' }) });
     const url = r && (r.url || r.checkout_url || (r.session && r.session.url));
     if (url) { window.location.href = url; return; }
     showToast('Checkout was created but no payment link came back — nothing was charged. Please contact support.', 'error', false);
@@ -1394,6 +1396,13 @@ window._startUpgrade = async function (slug) {
     }
   }
 };
+// The term switch's click handler. Inline on* attributes compile in GLOBAL scope and cannot see a
+// module binding, which is why every control here goes through a `window._*` entry point.
+window._setPlanTerm = function (t) {
+  PLAN_TERM = (t === 'year') ? 'year' : 'month';
+  renderApp();
+};
+
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
 // Purchase requests, the missing half: the card above told the operator to "switch the workspace to
@@ -1433,6 +1442,12 @@ window._withdrawPlanRequest = async function (id) {
     showToast(String((e && e.message) || 'Could not withdraw the request'), 'error', false);
   }
 };
+// WHICH TERM THE BUYER IS SHOPPING (2026-11-12). This screen priced every tier from
+// `plans.price` and pressed Buy with no `billing_cycle`, while the public pricing page sells
+// each paid tier with a yearly figure ("$9/month or $89 a year") and the till has priced the
+// yearly term from `plans.annual_price` since 2026-10-24. So from this screen the annual deal
+// the site advertises could not be bought at all.
+let PLAN_TERM = 'month';
 async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
@@ -1448,6 +1463,21 @@ async function renderPlans() {
   let _pay = null;
   try { _pay = await api('/checkout/status'); } catch (e) { _pay = null; }
   const _payOff = !!(_pay && _pay.configured === false);
+  // YEARLY TERM. `_yearAny` gates the switch: an install whose catalogue carries no yearly price
+  // keeps exactly today's screen. A tier with no yearly price is named "monthly only" rather than
+  // sold at the monthly rate under a yearly badge.
+  const _yearAny = plans.some(p => Number(p.annual_price || 0) > 0);
+  const _term = (PLAN_TERM === 'year' && _yearAny) ? 'year' : 'month';
+  const _priceCell = (p) => {
+    if (!(Number(p.price) > 0)) return 'Free';
+    if (_term === 'year' && Number(p.annual_price) > 0) return formatCurrency(p.annual_price) + '/year';
+    return formatCurrency(p.price) + '/month';
+  };
+  const _termCell = (p) => {
+    if (isSuperAdmin()) return String(p.billing_cycle || 'month');
+    if (_term === 'year') return Number(p.annual_price) > 0 ? 'year' : 'monthly only';
+    return 'month';
+  };
 
   // Purchase requests — workspaces that pressed Upgrade while no payment provider was configured.
   // `POST /api/v1/checkout/create` records each one (status `provider_missing`) and tells the
@@ -1476,12 +1506,18 @@ async function renderPlans() {
       <h1 style="font-size:22px;font-weight:700">Plans</h1>
       ${isSuperAdmin() ? `<button class="btn btn-primary btn-sm" id="add-plan-btn">+ Add Plan</button>` : ''}
     </div>
+    ${(!isSuperAdmin() && _yearAny) ? `<div class="card" id="plan-term-switch" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:14px;font-weight:600;color:var(--muted)">Pay:</span>
+      <button class="btn btn-xs ${_term === 'month' ? 'btn-primary' : 'btn-secondary'}" data-plan-term="month" onclick="window._setPlanTerm('month')">Monthly</button>
+      <button class="btn btn-xs ${_term === 'year' ? 'btn-primary' : 'btn-secondary'}" data-plan-term="year" onclick="window._setPlanTerm('year')">Yearly — 2 months free</button>
+      <span style="font-size:12px;color:var(--muted)">${_term === 'year' ? 'Prices below are for a whole year. A tier with no yearly price is sold monthly only.' : 'Prices below are per month.'}</span>
+    </div>` : ''}
     <div class="card"><div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Cards</th><th>Leads</th><th>Team</th><th>Features</th><th>Actions</th></tr></thead>
       <tbody>${plans.map(p=>`<tr>
         <td><strong>${x(p.name)}</strong><div style="font-size:11px;color:var(--muted)">${x(p.slug)}</div>${p.purchase_url?'<div style="font-size:11px;color:#15803d;margin-top:2px">💳 hosted payment link</div>':(p.price>0?'<div style="font-size:11px;color:#92400e;margin-top:2px" title="A paid plan needs a way to be paid: open Edit and paste the checkout address your payment provider gives you for this price. Until then a buyer who picks it asks the team instead of paying.">⚠ no payment link — cannot be bought yet</div>':'')}</td>
-        <td>${p.price>0?formatCurrency(p.price):'Free'}</td>
-        <td><span class="badge badge-blue">${x(p.billing_cycle||'month')}</span></td>
+        <td>${_priceCell(p)}</td>
+        <td><span class="badge badge-blue">${x(_termCell(p))}</span></td>
         <td>${fmtPlanLimit(p.max_cards)}</td>
         <td>${fmtPlanLimit(p.max_leads)}</td>
         <td>${fmtPlanLimit(p.max_team_members)}</td>
