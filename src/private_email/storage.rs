@@ -396,7 +396,7 @@ pub async fn evaluate_and_notify(db: &PgPool, tenant_id: Uuid) -> Vec<i32> {
             break;
         }
         // Claim BEFORE queueing. `sent_at` is the claim time; the mail is queued immediately after.
-        let claimed: Option<Uuid> = sqlx::query_scalar(
+        let claimed: Result<Option<Uuid>, sqlx::Error> = sqlx::query_scalar::<_, Uuid>(
             r#"
             INSERT INTO private_email_storage_notices
                 (tenant_id, threshold_pct, period, usage_bytes, quota_bytes)
@@ -411,10 +411,26 @@ pub async fn evaluate_and_notify(db: &PgPool, tenant_id: Uuid) -> Vec<i32> {
         .bind(u.used_bytes)
         .bind(u.quota_bytes)
         .fetch_optional(db)
-        .await
-        .unwrap_or(None);
+        .await;
 
-        let Some(claim_id) = claimed else { continue };
+        // A claim that cannot be WRITTEN is not "already sent for this month" (kanban t_63c65a5c,
+        // the defect that hid every reminder on WorkflowSwift): the old `unwrap_or(None)` read a
+        // constraint error as "rung already claimed" and mailed nothing, forever, silently. This
+        // app carries the UNIQUE guard (`ux_private_email_storage_notices_rung`), so the honest
+        // answer is to log the failure and let the next sweep retry — never swallow it.
+        let claim_id = match claimed {
+            Ok(Some(id)) => id,
+            Ok(None) => continue,
+            Err(e) => {
+                tracing::error!(
+                    tenant = %tenant_id,
+                    threshold,
+                    error = %e,
+                    "storage reminder claim failed — no mail can be sent for this rung"
+                );
+                continue;
+            }
+        };
 
         let Some((email, name)) = owner_recipient(db, tenant_id).await else {
             // Nobody to tell: release the claim rather than burn the rung for a month.

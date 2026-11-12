@@ -336,6 +336,16 @@ pub async fn list_template_types(
         serde_json::json!({"type": "plan_request_update", "description": "Sent when the operator answers a customer's plan request — carries the new state and the operator's note", "merge_fields": ["name", "plan_name", "status_word", "reply", "app_name", "brand_name", "logo_url"]}),
         serde_json::json!({"type": "plan_request_received", "description": "Sent the moment a customer files a plan request — acknowledges the ask and says nothing has been charged", "merge_fields": ["name", "plan_name", "note", "app_name", "brand_name", "logo_url"]}),
         serde_json::json!({"type": "support_reply", "description": "Sent when the operator answers a support request — carries the customer's own subject and the operator's answer", "merge_fields": ["name", "subject_line", "status_word", "reply", "app_name", "brand_name", "logo_url"]}),
+        // THE KEYS ADDED LATER (kanban t_63c65a5c). Every one of these has a sender AND an inline
+        // arm, but the list above had drifted and offered none of them, so an operator could not
+        // give any of these messages a stored row — including the 50/75/99 storage reminder, the
+        // one whose wording an owner most often wants softened.
+        serde_json::json!({"type": "plan_changed", "description": "Sent when the operator moves a workspace onto a plan by hand — names the plan and says nothing was charged", "merge_fields": ["name", "plan_name", "app_url", "login_url", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "email_change", "description": "Sent when a user asks to change their sign-in address — carries the one-shot confirmation link and the new address", "merge_fields": ["name", "new_email", "link", "token", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "branding_preview", "description": "Sent to the operator's own address as a live preview of the account's email branding", "merge_fields": ["name", "email", "logo_is_own", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "new_lead", "description": "Sent to the workspace owner when a visitor fills in one of their public funnels", "merge_fields": ["name", "lead_name", "lead_email", "lead_phone", "funnel_name", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "lead_cap_notice", "description": "Sent when a public form is stopped by the plan's allowance — says nothing is broken and how to raise the allowance", "merge_fields": ["name", "plan_name", "noun", "app_name", "brand_name", "logo_url"]}),
+        serde_json::json!({"type": "storage_warning", "description": "Sent at 50%, 75% and 99% of the inbox's storage allowance — at most one per level per month", "merge_fields": ["name", "threshold", "percent", "used", "quota", "mail_used", "files_used", "inbox_url", "plans_url", "retention", "retention_days", "app_name", "brand_name", "logo_url"]}),
     ]))
 }
 
