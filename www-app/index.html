@@ -180,6 +180,10 @@ tr:hover{background:#f8fafc}
   </div>
   <div class="sec">Workspace</div>
   <a class="active" data-tab="dashboard" onclick="S('dashboard')">Dashboard</a>
+  <!-- kanban t_5592e079: the workspace model + the multi-address private inbox, ported from
+       ADASwift. Backed by /api/v1/workspaces and /api/v1/private-email/*. -->
+  <a data-tab="workspaces" onclick="S('workspaces')">Workspaces</a>
+  <a data-tab="inbox" onclick="S('inbox')">Inbox</a>
   <!-- kanban t_ff948669: the account's own screen — name, company, password, picture. -->
   <a data-tab="profile" onclick="S('profile')">Profile</a>
   <a data-tab="leads" onclick="S('leads')">Leads</a>
@@ -422,7 +426,7 @@ function $(id){return document.getElementById(id);}
 
 /* kanban t_619533e2 — the tab-title map, hoisted out of S() so the platform-only
    refusal still names the screen it refuses. */
-var TI={dashboard:"Dashboard",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",support:"Support",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms",tagrules:"Tag Automation"};
+var TI={dashboard:"Dashboard",workspaces:"Workspaces",inbox:"Inbox",analytics:"Analytics",insights:"Insights",profile:"Profile",leads:"Leads",cards:"Kinetic Cards",tags:"Tags",tg:"Tag Groups",integrations:"Integrations",apr:"Products to Promote",ap:"Affiliate Products",tenants:"Tenants",affiliates:"Affiliates",payouts:"Affiliate Payouts",myaff:"My Affiliate",plans:"Plans",webhooks:"Webhooks",stags:"System Tags",sgroups:"System Tag Groups",settings:"Settings","lead-stages":"Lead Stages",support:"Support",upgrade:"Upgrade Plan",allcards:"All Cards",seo:"SEO",afleads:"Affiliate Leads",wtl:"Lead Forms",tagrules:"Tag Automation"};
 /* kanban t_619533e2 — the tabs that are the PLATFORM operator's console. Each one's own route
    was measured REFUSING a non-admin token (/api/v1/admin/kinetic-cards, /tenants,
    /affiliate-payouts, /seo/settings -> 403; /plans and /affiliate-products are the platform price
@@ -792,6 +796,9 @@ function S(t){
   /* LSUP is declared in the same later block as LWTL, so naming it in the map above would throw
      ReferenceError on any tap that lands while the page is still parsing (the LWTL lesson). */
   if(typeof LSUP==="function") L.support=LSUP;
+  /* Workspaces + Inbox (kanban t_5592e079) live in the same later block as LWTL/LSUP, same hazard. */
+  if(typeof LWSP==="function") L.workspaces=LWSP;
+  if(typeof LINBOX==="function") L.inbox=LINBOX;
   /* Tag Automation's renderer lives in a later <script> block, same hazard as LWTL/LSUP. */
   if(typeof LTR==="function") L.tagrules=LTR;
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
@@ -802,6 +809,8 @@ function S(t){
       if(t==="wtl"&&typeof LWTL==="function"){ L.wtl=LWTL; LWTL(); return; }
       if(t==="support"&&typeof LSUP==="function"){ L.support=LSUP; LSUP(); return; }
       if(t==="tagrules"&&typeof LTR==="function"){ L.tagrules=LTR; LTR(); return; }
+      if(t==="workspaces"&&typeof LWSP==="function"){ L.workspaces=LWSP; LWSP(); return; }
+      if(t==="inbox"&&typeof LINBOX==="function"){ L.inbox=LINBOX; LINBOX(); return; }
       if(++tries<8) setTimeout(waitForRenderer,300);
       else $("ct").innerHTML='<div class="cc"><p>This screen has not finished loading. Tap it again in a moment.</p></div>';
     })();
@@ -6337,5 +6346,289 @@ window.appGuidePages = {
      versioned query string is a NEW cache key, so the fix is visible on the next load; bump it
      whenever this file changes. -->
 <script src="/inline-guide-widget.js?v=20261106a"></script>
+<!-- ── Workspaces + Inbox (kanban t_5592e079, ported from ADASwift) ───────────────────────────
+     The workspace model every Swift app now runs, and the multi-address private inbox: a
+     customer's OWN domain, their OWN mail credential, every address they create. Both screens
+     render into #ct like every other tab; the server owns every rule (a plan ceiling answers 402
+     with its own sentence, a duplicate name 409, "keep at least one" 400) and this code prints
+     the server's sentence rather than inventing one. -->
+<script>
+/* ── Workspaces ───────────────────────────────────────────────────────────────────────────────
+   GET|POST /api/v1/workspaces, PATCH|DELETE /api/v1/workspaces/:id, POST /:id/default. */
+var WS = { items: [] };
+
+function wsMsg(text, ok) {
+  var el = $("wsMsg");
+  if (!el) return;
+  el.textContent = text || "";
+  el.style.color = ok === false ? "#b91c1c" : "#047857";
+  el.style.display = text ? "block" : "none";
+}
+
+function LWSP() {
+  $("ct").innerHTML =
+    '<div class="cc"><h2>🗂️ Workspaces</h2>'
+    + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">A workspace is a separate drawer inside this business account. '
+    + 'Your plan says how many you may have, and exactly one is the default a new sign-in opens.</p>'
+    + '<div id="wsList" style="margin-top:12px"><div class="loading">Loading your workspaces…</div></div>'
+    + '<div id="wsMsg" style="font-size:13px;margin-top:10px;display:none"></div></div>'
+    + '<div class="cc"><h2>Add a workspace</h2>'
+    + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">Give it the name your team will recognise — a client, a location, or a brand you run from the same account.</p>'
+    + '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;align-items:flex-end">'
+    + '<div style="flex:1;min-width:200px"><label for="wsName" style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px">Workspace name</label>'
+    + '<input type="text" id="wsName" maxlength="120" placeholder="e.g. Miami office" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px"></div>'
+    + '<button class="btn" id="wsCreate" onclick="createWorkspace()">Create workspace</button></div></div>';
+  loadWorkspaces();
+}
+
+function loadWorkspaces() {
+  api("/api/v1/workspaces").then(function (d) {
+    WS.items = (d && d.workspaces) || [];
+    renderWorkspaces();
+  }).catch(function (e) {
+    var el = $("wsList");
+    if (el) el.innerHTML = '<div style="color:#b91c1c;font-size:13px">' + X(e.message) + "</div>";
+  });
+}
+
+function renderWorkspaces() {
+  var el = $("wsList");
+  if (!el) return;
+  if (!WS.items.length) {
+    el.innerHTML = '<div style="color:#64748b;font-size:13px">No workspaces yet — create the first one below.</div>';
+    return;
+  }
+  el.innerHTML = WS.items.map(function (w) {
+    var id = String(w.id);
+    return '<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eef2f7">'
+      + "<div><strong>" + X(w.name) + "</strong>"
+      + (w.is_default ? ' <span style="background:#eef2ff;color:#3730a3;font-size:11px;padding:1px 8px;border-radius:10px">Default</span>' : "")
+      + "</div><div style=\"display:flex;gap:8px\">"
+      + (w.is_default ? "" : '<button class="btn" onclick="setDefaultWorkspace(\'' + id + "')\">Make default</button>")
+      + '<button class="btn" onclick="renameWorkspace(\'' + id + "')\">Rename</button>"
+      + '<button class="btn" onclick="deleteWorkspace(\'' + id + "')\">Delete</button>"
+      + "</div></div>";
+  }).join("");
+}
+
+function createWorkspace() {
+  var input = $("wsName");
+  var name = ((input && input.value) || "").trim();
+  if (!name) { wsMsg("Give the workspace a name first.", false); return; }
+  var btn = $("wsCreate");
+  if (btn) btn.disabled = true;
+  api("/api/v1/workspaces", { method: "POST", body: JSON.stringify({ name: name }) })
+    .then(function () {
+      if (input) input.value = "";
+      wsMsg("Workspace created.", true);
+      loadWorkspaces();
+    })
+    .catch(function (e) { wsMsg(e.message, false); })
+    .then(function () { if (btn) btn.disabled = false; });
+}
+
+function renameWorkspace(id) {
+  var current = (WS.items.filter(function (w) { return String(w.id) === id; })[0] || {}).name || "";
+  var name = window.prompt("New name for this workspace:", current);
+  if (name === null) return;
+  api("/api/v1/workspaces/" + id, { method: "PATCH", body: JSON.stringify({ name: name }) })
+    .then(function () { wsMsg("Workspace renamed.", true); loadWorkspaces(); })
+    .catch(function (e) { wsMsg(e.message, false); });
+}
+
+function setDefaultWorkspace(id) {
+  api("/api/v1/workspaces/" + id + "/default", { method: "POST" })
+    .then(function () { wsMsg("This workspace now opens on sign-in.", true); loadWorkspaces(); })
+    .catch(function (e) { wsMsg(e.message, false); });
+}
+
+function deleteWorkspace(id) {
+  if (!window.confirm("Delete this workspace? Your account must keep at least one.")) return;
+  api("/api/v1/workspaces/" + id, { method: "DELETE" })
+    .then(function () { wsMsg("Workspace deleted.", true); loadWorkspaces(); })
+    .catch(function (e) { wsMsg(e.message, false); });
+}
+
+/* ── Inbox ────────────────────────────────────────────────────────────────────────────────────
+   GET|POST /api/v1/private-email/domains (+ /:id/verify, /:id/records), /boxes, /messages. */
+var INBOX = { domains: [], boxes: [], messages: [] };
+
+function inboxMsg(text, ok) {
+  var el = $("inboxMsg");
+  if (!el) return;
+  el.textContent = text || "";
+  el.style.color = ok === false ? "#b91c1c" : "#047857";
+  el.style.display = text ? "block" : "none";
+}
+
+function LINBOX() {
+  $("ct").innerHTML =
+    '<div class="cc"><h2>📬 Your inbox</h2>'
+    + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">Your own addresses on your own domain. Open the mail client to read and answer — it is the same account, so there is nothing to sign in to twice.</p>'
+    + '<div style="margin:12px 0 4px"><a class="btn" id="inboxOpen" href="https://inbox.funnelswift.net" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">Open the mail client</a></div>'
+    + '<div id="inboxMsg" style="font-size:13px;margin-top:10px;display:none"></div></div>'
+    + '<div class="cc"><h2>Your domains</h2>'
+    + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">Add the domain you already own. We print the exact records to paste at your DNS provider, and until they verify the addresses below cannot receive mail.</p>'
+    + '<div id="inboxDomains" style="margin-top:12px"><div class="loading">Loading domains…</div></div>'
+    + '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:16px;align-items:flex-end">'
+    + '<div style="flex:1;min-width:200px"><label for="domName" style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px">Your domain</label>'
+    + '<input type="text" id="domName" maxlength="255" placeholder="yourbusiness.com" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px"></div>'
+    + '<div style="flex:1;min-width:220px"><label for="domKey" style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px">Mailgun API key</label>'
+    + '<input type="password" id="domKey" maxlength="200" placeholder="key-… (stored encrypted)" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px"></div>'
+    + '<button class="btn" id="domAdd" onclick="addInboxDomain()">Add domain</button></div></div>'
+    + '<div class="cc"><h2>Your addresses</h2>'
+    + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">Every address the inbox receives on. A plan limit is enforced by the server, and its refusal is the sentence shown here — never a dead button.</p>'
+    + '<div id="inboxBoxes" style="margin-top:12px"><div class="loading">Loading addresses…</div></div>'
+    + '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:16px;align-items:flex-end">'
+    + '<div style="flex:1;min-width:180px"><label for="boxDomain" style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px">On domain</label>'
+    + '<select id="boxDomain" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px"></select></div>'
+    + '<div style="flex:1;min-width:140px"><label for="boxLocal" style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px">Address</label>'
+    + '<input type="text" id="boxLocal" maxlength="64" placeholder="info" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px"></div>'
+    + '<button class="btn" id="boxAdd" onclick="addInboxBox()">Create address</button></div></div>'
+    + '<div class="cc"><h2>Recent mail</h2>'
+    + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">The newest messages that arrived at any of your addresses. Reading the whole thread happens in the mail client.</p>'
+    + '<div id="inboxRecent" style="margin-top:12px"><div class="loading">Loading messages…</div></div></div>';
+  loadInbox();
+}
+
+function loadInbox() {
+  api("/api/v1/private-email/domains").then(function (d) {
+    INBOX.domains = (d && d.domains) || [];
+    renderInboxDomains();
+    loadInboxBoxes();
+  }).catch(function (e) {
+    var el = $("inboxDomains");
+    if (el) el.innerHTML = '<div style="color:#b91c1c;font-size:13px">' + X(e.message) + "</div>";
+  });
+  api("/api/v1/private-email/messages?limit=20").then(function (d) {
+    INBOX.messages = (d && d.messages) || [];
+    renderInboxRecent();
+  }).catch(function (e) {
+    var el = $("inboxRecent");
+    if (el) el.innerHTML = '<div style="color:#b91c1c;font-size:13px">' + X(e.message) + "</div>";
+  });
+}
+
+function renderInboxDomains() {
+  var el = $("inboxDomains");
+  var sel = $("boxDomain");
+  if (!el || !sel) return;
+  if (!INBOX.domains.length) {
+    el.innerHTML = '<div style="color:#64748b;font-size:13px">No domain yet. Add the one you own below, then paste the records we print.</div>';
+    sel.innerHTML = "";
+    return;
+  }
+  el.innerHTML = INBOX.domains.map(function (d) {
+    var state = d.verified ? "Receiving" : "Waiting for your records";
+    return '<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eef2f7">'
+      + "<div><strong>" + X(d.domain) + "</strong>"
+      + ' <span style="color:#64748b;font-size:13px;margin-left:8px">' + X(state) + "</span></div>"
+      + '<div style="display:flex;gap:8px">'
+      + '<button class="btn" onclick="showInboxRecords(\'' + String(d.id) + "')\">Show records</button>"
+      + '<button class="btn" onclick="verifyInboxDomain(\'' + String(d.id) + "')\">Check again</button>"
+      + "</div></div>";
+  }).join("");
+  var ready = INBOX.domains.filter(function (d) { return d.verified; });
+  var pick = ready.length ? ready : INBOX.domains;
+  sel.innerHTML = pick.map(function (d) {
+    return '<option value="' + X(String(d.id)) + '">' + X(d.domain) + "</option>";
+  }).join("");
+}
+
+function loadInboxBoxes() {
+  api("/api/v1/private-email/boxes").then(function (d) {
+    INBOX.boxes = (d && d.boxes) || [];
+    var el = $("inboxBoxes");
+    if (!el) return;
+    if (!INBOX.boxes.length) {
+      el.innerHTML = '<div style="color:#64748b;font-size:13px">No address yet — create the first one below.</div>';
+    } else {
+      el.innerHTML = INBOX.boxes.map(function (b) {
+        return '<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eef2f7">'
+          + "<div><strong>" + X(b.email_address) + "</strong>"
+          + ' <span style="color:#64748b;font-size:13px;margin-left:8px">' + X(b.status || "") + "</span></div></div>";
+      }).join("");
+    }
+  }).catch(function (e) {
+    var el = $("inboxBoxes");
+    if (el) el.innerHTML = '<div style="color:#b91c1c;font-size:13px">' + X(e.message) + "</div>";
+  });
+}
+
+function renderInboxRecent() {
+  var el = $("inboxRecent");
+  if (!el) return;
+  if (!INBOX.messages.length) {
+    el.innerHTML = '<div style="color:#64748b;font-size:13px">Nothing has arrived yet. Mail to any address above appears here.</div>';
+    return;
+  }
+  el.innerHTML = INBOX.messages.map(function (m) {
+    var when = m.received_at ? TSFMT(m.received_at, 1) : "";
+    return '<div style="padding:10px 0;border-bottom:1px solid #eef2f7">'
+      + '<div style="display:flex;gap:10px;justify-content:space-between"><strong>' + X(m.subject || "(no subject)") + "</strong>"
+      + '<span style="color:#64748b;font-size:13px">' + X(when) + "</span></div>"
+      + '<div style="color:#64748b;font-size:13px">' + X(m.from_address || "") + " → " + X(m.address || "") + "</div>"
+      + '<div style="color:#64748b;font-size:13px;margin-top:4px">' + X(m.snippet || "") + "</div></div>";
+  }).join("");
+}
+
+function addInboxDomain() {
+  var nameEl = $("domName"), keyEl = $("domKey");
+  var name = ((nameEl && nameEl.value) || "").trim();
+  var key = ((keyEl && keyEl.value) || "").trim();
+  if (!name) { inboxMsg("Type the domain you own first.", false); return; }
+  var btn = $("domAdd");
+  if (btn) btn.disabled = true;
+  api("/api/v1/private-email/domains", {
+    method: "POST",
+    body: JSON.stringify({ domain: name, mailgun_api_key: key })
+  }).then(function () {
+    if (nameEl) nameEl.value = "";
+    if (keyEl) keyEl.value = "";
+    inboxMsg("Domain added. Paste the records it prints, then press Check again.", true);
+    loadInbox();
+  }).catch(function (e) { inboxMsg(e.message, false); })
+    .then(function () { if (btn) btn.disabled = false; });
+}
+
+function addInboxBox() {
+  var domainId = ($("boxDomain") || {}).value;
+  var localEl = $("boxLocal");
+  var local = ((localEl && localEl.value) || "").trim();
+  if (!domainId) { inboxMsg("Add a domain first.", false); return; }
+  if (!local) { inboxMsg("Type the address you want, e.g. info.", false); return; }
+  var btn = $("boxAdd");
+  if (btn) btn.disabled = true;
+  api("/api/v1/private-email/boxes", {
+    method: "POST",
+    body: JSON.stringify({ domain_id: domainId, local_part: local })
+  }).then(function () {
+    if (localEl) localEl.value = "";
+    inboxMsg("Address created. Mail to it now lands in the inbox.", true);
+    loadInbox();
+  }).catch(function (e) { inboxMsg(e.message, false); })
+    .then(function () { if (btn) btn.disabled = false; });
+}
+
+function verifyInboxDomain(id) {
+  api("/api/v1/private-email/domains/" + id + "/verify", { method: "POST" })
+    .then(function (d) {
+      var ok = !!(d && d.verified);
+      inboxMsg(ok ? "Your records are live — this domain receives mail now." : "Not verified yet: the records are not visible in DNS.", ok);
+      loadInbox();
+    }).catch(function (e) { inboxMsg(e.message, false); });
+}
+
+function showInboxRecords(id) {
+  api("/api/v1/private-email/domains/" + id + "/records").then(function (d) {
+    var rows = (d && d.records) || [];
+    window.alert("Paste these at your DNS provider:\n\n" + rows.map(function (r) {
+      return [r.type, r.name, r.value].filter(Boolean).join("  ");
+    }).join("\n"));
+    inboxMsg(rows.length ? "Records shown — " + rows.length + " line(s)." : "No records to show yet.", true);
+  }).catch(function (e) { inboxMsg(e.message, false); });
+}
+</script>
+
 </body>
 </html>

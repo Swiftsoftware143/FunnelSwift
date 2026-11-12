@@ -34,6 +34,11 @@
 //! request with a declared-but-absent body is therefore answered `401` at t+0.00 s and never starts
 //! waiting for a body, and a declared body is never buffered before the credential is checked.
 
+/// The private inbox's inbound webhook path and the envelope a message with attachments needs.
+/// Kept in step with the route itself in `api_router.rs` (which applies the same ceiling).
+const INBOX_WEBHOOK_PATH: &str = "/api/v1/webhooks/mailgun/inbound";
+const INBOX_WEBHOOK_MAX_BODY_BYTES: usize = 25 * 1024 * 1024;
+
 use axum::{
     body::{Body, Bytes},
     extract::{FromRequest, Request, State},
@@ -207,8 +212,18 @@ pub async fn body_read_deadline_middleware(
     // layer, so `Bytes::from_request` here applies axum's default no matter what the route declares.
     // MEASURED 2026-10-30: raising the limit on `POST /api/v1/ocr/parse-card` alone changed nothing —
     // a 2 MB photo still answered 413 while a 1 MB one passed, because this read refused it first.
-    if parts.uri.path() == crate::handlers::ocr::PATH {
-        let limit = crate::handlers::ocr::MAX_BODY_BYTES;
+    // Two routes legitimately take more than the default: the card scanner's 12 MB photo, and the
+    // private inbox's Mailgun inbound webhook (kanban t_5592e079), whose message carrying an
+    // attachment is posted as multipart with the file's bytes. Both ceilings live with their route;
+    // this read is the one that would otherwise refuse first.
+    let raised_limit: Option<usize> = if parts.uri.path() == crate::handlers::ocr::PATH {
+        Some(crate::handlers::ocr::MAX_BODY_BYTES)
+    } else if parts.uri.path() == INBOX_WEBHOOK_PATH {
+        Some(INBOX_WEBHOOK_MAX_BODY_BYTES)
+    } else {
+        None
+    };
+    if let Some(limit) = raised_limit {
         let probe = Request::from_parts(parts.clone(), body);
         return match tokio::time::timeout(deadline, axum::body::to_bytes(probe.into_body(), limit))
             .await

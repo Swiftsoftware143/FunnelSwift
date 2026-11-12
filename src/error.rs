@@ -49,6 +49,18 @@ pub enum AppError {
 
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
+
+    /// A **401** that carries the server's own sentence (ported with the private-email module from
+    /// ADASwift/CoreSwift, kanban t_5592e079). Same status as [`AppError::Unauthorized`], different
+    /// audience: the message is safe to show because it names a missing/expired credential the
+    /// caller already holds.
+    #[error("Unauthorized: {0}")]
+    UnauthorizedReason(String),
+
+    /// A **409** — the row already exists (a workspace name taken in the same account, a duplicate
+    /// domain). Ported with the workspaces/inbox module.
+    #[error("Conflict: {0}")]
+    Duplicate(String),
     #[error("Upgrade required: {0}")]
     UpgradeRequired(String),
 
@@ -146,6 +158,8 @@ impl IntoResponse for AppError {
             }
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
+            AppError::UnauthorizedReason(msg) => (StatusCode::UNAUTHORIZED, msg),
+            AppError::Duplicate(msg) => (StatusCode::CONFLICT, msg),
             AppError::UpgradeRequired(msg) => (StatusCode::PAYMENT_REQUIRED, msg),
             // A public door refusing because the CUSTOMER's plan is spent. Neutral by construction:
             // the sentence names no plan and offers no upgrade, because the reader is a prospect.

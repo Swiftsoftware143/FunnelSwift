@@ -37,12 +37,16 @@ mod handlers;
 mod image_store;
 mod login_throttle;
 mod models;
+// Private inbox + workspaces, ported from ADASwift (kanban t_5592e079).
+mod module_registry;
 mod path_rejection;
 mod plan_movement;
 mod plan_resolver;
 mod platform_settings;
+mod private_email;
 mod probe_harness;
 mod probe_sweep;
+mod secret_box;
 mod security;
 mod smtp;
 mod state;
@@ -50,6 +54,7 @@ mod system_tenant;
 mod tag_logic;
 mod templates;
 mod webhooks;
+mod workspaces;
 
 use crate::db::Database;
 use crate::error::Result;

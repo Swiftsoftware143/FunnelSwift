@@ -142,6 +142,18 @@ pub fn create_router(
     body_read_deadline: crate::body_deadline::BodyReadDeadline,
 ) -> Router {
     Router::new()
+        // ── Workspaces and the private inbox (kanban t_5592e079, ported from ADASwift) ────────
+        // Two sub-routers, each with its paths under `/api/`, so the ONE global `require_auth`
+        // layer further down is their credential boundary; every handler additionally scopes its
+        // SQL by the session's tenant.
+        .nest(
+            "/api/v1/workspaces",
+            crate::workspaces::router(state.clone()),
+        )
+        .nest(
+            "/api/v1/private-email",
+            crate::private_email::router(state.clone()),
+        )
         // Public kinetic routes (no auth — SSR bio-link pages + tracking)
         .route("/k/:slug", get(kinetic_handler::render_card))
         .route("/b/:slug", get(kinetic_handler::render_card))
@@ -1246,6 +1258,18 @@ pub fn create_router(
         .route(
             "/api/v1/web-to-lead",
             post(web_to_lead_handler::handle_web_to_lead),
+        )
+        // ── Mailgun inbound delivery (kanban t_5592e079, ported from ADASwift) ──────────────
+        // ANONYMOUS BY NECESSITY: the provider posts here with no session; the credential is the
+        // per-domain signing key the handler verifies itself (and an unsigned delivery is stored
+        // as nothing). The 25 MB ceiling sits on the route because a message carrying an
+        // attachment is posted as multipart with the file's bytes, and the deadline middleware
+        // above buffers a body at axum's 2 MB default unless the path is named there too — see
+        // `body_deadline`'s own arm for this path.
+        .route(
+            "/api/v1/webhooks/mailgun/inbound",
+            post(crate::private_email::webhook_handler::inbound_webhook)
+                .layer(axum::extract::DefaultBodyLimit::max(25 * 1024 * 1024)),
         )
         // The /download-app page's iOS "Notify me" form. Anonymous by design (the visitor has no
         // account), so the path is on `auth::route_policy::PUBLIC_ROUTES`; the write has no tenant

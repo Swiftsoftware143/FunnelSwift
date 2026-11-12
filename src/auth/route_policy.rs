@@ -205,6 +205,12 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // anything that does not match BOTH answers one neutral 404. Narrow by construction: ONE
     // workspace-less row, returning the subject, the status and the operator's answer.
     "/api/v1/public/support-answer",
+    // --- inbound mail for the private inbox (kanban t_5592e079) -----------------
+    // Mailgun posts a delivered message here with NO session; the credential is the per-domain
+    // signing key the handler verifies itself, and a delivery whose signature does not check out
+    // is stored as nothing. Narrow by construction: ONE handler, which resolves the domain from
+    // the recipient address and refuses anything it cannot match.
+    "/api/v1/webhooks/mailgun/inbound",
     // --- public lead capture / checkout -----------------------------------------
     // The lead-capture form on a served funnel posts here with no session (the visitor is
     // anonymous by construction); the handler scopes the write to the tenant it resolves from the
@@ -403,7 +409,19 @@ mod tests {
         }
     }
 
-    /// The census the module docs quote: 226 mounts, 200 of them on the API surface. If a route is
+    /// The census the module docs quote: 228 mounts, 202 of them on the API surface.
+    ///
+    /// RE-MEASURED 2026-11-12 with the private-inbox port (kanban t_5592e079): the committed tuple
+    /// had drifted to 226/200 while the router already mounted 227 (commit 3fa1a71 added the
+    /// workspace-rename route without bumping it), so `cargo test` was RED on HEAD before this
+    /// card's change. The numbers below are MEASURED from the router, and this card's own +1 is
+    /// the anonymous Mailgun inbound webhook.
+    ///
+    /// NOTE (kanban t_5592e079): this counts the `.route(..)` mounts in `api_router.rs` only. The
+    /// workspaces and private-inbox routers are `.nest()`ed (their routes live in
+    /// `src/workspaces/` and `src/private_email/`), so they are not in these numbers — every one
+    /// of those paths is under `/api/` and therefore PRIVATE (behind `require_auth`) unless named
+    /// above, which is the property this test exists to protect. If a route is
     /// added or removed, this test is the reminder to re-measure the docs above with it.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
@@ -431,7 +449,7 @@ mod tests {
                 private,
                 served
             ),
-            (226, 226, 200, 23, 3, 174, 26),
+            (228, 228, 202, 24, 3, 175, 26),
             "the census in the module docs no longer matches the router"
         );
     }

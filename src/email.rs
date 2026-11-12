@@ -30,7 +30,12 @@ use uuid::Uuid;
 /// kanban t_2349e6ce: the types endpoint advertised `app_name`/`login_url` while the senders
 /// bound only `app_url`, so an admin-authored `{{app_name}}` sent literally.
 const APP_NAME: &str = "FunnelSwift";
-const APP_URL: &str = "https://app.funnelswift.net";
+pub const APP_URL: &str = "https://app.funnelswift.net";
+
+/// The private inbox's own mail client (kanban t_5592e079). Served by the `inbox.funnelswift.net`
+/// vhost (`/opt/swift/nginx/sites/mail-funnelswift.conf`) from the same client every Swift app
+/// serves; links in saved signatures and reminders point here.
+pub const APP_URL_MAIL: &str = "https://inbox.funnelswift.net";
 const APP_LOGIN_URL: &str = "https://app.funnelswift.net/login";
 
 /// The app's OWN wordmark on this app's own host, used for the header of every message sent by a
