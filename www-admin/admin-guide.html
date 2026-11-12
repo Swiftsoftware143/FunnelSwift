@@ -546,6 +546,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
       </div>
 
       <!-- ============ SYSTEM SETTINGS ============ -->
+      <h2 id="workspaces-inbox">🗂️ Workspaces &amp; 📬 Private Inbox</h2>
+      <p><strong>Workspaces.</strong> Every account holds at least one workspace and exactly one default, minted by a database trigger when the account is created, so a new signup never opens a blank screen. The customer manages their own list (create, rename, make default, delete); the last one cannot be deleted. Ceilings come from the plan catalogue: <code>max_workspaces</code> for this screen, and the inbox reads <code>max_domains</code>, <code>max_mailboxes</code>, <code>max_aliases_per_mailbox</code> and <code>catch_all</code>. A plan that states no number is uncapped &mdash; never tell a customer a ceiling their plan does not name. Per-account overrides in <code>tenant_email_limits</code> win over the plan. Limits are read through <code>tenant_plan_subscriptions</code> (active rows, newest first).</p>
+      <p><strong>Private inbox.</strong> A customer brings their own domain and their own Mailgun (or a plain SMTP service) credential; each credential is sealed at rest with AES-256-GCM, and a customer can keep several named keys and point one domain at each. Mail arrives through the provider's inbound webhook, which verifies that domain's own signing key and stores the delivery only if it checks out. The mail client is served at <code>inbox.funnelswift.net</code> by the same container as the app. A branded <code>inbox.&lt;customer-domain&gt;</code> address is deliberately NOT offered: the shared <code>inbox.*</code> wildcard still serves CoreSwift's client, so the API reports the branded door as unavailable &mdash; never tell a customer to add that CNAME.</p>
+
       <h2 id="system-settings">⚡ System Settings — the whole installation</h2>
 
       <div class="card">
