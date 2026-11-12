@@ -690,7 +690,7 @@ pub async fn create_checkout_session(
                                 plan_slug: &plan_slug,
                                 plan_name: name,
                                 plan_price: asked_for,
-                                billing_cycle: if yearly { "year" } else { "month" },
+                                billing_cycle: if yearly { "yearly" } else { "monthly" },
                                 payment_link: Some(url.as_str()),
                             },
                         )
@@ -759,7 +759,7 @@ pub async fn create_checkout_session(
                             plan_slug: &plan_slug,
                             plan_name: name,
                             plan_price: asked_for,
-                            billing_cycle: if yearly { "year" } else { "month" },
+                            billing_cycle: if yearly { "yearly" } else { "monthly" },
                             payment_link: None,
                         },
                     )
@@ -2079,7 +2079,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
         }));
     }
 
-    let unit = if billing_cycle == "year" {
+    let unit = if matches!(billing_cycle, "year" | "yearly" | "annual") {
         "year"
     } else {
         "month"
