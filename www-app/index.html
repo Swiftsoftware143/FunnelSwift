@@ -1285,24 +1285,43 @@ var ST=null;
 var paintStart=function(){
   var gs=$("gs"); if(!gs||!gs.parentNode) return;
   if(!ST) return;
+  /* 2026-11-12 — the workspace's OWN plan decides which first step is real. Measured live on a
+     Capture Free workspace: the plan strip one line above read "Cards not on this plan", while this
+     card's first step was "Create a Kinetic Card" — "the fastest way to have a link" — and pressing
+     it landed on the paywall. A step whose allowance is 0 is never offered as a to-do now; the paid
+     capability is NAMED as an upgrade instead. The allowances are the same `current_plan` fields the
+     strip reads, so the two cannot disagree. If the plan has not been read yet (`U` absent) this card
+     keeps its old, complete list rather than hiding a step the workspace can really take. */
+  if(!U){ api("/api/v1/auth/me").then(function(u){ if(u&&!u.error){U=u; paintStart();} }); }
   var forms=(USG&&USG.forms!=null)?Number(USG.forms):null;
   if(forms===null) return;                       /* /me/usage has not answered yet */
   var leads=Number(ST.total_leads||0), cards=Number(ST.cards_total||0);
   if(leads>0||cards>0||forms>0){ gs.innerHTML=''; return; }
-  var steps=[
-    ["Create a Kinetic Card","One shareable page for your business — the fastest way to have a link to send people.","cards"],
-    ["Build a funnel page","A single page with a form; everyone who submits it becomes a lead in this workspace.","funnels"],
-    ["Put a lead form on your own site","Paste the snippet from Lead Forms into your website; every form fill arrives in Leads with the tag you pick.","wtl"]
-  ];
+  var cp=(U&&U.current_plan)||null;
+  var allows=function(k){ if(!cp) return true; var v=cp[k]; return !(typeof v==="number"&&v===0); };
+  var steps=[];
+  if(allows("max_cards")) steps.push(["Create a Kinetic Card","One shareable page for your business — the fastest way to have a link to send people.","cards"]);
+  steps.push(["Build a funnel page","A single page with a form; everyone who submits it becomes a lead in this workspace.","funnels"]);
+  if(allows("max_forms")) steps.push(["Put a lead form on your own site","Paste the snippet from Lead Forms into your website; every form fill arrives in Leads with the tag you pick.","wtl"]);
+  var paid=[];
+  if(!allows("max_cards")) paid.push("Kinetic Cards");
+  if(!allows("max_forms")) paid.push("Lead Forms");
+  var words=["","One","Two","Three","Four"][steps.length]||String(steps.length);
   var h='<div class="card" data-first-steps="1" style="margin-bottom:16px">';
   h+='<h3 style="margin:0 0 2px">Get started</h3>';
-  h+='<p style="color:#64748b;font-size:13px;margin:0 0 12px">Three steps and this workspace is collecting leads. This card goes away once you have done any one of them.</p>';
+  h+='<p style="color:#64748b;font-size:13px;margin:0 0 12px">'+words+' step'+(steps.length===1?'':'s')+' and this workspace is collecting leads. This card goes away once you have done any one of them.</p>';
   for(var i=0;i<steps.length;i++){
     h+='<div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0'+(i?';border-top:1px solid #e2e8f0':'')+'">';
     h+='<div style="flex:0 0 24px;height:24px;border-radius:50%;background:#eef2ff;color:#4338ca;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center">'+(i+1)+'</div>';
     h+='<div style="flex:1"><div style="font-weight:600;font-size:14px">'+X(steps[i][0])+'</div>';
     h+='<div style="color:#64748b;font-size:12px;margin:2px 0 6px;max-width:60ch">'+X(steps[i][1])+'</div>';
     h+='<button type="button" class="btn btn-sm" data-first-step="'+X(steps[i][2])+'" onclick="S(\''+steps[i][2]+'\')">'+X(steps[i][0])+'</button></div></div>';
+  }
+  if(paid.length){
+    var pname=(U&&U.plan_name)||"your current plan";
+    h+='<div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:12px;color:#64748b">'
+      +X(paid.join(" and "))+(paid.length===1?' is':' are')+' not on '+X(pname)+'. '
+      +'<a href="#" onclick="S(\'upgrade\');return false" style="color:#4338ca;font-weight:700">See the plans</a>.</div>';
   }
   h+='</div>';
   gs.innerHTML=h;
@@ -1587,7 +1606,17 @@ function LD(){
     sf.appendChild(ldImp);sf.appendChild(ldImpFile);
     
     var list=$("ld-list");
-    if(!a.length){list.innerHTML='<p style="color:#64748b;padding:20px">No leads.</p>';return;}
+    if(!a.length){list.innerHTML='<div style="color:#64748b;padding:20px;max-width:640px">'
+      +'<p style="margin:0 0 6px;color:#334155;font-size:15px"><strong>No leads have arrived yet.</strong></p>'
+      +'<p style="margin:0 0 12px">A lead appears in this table the moment someone submits one of your pages. '
+      +'There are two ways to get the first one:</p>'
+      +'<p style="margin:0 0 6px"><strong>1. Share a funnel page.</strong> Create one, copy its public link and '
+      +'send it to anyone — every submission lands here with the page it came from.</p>'
+      +'<p style="margin:0 0 12px"><strong>2. Put a form on your own site.</strong> Paste the snippet from '
+      +'Lead Forms into your website; each fill arrives here, stamped with the tag you chose.</p>'
+      +'<button class="btn btn-p" onclick="S(\'funnels\')">Build a funnel page</button>'
+      +'<button class="btn" onclick="S(\'wtl\')" style="margin-left:8px">Get a lead form</button>'
+      +'</div>';return;}
     
     var tbl=El("table");
     tbl.innerHTML='<tr><th style="width:30px"><input type="checkbox" id="ld-all" title="Select every lead shown"></th><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Owner</th><th>Status</th><th></th></tr>';
