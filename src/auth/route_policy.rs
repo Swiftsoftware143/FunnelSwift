@@ -44,7 +44,13 @@
 //! the public and internal buckets did NOT move: nothing became reachable without a credential.
 //! Only the numbers changed. Found by the nightly gate (cargo test was RED on HEAD), not by a card.
 //!
-//! 233 `.route(..)` mounts / 233 unique paths, classified three ways:
+//! 2026-11-13 recount (CoreSwift mapper schema): ONE more private mount —
+//! `GET /api/v1/integration/schema`, the CoreSwift visual field mapper's SOURCE describe endpoint
+//! (spec /opt/swift/docs/coreswift-data-mapping-spec-2026-11-13.md §2). It is a plain `require_auth`
+//! route (NOT under `/api/v1/admin/`), so the role check lives in the handler (`auth.is_admin` ->
+//! 403); the public and internal buckets did NOT move.
+//!
+//! 234 `.route(..)` mounts / 234 unique paths, classified three ways:
 //!
 //! (The 2026-11-06 recount also folds in TWO public `/api` mounts that the same day's contact-page
 //! work landed without bumping this census — `POST /api/v1/public/support-request` (a visitor with
@@ -73,7 +79,7 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!  207 mounts  /api/**           207 unique paths, no duplicate (the retired
+//!  208 mounts  /api/**           208 unique paths, no duplicate (the retired
 //!                                 `/api/v1/linkedin/auth` pair — POST + DELETE on one path — was
 //!                                 the last duplicate; the stub trio is gone, 2026-11-10)
 //!     24        public            -> PUBLIC_ROUTES below (the two card-QR image READs
@@ -82,7 +88,7 @@
 //!                                    public price list joined on 2026-10-30, the anonymous
 //!                                    help desk pair on 2026-11-06)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    180        private           -> require_auth: app JWT, tenant-status checked
+//!    181        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (44 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -458,7 +464,7 @@ mod tests {
                 private,
                 served
             ),
-            (233, 233, 207, 24, 3, 180, 26),
+            (234, 234, 208, 24, 3, 181, 26),
             "the census in the module docs no longer matches the router"
         );
     }
