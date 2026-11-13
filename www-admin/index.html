@@ -634,6 +634,12 @@ function buildNav() {
   sections.push(`<button type="button" class="nav-item ${STATE.view==='cardLocations'?'active':''}" data-view="cardLocations" aria-label="Locations"><span class="icon">🌍</span><span class="nav-text">Locations</span></button>`);
   sections.push(`<button type="button" class="nav-item ${STATE.view==='webhooks'?'active':''}" data-view="webhooks" aria-label="Webhooks"><span class="icon">🔗</span><span class="nav-text">Webhooks</span></button>`);
   sections.push(`<button type="button" class="nav-item ${STATE.view==='providerKeys'?'active':''}" data-view="providerKeys" aria-label="Provider Keys"><span class="icon">🔑</span><span class="nav-text">Provider Keys</span></button>`);
+  /* kanban t_e033b249 — the account's OWN API key. GET|POST /api/v1/api-keys and its
+     reveal / regenerate / delete twins were served with NO caller in this console, and every
+     workspace auto-mints a key at signup, so the plaintext could only be recovered with a psql
+     session. Sits beside Provider Keys (the third-party credentials) but is a different thing:
+     this is the credential for THIS workspace's own API and MCP server. */
+  sections.push(`<button type="button" class="nav-item ${STATE.view==='apiKeys'?'active':''}" data-view="apiKeys" aria-label="API Keys"><span class="icon">🔑</span><span class="nav-text">API Keys</span></button>`);
   // Email Branding (kanban t_c06a32eb follow-up): the per-tenant email-branding backend shipped
   // with NO screen anywhere in this console. David's rule: "A backend route with no UI is a DEFECT".
   sections.push(`<button type="button" class="nav-item ${STATE.view==='emailBranding'?'active':''}" data-view="emailBranding" aria-label="Email Branding"><span class="icon">🎨</span><span class="nav-text">Email Branding</span></button>`);
@@ -700,6 +706,7 @@ const viewRenderers = {
   campaigns: renderCampaigns,
   webhooks: renderWebhooks,
   providerKeys: renderProviderKeys,
+  apiKeys: renderApiKeys,
   superAdmin: renderSuperAdmin,
   systemTags: renderSystemTags,
   // The reader for the emails the public /download-app "Notify me" form captures (Super Admin: the
@@ -767,6 +774,7 @@ function bindView(view) {
     case 'campaigns': bindCampaigns(); break;
     case 'webhooks': bindWebhooks(); break;
     case 'providerKeys': bindProviderKeys(); break;
+    case 'apiKeys': bindApiKeys(); break;
     case 'superAdmin': bindSuperAdmin(); break;
     case 'systemTags': bindSystemTags(); break;
     case 'tagGroups': bindTagGroups(); break;
@@ -3872,6 +3880,147 @@ function bindProviderKeys() {
   });
 }
 
+// ── API KEYS (kanban t_e033b249) ──────────────────────────────────────────────────────────────
+// The durable bearer credential every FunnelSwift workspace auto-mints at signup. Until this
+// screen the only way to read or rotate it was a psql session: `GET|POST /api/v1/api-keys` and
+// its `/:id/reveal`, `/:id/regenerate` and `DELETE /:id` twins were served with no caller here.
+// Response shapes measured from src/handlers/api_keys.rs:
+//   GET    /api-keys                       -> { api_keys: [{id,name,key_prefix,created_at,
+//                                                last_used_at,revoked_at,recoverable}] }
+//   POST   /api-keys                       -> 201 {token,...} | 409 when a live key exists
+//   POST   /api-keys/:id/reveal {password} -> { token, key_prefix }  (CURRENT password required)
+//   POST   /api-keys/:id/regenerate        -> {token,...}  (one atomic retire-then-mint)
+//   DELETE /api-keys/:id                   -> revoke
+// The server writes the audit rows itself (api_key_revealed / api_key_regenerated /
+// api_key_revoked), so this screen never claims an audit it did not perform.
+let API_KEYS_STATE = { list: null, err: null, token: null, tokenPrefix: '' };
+
+async function fetchApiKeys() {
+  try {
+    const r = await api('/api-keys');
+    API_KEYS_STATE.list = Array.isArray(r) ? r : ((r && r.api_keys) || []);
+    API_KEYS_STATE.err = null;
+  } catch (e) {
+    API_KEYS_STATE.list = [];
+    API_KEYS_STATE.err = (e && e.message) ? e.message : 'Could not load your keys.';
+  }
+}
+
+function _apiKeyTokenModal(token, prefix) {
+  API_KEYS_STATE.token = token || '';
+  API_KEYS_STATE.tokenPrefix = prefix || '';
+  STATE.modal = {
+    title: 'Your API key',
+    content: `<p style="font-size:12px;color:var(--muted);margin:0 0 10px">Prefix ${x(prefix || '')}. This key does not expire, and you can show it again at any time — each view is recorded.</p>
+      <div class="form-group"><label class="form-label">Key</label>
+        <input class="input" id="api-key-token" readonly value="${x(token || '')}" onfocus="this.select()">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+        <button class="btn btn-secondary btn-sm" onclick="window._closeModal()">Close</button>
+        <button class="btn btn-primary btn-sm" onclick="window._apiKeyCopy()">Copy key</button>
+      </div>`
+  };
+  renderApp();
+}
+
+window._apiKeyCopy = function () {
+  const t = API_KEYS_STATE.token;
+  if (!t) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(
+        () => showToast('Key copied to the clipboard', 'success', false),
+        () => showToast('Select the key and copy it', 'info', false));
+      return;
+    }
+  } catch (e) { /* fall through to the select-and-copy path */ }
+  showToast('Select the key and copy it', 'info', false);
+};
+
+window._apiKeyView = async function (id) {
+  if (!id) return;
+  const pw = prompt('Enter YOUR account password to show this key. Every view is recorded.');
+  if (!pw) return;
+  try {
+    const r = await api('/api-keys/' + encodeURIComponent(id) + '/reveal', { method: 'POST', body: JSON.stringify({ password: pw }), authRedirect: false });
+    _apiKeyTokenModal(r && r.token, (r && r.key_prefix) || '');
+  } catch (e) {
+    showToast('Could not show the key: ' + ((e && e.message) ? e.message : 'unknown error'), 'error');
+  }
+};
+
+window._apiKeyRegenerate = async function (id) {
+  if (!id) return;
+  if (!confirm('Regenerate this key? The current key stops working immediately, so anything already wired up with it stops until you paste the new one in.')) return;
+  try {
+    const r = await api('/api-keys/' + encodeURIComponent(id) + '/regenerate', { method: 'POST', body: JSON.stringify({}) });
+    API_KEYS_STATE.list = null;
+    _apiKeyTokenModal(r && r.token, (r && r.key_prefix) || '');
+  } catch (e) {
+    showToast('Could not regenerate the key: ' + ((e && e.message) ? e.message : 'unknown error'), 'error');
+  }
+};
+
+window._apiKeyRevoke = async function (id) {
+  if (!id) return;
+  if (!confirm('Revoke this key? Anything using it stops working at once. A workspace can then mint a fresh one.')) return;
+  try {
+    await api('/api-keys/' + encodeURIComponent(id), { method: 'DELETE' });
+    API_KEYS_STATE.list = null;
+    showToast('Key revoked', 'success');
+  } catch (e) {
+    showToast('Could not revoke the key: ' + ((e && e.message) ? e.message : 'unknown error'), 'error');
+  }
+};
+
+window._apiKeyCreate = async function () {
+  try {
+    const r = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name: 'API key' }) });
+    API_KEYS_STATE.list = null;
+    _apiKeyTokenModal(r && r.token, (r && r.key_prefix) || '');
+  } catch (e) {
+    API_KEYS_STATE.list = null;
+    // The server's own sentence on the one-live-key path is "you already have a key — use
+    // Regenerate". Printed as it arrived: the screen must not invent a softer story.
+    showToast((e && e.message) ? e.message : 'Could not create a key.', 'error');
+  }
+};
+
+async function renderApiKeys() {
+  await fetchApiKeys();
+  const list = API_KEYS_STATE.list || [];
+  const live = list.filter(k => !k.revoked_at);
+  const rows = list.map(k => `<tr>
+      <td><strong>${x(k.name || 'API key')}</strong></td>
+      <td><code style="font-size:11px">${x(k.key_prefix || '')}…</code></td>
+      <td>${k.revoked_at ? '<span class="badge badge-red">revoked</span>' : '<span class="badge badge-green">active</span>'}
+        ${k.recoverable === false ? '<span class="badge badge-yellow" title="This key was stored before keys could be displayed, so it cannot be shown. Regenerate it to get one you can copy.">cannot be displayed</span>' : ''}</td>
+      <td style="font-size:12px;color:var(--muted)">${x(formatDate(k.created_at))}</td>
+      <td style="font-size:12px;color:var(--muted)">${k.last_used_at ? x(formatDate(k.last_used_at)) : 'never'}</td>
+      <td>${k.revoked_at ? '' : `<button class="btn btn-secondary btn-xs" onclick="window._apiKeyView('${x(k.id)}')">View</button>
+        <button class="btn btn-secondary btn-xs" onclick="window._apiKeyRegenerate('${x(k.id)}')">Regenerate</button>
+        <button class="btn btn-danger btn-xs" onclick="window._apiKeyRevoke('${x(k.id)}')">Revoke</button>`}</td>
+    </tr>`).join('');
+
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:8px">
+      <h1 style="font-size:22px;font-weight:700">🔑 API Keys</h1>
+      ${live.length ? '' : `<button class="btn btn-primary btn-sm" onclick="window._apiKeyCreate()">Create an API key</button>`}
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">This workspace's key for the FunnelSwift API and MCP server. It is created with your account, it never expires, and you can view it again at any time — each view asks for your password and is recorded.</p>
+    ${API_KEYS_STATE.err ? `<div class="card" style="border-color:#fca5a5;margin-bottom:16px"><div style="font-size:13px;color:#991b1b">${x(API_KEYS_STATE.err)}</div></div>` : ''}
+    ${API_KEYS_STATE.list === null ? `<div class="empty"><div class="icon">⏳</div><div class="title">Loading…</div></div>` : ''}
+    ${list.length === 0 ? `<div class="empty"><div class="icon">🔑</div><div class="title">No API key yet</div><div class="desc">Minting one makes this workspace's API usable from your own tools.</div></div>` : `
+    <div class="card"><div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Key prefix</th><th>Status</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`}
+    ${live.length ? `<p style="font-size:12px;color:var(--muted);margin-top:12px">One live key per workspace. To replace it, press Regenerate — the old key stops working at the same moment the new one starts. Revoking retires it and lets the workspace mint a fresh one.</p>` : ''}
+  </div>`;
+}
+
+function bindApiKeys() { /* actions are window-level handlers so the table rows survive a re-render */ }
+
 // ── SUPER ADMIN DASHBOARD ──
 async function renderSuperAdmin() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
@@ -6677,6 +6826,7 @@ function paintPaymentHealth() {
    touching the path or the hash — so every key here is a STATE.view id and the widget is told
    which screen is open by renderView() and by the sync below. */
 window.appGuidePages = {
+  "apiKeys": { title: "API Keys", desc: "This workspace's own key for the FunnelSwift API and MCP server. It is created with your account and never expires. The screen shows only the prefix; View asks for your account password, then shows the full key so you can copy it, and every view is recorded. Regenerate replaces the key in one step — the old one stops working the moment the new one starts — and Revoke retires it so the workspace can mint a fresh one.", actions: ["Press View, enter your account password, then Copy key", "Press Regenerate to replace a key you think has leaked", "Press Revoke to retire the key entirely"] },
   "team": { title: "Team", desc: "The people who can sign in to this workspace, and the seats your plan includes. The owner is marked so you can tell an owner from a member at a glance. Adding a teammate creates their own sign-in and emails them a temporary password they change after signing in; only the workspace owner or a company admin can add people, and a plan with every seat taken says so instead of offering a button that cannot work.", actions: ["Read how many seats your plan includes", "Check who is already in the workspace and their role", "Enter a name and email, choose a role, then press Add teammate"] },
   "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data.", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Check My Account for your plan and profile"] },
   "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, the address you sign in with, your password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your sign-in email (we email a confirmation link)", "Change your password", "See the plan you are on"] },

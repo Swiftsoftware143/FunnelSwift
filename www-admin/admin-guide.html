@@ -1137,6 +1137,38 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
       </div>
 
       <!-- ============ API ============ -->
+      <div class="card">
+        <h3 id="guide-api-keys">🔑 API Keys — this workspace's own credential</h3>
+        <p>Every FunnelSwift workspace gets one API key when it is created, and the <strong>API
+        Keys</strong> screen (in the sidebar under TOOLS, beside Provider Keys) is where you see and
+        manage it. It is a different thing from Provider Keys: Provider Keys are <em>your</em>
+        credentials for third-party services FunnelSwift calls, while this key is the credential for
+        <em>your workspace's</em> FunnelSwift API and MCP server — the string an outside tool signs
+        in with.</p>
+        <p>The list shows only the <strong>prefix</strong> of each key (for example
+        <code>fs_1a2b3c4d5</code>) with its status, the date it was created and the last time it was
+        used. The full key is never sitting in the page.</p>
+        <ul>
+          <li><strong>View</strong> asks for the password of the account you are signed in with, then
+          shows the whole key so you can copy it. A mistyped password is answered with “Current
+          password is incorrect” — you are not signed out. Every view is recorded in the workspace's
+          activity log as <code>api_key_revealed</code>, with who did it and the key's prefix, so the
+          record answers “who has seen this credential” later.</li>
+          <li><strong>Regenerate</strong> replaces the key in one step: the old key stops working at
+          the same moment the new one starts, and the new key is shown once for you to copy. Anything
+          already wired up with the old key keeps failing until you paste the new one in, so this is
+          the button to press when a key has leaked.</li>
+          <li><strong>Revoke</strong> retires the key without issuing a replacement. The workspace is
+          then offered <strong>Create an API key</strong> and can mint a fresh one.</li>
+        </ul>
+        <p><strong>One live key per workspace.</strong> While a key is live the screen does not offer
+        Create; asking the API for a second one is refused with the sentence “you already have a key —
+        use Regenerate”, which is what the screen shows rather than inventing a softer message.</p>
+        <p>A key created before this screen existed may carry a <strong>cannot be displayed</strong>
+        badge: its secret was stored without a recoverable copy, so View cannot show it. Regenerate
+        replaces it with one you can copy.</p>
+      </div>
+
       <h2 id="api">🔌 Admin API Reference</h2>
 
       <div class="card">

@@ -705,6 +705,28 @@ window.FunnelSwiftConfig = {
       also in the body). Verify a delivery by recomputing the HMAC over the raw request body with
       your secret and comparing the two.</p>
 
+      <h2 id="api-keys">🔑 API Keys</h2>
+      <p>Your workspace already has an API key — FunnelSwift creates one with the account, so an
+      outside tool can call your workspace's API and its MCP server without you making anything
+      first. The <strong>API Keys</strong> screen (sidebar, under TOOLS, just above Provider Keys)
+      is where you see and manage it.</p>
+      <p>The list shows the key's <strong>prefix</strong> only — for example
+      <code>fs_1a2b3c4d5…</code> — with whether it is active, the day it was created and the last
+      time it was used. Three buttons sit on each live key:</p>
+      <ul>
+        <li><strong>View</strong> asks for the password you sign in with, then shows the whole key so
+        you can copy it (Copy key). You can do this as often as you like; each view is recorded, and
+        a mistyped password just says it is incorrect — it does not sign you out.</li>
+        <li><strong>Regenerate</strong> swaps the key for a brand-new one in a single step. The old
+        key stops working the moment the new one is issued, so anything already using it fails until
+        you paste the new key in. Press it when a key has been shared by mistake.</li>
+        <li><strong>Revoke</strong> retires the key and leaves you without one until you press
+        <strong>Create an API key</strong>, which then appears on the screen.</li>
+      </ul>
+      <p>There is one live key per workspace. While a key is live the screen offers no second one:
+      asking anyway is refused with “you already have a key — use Regenerate”, and that is the
+      sentence the screen shows.</p>
+
       <h2 id="plans">💳 Plans</h2>
       <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, Kinetic card limits, QR code limits, template access, etc.).</p>
 
