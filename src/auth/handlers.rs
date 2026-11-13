@@ -221,6 +221,14 @@ pub async fn register(
 
     // The workspace, its owner and its settings now exist as ONE unit. Commit before the plan
     // assignment, whose own failure path is already published in the response.
+    //
+    // The workspace's API key is part of the same unit (kanban t_7863696b): every account is
+    // minted one at creation, sealed for later display, and the mint + its audit row commit or
+    // roll back with the account. `mint_on` is the ONE writer both signup doors and the Settings
+    // create/regenerate routes funnel through.
+    crate::handlers::api_keys::mint_on(&mut tx, tenant_id, Some(user_id), "auto-provisioned")
+        .await?;
+
     tx.commit().await?;
 
     // Auto-assign the free tier of THIS product (kanban t_3641f326).

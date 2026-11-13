@@ -164,8 +164,24 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
 
     let claims = match validate_jwt(&state, &req) {
         Ok(claims) => claims,
+        // Not a valid JWT — before refusing, try it as a durable API key (kanban t_7863696b). A
+        // key minted in Settings resolves here to the same `Claims` a JWT would carry, so it
+        // passes the identical authorization below (including the tenant + admin-surface gates).
         Err(_) => {
-            return reject(StatusCode::UNAUTHORIZED, "Authentication required");
+            let bearer = req
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "));
+            match bearer {
+                Some(tok) => {
+                    match crate::handlers::api_keys::resolve_api_key(&state.pool, tok).await {
+                        Some(claims) => claims,
+                        None => return reject(StatusCode::UNAUTHORIZED, "Authentication required"),
+                    }
+                }
+                None => return reject(StatusCode::UNAUTHORIZED, "Authentication required"),
+            }
         }
     };
 

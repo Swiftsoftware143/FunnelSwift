@@ -5832,7 +5832,101 @@ function LM(){
     epRow.appendChild(El("span",{id:"lep-msg",style:"font-size:11px;color:#64748b"}));
     epDiv.appendChild(epRow);
     EPLOAD();
+
+    /* API keys (kanban t_7863696b) — the workspace's durable credential for external callers. The
+       key is stored sealed and shown masked; View asks for the account password before revealing;
+       Copy is one click; Regenerate revokes and re-issues in one step. Every mint/reveal is
+       audited server-side. Built LAST like the panes above, with its dynamic half rendered into its
+       own #lm-ak-list container (the t_7caf7873 trap). */
+    var akDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
+    akDiv.innerHTML='<strong style="font-size:13px">API keys</strong>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">A key lets your own software — or another SwiftSoftware app — talk to this workspace without a login screen. It is stored encrypted and shown masked, and you can view or copy it any time. Regenerate rotates it; the old key stops working immediately.</p>'
+      +'<div id="lm-ak-list" style="margin-bottom:10px"></div>'
+      +'<div id="lm-ak-new" style="margin-bottom:10px"></div>'
+      +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      +'<input id="lm-ak-name" placeholder="Key name (optional)" style="width:200px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
+      +'<button class="btn btn-sm" onclick="AKCREATE()">Create key</button>'
+      +'<span id="lm-ak-msg" style="font-size:11px;color:#64748b"></span></div>';
+    list.appendChild(akDiv);
+    AKLOAD();
   });
+}
+/* === API keys (2026-11-13) =====================================================================
+   Reads GET /api/v1/api-keys, creates POST /api/v1/api-keys, reveals POST /api/v1/api-keys/:id/reveal
+   (password-gated), regenerates POST /api/v1/api-keys/:id/regenerate, revokes DELETE
+   /api/v1/api-keys/:id. The server owns every decision; a refusal arrives as the server's own
+   sentence and is printed verbatim. */
+function AKLOAD(){
+  var box=$("lm-ak-list"); if(!box) return;
+  api("/api/v1/api-keys").then(function(d){
+    var ks=(d&&d.api_keys)||[];
+    if(!ks.length){ box.innerHTML='<p style="color:#94a3b8;font-size:12px">No API keys yet. Create one to let your own software talk to this workspace.</p>'; return; }
+    var h='';
+    ks.forEach(function(k){
+      var revoked=!!k.revoked_at;
+      h+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">'
+        +'<span style="font-size:12px"><strong>'+X(k.name||"API key")+'</strong> '
+        +'<code style="font-size:11px;color:#6366f1">'+X(k.key_prefix)+'&hellip;</code>'
+        +(revoked?' <span class="badge" style="background:#fee2e2;color:#991b1b">Revoked</span>':'')
+        +'<br><span style="color:#94a3b8;font-size:11px">Created '+TSFMT(k.created_at)+'</span></span>'
+        +'<span style="white-space:nowrap;font-size:11px">'
+        +((!revoked)?'<a href="#" data-ak-view="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">View</a>'
+          +'<a href="#" data-ak-copy="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">Copy</a>'
+          +'<a href="#" data-ak-regen="'+X(k.id)+'" style="color:#b45309;margin-right:8px">Regenerate</a>'
+          +'<a href="#" data-ak-revoke="'+X(k.id)+'" style="color:#dc2626">Revoke</a>':'')
+        +'</span></div>';
+    });
+    box.innerHTML=h;
+    function wire(attr,fn){ Array.prototype.forEach.call(box.querySelectorAll("["+attr+"]"),function(a){ a.addEventListener("click",function(ev){ ev.preventDefault(); fn(a.getAttribute(attr)); }); }); }
+    wire("data-ak-view",function(id){ AKREVEAL(id,false); });
+    wire("data-ak-copy",function(id){ AKREVEAL(id,true); });
+    wire("data-ak-regen",AKREGEN);
+    wire("data-ak-revoke",AKREVOKE);
+  }).catch(function(e){ box.innerHTML='<p style="color:#b91c1c;font-size:12px">'+X(e.message||"Could not load API keys")+'</p>'; });
+}
+function AKREVEAL(id,copyOnly){
+  var pw=prompt("Enter your account password to view this key");
+  if(pw===null) return;
+  api("/api/v1/api-keys/"+id+"/reveal",{method:"POST",body:JSON.stringify({password:pw})}).then(function(r){
+    var tok=r.token||"";
+    if(copyOnly){ AKCLIP(tok); return; }
+    AKSHOW("This key stays viewable — you can reveal it again any time.",tok,"#eff6ff","#bfdbfe");
+  }).catch(function(e){ alert((e&&e.message)||"Could not reveal the key — check the password."); });
+}
+function AKSHOW(note,tok,bg,bd){
+  var box=$("lm-ak-new"); if(!box) return;
+  box.style.display="block";
+  box.innerHTML='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:'+(bg||"#f0fdf4")+';border:1px solid '+(bd||"#bbf7d0")+';border-radius:6px;padding:8px">'
+    +'<input readonly value="'+X(tok)+'" style="flex:1;min-width:220px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px" onfocus="this.select()">'
+    +'<button class="btn btn-sm" onclick="AKCLIP(\''+X(tok)+'\')">Copy</button>'
+    +(note?'<span style="font-size:11px;color:#334155">'+X(note)+'</span>':'')+'</div>';
+}
+function AKCLIP(tok){
+  var ok=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tok); ok=true; } }catch(e){}
+  if(!ok){ try{ var t=document.createElement("textarea"); t.value=tok; document.body.appendChild(t); t.select(); ok=document.execCommand("copy"); document.body.removeChild(t); }catch(e){} }
+  alert(ok?"Key copied":"Could not copy automatically — select the key and press Ctrl+C");
+}
+function AKCREATE(){
+  var name=$("lm-ak-name"); var msg=$("lm-ak-msg");
+  var body={}; if(name&&name.value.trim()) body.name=name.value.trim();
+  api("/api/v1/api-keys",{method:"POST",body:JSON.stringify(body)}).then(function(r){
+    if(name) name.value="";
+    if(msg){ msg.textContent="Key created — copy it now; you can view it again any time."; setTimeout(function(){ msg.textContent=""; },4000); }
+    AKSHOW("",r.token,"#f0fdf4","#bbf7d0");
+    AKLOAD();
+  }).catch(function(e){ if(msg) msg.textContent=(e&&e.message)||"Could not create the key"; });
+}
+function AKREGEN(id){
+  if(!confirm("Regenerate this key? The old key stops working immediately, so anything using it must be updated with the new one.")) return;
+  api("/api/v1/api-keys/"+id+"/regenerate",{method:"POST",body:"{}"}).then(function(r){
+    AKSHOW("The old key no longer works.",r.token,"#f0fdf4","#bbf7d0");
+    AKLOAD();
+  }).catch(function(e){ alert((e&&e.message)||"Could not regenerate the key"); });
+}
+function AKREVOKE(id){
+  if(!confirm("Revoke this key? It stops working immediately.")) return;
+  api("/api/v1/api-keys/"+id,{method:"DELETE"}).then(function(){ AKLOAD(); }).catch(function(e){ alert((e&&e.message)||"Could not revoke the key"); });
 }
 /* === Your team (2026-10-31) =====================================================================
    Reads the caller's own workspace through GET /api/v1/team/members and adds a teammate through

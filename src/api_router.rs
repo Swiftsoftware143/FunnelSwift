@@ -16,7 +16,7 @@ use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
     affiliate_onboarding_handler, affiliate_payout_handler, affiliate_portal_handler,
     affiliate_product_handler, affiliate_rate_band_handler, affiliate_referral_handler,
-    affiliate_tracking_handler, branding_handler, bulk_handler, campaigns_handler,
+    affiliate_tracking_handler, api_keys, branding_handler, bulk_handler, campaigns_handler,
     checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
     dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
     insight_handler, kinetic_handler, lead_handler, linkedin, mobile_notify_handler, ocr,
@@ -877,6 +877,25 @@ pub fn create_router(
         .route(
             "/api/v1/provider-keys/:provider/test",
             post(coreswift_integration_handler::test_provider_connection),
+        )
+        // API keys (kanban t_7863696b): the durable bearer credential a customer pastes into an
+        // external caller (the fleet MCP server). Tenant-scoped in every handler — each binds the
+        // caller's OWN tenant, so there is no id in the path to spoof across workspaces.
+        .route(
+            "/api/v1/api-keys",
+            get(api_keys::list_api_keys).post(api_keys::create_api_key),
+        )
+        .route(
+            "/api/v1/api-keys/:id/reveal",
+            post(api_keys::reveal_api_key),
+        )
+        .route(
+            "/api/v1/api-keys/:id/regenerate",
+            post(api_keys::regenerate_api_key),
+        )
+        .route(
+            "/api/v1/api-keys/:id",
+            delete(api_keys::revoke_api_key),
         )
         // Canonical CoreSwift spoke endpoints (fleet standard 2026-09-20)
         .route(

@@ -62,19 +62,40 @@ where
         validation.required_spec_claims.clear();
         validation.required_spec_claims.insert("exp".to_string());
 
-        let token_data = decode::<Claims>(
+        let token_data = match decode::<Claims>(
             token,
             &DecodingKey::from_secret(app_state.jwt_secret.as_bytes()),
             &validation,
-        )
-        .map_err(|e| {
-            tracing::debug!("JWT decode error: {e}");
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Invalid or expired token"})),
-            )
-                .into_response()
-        })?;
+        ) {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::debug!("JWT decode error: {e}");
+                // Not a valid JWT — before refusing, try it as a durable API key (kanban
+                // t_7863696b), the same fallback the auth boundary uses, so a key holder reaches
+                // the same handlers a session token does.
+                match crate::handlers::api_keys::resolve_api_key(&app_state.pool, token).await {
+                    Some(claims) => {
+                        return Ok(AuthUser {
+                            user_id: claims.sub.clone(),
+                            tenant_id: claims.tenant_id.clone(),
+                            email: claims.email.clone(),
+                            is_admin: claims.role == "admin",
+                            role: claims.role.clone(),
+                            token: token.to_string(),
+                            impersonating: claims.impersonating.clone(),
+                            wsid: claims.wsid.clone(),
+                        });
+                    }
+                    None => {
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": "Invalid or expired token"})),
+                        )
+                            .into_response());
+                    }
+                }
+            }
+        };
 
         let token_str = token.to_string();
 
