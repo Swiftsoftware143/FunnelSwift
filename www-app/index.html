@@ -6858,7 +6858,7 @@ loadWsSwitcher();
 
 /* ── Inbox ────────────────────────────────────────────────────────────────────────────────────
    GET|POST /api/v1/private-email/domains (+ /:id/verify, /:id/records), /boxes, /messages. */
-var INBOX = { domains: [], boxes: [], messages: [] };
+var INBOX = { domains: [], boxes: [], messages: [], q: "" };
 
 function inboxMsg(text, ok) {
   var el = $("inboxMsg");
@@ -6894,7 +6894,12 @@ function LINBOX() {
     + '<button class="btn" id="boxAdd" onclick="addInboxBox()">Create address</button></div></div>'
     + '<div class="cc"><h2>Recent mail</h2>'
     + '<p style="color:#64748b;font-size:13px;margin:6px 0 0">The newest messages that arrived at any of your addresses. Reading the whole thread happens in the mail client.</p>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">'
+    + '<input type="search" id="inboxSearch" value="' + X(INBOX.q || "") + '" placeholder="Search subject, sender or text" aria-label="Search mail" autocomplete="off" style="flex:1;min-width:200px;box-sizing:border-box;padding:9px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px">'
+    + '<button class="btn" id="inboxSearchClear" style="display:' + (INBOX.q ? "inline-block" : "none") + '">Clear search</button>'
+    + '</div>'
     + '<div id="inboxRecent" style="margin-top:12px"><div class="loading">Loading messages…</div></div></div>';
+  bindInboxSearch();
   loadInbox();
 }
 
@@ -6907,13 +6912,54 @@ function loadInbox() {
     var el = $("inboxDomains");
     if (el) el.innerHTML = '<div style="color:#b91c1c;font-size:13px">' + X(e.message) + "</div>";
   });
-  api("/api/v1/private-email/messages?limit=20").then(function (d) {
+  loadInboxMessages();
+}
+
+/* SEARCH (kanban t_843293af). The server's list route has always accepted `q` (subject, sender and
+   the opening text, case-insensitive) and this list never sent it. Type-and-pause re-queries 350 ms
+   after typing stops, or at once on Enter. BOTH clear buttons are bound by hand: `a || b` binds only
+   the first element that exists, which is how the in-place button went dead in the mail client. */
+function inboxMessagesUrl() {
+  var q = String(INBOX.q || "").trim();
+  return "/api/v1/private-email/messages?limit=20" + (q ? "&q=" + encodeURIComponent(q) : "");
+}
+
+function loadInboxMessages() {
+  api(inboxMessagesUrl()).then(function (d) {
     INBOX.messages = (d && d.messages) || [];
     renderInboxRecent();
   }).catch(function (e) {
     var el = $("inboxRecent");
     if (el) el.innerHTML = '<div style="color:#b91c1c;font-size:13px">' + X(e.message) + "</div>";
   });
+}
+
+function runInboxSearch(val) {
+  var next = String(val == null ? "" : val).trim();
+  if (next === INBOX.q) return;
+  INBOX.q = next;
+  loadInboxMessages();
+}
+
+function clearInboxSearch() {
+  INBOX.q = "";
+  var si = $("inboxSearch");
+  if (si) { si.value = ""; try { si.focus(); } catch (e) {} }
+  loadInboxMessages();
+}
+
+function bindInboxSearch() {
+  var si = $("inboxSearch");
+  if (!si) return;
+  var t = null;
+  si.oninput = function () {
+    var v = this.value;
+    clearTimeout(t);
+    t = setTimeout(function () { runInboxSearch(v); }, 350);
+  };
+  si.onkeydown = function (e) {
+    if (e.key === "Enter") { e.preventDefault(); clearTimeout(t); runInboxSearch(this.value); }
+  };
 }
 
 function renderInboxDomains() {
@@ -6965,8 +7011,14 @@ function loadInboxBoxes() {
 function renderInboxRecent() {
   var el = $("inboxRecent");
   if (!el) return;
+  var sc = $("inboxSearchClear");
+  if (sc) { sc.style.display = INBOX.q ? "inline-block" : "none"; sc.onclick = clearInboxSearch; }
   if (!INBOX.messages.length) {
-    el.innerHTML = '<div style="color:#64748b;font-size:13px">Nothing has arrived yet. Mail to any address above appears here.</div>';
+    el.innerHTML = INBOX.q
+      ? '<div style="color:#64748b;font-size:13px">No mail matches &ldquo;' + X(INBOX.q) + '&rdquo;. The search looks at the subject, the sender and the opening text of every message in this view. <button class="btn" id="inboxSearchClear2">Clear the search</button></div>'
+      : '<div style="color:#64748b;font-size:13px">Nothing has arrived yet. Mail to any address above appears here.</div>';
+    var sc2 = $("inboxSearchClear2");
+    if (sc2) sc2.onclick = clearInboxSearch;
     return;
   }
   el.innerHTML = INBOX.messages.map(function (m) {
