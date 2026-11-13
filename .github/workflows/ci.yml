@@ -16,10 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned, not @stable: sqlx-postgres 0.7.4 does not compile on rustc 1.100.0
+      # (rust-lang/rust#148922, 15 type-inference errors). rust-toolchain.toml carries the same
+      # pin so the build box and CI agree. Bump both together after the sqlx 0.8 upgrade.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.97.1
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
