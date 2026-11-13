@@ -261,9 +261,25 @@ pub async fn create_api_key(
     crate::security::display_name::check_len(&name, 255, "name")
         .map_err(AppError::UnprocessableEntity)?;
 
+    // One LIVE key per tenant. The partial unique index (`api_keys (tenant_id) WHERE
+    // revoked_at IS NULL`) is the database backstop; this check is the polite door — it turns a
+    // second create into a 409 that names Regenerate, instead of letting the blind insert collide
+    // with the index and surface as a 500. Checked inside the same transaction as the mint.
+    let mut tx = state.pool.begin().await?;
+    let existing: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM api_keys WHERE tenant_id = $1 AND revoked_at IS NULL LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if existing.is_some() {
+        return Err(AppError::Conflict(
+            "you already have a key — use Regenerate".to_string(),
+        ));
+    }
+
     // 32 bytes of OS entropy, `fs_` prefix, sealed for display — all in `mint_on`, so the admin
     // action and the automatic signup mint can never disagree about the row's shape.
-    let mut tx = state.pool.begin().await?;
     let minted = mint_on(&mut tx, tenant_id, created_by, &name).await?;
     tx.commit().await?;
 
@@ -422,15 +438,25 @@ pub async fn regenerate_api_key(
     .await?;
     let name = name.ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
 
-    // Insert the replacement and revoke the old row in ONE transaction: a failure at either step
-    // leaves the customer with the key they already had.
+    // Retire the old key FIRST, then mint the replacement, in ONE transaction. The order is the
+    // contract: the partial unique index (`api_keys (tenant_id) WHERE revoked_at IS NULL`) refuses
+    // a second live key, so the retire must land before the insert. A failure at either step rolls
+    // both back and leaves the customer with the key they already had.
     let mut tx = state.pool.begin().await?;
+    let retired = sqlx::query(
+        "UPDATE api_keys SET revoked_at = now() \
+         WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&mut *tx)
+    .await?;
+    if retired.rows_affected() == 0 {
+        return Err(AppError::NotFound(
+            "API key not found or already revoked".to_string(),
+        ));
+    }
     let minted = mint_on(&mut tx, tenant_id, created_by, &name).await?;
-    sqlx::query("UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND tenant_id = $2")
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&mut *tx)
-        .await?;
     tx.commit().await?;
 
     tracing::info!(
