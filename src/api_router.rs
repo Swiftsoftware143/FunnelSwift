@@ -8,9 +8,9 @@ use tower_http::trace::TraceLayer;
 use askama::Template;
 
 use crate::auth::handlers::{
-    change_password, confirm_email_change, delete_avatar, forgot_password, get_avatar, get_usage,
-    login, logout_all, me, register, request_email_change, reset_password, update_profile,
-    upload_avatar,
+    change_password, close_account, confirm_email_change, delete_avatar, forgot_password,
+    get_avatar, get_usage, login, logout_all, me, register, request_email_change, reset_password,
+    update_profile, upload_avatar,
 };
 use crate::handlers::{
     admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
@@ -232,6 +232,12 @@ pub fn create_router(
         // device that pressed it. Private like its neighbours: the account comes from the caller's
         // own token, so there is no id in the path to spoof.
         .route("/api/v1/auth/logout-all", post(logout_all))
+        // A customer closes their OWN account (2026-11-13, migration 132). The route acts on the
+        // caller's own row from the bearer token — there is no id in the path to spoof — and the
+        // password in the body is re-verified server-side. A closure is a STATE, never a delete:
+        // the workspace, its leads and its figures stay for the operator, while every session and
+        // every API key on the account is ended.
+        .route("/api/v1/auth/close-account", post(close_account))
         // The signup session's own choice of first password, for an account whose credentials mail
         // never left (migration 119). Authenticated on purpose: the caller must already hold the
         // token signup returned, and the SQL gate admits each account exactly once.

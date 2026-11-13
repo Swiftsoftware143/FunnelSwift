@@ -5301,6 +5301,20 @@ h+='<div class="fld"><label for="pf-user">Username</label><input id="pf-user" ma
     h+='<div class="card"><h3>Signed-in devices</h3>';
     h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">If you are still signed in somewhere you no longer control — an old phone, a shared laptop — this ends every other session. This browser stays signed in.</p>';
     h+='<button class="btn" onclick="LGA()">Sign out of every other device</button><span id="pf-devmsg" class="msg" style="margin-left:8px"></span></div>';
+    /* Close my account (2026-11-13). The exit door: until now the only way out of this app was asking
+       support to DELETE the row, and every foreign key to the workspace CASCADEs, so a privacy request
+       took the campaigns, the leads and the history with it. The server records a closure as a STATE
+       instead (POST /api/v1/auth/close-account) and re-checks the password and the word CLOSE itself.
+       Two deliberate steps here: the first only REVEALS the form, the second is the red button, and it
+       is last on the screen on purpose. */
+    h+='<div class="card" id="pf-close"><h3>Close my account</h3>';
+    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">This ends your sign-in and every API key, and you will not be able to sign in again. Your campaigns, leads and history are kept for our records and are not deleted, so support can help you if you close it by mistake.</p>';
+    h+='<div id="pf-ca-arm"><button class="btn btn-sm" onclick="CAARM()" style="background:#fff;color:#b91c1c;border:1px solid #fca5a5">Close my account</button></div>';
+    h+='<div id="pf-ca-form" style="display:none;border-top:1px solid #fecaca;margin-top:12px;padding-top:12px">';
+    h+='<div class="fld"><label for="pf-ca-pw">Your password (proves it is you)</label><input id="pf-ca-pw" type="password" autocomplete="current-password"></div>';
+    h+='<div class="fld"><label for="pf-ca-word">Type CLOSE to confirm</label><input id="pf-ca-word" autocomplete="off" placeholder="CLOSE"></div>';
+    h+='<button class="btn btn-sm" onclick="CADO()" style="background:#b91c1c;color:#fff">Close my account permanently</button>';
+    h+='<span id="pf-camsg" class="msg" style="margin-left:8px"></span></div></div>';
     h+='</div>';
     $("ct").innerHTML=h;
   }).catch(function(e){
@@ -5388,6 +5402,40 @@ function LGA(){
       pfMsg("pf-devmsg",d.message||"Every other device has been signed out.","ms");
     })
     .catch(function(e){ pfMsg("pf-devmsg",(e&&e.message)||"Could not sign the other devices out","me"); });
+}
+/* Close my account (2026-11-13). CAARM only reveals the form — nothing is sent until CADO, which
+   posts the bearer token, the password and the word CLOSE. The SERVER owns every rule (the word, the
+   password, an operator account cannot close itself); each refusal is printed in the card's own
+   message and never softened. Posted directly, not through api(), for the same reason CPF and LGA
+   are: api()'s 401/403 arms clear the token and bounce the page, so a refusal would look like an
+   expired session instead of the sentence the customer needs to read. */
+function CAARM(){
+  var a=$("pf-ca-arm"), f=$("pf-ca-form");
+  if(a) a.style.display="none";
+  if(f) f.style.display="block";
+  var p=$("pf-ca-pw"); if(p) p.focus();
+}
+function CADO(){
+  var pw=(($("pf-ca-pw")||{}).value||""), w=(($("pf-ca-word")||{}).value||"").trim();
+  if(!pw){ pfMsg("pf-camsg","Enter your password","me"); return; }
+  if(w.toUpperCase()!=="CLOSE"){ pfMsg("pf-camsg","Type CLOSE in the box to confirm","me"); return; }
+  if(!window.confirm("Close this account? You will be signed out and will not be able to sign in again.")) return;
+  pfMsg("pf-camsg","Closing your account\u2026","mi");
+  fetch("/api/v1/auth/close-account",{method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+      body:JSON.stringify({password:pw,confirm:w})})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+      if(!r.ok) throw Error((d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Error "+r.status));
+      return d||{};})})
+    .then(function(d){
+      /* The server has already moved the session line, so this tab's bearer is dead: drop it here
+         rather than let the next call bounce the customer with an "expired" message. */
+      T="";
+      try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(e){}
+      pfMsg("pf-camsg",(d&&d.message)||"Your account is closed.","ms");
+      setTimeout(function(){ window.location.href="/login?closed=1"; },1200);
+    })
+    .catch(function(e){ pfMsg("pf-camsg",(e&&e.message)||"Could not close the account","me"); });
 }
 function UPF(){
   var f=$("pf-file"), file=f&&f.files?f.files[0]:null;
@@ -6583,7 +6631,7 @@ window.appGuidePages = {
   tenants:     { title: "Tenants", desc: "Every workspace on this install, with its name, plan and status. A row is a workspace, not a login, so a workspace that has no user yet still appears. Assign a plan from the row, open a workspace to see its accounts, or delete it, which removes its users, cards and leads for good.", actions: ["Search by name or email", "Assign a plan from the row", "Open a workspace to see its accounts"] },
   analytics:   { title: "Analytics", desc: "How the cards in this workspace performed: views, clicks and shares, the visitors counted once per session, and your cards ranked by views. Analytics is part of the paid plans \u2014 on the free plan the screen says so and points at the plans.", actions: ["See which card earns the most views", "Check clicks and shares beside each card", "Upgrade if your plan does not include it"] },
   dashboard:   { title: "Dashboard", desc: "Your numbers at a glance — leads, conversion rate and recent activity.", actions: ["Check today's leads", "Use the sidebar to jump anywhere", "Open My Affiliate to join the programme"] },
-  profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you.", actions: ["Update your name and company", "Upload a profile picture", "Change your password"] },
+  profile:     { title: "Profile", desc: "Your account: your name and company, your profile picture, and the password you sign in with. Changing the password asks for your current one underneath, to prove it is you. The screen ends with Close my account, for the day you decide to leave: it ends your sign-in and every API key, and keeps your campaigns, leads and history on record rather than deleting them.", actions: ["Update your name and company", "Upload a profile picture", "Change your password", "Close your account if you decide to leave"] },
   leads:       { title: "Leads", desc: "Everyone who has come in through your funnels and forms. Tick a lead (or the box on the header row to take every lead currently shown) and press Delete selected to remove them for good \u2014 there is no undo, and the filter only ever ticks the rows you can see.", actions: ["Filter and search", "Tick leads and delete them in one go", "Apply tags", "Export"] },
   funnels:     { title: "Funnels", desc: "The public pages you send people to. Create one here and its link appears beside it \u2014 that link is the page's address, so renaming the funnel keeps the same link and anything you have already shared still works. Deleting it stops the link working immediately. A page asks for a name and an email; tick \"Ask visitors for a phone number\" in its editor and the page adds a phone field, whose answer lands in that lead's Phone column (leave it unticked and the page stays exactly as it is).", actions: ["Create a funnel", "Copy its public link", "Rename it without changing the link", "Ask for a phone number on the page", "Delete one you no longer send people to"] },
   myaff:       { title: "My Affiliate", desc: "The SwiftSoftware affiliate programme. If you are not an affiliate yet this is where you join; once you are, this is where you choose what to promote. Each product shows the free plan a customer gets and the tag that credits you.", actions: ["Sign up as an affiliate", "Tick the products you want to promote", "Save"] },

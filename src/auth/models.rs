@@ -26,6 +26,11 @@ pub struct User {
     pub is_active: bool,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    /// When this account's owner closed it (2026-11-13, migration 132). `None` = open. A closure is
+    /// a STATE, never a delete: the row, the workspace and every figure stay readable for the
+    /// operator, while `login` / `forgot_password` / `reset_password` refuse it by name and the
+    /// close handler has already moved the session line and revoked the workspace's API keys.
+    pub closed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

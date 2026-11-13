@@ -484,6 +484,19 @@ pub async fn login(
 
     let user = user.ok_or_else(|| failed("Invalid email or password"))?;
 
+    // A CLOSED account (2026-11-13, migration 132). Checked here — after the Argon2 verification
+    // above and after `user` is known — so this sentence can never become an account-existence
+    // oracle: only a caller who proved the password is told the account is closed. The row, the
+    // workspace and its figures are all kept for the operator; what is gone is every way back in
+    // (`forgot_password` sends no link and `reset_password` refuses, so a reset cannot reopen it).
+    if user.closed_at.is_some() {
+        return Err(AppError::Forbidden(
+            "This account was closed, so it can no longer be signed in to. Its data is still held for \
+             the operator. Contact support if you want it reopened."
+                .into(),
+        ));
+    }
+
     // A real sign-in clears this address's history, so a customer who mistyped a couple of times
     // is never carried toward a pause by attempts that are behind them.
     state.login_throttle.clear(&throttle_key);
@@ -1114,6 +1127,133 @@ pub async fn change_password(
     })))
 }
 
+/// `POST /api/v1/auth/close-account` body — the owner's own decision to close their account.
+#[derive(Debug, Deserialize)]
+pub struct CloseAccountRequest {
+    pub password: String,
+    /// The word the console asks them to type. Judged HERE as well as in the browser, so a bare API
+    /// call cannot close an account with one careless request.
+    pub confirm: String,
+}
+
+/// `POST /api/v1/auth/close-account` — the signed-in owner closes their own account (2026-11-13).
+///
+/// Ported from IncentiveSwift, where a customer could already do this. Until now the only way out of
+/// this app was asking support to DELETE the user row, and every foreign key from `users` to a
+/// workspace's campaigns, leads and events CASCADEs — so a privacy request would have destroyed the
+/// business's history as a side effect. A closure is therefore a STATE, never a delete:
+///
+///   * `closed_at` records the decision (migration 132), so the operator still sees the workspace,
+///     its leads and its figures;
+///   * `sessions_valid_from` is bumped in the SAME statement, so every token minted before the
+///     closure is refused at its next request;
+///   * every live API key for the workspace is revoked, because those are durable credentials that
+///     the session line does not cover;
+///   * `login`, `forgot_password` and `reset_password` refuse a closed account by name, so nothing
+///     reopens it by accident.
+///
+/// The password is re-verified here exactly as a password change does: the bearer token proves who
+/// is asking, but only the password proves the person holding the session is the owner.
+/// Idempotent: closing an already-closed account answers the same `account_closed`.
+pub async fn close_account(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    body: Result<Json<CloseAccountRequest>, axum::extract::rejection::JsonRejection>,
+) -> AppResult<Json<serde_json::Value>> {
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
+    if !req.confirm.trim().eq_ignore_ascii_case("CLOSE") {
+        return Err(AppError::BadRequest(
+            "Type CLOSE to confirm closing the account".into(),
+        ));
+    }
+
+    let user_id = uuid::Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+
+    if let Some(closed_at) = user.closed_at {
+        return Ok(Json(json!({
+            "status": "account_closed",
+            "closed_at": closed_at,
+        })));
+    }
+
+    // A platform operator account closes workspaces; it is not a customer, and losing it from a
+    // dashboard button would take the console away from the person who runs the install.
+    if user.role == "admin" || user.role == "super_admin" {
+        return Err(AppError::Forbidden(
+            "A platform operator account cannot be closed from this screen.".into(),
+        ));
+    }
+
+    // A stored hash that is not a usable PHC string can verify no password at all: that is the
+    // ordinary refusal, never a 500 naming the internal reason (same rule as `change_password`).
+    let parsed_hash = PasswordHash::new(&user.password_hash)
+        .map_err(|_| AppError::Unauthorized("Your password is incorrect".into()))?;
+    Argon2::default()
+        .verify_password(req.password.as_bytes(), &parsed_hash)
+        .map_err(|_| AppError::Unauthorized("Your password is incorrect".into()))?;
+
+    // ONE statement records the decision and moves the session line, so an account can never be
+    // recorded closed while a token minted a moment earlier still works.
+    let closed_at: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
+        "UPDATE users SET closed_at = NOW(), sessions_valid_from = NOW(), updated_at = NOW() \
+          WHERE id = $1 AND closed_at IS NULL \
+      RETURNING closed_at",
+    )
+    .bind(user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+    // A second close racing this one changed no row; answer from the row that won.
+    let closed_at = match closed_at {
+        Some(t) => t,
+        None => {
+            sqlx::query_scalar::<_, chrono::DateTime<chrono::Utc>>(
+                "SELECT closed_at FROM users WHERE id = $1 AND closed_at IS NOT NULL",
+            )
+            .bind(user.id)
+            .fetch_one(&state.pool)
+            .await?
+        }
+    };
+
+    // Durable credentials are NOT covered by the session line, so they are retired explicitly.
+    // Best-effort by design: the closure above is already committed, and a customer's right to
+    // close outranks an audit detail — a failure is logged, never turned into a failed close.
+    match sqlx::query(
+        "UPDATE api_keys SET revoked_at = NOW() WHERE tenant_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(user.tenant_id)
+    .execute(&state.pool)
+    .await
+    {
+        Ok(r) => tracing::info!(
+            user = %user.id,
+            tenant = %user.tenant_id,
+            revoked = r.rows_affected(),
+            "account closed: session line moved and live API keys revoked"
+        ),
+        Err(e) => tracing::error!(
+            error = %e,
+            user = %user.id,
+            tenant = %user.tenant_id,
+            "account closed: the account is closed and its sessions are dead, but its API keys could \
+             not be revoked"
+        ),
+    }
+
+    Ok(Json(json!({
+        "status": "account_closed",
+        "closed_at": closed_at,
+        "message": "Your account is closed. Every session and API key on it has been ended.",
+    })))
+}
+
 pub async fn forgot_password(
     State(state): State<AppState>,
     body: Result<Json<ForgotPasswordRequest>, axum::extract::rejection::JsonRejection>,
@@ -1137,6 +1277,16 @@ pub async fn forgot_password(
         )
         .await?
         {
+            return Ok(Json(serde_json::json!({
+                "message": "If the email exists, a password reset link has been sent"
+            })));
+        }
+
+        // A CLOSED account must not receive a reset link (2026-11-13, migration 132): a reset would
+        // mint a fresh credential on an account its owner closed, which is exactly the "reopen it by
+        // accident" path the close handler is meant to shut. The body is byte-identical to the one
+        // at the end of this function, so this adds no account-existence signal.
+        if user.closed_at.is_some() {
             return Ok(Json(serde_json::json!({
                 "message": "If the email exists, a password reset link has been sent"
             })));
@@ -1227,8 +1377,8 @@ pub async fn reset_password(
     // tenants.status enforcement, part 3 of 4 (kanban t_af890bbf): completing a reset would write
     // a new credential into a retired workspace. Refused BEFORE the UPDATE below, so the one-shot
     // token is not consumed by a refusal.
-    let owner = sqlx::query_as::<_, (uuid::Uuid, String)>(
-        "SELECT tenant_id, role FROM users WHERE id = $1",
+    let owner = sqlx::query_as::<_, (uuid::Uuid, String, Option<chrono::DateTime<chrono::Utc>>)>(
+        "SELECT tenant_id, role, closed_at FROM users WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(&state.pool)
@@ -1239,6 +1389,16 @@ pub async fn reset_password(
     {
         return Err(AppError::Forbidden(
             crate::auth::global_auth::WORKSPACE_INACTIVE.into(),
+        ));
+    }
+    // A CLOSED account (2026-11-13, migration 132): a reset token minted BEFORE the closure could
+    // otherwise write a fresh password into a closed account. Refused before the UPDATE below, so
+    // the one-shot token is not consumed by a refusal — the same rule the workspace check follows.
+    if owner.2.is_some() {
+        return Err(AppError::Forbidden(
+            "This account was closed, so its password cannot be reset. Contact support if you want it \
+             reopened."
+                .into(),
         ));
     }
 
