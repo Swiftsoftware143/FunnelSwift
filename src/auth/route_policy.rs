@@ -36,7 +36,15 @@
 //! are plain `require_auth`; the two admin arms are additionally role-checked by
 //! `admin_surface_denied`. Nothing about the boundary moved: only the numbers.
 //!
-//! 228 `.route(..)` mounts / 227 unique paths, classified three ways:
+//! 2026-11-13 recount: FIVE more private mounts landed since the 2026-11-10 census — the
+//! API-keys surface (`GET|POST /api/v1/api-keys`, `DELETE /api/v1/api-keys/:id`, and the
+//! `:id/regenerate` + `:id/reveal` pair), the customer's `POST /api/v1/auth/close-account`, and
+//! the console's `GET|POST /api/v1/feedback`. Every one is a plain `require_auth` route scoped to
+//! the caller's own tenant (the API-key writers are additionally owned by the caller's account), so
+//! the public and internal buckets did NOT move: nothing became reachable without a credential.
+//! Only the numbers changed. Found by the nightly gate (cargo test was RED on HEAD), not by a card.
+//!
+//! 233 `.route(..)` mounts / 233 unique paths, classified three ways:
 //!
 //! (The 2026-11-06 recount also folds in TWO public `/api` mounts that the same day's contact-page
 //! work landed without bumping this census — `POST /api/v1/public/support-request` (a visitor with
@@ -65,15 +73,16 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!   200 mounts  /api/**           200 unique paths, no duplicate (the retired
+//!  207 mounts  /api/**           207 unique paths, no duplicate (the retired
 //!                                 `/api/v1/linkedin/auth` pair — POST + DELETE on one path — was
 //!                                 the last duplicate; the stub trio is gone, 2026-11-10)
-//!     23        public            -> PUBLIC_ROUTES below (the two card-QR image READs
+//!     24        public            -> PUBLIC_ROUTES below (the two card-QR image READs
 //!                                    joined them on 2026-10-21: a QR is fetched by a bare
 //!                                    `<img src>` that carries no Authorization header; the
-//!                                    public price list joined on 2026-10-30)
+//!                                    public price list joined on 2026-10-30, the anonymous
+//!                                    help desk pair on 2026-11-06)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    174        private           -> require_auth: app JWT, tenant-status checked
+//!    180        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (44 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -449,7 +458,7 @@ mod tests {
                 private,
                 served
             ),
-            (228, 228, 202, 24, 3, 175, 26),
+            (233, 233, 207, 24, 3, 180, 26),
             "the census in the module docs no longer matches the router"
         );
     }
