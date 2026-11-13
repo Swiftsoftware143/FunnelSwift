@@ -232,6 +232,12 @@ tr:hover{background:#f8fafc}
        platform console (Tenants, All Cards, Plans, SEO, ...) stays there.
        (kanban t_5a3c2d9c: the key-management screen was RETIRED, so it is no longer in this list.) -->
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
+  <!-- fleet MCP slot (docs/fleet-mcp-nav-convention.md): ONE entry, labelled exactly `MCP`,
+       placed immediately above Settings. The panel shows the endpoint, this workspace's API key by
+       prefix (Reveal/Copy/Regenerate through the existing /api/v1/api-keys routes), the read-only
+       tools the mcp server exposes for funnelswift, and a copy-paste client config. No audit block:
+       the MCP audit log is a file owned by the mcp service and has no read API. -->
+  <a data-tab="mcp" onclick="S('mcp')">MCP</a>
   <a data-tab="settings" onclick="S('settings')">Settings</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <!-- cron 2026-11-06: GET|POST /api/v1/support-requests are live and tenant-scoped and NO console
@@ -448,6 +454,7 @@ var MOVED={domains:"settings"};
 TI.funnels="Funnels";
 TI.campaigns="Campaigns";
 TI.scan="Card Scanner";
+TI.mcp="MCP";
 
 /* === CARD SCANNER (cron 2026-10-24) =========================================================
    `POST /api/v1/ocr/parse-card` is a SOLD, plan-gated, metered feature: `max_ocr_scans` is a
@@ -791,7 +798,7 @@ function S(t){
      (measured on the live console 2026-11-06, slow-device tap). Resolve it only once it exists,
      and let a renderer that is still arriving have a few bounded retries instead of failing the
      tap. Every renderer that IS declared here behaves exactly as before. */
-  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN,insights:LINS};
+  var L={dashboard:D,analytics:LAAN,profile:LPROF,leads:LD,cards:LKC,tags:LT,tg:LG,integrations:LI,apr:LPR,tenants:LN,affiliates:LA,ap:LP,payouts:LPA,myaff:LMA,plans:LPLL,webhooks:LW,stags:LST,sgroups:LSG,mcp:LMCP,settings:LM,campaigns:LCAM,"lead-stages":LLS,allcards:LAC,seo:LSEO,afleads:LAL,scan:LSYN,insights:LINS};
   if(typeof LWTL==="function") L.wtl=LWTL;
   /* LSUP is declared in the same later block as LWTL, so naming it in the map above would throw
      ReferenceError on any tap that lands while the page is still parsing (the LWTL lesson). */
@@ -5687,6 +5694,138 @@ function saveSubdomain(){
     })
     .catch(function(e){ showMsg((e&&e.message)||'That subdomain cannot be used','e'); });
 }
+/* === MCP (2026-11-13) — the fleet slot directly above Settings (docs/fleet-mcp-nav-convention.md)
+   Point any MCP client at https://hooks.swiftsoftware.net/mcp with THIS workspace's API key as the
+   Bearer token. Every tool a workspace credential can reach is read-only and tenant-scoped; there is
+   no write tool and no free-form SQL door, and operator-wide (admin) tools are refused for a
+   workspace credential. The tool list below is the REAL tool set the mcp server exposes for
+   funnelswift: each /opt/swift/mcp/src/main.rs AppSpec key yields <key>_summary and <key>_search
+   (the third, <key>_list_tenants, is admin-only and never offered here). */
+var MCP_SPECS=[
+  ["funnelswift","leads"],
+  ["funnelswift_tags","tags"],
+  ["funnelswift_cards","kinetic cards"],
+  ["funnelswift_lead_events","lead events"],
+  ["funnelswift_affiliate_products","affiliate products"],
+  ["funnelswift_webhooks","webhooks"],
+  ["funnelswift_team","team members"],
+  ["funnelswift_activity","activity"],
+  ["funnelswift_support_requests","support requests"],
+  ["funnelswift_plan_requests","plan requests"],
+  ["funnelswift_tag_rules","tag automation rules"],
+  ["funnelswift_tag_groups","tag groups"],
+  ["funnelswift_tag_changes","tag change history"],
+  ["funnelswift_affiliates","affiliates"],
+  ["funnelswift_campaigns","campaigns"],
+  ["funnelswift_qr_codes","QR codes"],
+  ["funnelswift_webhook_deliveries","webhook deliveries"],
+  ["funnelswift_checkout_sessions","checkout sessions"],
+  ["funnelswift_portfolio","portfolio companies"],
+  ["funnelswift_subscriptions","plan subscriptions"]
+];
+var MCP_CONFIG_TEXT='{\n'
+ +'  "mcpServers": {\n'
+ +'    "funnelswift": {\n'
+ +'      "url": "https://hooks.swiftsoftware.net/mcp",\n'
+ +'      "headers": { "Authorization": "Bearer YOUR_API_KEY" }\n'
+ +'    }\n'
+ +'  }\n'
+ +'}';
+function mcpToolsHtml(){
+  var h="";
+  MCP_SPECS.forEach(function(s){
+    h+='<li><code>'+s[0]+'_summary</code> / <code>'+s[0]+'_search</code> — '+s[1]+'</li>';
+  });
+  return h;
+}
+function LMCP(){
+  $("ct").innerHTML='<div class="cc"><h3>MCP — connect your AI tools</h3>'
+    +'<p style="color:#64748b;font-size:12px;margin:6px 0 16px">Point any MCP client (Claude Code, Cursor, Hermes, or your own agent) at the endpoint below and it can read this workspace\'s FunnelSwift data. Read-only.</p>'
+    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
+    +'<strong style="font-size:13px">Endpoint</strong>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">'
+    +'<code style="padding:6px 10px;background:#f1f5f9;border-radius:6px;font-size:12px">https://hooks.swiftsoftware.net/mcp</code>'
+    +'<button class="btn btn-sm" onclick="MCPCLIP(\'https://hooks.swiftsoftware.net/mcp\')">Copy</button>'
+    +'</div></div>'
+    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
+    +'<strong style="font-size:13px">Your token</strong>'
+    +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">The MCP server accepts this workspace\'s API key as a Bearer token. It is listed here by prefix only — the secret is never shown until you Reveal it, which asks for your account password. Treat it like a password: anyone holding it can read this workspace.</p>'
+    +'<div id="mcp-key-list" style="margin-bottom:8px"></div>'
+    +'<div id="mcp-key-out"></div>'
+    +'</div>'
+    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
+    +'<strong style="font-size:13px">What it can read</strong>'
+    +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">These are the read-only tools this app exposes to a workspace credential — the real tool names, each scoped to this workspace.</p>'
+    +'<ul style="font-size:12px;color:#334155;line-height:1.9;padding-left:18px;margin:0">'+mcpToolsHtml()+'</ul>'
+    +'<p style="font-size:11px;color:#94a3b8;margin:10px 0 0">Every tool is a SELECT. There is no write tool and no free-form SQL door, and operator-wide tools are refused for a workspace credential.</p>'
+    +'</div>'
+    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
+    +'<strong style="font-size:13px">Connect</strong>'
+    +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">Paste this into your MCP client config (Claude Desktop / Cursor). Replace YOUR_API_KEY with this workspace\'s key.</p>'
+    +'<pre id="mcp-config" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin:0">'+X(MCP_CONFIG_TEXT)+'</pre>'
+    +'<button class="btn btn-sm" style="margin-top:8px" onclick="MCPCLIP(MCP_CONFIG_TEXT)">Copy config</button>'
+    +'</div>'
+    +'</div>';
+  MCPTLOAD();
+}
+/* The token block reads the same GET /api/v1/api-keys the Settings screen reads; Reveal/Copy/
+   Regenerate call the app's existing reveal/regenerate routes (password-gated reveal, atomic
+   regenerate). Prefix only until a Reveal, exactly like the Settings API-keys screen. */
+function MCPTLOAD(){
+  var box=$("mcp-key-list"); if(!box) return;
+  api("/api/v1/api-keys").then(function(d){
+    var ks=(d&&d.api_keys)||[];
+    var live=ks.filter(function(k){return !k.revoked_at;});
+    if(!live.length){ box.innerHTML='<p style="color:#94a3b8;font-size:12px">No active API keys yet. Create one on the Settings screen to connect an MCP client.</p>'; return; }
+    var h='';
+    live.forEach(function(k){
+      h+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">'
+        +'<span style="font-size:12px"><strong>'+X(k.name||"API key")+'</strong> '
+        +'<code style="font-size:11px;color:#6366f1">'+X(k.key_prefix)+'&hellip;</code>'
+        +'<br><span style="color:#94a3b8;font-size:11px">Created '+TSFMT(k.created_at)+'</span></span>'
+        +'<span style="white-space:nowrap;font-size:11px">'
+        +'<a href="#" data-mcp-view="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">Reveal</a>'
+        +'<a href="#" data-mcp-copy="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">Copy</a>'
+        +'<a href="#" data-mcp-regen="'+X(k.id)+'" style="color:#b45309">Regenerate</a>'
+        +'</span></div>';
+    });
+    box.innerHTML=h;
+    function wire(attr,fn){ Array.prototype.forEach.call(box.querySelectorAll("["+attr+"]"),function(a){ a.addEventListener("click",function(ev){ ev.preventDefault(); fn(a.getAttribute(attr)); }); }); }
+    wire("data-mcp-view",function(id){ MCPTREVEAL(id,false); });
+    wire("data-mcp-copy",function(id){ MCPTREVEAL(id,true); });
+    wire("data-mcp-regen",MCPTREGEN);
+  }).catch(function(e){ box.innerHTML='<p style="color:#b91c1c;font-size:12px">'+X(e.message||"Could not load API keys")+'</p>'; });
+}
+function MCPTREVEAL(id,copyOnly){
+  var pw=prompt("Enter your account password to reveal this key");
+  if(pw===null) return;
+  api("/api/v1/api-keys/"+id+"/reveal",{method:"POST",body:JSON.stringify({password:pw})}).then(function(r){
+    var tok=r.token||"";
+    if(copyOnly){ MCPCLIP(tok); return; }
+    MCPTSHOW("You can reveal this key again any time.",tok);
+  }).catch(function(e){ alert((e&&e.message)||"Could not reveal the key — check the password."); });
+}
+function MCPTSHOW(note,tok){
+  var box=$("mcp-key-out"); if(!box) return;
+  box.innerHTML='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px">'
+    +'<input readonly value="'+X(tok)+'" style="flex:1;min-width:220px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px" onfocus="this.select()">'
+    +'<button class="btn btn-sm" onclick="MCPCLIP(\''+X(tok)+'\')">Copy</button>'
+    +(note?'<span style="font-size:11px;color:#334155">'+X(note)+'</span>':'')+'</div>';
+}
+function MCPCLIP(t){
+  var ok=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); ok=true; } }catch(e){}
+  if(!ok){ try{ var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); ok=document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
+  alert(ok?"Copied":"Could not copy automatically — select the text and press Ctrl+C");
+}
+function MCPTREGEN(id){
+  if(!confirm("Regenerate this key? The old key stops working immediately, so anything using it — including any connected MCP client — must be updated with the new one.")) return;
+  api("/api/v1/api-keys/"+id+"/regenerate",{method:"POST",body:"{}"}).then(function(r){
+    MCPTSHOW("The old key no longer works. Use this new one in your MCP client.",r.token);
+    MCPTLOAD();
+  }).catch(function(e){ alert((e&&e.message)||"Could not regenerate the key"); });
+}
+
 function LM(){
   api("/api/v1/settings").then(function(d){
     /* kanban t_619533e2: this screen reads and writes the CALLER'S OWN tenant_settings row, so it
