@@ -722,7 +722,7 @@ pub async fn admin_list_all_plans(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plans = sqlx::query("SELECT id, name, slug, price, max_leads, max_tags, max_cards, has_dual_routing, has_multi_tenant, has_white_label, payment_provider, features, allowed_template_ids, created_at, updated_at FROM plans ORDER BY price")
+    let plans = sqlx::query("SELECT id, name, slug, price, annual_price, billing_cycle, max_leads, max_tags, max_cards, max_team_members, has_dual_routing, has_multi_tenant, has_white_label, has_webhooks, has_analytics, has_import_export, payment_provider, purchase_url, features, allowed_template_ids, created_at, updated_at FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
 
@@ -735,6 +735,20 @@ pub async fn admin_list_all_plans(
             "max_leads": row.try_get::<Option<i32>, _>("max_leads").unwrap_or(None),
             "max_tags": row.try_get::<Option<i32>, _>("max_tags").unwrap_or(None),
             "max_cards": row.try_get::<Option<i32>, _>("max_cards").unwrap_or(None),
+            // THE CONSOLE'S PLAN TABLE RENDERS THESE, SO THE LIST MUST CARRY THEM (2026-11-13).
+            // `www-admin/funnelswift` prints a plan's billing term, yearly price, team limit and
+            // feature badges straight off this row, and its sellability badge is
+            // `p.purchase_url ? "hosted payment link" : "no payment link — cannot be bought yet"`.
+            // This projection omitted every one of them, so the table told the operator that
+            // EVERY paid plan had no way to be paid (the exact warning that matters most) even
+            // when a link was set, and showed no yearly price and no team limit at all.
+            "max_team_members": row.try_get::<Option<i32>, _>("max_team_members").unwrap_or(None),
+            "annual_price": row.try_get::<Option<f64>, _>("annual_price").unwrap_or(None),
+            "billing_cycle": row.try_get::<Option<String>, _>("billing_cycle").unwrap_or(None),
+            "purchase_url": row.try_get::<Option<String>, _>("purchase_url").unwrap_or(None),
+            "has_webhooks": row.try_get::<bool, _>("has_webhooks").unwrap_or(false),
+            "has_analytics": row.try_get::<bool, _>("has_analytics").unwrap_or(false),
+            "has_import_export": row.try_get::<bool, _>("has_import_export").unwrap_or(false),
             "payment_provider": row.try_get::<Option<String>, _>("payment_provider").unwrap_or(None),
             "has_dual_routing": row.try_get::<bool, _>("has_dual_routing").unwrap_or(false),
             "has_multi_tenant": row.try_get::<bool, _>("has_multi_tenant").unwrap_or(false),
