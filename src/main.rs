@@ -36,6 +36,8 @@ mod features;
 mod feedback;
 mod handlers;
 mod image_store;
+// The CoreSwift visual field mapper's SOURCE describe endpoint (fleet-canonical generic module).
+mod integration_schema;
 mod login_throttle;
 mod models;
 // Private inbox + workspaces, ported from ADASwift (kanban t_5592e079).
@@ -60,6 +62,19 @@ mod workspaces;
 use crate::db::Database;
 use crate::error::Result;
 use crate::state::AppState;
+
+/// The ONE app-specific datum for `src/integration_schema.rs` (fleet-canonical generic module).
+/// Entity shape is `{key, label, table}` — the generic code introspects `information_schema.columns`
+/// for the real column list, so a new column appears automatically with no code change here.
+pub const SCHEMA: &integration_schema::AppSchema = &integration_schema::AppSchema {
+    app: "funnelswift",
+    version: 1,
+    entities: &[integration_schema::EntityConfig {
+        key: "leads",
+        label: "Leads",
+        table: "leads",
+    }],
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -19,13 +19,12 @@ use crate::handlers::{
     affiliate_tracking_handler, api_keys, branding_handler, bulk_handler, campaigns_handler,
     checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
     dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
-    insight_handler, integration_schema_handler, kinetic_handler, lead_handler, linkedin,
-    mobile_notify_handler, ocr, plan_handler, plan_request_handler, platform_settings_handler,
-    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
-    qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
-    support_request_handler, tag_group_handler, tag_handler, tag_rule_handler,
-    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
-    workflowswift_push,
+    insight_handler, kinetic_handler, lead_handler, linkedin, mobile_notify_handler, ocr,
+    plan_handler, plan_request_handler, platform_settings_handler, portfolio_handler,
+    product_category_handler, provider_keys_handler, public_signup_handler, qr_handler,
+    seo_handler, settings_handler, site_handler, site_settings_handler, support_request_handler,
+    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
+    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -902,12 +901,14 @@ pub fn create_router(
         )
         .route("/api/v1/api-keys/:id", delete(api_keys::revoke_api_key))
         // The CoreSwift visual field mapper's SOURCE describe endpoint (spec
-        // /opt/swift/docs/coreswift-data-mapping-spec-2026-11-13.md §2). ADMIN ONLY — the route is a
-        // plain `require_auth` mount (not under /api/v1/admin/), so the handler owns the role check
-        // with `auth.is_admin`; a missing credential is refused 401 by the boundary first.
+        // /opt/swift/docs/coreswift-data-mapping-spec-2026-11-13.md §2). Generic module
+        // `src/integration_schema.rs` (fleet-canonical); the app-specific config is `pub const
+        // SCHEMA` at crate root. ADMIN ONLY — a plain `require_auth` mount (not under /api/v1/admin/),
+        // so the handler owns the role check with `auth.is_admin`; a missing credential is refused
+        // 401 by the boundary first.
         .route(
             "/api/v1/integration/schema",
-            get(integration_schema_handler::integration_schema),
+            get(crate::integration_schema::integration_schema),
         )
         // Canonical CoreSwift spoke endpoints (fleet standard 2026-09-20)
         .route(

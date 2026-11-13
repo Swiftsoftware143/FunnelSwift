@@ -27,9 +27,6 @@ pub mod email_template_handler;
 pub mod funnel_handler;
 pub mod incentiveswift_handler;
 pub mod insight_handler;
-// `GET /api/v1/integration/schema` — the CoreSwift mapper's SOURCE describe endpoint
-// (spec /opt/swift/docs/coreswift-data-mapping-spec-2026-11-13.md §2).
-pub mod integration_schema_handler;
 // RETIRED (kanban t_0aaf0bc5): `pub mod integration_target_handler;` — a second route family
 // over the same `target_software` table as routing_handler, 0 rows, no dispatcher. See migration 088.
 pub mod kinetic_handler;
