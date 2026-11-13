@@ -9,7 +9,8 @@
 //! Two copies, two jobs (David, 2026-11-11 — withdrawing "shown once, never again"):
 //!   * `key_hash`   — hex SHA-256, the ONLY thing `resolve_api_key` reads;
 //!   * `key_sealed` — the same key sealed with this app's provider-key envelope
-//!                    (`enc:v1:…`), used ONLY to display it back to its owner.
+//!     (`enc:v1:…`), used ONLY to display it back to its owner.
+//!
 //! Authentication never decrypts; reveal never authenticates.
 //!
 //! The key carries the MINTING user's identity (`created_by`), and `resolve_api_key` reads the
