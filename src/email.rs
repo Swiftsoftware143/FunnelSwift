@@ -1101,6 +1101,25 @@ pub async fn send_signup_operator_alert(
     .map_err(|e| format!("tenant name lookup: {e}"))?
     .flatten()
     .unwrap_or_else(|| owner_email.to_string());
+    // A FLEET PROBE MUST NEVER RING THE OPERATOR (kanban t_f17b5802, extended 2026-11-13).
+    // The plan-request and support-request arms gate on `synthetic_requester`; this arm gated only
+    // on the MAIL-suppression class, and `maxxspace.com` is deliberately NOT in that class (the
+    // credential-delivery proof reads its password back out of that inbox, so suppressing mail
+    // there would delete the only end-to-end proof that a customer's password arrives). Measured
+    // live 2026-11-13 19:56Z: an audit signup into the disposable inbox still delivered
+    // "New workspace: Albert Tire fspre1605's Workspace" to the operator's real mailbox.
+    // Requester, not route: the same door serves real customers. BOTH the owner identity and the
+    // workspace name are judged, because a harness workspace can carry a clean address
+    // ("Probe Co 1794597085") and the name is the only tell.
+    let synthetic = crate::security::probe_addr::synthetic_requester(owner_email, owner_name)
+        .or_else(|| crate::security::probe_addr::synthetic_requester("", &workspace));
+    if let Some(reason) = synthetic {
+        tracing::info!(
+            reason = %reason,
+            "signup operator alert WITHHELD — the new workspace is a synthetic identity"
+        );
+        return Ok(());
+    }
     let who = if owner_name.trim().is_empty() {
         owner_email.to_string()
     } else {
