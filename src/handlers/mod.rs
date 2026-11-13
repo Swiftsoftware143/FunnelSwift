@@ -2,7 +2,6 @@
 // 2026-09-25 — kanban t_0a6a93f1. Every one of its four functions either fabricated a success
 // reply while writing nothing, or only wrote a log line. See api_router.rs for the per-leg reason.
 pub mod admin_handler;
-pub mod api_keys;
 pub mod affiliate_commission_handler;
 pub mod affiliate_handler;
 pub mod affiliate_lead_handler;
@@ -13,6 +12,7 @@ pub mod affiliate_product_handler;
 pub mod affiliate_rate_band_handler;
 pub mod affiliate_referral_handler;
 pub mod affiliate_tracking_handler;
+pub mod api_keys;
 // Per-tenant email branding: the logo upload/remove/serve arms (kanban t_c06a32eb).
 pub mod branding_handler;
 pub mod bulk_handler;

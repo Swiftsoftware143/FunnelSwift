@@ -893,10 +893,7 @@ pub fn create_router(
             "/api/v1/api-keys/:id/regenerate",
             post(api_keys::regenerate_api_key),
         )
-        .route(
-            "/api/v1/api-keys/:id",
-            delete(api_keys::revoke_api_key),
-        )
+        .route("/api/v1/api-keys/:id", delete(api_keys::revoke_api_key))
         // Canonical CoreSwift spoke endpoints (fleet standard 2026-09-20)
         .route(
             "/api/v1/integrations/coreswift/status",

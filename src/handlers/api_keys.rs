@@ -357,7 +357,9 @@ pub async fn reveal_api_key(
     }
     tracing::info!(key = %id, key_prefix = %prefix, user = %caller, "API key REVEALED");
 
-    Ok(Json(json!({ "id": id.to_string(), "key_prefix": prefix, "token": token })))
+    Ok(Json(
+        json!({ "id": id.to_string(), "key_prefix": prefix, "token": token }),
+    ))
 }
 
 /// `DELETE /api/v1/api-keys/:id` — soft-revoke (sets `revoked_at`).
