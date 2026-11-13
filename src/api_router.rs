@@ -20,12 +20,12 @@ use crate::handlers::{
     checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
     dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
     insight_handler, integration_schema_handler, kinetic_handler, lead_handler, linkedin,
-    mobile_notify_handler, ocr,
-    plan_handler, plan_request_handler, platform_settings_handler, portfolio_handler,
-    product_category_handler, provider_keys_handler, public_signup_handler, qr_handler,
-    seo_handler, settings_handler, site_handler, site_settings_handler, support_request_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    mobile_notify_handler, ocr, plan_handler, plan_request_handler, platform_settings_handler,
+    portfolio_handler, product_category_handler, provider_keys_handler, public_signup_handler,
+    qr_handler, seo_handler, settings_handler, site_handler, site_settings_handler,
+    support_request_handler, tag_group_handler, tag_handler, tag_rule_handler,
+    template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler, webhook_handler,
+    workflowswift_push,
 };
 use crate::state::AppState;
 

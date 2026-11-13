@@ -93,7 +93,9 @@ pub async fn integration_schema(
         "First name",
         "string",
         false,
-        row.as_ref().and_then(|r| r.first_name.clone()).map(Value::String),
+        row.as_ref()
+            .and_then(|r| r.first_name.clone())
+            .map(Value::String),
     );
     push(
         &mut fields,
@@ -101,7 +103,9 @@ pub async fn integration_schema(
         "Last name",
         "string",
         false,
-        row.as_ref().and_then(|r| r.last_name.clone()).map(Value::String),
+        row.as_ref()
+            .and_then(|r| r.last_name.clone())
+            .map(Value::String),
     );
     push(
         &mut fields,
@@ -129,7 +133,9 @@ pub async fn integration_schema(
         "Company",
         "string",
         false,
-        row.as_ref().and_then(|r| r.company.clone()).map(Value::String),
+        row.as_ref()
+            .and_then(|r| r.company.clone())
+            .map(Value::String),
     );
     push(
         &mut fields,
@@ -137,7 +143,9 @@ pub async fn integration_schema(
         "Source",
         "string",
         false,
-        row.as_ref().and_then(|r| r.source.clone()).map(Value::String),
+        row.as_ref()
+            .and_then(|r| r.source.clone())
+            .map(Value::String),
     );
     push(
         &mut fields,
@@ -145,7 +153,9 @@ pub async fn integration_schema(
         "Status",
         "string",
         false,
-        row.as_ref().and_then(|r| r.status.clone()).map(Value::String),
+        row.as_ref()
+            .and_then(|r| r.status.clone())
+            .map(Value::String),
     );
     push(
         &mut fields,
@@ -153,7 +163,9 @@ pub async fn integration_schema(
         "Stage",
         "string",
         false,
-        row.as_ref().and_then(|r| r.stage.clone()).map(Value::String),
+        row.as_ref()
+            .and_then(|r| r.stage.clone())
+            .map(Value::String),
     );
     push(
         &mut fields,
@@ -200,8 +212,18 @@ pub async fn integration_schema(
     );
 
     // ── nested jsonb: `custom_fields` (object) + its flattened dot paths ────────────
-    let custom_sample = row.as_ref().and_then(|r| r.custom_fields.as_ref()).map(mask_json);
-    push(&mut fields, "custom_fields", "Custom fields", "object", false, custom_sample);
+    let custom_sample = row
+        .as_ref()
+        .and_then(|r| r.custom_fields.as_ref())
+        .map(mask_json);
+    push(
+        &mut fields,
+        "custom_fields",
+        "Custom fields",
+        "object",
+        false,
+        custom_sample,
+    );
 
     if let Some(obj) = row
         .as_ref()
@@ -234,7 +256,14 @@ pub async fn integration_schema(
     })))
 }
 
-fn push(fields: &mut Vec<Value>, path: &str, label: &str, ty: &str, required: bool, sample: Option<Value>) {
+fn push(
+    fields: &mut Vec<Value>,
+    path: &str,
+    label: &str,
+    ty: &str,
+    required: bool,
+    sample: Option<Value>,
+) {
     fields.push(json!({
         "path": path,
         "label": label,
@@ -290,10 +319,7 @@ fn looks_like_email(s: &str) -> bool {
     let Some((local, domain)) = trimmed.rsplit_once('@') else {
         return false;
     };
-    !local.is_empty()
-        && domain.contains('.')
-        && !domain.starts_with('.')
-        && !domain.ends_with('.')
+    !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
 }
 
 /// Redact email and phone-like tokens inside free text (notes, custom-field string leaves), so no
