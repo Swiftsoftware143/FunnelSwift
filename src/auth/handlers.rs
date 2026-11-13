@@ -1201,8 +1201,21 @@ pub async fn close_account(
 
     // ONE statement records the decision and moves the session line, so an account can never be
     // recorded closed while a token minted a moment earlier still works.
+    //
+    // The line is pushed ONE SECOND past the current second on purpose (kanban t_a7117d0c). The
+    // boundary floors `sessions_valid_from` to a whole second and deliberately ALLOWS a credential
+    // whose `iat` EQUALS it — that generosity keeps the tab that changed its own password signed
+    // in, but on a CLOSURE it is a hole: a token minted in the same second as the close survived
+    // it. Measured live 2026-11-13 BEFORE this fix (probe-closeacct-sec-fun-*): the close answered
+    // 200, the row carried `sessions_valid_from` floored to the same second as the token's `iat`,
+    // and that bearer still read `/api/v1/auth/me` 200. Nothing can be minted in the future and a
+    // closed account cannot sign in at all, so moving the line forward a second revokes every
+    // token in existence without a live session being handed a fresh one — the console drops its
+    // own token and leaves for the sign-in screen.
     let closed_at: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
-        "UPDATE users SET closed_at = NOW(), sessions_valid_from = NOW(), updated_at = NOW() \
+        "UPDATE users SET closed_at = NOW(), \
+                sessions_valid_from = date_trunc('second', NOW()) + interval '1 second', \
+                updated_at = NOW() \
           WHERE id = $1 AND closed_at IS NULL \
       RETURNING closed_at",
     )
