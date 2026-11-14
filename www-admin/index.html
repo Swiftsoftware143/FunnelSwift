@@ -4515,14 +4515,14 @@ async function renderTenants() {
       <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}">
         <td><input type="checkbox" class="tn-chk" aria-label="Select ${x(t.name||t.company_name||'this workspace')}" value="${t.id}"></td>
         <td><strong>${x(t.name||t.company_name)}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}${t.owner_credentials_undelivered?'<div style="margin-top:4px"><span class="badge badge-yellow" title="The first password we minted for this owner was never delivered - a provider refusal, or a reserved test address withheld at source. Nobody has ever read it, so this workspace cannot be signed into until you send a new one.">password never delivered</span></div>':''}</td>
+        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}${t.owner_credentials_undelivered?'<div style="margin-top:4px"><span class="badge badge-yellow" title="The first password we minted for this owner was never delivered - a provider refusal, or a reserved test address withheld at source. Nobody has ever read it, so this workspace cannot be signed into until you send a new one.">password never delivered</span></div>':''}${(t.user_count||0)===0?'<div style="margin-top:4px"><span class="badge badge-red" title="This workspace exists but nobody can sign in to it: it has no login at all. Press Create login to mint the owner account and email its details.">no login yet</span></div>':''}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td>${tenantPlanCell(t)}</td>
         <td style="font-size:12px">${t.last_sign_in ? x(new Date(asUtc(t.last_sign_in)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '<span style="color:var(--muted)" title="No sign-in recorded for this workspace. The app only began recording sign-ins on 27 Oct 2026, so this can read that way for a workspace whose owner has in fact used it.">not recorded</span>'}</td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
         <td><button class="btn btn-secondary btn-xs tu-open" data-tenant="${x(t.id)}" data-name="${x(t.name||t.company_name||'')}" title="See this workspace's people, and add one">${t.user_count||0} user${(t.user_count||0)===1?'':'s'}</button></td>
         <td>${formatDate(t.created_at)}</td>
-        <td>${t.owner_credentials_undelivered && t.owner_user_id ? `<button class="btn btn-primary btn-xs tn-resend" data-user="${x(t.owner_user_id)}" data-email="${x(t.owner_email||'')}" title="Mint a brand-new password for the owner and email it">Send login</button> ` : ''}${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
+        <td>${(t.user_count||0)===0?`<button class="btn btn-primary btn-xs tn-owner" data-tenant="${x(t.id)}" data-email="${x(t.owner_email||t.email||'')}" data-name="${x(t.name||t.company_name||'')}" title="Create the first login for this workspace and email the details to its owner">Create login</button> ` : ''}${t.owner_credentials_undelivered && t.owner_user_id ? `<button class="btn btn-primary btn-xs tn-resend" data-user="${x(t.owner_user_id)}" data-email="${x(t.owner_email||'')}" title="Mint a brand-new password for the owner and email it">Send login</button> ` : ''}${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
     ${TENANT_USER_TENANT ? `<div class="card" id="tenant-users-panel" style="margin-top:16px">
@@ -4577,7 +4577,44 @@ function bindTenantResend() {
   }));
 }
 
+// A workspace with NO login at all had no repair from this screen (2026-11-14): every other
+// action here is keyed on a user id, and "Add a teammate" lives one panel deeper and defaults to a
+// member role. Measured live: "Xride Drivers" held a workspace, an active plan and an API key but
+// not one users row, so the person named on it could never sign in. One press now mints the owner
+// account; a reserved test address is withheld at source and the password is shown for handover.
+function bindTenantOwnerCreate() {
+  document.querySelectorAll('.tn-owner').forEach(btn => btn.addEventListener('click', async () => {
+    const tid = btn.getAttribute('data-tenant');
+    const mail = btn.getAttribute('data-email') || '';
+    const label = btn.getAttribute('data-name') || 'this workspace';
+    if (!tid) return;
+    let address = mail;
+    if (!address) {
+      address = (prompt('Which email address owns ' + label + '?\n\nNobody can sign in without one.', '') || '').trim();
+      if (!address) return;
+    }
+    if (!confirm('Create the first login for ' + label + ' and email its details to ' + address + '?')) return;
+    btn.disabled = true; btn.textContent = 'creating...';
+    try {
+      const r = await api('/tenants/' + encodeURIComponent(tid) + '/owner', { method: 'POST', body: JSON.stringify({ email: address }) });
+      const pw = (r && r.handover_password) || '';
+      if (r && r.credentials_emailed) {
+        TENANT_RESEND_MSG = '\u2705 ' + x(label) + ' now has a login, and the details were emailed to ' + x(address) + '.';
+      } else if (r && r.withheld) {
+        TENANT_RESEND_MSG = '\u26d4 ' + x(label) + ' now has a login. Nothing was emailed (' + x(address) + ' is a reserved test address). Hand them this password: <code>' + x(pw) + '</code>';
+      } else {
+        TENANT_RESEND_MSG = '\u26a0\ufe0f ' + x(label) + ' now has a login, but no email left the system' + (r && r.detail ? ': ' + x(r.detail) : '.') + (pw ? ' Hand them this password: <code>' + x(pw) + '</code>' : '');
+      }
+      renderApp();
+    } catch (e) {
+      TENANT_RESEND_MSG = '\u26d4 Could not create the login: ' + x((e && e.message) || String(e));
+      renderApp();
+    }
+  }));
+}
+
 function bindTenants() {
+  bindTenantOwnerCreate();
   bindTenantResend();
   const all = document.getElementById('tnAll');
   const del = document.getElementById('tnDel');
