@@ -16,7 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned, not @stable: sqlx-postgres 0.7.4 does not compile on newer rustc
+      # (rust-lang/rust#148922). rust-toolchain.toml carries the same pin so CI and
+      # the build box agree. See ci.yml.
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
