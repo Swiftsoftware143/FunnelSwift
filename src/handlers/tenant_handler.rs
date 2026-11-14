@@ -932,3 +932,222 @@ pub async fn assign_plan(
         "notify_reason": notify_reason,
     })))
 }
+
+/// POST /api/v1/tenants/:id/owner — give a workspace that has NO login its first owner account.
+///
+/// Measured on live 2026-11-14: the workspace "Xride Drivers" carried a name, a slug, an active plan
+/// and an API key but not ONE `users` row, so the person named on it could never sign in — and every
+/// console action is keyed on a user id ("Send login" needs `owner_user_id`, the People panel needs a
+/// row to act on), so the operator's only repair was SQL. `create_tenant` mints the owner as of
+/// 2026-11-14; this route is the REPAIR door for workspace rows that predate it.
+///
+/// Refusals are sentences a screen can print: a workspace that already has a login is a 409 (giving
+/// someone else access is what "Add a teammate" does), an address that already belongs to an account
+/// is a 409 naming that fact, and a malformed address is the same 422 the create path answers. Mail
+/// is a PUBLISHED outcome exactly as the create door does it: the owner row and its password exist
+/// before the send, a reserved test address is recorded as withheld, and the password comes back in
+/// the response whenever no mail left the system.
+pub async fn create_owner_login(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<serde_json::Value>,
+) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin only".into()));
+    }
+    let row: Option<(Option<String>, String)> =
+        sqlx::query_as("SELECT email, name FROM tenants WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (tenant_email, name) = row.ok_or_else(|| AppError::NotFound("Tenant not found".into()))?;
+
+    // A workspace that already has a person in it is NOT this route's job: minting a second owner
+    // behind the operator's back is a different intent (Add a teammate) and would make "who owns
+    // this" ambiguous.
+    let existing: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    if existing > 0 {
+        return Err(AppError::Conflict(format!(
+            "This workspace already has {existing} login(s) — add a teammate to give someone else \
+             access instead."
+        )));
+    }
+
+    // The address: the request's, else the workspace's own `tenants.email` (the address a signup or
+    // the console already recorded). Validated in the shape `create_tenant` uses, so the screen can
+    // print one sentence either way.
+    let raw = req
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            tenant_email
+                .clone()
+                .map(|e| e.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+    let owner = raw.map(|s| s.to_lowercase()).ok_or_else(|| {
+        AppError::UnprocessableEntity(
+            "Give this workspace an email address for its owner: nobody can sign in without one."
+                .into(),
+        )
+    })?;
+    let parts: Vec<&str> = owner.split('@').collect();
+    let shaped = parts.len() == 2
+        && !parts[0].is_empty()
+        && parts[1].contains('.')
+        && !parts[1].starts_with('.')
+        && !owner.chars().any(char::is_whitespace);
+    if !shaped {
+        return Err(AppError::UnprocessableEntity(
+            "email: that value is not a valid email address.".into(),
+        ));
+    }
+    let taken: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+        .bind(&owner)
+        .fetch_one(&state.pool)
+        .await?;
+    if taken > 0 {
+        return Err(AppError::Conflict(format!(
+            "An account already exists for '{owner}', so it cannot own a second workspace."
+        )));
+    }
+
+    let password = crate::handlers::public_signup_handler::generate_initial_password();
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+        .to_string();
+    let user_id = Uuid::new_v4();
+    // `password_undelivered` starts TRUE and is cleared only by a send that left the system: this
+    // route exists for a workspace nobody could sign into, so the console must keep the badge (and
+    // the "Send login" action) on the row until a human has actually received a password.
+    let mut tx = state.pool.begin().await?;
+    let inserted = sqlx::query(
+        "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, \
+         password_undelivered, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, 'user', true, TRUE, NOW(), NOW())",
+    )
+    .bind(user_id)
+    .bind(id)
+    .bind(&owner)
+    .bind(&password_hash)
+    .bind(&name)
+    .execute(&mut *tx)
+    .await;
+    if let Err(e) = inserted {
+        tx.rollback().await.ok();
+        if let sqlx::Error::Database(db) = &e {
+            if db.constraint() == Some("users_email_key") {
+                return Err(AppError::Conflict(format!(
+                    "An account already exists for '{owner}'."
+                )));
+            }
+        }
+        return Err(AppError::Database(e));
+    }
+    // A repaired workspace is otherwise indistinguishable from one that never had stages or a key:
+    // seat the seven default lead stages only when the workspace has none, and mint an API key only
+    // when it holds no live key — the row being repaired usually already has one.
+    let stages: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tenant_settings WHERE tenant_id = $1 AND key = 'lead_stages'",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if stages == 0 {
+        sqlx::query(
+            "INSERT INTO tenant_settings (id, tenant_id, key, value) \
+             VALUES ($1, $2, 'lead_stages', $3)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(id)
+        .bind(json!([
+            "New",
+            "Contacted",
+            "Qualified",
+            "Proposal",
+            "Negotiation",
+            "Closed Won",
+            "Closed Lost"
+        ]))
+        .execute(&mut *tx)
+        .await?;
+    }
+    let live_keys: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM api_keys WHERE tenant_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if live_keys == 0 {
+        crate::handlers::api_keys::mint_on(&mut tx, id, Some(user_id), "auto-provisioned").await?;
+    }
+    tx.commit().await?;
+
+    let withheld = crate::security::probe_addr::harness_domain(&owner).is_some();
+    let mut emailed = false;
+    let mut detail = String::new();
+    if withheld {
+        crate::email::record_withheld(
+            &state.pool,
+            "workspace owner credentials email",
+            &owner,
+            "reserved test address",
+        )
+        .await;
+    } else {
+        match crate::email::send_credentials_email(&state.pool, id, &owner, &name, &password).await
+        {
+            Ok(()) => {
+                emailed = true;
+                sqlx::query("UPDATE users SET password_undelivered = FALSE WHERE id = $1")
+                    .bind(user_id)
+                    .execute(&state.pool)
+                    .await?;
+                tracing::info!(
+                    email = %owner,
+                    tenant = %id,
+                    "workspace owner repair: login credentials emailed"
+                );
+            }
+            Err(e) => {
+                detail = e;
+                tracing::error!(
+                    email = %owner,
+                    tenant = %id,
+                    error = %detail,
+                    "workspace owner repair: owner created but the CREDENTIAL EMAIL FAILED — use Send login"
+                );
+            }
+        }
+    }
+
+    let message = if emailed {
+        "Login created — the owner's details are on their way by email."
+    } else if withheld {
+        "Login created — that address is a reserved test address, so no mail was sent; the password is in this response."
+    } else {
+        "Login created, but the email FAILED — hand over the password below, or use Send login."
+    };
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "message": message,
+            "tenant_id": id.to_string(),
+            "owner_user_id": user_id.to_string(),
+            "owner_email": owner,
+            "credentials_emailed": emailed,
+            "withheld": withheld,
+            "detail": detail,
+            "handover_password": if emailed { serde_json::Value::Null } else { json!(password) },
+        })),
+    ))
+}

@@ -1062,6 +1062,13 @@ pub fn create_router(
             "/api/v1/tenants/:id/plan",
             post(tenant_handler::assign_plan),
         )
+        // The repair door for a workspace that has no login at all (2026-11-14). Every other console
+        // action is keyed on a user id, so a 0-user workspace had no repair short of SQL; this mints
+        // its first owner and mails the credentials. It refuses once any user exists.
+        .route(
+            "/api/v1/tenants/:id/owner",
+            post(tenant_handler::create_owner_login),
+        )
         // RETIRED (kanban t_d2606968): `POST /api/v1/internal/sync-plan-tag` was registered here
         // (`sync_plan_tag_handler::sync_plan_tag`). The card's open question — which FunnelSwift plan
         // + tag a sibling's plan should map to — was settled by measurement: there is nothing to map
