@@ -6860,6 +6860,23 @@ function paintPaymentHealth() {
   if (btn) btn.addEventListener('click', () => { STATE.view = 'providerKeys'; STATE.subView = null; renderApp(); });
 }
 
+/* ── Bridge for the CLASSIC <script> blocks that follow ────────────────────────────────────────
+   Everything above this line runs in a `type="module"` block, and a module's bindings are NOT
+   globals. The "Submit Feedback" button, the operator's Feedback tab and the inline-guide kick
+   below all live in plain <script> blocks, so `x`, `STATE`, `api`, `renderApp`, `showToast` and
+   `TOKEN` were undefined there. Measured live 2026-11-13 on admin.funnelswift.net: the Feedback
+   tab painted "⚠️ Error x is not defined" (a blank pane where the operator reads what customers
+   sent) and pressing the sidebar's 💬 Feedback button threw on click; the guide kick's own
+   `typeof STATE !== 'undefined'` guard skipped silently, so the in-console guide never opened.
+   Publish exactly the names those blocks read. TOKEN is a getter because it changes on sign-in
+   and sign-out, and STATE is published by reference because it is only ever mutated in place. */
+Object.defineProperty(window, 'TOKEN', { get: function () { return TOKEN; }, configurable: true });
+window.STATE = STATE;
+window.api = api;
+window.renderApp = renderApp;
+window.showToast = showToast;
+window.x = x;
+
 </script>
 <script>
 /* Inline guide content for the FunnelSwift ADMIN CONSOLE (fleet standard, FS-10).
@@ -6917,7 +6934,12 @@ window.appGuidePages = {
   btn.setAttribute('aria-label', 'Submit feedback');
   btn.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:9000;display:flex;align-items:center;gap:8px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:28px;padding:12px 18px;font-size:.9rem;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:inherit';
   btn.innerHTML = '💬 Feedback';
-  btn.onclick = window._openFeedbackModal;
+  // Look the handler up AT CLICK TIME. It is defined a few lines below this IIFE, so binding
+  // `window._openFeedbackModal` here captured `undefined` and the button did nothing at all
+  // (measured 2026-11-13 on admin.funnelswift.net: click → no modal, no error).
+  btn.addEventListener('click', function () {
+    if (typeof window._openFeedbackModal === 'function') window._openFeedbackModal();
+  });
   document.body.appendChild(btn);
 })();
 
