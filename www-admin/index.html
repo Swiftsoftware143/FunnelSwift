@@ -5731,11 +5731,15 @@ async function renderPlanAdmin() {
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <div><h1 style="font-size:22px;font-weight:700">🎚️ Plans &amp; Features</h1>
       <p style="font-size:13px;color:var(--muted)">Operator control: plan catalogue, feature flags, per-tenant feature overrides, plan assignment.</p></div>
-      <button class="btn btn-secondary btn-sm" id="planadmin-reload">↻ Reload</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="planadmin-check-pay-pages" title="Open every plan's stored payment page right now and put the verdict on the plan it belongs to. Read-only.">🔗 Check payment pages</button>
+        <button class="btn btn-secondary btn-sm" id="planadmin-reload">↻ Reload</button>
+      </div>
     </div>
     <div class="card">
       <!-- route: GET /api/v1/admin/plans -->
       <div class="card-header"><div><div class="card-title">Plan catalogue</div><div class="card-subtitle">Every plan this app offers, with its price, lead and tag caps, and its feature flags.</div></div></div>
+      <div id="planadmin-pay-check"></div>
       <div class="table-wrap"><table class="table" id="planadmin-plans-table">
         <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
         <tbody>${plans.length ? plans.map(p => `<tr>
@@ -5790,7 +5794,44 @@ async function renderPlanAdmin() {
 
 function bindPlanAdmin() {
   const rl = $('planadmin-reload'); if (rl) rl.onclick = () => renderView();
-  document.querySelectorAll('[data-plan-edit]').forEach(b => { b.onclick = () => window._editPlanFeatures(b.dataset.planEdit); });
+  /* RE-OPEN EVERY STORED PAYMENT PAGE (2026-11-13). A plan's payment link is proven once, when it is
+     pasted; nothing looked again, so a page the provider retired left the plan reading sellable while
+     a buyer pressed Upgrade onto a dead page — exactly what happened to this fleet's CRM. This asks
+     the question again and prints the verdict per plan. It is a READ of remote pages: it writes
+     nothing, so it is safe to press at any time. */
+  const cpp = $('planadmin-check-pay-pages');
+  if (cpp) cpp.onclick = async () => {
+    const out = $('planadmin-pay-check');
+    cpp.disabled = true;
+    if (out) out.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--muted)">Opening every stored payment page…</div>';
+    try {
+      const r = await api('/admin/plans/payment-pages/check', { method: 'POST', body: '{}' });
+      const rows = (r && r.plans) || [];
+      const badge = (s) => s === 'ok' ? '<span class="badge badge-green">opens</span>'
+        : s === 'dead' ? '<span class="badge badge-red">dead page</span>'
+        : s === 'not_https' ? '<span class="badge badge-red">not https</span>'
+        : s === 'needs_browser' ? '<span class="badge badge-yellow">could not check</span>'
+        : '<span class="badge badge-yellow">unreachable</span>';
+      const body = rows.length
+        ? '<div class="table-wrap"><table class="table"><thead><tr><th>Plan</th><th>Page</th><th>Verdict</th><th>HTTP</th></tr></thead><tbody>'
+          + rows.map(p => '<tr><td><strong>' + x(p.name) + '</strong><div style="font-size:11px;color:var(--muted)">' + x(p.slug) + '</div></td>'
+            + '<td style="font-size:11px;word-break:break-all">' + x(p.url) + '</td>'
+            + '<td>' + badge(String(p.status || '')) + '</td>'
+            + '<td>' + (p.http ? x(String(p.http)) : '—') + '</td></tr>').join('')
+          + '</tbody></table></div>'
+        : '';
+      if (out) out.innerHTML = '<div data-pay-check-result="1" style="border-left:4px solid ' + ((r && r.dead) ? '#dc2626' : '#15803d')
+        + ';background:#fff;padding:12px 14px;margin:0 0 12px">'
+        + '<div style="font-weight:700;font-size:14px">' + ((r && r.dead) ? 'At least one payment page is dead' : ((r && r.checked) ? 'Every stored payment page opened' : 'No plan has a payment page yet')) + '</div>'
+        + '<div style="font-size:13px;color:#475569;margin-top:2px">' + x(String((r && r.note) || '')) + '</div>'
+        + '<div style="font-size:12px;color:var(--muted);margin-top:4px">Checked ' + x(String((r && r.checked) || 0)) + ' page(s) — ' + x(String((r && r.ok) || 0)) + ' opened, ' + x(String((r && r.dead) || 0)) + ' dead.</div>'
+        + body + '</div>';
+    } catch (e) {
+      if (out) out.innerHTML = '<div style="padding:10px 0;color:#b91c1c;font-size:13px">Could not run the check: ' + x(e.message) + '</div>';
+    }
+    cpp.disabled = false;
+  };
+  document.querySelectorAll('[data-plan-edit]').forEach(b => b.onclick = () => window._editPlanFeatures(b.dataset.planEdit));
   const ab = $('planadmin-assign-btn');
   if (ab) ab.onclick = async () => {
     const tenant_id = ($('planadmin-assign-tenant') || {}).value;
@@ -6808,7 +6849,7 @@ function paintPaymentHealth() {
   const savedUnusable = !!PAY_STATUS.provider;
   const detail = savedUnusable
     ? 'A ' + String(PAY_STATUS.provider) + ' key is saved on the platform account but it cannot be read, so every workspace without its own key is refused at checkout before any charge is made. Re-enter the key and those buyers can pay again.'
-    : "No payment provider is connected on the platform account, so every workspace without its own key is refused at checkout before any charge is made. Add the platform's Stripe or PayPal key and those buyers can pay again.";
+    : "No payment provider is connected on the platform account, so every workspace without its own key is refused at checkout before any charge is made. Add the platform's <strong>Stripe</strong> key and those buyers can pay again — a PayPal key can be stored but cannot take a payment yet. A hosted payment link pasted on a plan (Plans &rarr; Payment link) also works today, with no key at all.";
   box.innerHTML = '<div class="card" data-payment-provider-missing="1" style="border-left:4px solid #dc2626;margin-bottom:16px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
     + '<div><div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Checkout is switched off</div>'

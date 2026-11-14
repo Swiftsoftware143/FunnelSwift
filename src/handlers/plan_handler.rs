@@ -761,6 +761,122 @@ pub async fn admin_list_all_plans(
     Ok(Json(json!({"plans": result, "total": result.len()})))
 }
 
+/// What ONE stored payment page answered, in the vocabulary the operator sees.
+///
+/// A plan's `purchase_url` is proven once, when it is pasted
+/// ([`require_hosted_payment_url_resolves`] refuses a page that answers 404/410 at save time).
+/// Nothing ever opened it again afterwards, so a page retired by the provider left the plan reading
+/// sellable while a buyer pressed Upgrade onto nothing. This asks the question again. `needs_browser`
+/// is deliberately its own verdict: a provider that answers 403 to a script has NOT said the page is
+/// dead, and calling that dead would train the operator to ignore the check.
+async fn probe_payment_page(client: &reqwest::Client, url: &str) -> (&'static str, Option<u16>) {
+    if !url.trim().to_ascii_lowercase().starts_with("https://") {
+        return ("not_https", None);
+    }
+    match client.get(url).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            if status == 404 || status == 410 {
+                ("dead", Some(status))
+            } else if (200..400).contains(&status) {
+                ("ok", Some(status))
+            } else {
+                ("needs_browser", Some(status))
+            }
+        }
+        Err(e) => {
+            tracing::info!("payment-page check: {url} did not answer: {e}");
+            ("unreachable", None)
+        }
+    }
+}
+
+/// `POST /api/v1/admin/plans/payment-pages/check` — re-open every plan's stored payment page NOW.
+///
+/// Read-only: it opens each stored URL once and writes nothing (no row, no column, no log table).
+/// Every plan carrying a link is probed, active or not, because a plan an operator is about to
+/// re-enable is exactly the one whose stale link nobody has looked at. Platform-admin only — the
+/// plan catalogue on this app is fleet-wide, not per tenant.
+pub async fn check_plan_payment_pages(
+    auth: AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    let rows = sqlx::query(
+        "SELECT id, name, slug, price, purchase_url FROM plans \
+         WHERE purchase_url IS NOT NULL AND btrim(purchase_url) <> '' ORDER BY price, name",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    // A BROWSER-shaped user agent on purpose: several payment providers answer 403 to a bot UA, and
+    // the operator would then see "could not check" on a page that opens fine in their browser.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::limited(6))
+        .user_agent(
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) \
+             Chrome/131.0.0.0 Safari/537.36",
+        )
+        .build()
+        .map_err(|e| {
+            tracing::error!("payment-page check: could not build the HTTP client: {e:?}");
+            AppError::Internal("Could not run the payment-page check just now".into())
+        })?;
+
+    let mut out: Vec<serde_json::Value> = Vec::with_capacity(rows.len());
+    let mut ok = 0usize;
+    let mut dead = 0usize;
+    for row in &rows {
+        let url: String = row
+            .try_get::<Option<String>, _>("purchase_url")
+            .unwrap_or(None)
+            .unwrap_or_default();
+        let url = url.trim().to_string();
+        if url.is_empty() {
+            continue;
+        }
+        let (verdict, http) = probe_payment_page(&client, &url).await;
+        if verdict == "ok" {
+            ok += 1;
+        }
+        if verdict == "dead" {
+            dead += 1;
+        }
+        out.push(json!({
+            "id": row.try_get::<Uuid, _>("id").map(|u| u.to_string()).unwrap_or_default(),
+            "name": row.try_get::<String, _>("name").unwrap_or_default(),
+            "slug": row.try_get::<String, _>("slug").unwrap_or_default(),
+            "url": url,
+            "status": verdict,
+            "http": http,
+        }));
+    }
+
+    let note = if out.is_empty() {
+        "No plan carries a payment page yet, so there is nothing to open. Paste the address your payment \
+         provider gives you for a plan (Edit plan → Payment link) and this check proves it before a buyer \
+         ever sees it."
+    } else if dead > 0 {
+        "At least one stored payment page no longer opens. A buyer pressing Upgrade on that plan would \
+         land on a dead page — replace the link, or take that plan off sale."
+    } else {
+        "Every stored payment page opened. A card can still be refused later, but nothing is silently \
+         dead right now."
+    };
+
+    Ok(Json(json!({
+        "checked": out.len(),
+        "ok": ok,
+        "dead": dead,
+        "plans": out,
+        "note": note,
+    })))
+}
+
 pub async fn admin_create_plan_json(
     auth: AuthUser,
     State(state): State<AppState>,

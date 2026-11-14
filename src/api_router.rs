@@ -856,6 +856,13 @@ pub fn create_router(
             "/api/v1/admin/plans/grant-top-tier",
             post(crate::handlers::plan_handler::admin_grant_top_tier),
         )
+        // Re-open every stored payment page NOW (2026-11-13). A link is proven once, when it is
+        // pasted; nothing looked again, so a page retired by the provider left the plan reading
+        // sellable while a buyer pressed Upgrade onto a dead page. Read-only, platform-admin.
+        .route(
+            "/api/v1/admin/plans/payment-pages/check",
+            post(crate::handlers::plan_handler::check_plan_payment_pages),
+        )
         .route(
             "/api/v1/admin/plans/:id/features",
             put(crate::handlers::plan_handler::admin_update_plan_features),
