@@ -232,6 +232,11 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // is stored as nothing. Narrow by construction: ONE handler, which resolves the domain from
     // the recipient address and refuses anything it cannot match.
     "/api/v1/webhooks/mailgun/inbound",
+    // The OTHER receiver a domain can choose (measured live 2026-11-14: the console hands a
+    // SendGrid-hosted customer this URL, and the router existed but was never mounted, so it
+    // answered 404). SendGrid signs nothing — the unguessable per-domain `inbound_token` in the
+    // path IS the credential, and a token that names no domain writes nothing.
+    "/api/v1/webhooks/sendgrid/inbound/:token",
     // --- public lead capture / checkout -----------------------------------------
     // The lead-capture form on a served funnel posts here with no session (the visitor is
     // anonymous by construction); the handler scopes the write to the tenant it resolves from the
