@@ -118,6 +118,42 @@ pub async fn file_chosen_plan_request(
         door = door,
         "signup: the paid plan this caller chose is recorded as a plan request"
     );
+    // ACKNOWLEDGE THE BUYER (2026-11-14). The in-app "Request this plan" door
+    // (`plan_request_handler`) has always answered the customer with a receipt, but THIS shared
+    // writer — the one both signup doors call, and the way most paid asks arrive — sent only the
+    // operator alert. Measured live: a signup asking for `suite` filed the row, told the operator,
+    // and left the buyer with nothing but the welcome mail, so the person who had just said "I want
+    // to pay for Suite" had no confirmation their ask landed. One shared writer is exactly where a
+    // side-effect belongs: wiring it here fixes every door that files a request.
+    let filer_name: Option<String> = sqlx::query_scalar("SELECT name FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+    let greeting = filer_name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "there".to_string());
+    let receipt_sent = match crate::email::send_plan_request_received_email(
+        pool,
+        tenant_id,
+        requested_by,
+        &greeting,
+        &plan_name,
+        "",
+    )
+    .await
+    {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                requested_by = %requested_by, plan = %slug, door = door,
+                "signup: the plan-request receipt was not sent: {e}"
+            );
+            false
+        }
+    };
     // TELL THE OPERATOR (2026-11-09): the signup door is the COMMON way a paid ask arrives (a
     // visitor picks a plan on the pricing card and signs up), so an alert only on the in-app
     // "Request this plan" button would miss most of them. Best effort — the row is on record.
@@ -141,6 +177,10 @@ pub async fn file_chosen_plan_request(
         "plan_name": plan_name,
         "status": r.get::<String, _>("status"),
         "created_at": r.get::<String, _>("created_at"),
+        // Whether the buyer was actually told their ask landed. The row is the record either way;
+        // this flag is what lets the caller (and an operator reading the log) tell a delivered
+        // acknowledgement from one the mail layer refused.
+        "receipt_sent": receipt_sent,
     })))
 }
 
