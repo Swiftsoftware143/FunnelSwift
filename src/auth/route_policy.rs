@@ -50,7 +50,13 @@
 //! route (NOT under `/api/v1/admin/`), so the role check lives in the handler (`auth.is_admin` ->
 //! 403); the public and internal buckets did NOT move.
 //!
-//! 234 `.route(..)` mounts / 234 unique paths, classified three ways:
+//! 2026-11-14 recount (inbound attachments): ONE more private mount —
+//! `GET /api/v1/private-email/messages/:id/attachments/:attachment_id`, the file a message
+//! carried (kanban t_f919924f, ported from ADASwift). It sits on the private-email router beside
+//! the message reader and is `require_auth` + tenant-scoped in the handler, so the public and
+//! internal buckets did NOT move.
+//!
+//! 235 `.route(..)` mounts / 235 unique paths, classified three ways:
 //!
 //! (The 2026-11-06 recount also folds in TWO public `/api` mounts that the same day's contact-page
 //! work landed without bumping this census — `POST /api/v1/public/support-request` (a visitor with
@@ -79,7 +85,7 @@
 //! below. This test is the guard that says so out loud.)
 //!
 //! ```text
-//!  208 mounts  /api/**           208 unique paths, no duplicate (the retired
+//!  209 mounts  /api/**           209 unique paths, no duplicate (the retired
 //!                                 `/api/v1/linkedin/auth` pair — POST + DELETE on one path — was
 //!                                 the last duplicate; the stub trio is gone, 2026-11-10)
 //!     24        public            -> PUBLIC_ROUTES below (the two card-QR image READs
@@ -88,7 +94,7 @@
 //!                                    public price list joined on 2026-10-30, the anonymous
 //!                                    help desk pair on 2026-11-06)
 //!      3        internal          -> INTERNAL_ROUTES below (own shared key at the boundary)
-//!    181        private           -> require_auth: app JWT, tenant-status checked
+//!    182        private           -> require_auth: app JWT, tenant-status checked
 //!                                    (44 of them `/api/v1/admin/**` = the operator surface,
 //!                                     additionally role-checked by admin_surface_denied)
 //!    26 mounts   served surfaces   -> SSR card/funnel pages, public lead + unlock POSTs,
@@ -464,7 +470,7 @@ mod tests {
                 private,
                 served
             ),
-            (234, 234, 208, 24, 3, 181, 26),
+            (235, 235, 209, 24, 3, 182, 26),
             "the census in the module docs no longer matches the router"
         );
     }
