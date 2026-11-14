@@ -3,11 +3,14 @@ use crate::error::{AppError, AppResult};
 use crate::handlers::plan_handler::set_active_plan;
 use crate::security::display_name::slugify;
 use crate::state::AppState;
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHasher};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
+use rand::rngs::OsRng;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -462,6 +465,48 @@ pub async fn create_tenant(
     let probe_harness = email
         .and_then(crate::security::probe_addr::attribution_domain)
         .map(|domain| format!("auto-{domain}"));
+    // ── THE OWNER ACCOUNT (measured 2026-11-14) ────────────────────────────────────────────────
+    // This route stored `email` on the tenant and minted NOTHING else, so the workspace it produced
+    // had no account behind it: "Xride Drivers" (xridedrivers@yahoo.com, created 2026-11-12) sits
+    // live with a workspace, a backfilled API key and NO `users` row — the person named on it can
+    // never sign in, and no credentials were ever mailed. Creating a workspace IS creating its
+    // owner, exactly as every signup door does it: ONE transaction writes the workspace, its owner,
+    // the default lead stages and the API key; the generated password is emailed only AFTER the
+    // commit (the two admin credential doors already answer `credentials_emailed` / `withheld` /
+    // `handover_password` this way, and a reserved test address is recorded as withheld, never sent).
+    let owner_email: Option<String> = email
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_lowercase);
+    if let Some(owner) = owner_email.as_deref() {
+        // The shape `users`' own CHECK enforces, refused here as a 422 that names the field instead
+        // of letting Postgres answer 23514 as a 500 after the workspace was already written.
+        let parts: Vec<&str> = owner.split('@').collect();
+        let shaped = parts.len() == 2
+            && !parts[0].is_empty()
+            && parts[1].contains('.')
+            && !parts[1].starts_with('.')
+            && !owner.chars().any(char::is_whitespace);
+        if !shaped {
+            return Err(AppError::UnprocessableEntity(
+                "email: that value is not a valid email address.".into(),
+            ));
+        }
+        // `users_email_key` is platform-wide, so an address that already has an account cannot own a
+        // second workspace. Refused BEFORE anything is written, so this route can never build
+        // another ownerless tenant on the way to a collision.
+        let already: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE lower(email) = $1")
+            .bind(owner)
+            .fetch_one(&state.pool)
+            .await?;
+        if already > 0 {
+            return Err(AppError::Conflict(format!(
+                "An account already exists for '{owner}', so it cannot own a second workspace. \
+                 Give this workspace its own email address, or sign in to the existing account."
+            )));
+        }
+    }
+    let mut tx = state.pool.begin().await?;
     sqlx::query(
         "INSERT INTO tenants (id, name, slug, email, status, probe_harness) VALUES ($1, $2, $3, $4, $5, $6)",
     )
@@ -471,13 +516,150 @@ pub async fn create_tenant(
         .bind(email)
         .bind(status)
         .bind(&probe_harness)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+
+    // The owner row, its default lead stages and its API key — the same unit every signup door
+    // writes, so the workspace is usable the moment the operator creates it.
+    let mut owner_login: Option<(Uuid, String)> = None;
+    if let Some(owner) = owner_email.as_deref() {
+        let password = crate::handlers::public_signup_handler::generate_initial_password();
+        let salt = SaltString::generate(&mut OsRng);
+        let password_hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+            .to_string();
+        let user_id = Uuid::new_v4();
+        let inserted = sqlx::query(
+            "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, 'user', true, NOW(), NOW())",
+        )
+        .bind(user_id)
+        .bind(id)
+        .bind(owner)
+        .bind(&password_hash)
+        .bind(name)
+        .execute(&mut *tx)
+        .await;
+        if let Err(e) = inserted {
+            tx.rollback().await.ok();
+            if let sqlx::Error::Database(db) = &e {
+                if db.constraint() == Some("users_email_key") {
+                    return Err(AppError::Conflict(format!(
+                        "An account already exists for '{owner}'."
+                    )));
+                }
+            }
+            return Err(AppError::Database(e));
+        }
+        // A board that opens with no lead stages reads as broken, not unconfigured: the signup doors
+        // seat these seven on every new workspace.
+        sqlx::query(
+            "INSERT INTO tenant_settings (id, tenant_id, key, value) VALUES ($1, $2, 'lead_stages', $3)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(id)
+        .bind(json!([
+            "New",
+            "Contacted",
+            "Qualified",
+            "Proposal",
+            "Negotiation",
+            "Closed Won",
+            "Closed Lost"
+        ]))
+        .execute(&mut *tx)
+        .await?;
+        crate::handlers::api_keys::mint_on(&mut tx, id, Some(user_id), "auto-provisioned").await?;
+        owner_login = Some((user_id, password));
+    }
+    tx.commit().await?;
+
+    // Seat the free tier of the main product, exactly as a homepage signup is seated — otherwise the
+    // panel reads "no plan" for a workspace the operator just created.
+    let plan = crate::plan_resolver::assign_free_plan(
+        &state.pool,
+        id,
+        crate::plan_resolver::ProductSide::Capture,
+        "POST /api/v1/tenants",
+    )
+    .await
+    .ok();
+
+    // Mail is a PUBLISHED outcome, never part of the account transaction: a failed send leaves a
+    // real account with a password to hand over, not a rolled-back workspace.
+    let (owner_user_id, credentials_emailed, withheld, handover_password) = match owner_login {
+        Some((user_id, password)) => {
+            let owner = owner_email.clone().unwrap_or_default();
+            let withheld = crate::security::probe_addr::harness_domain(&owner).is_some();
+            let mut emailed = false;
+            if withheld {
+                crate::email::record_withheld(
+                    &state.pool,
+                    "workspace owner credentials email",
+                    &owner,
+                    "reserved test address",
+                )
+                .await;
+            } else {
+                match crate::email::send_credentials_email(&state.pool, id, &owner, name, &password)
+                    .await
+                {
+                    Ok(()) => {
+                        emailed = true;
+                        tracing::info!(
+                            email = %owner,
+                            tenant = %id,
+                            "tenant create: login credentials emailed to the workspace owner"
+                        );
+                    }
+                    Err(e) => tracing::error!(
+                        email = %owner,
+                        error = %e,
+                        "tenant create: workspace + owner created but the CREDENTIAL EMAIL FAILED — \
+                         the owner has no password. Use Resend credentials on their account."
+                    ),
+                }
+            }
+            let handover = if emailed {
+                serde_json::Value::Null
+            } else {
+                json!(password)
+            };
+            (json!(user_id.to_string()), emailed, withheld, handover)
+        }
+        None => (
+            serde_json::Value::Null,
+            false,
+            false,
+            serde_json::Value::Null,
+        ),
+    };
+
+    let message = if owner_user_id.is_null() {
+        "Workspace created with NO owner account — no email was given, so nobody can sign in to it yet."
+    } else if credentials_emailed {
+        "Workspace created — the owner's login details are on their way by email."
+    } else if withheld {
+        "Workspace created — that address is a reserved test address, so no mail was sent; the handover password is in this response."
+    } else {
+        "Workspace created and the owner's account exists, but the login email FAILED — use Resend credentials on their account."
+    };
     Ok((
         StatusCode::CREATED,
-        Json(
-            json!({"id": id, "name": name, "slug": slug, "email": email, "status": status, "message": "Tenant created"}),
-        ),
+        Json(json!({
+            "id": id,
+            "name": name,
+            "slug": slug,
+            "email": email,
+            "status": status,
+            "message": message,
+            "owner_user_id": owner_user_id,
+            "credentials_emailed": credentials_emailed,
+            "withheld": withheld,
+            "handover_password": handover_password,
+            "plan": plan.as_ref().map(|p| p.to_json()),
+        })),
     ))
 }
 
