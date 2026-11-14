@@ -386,12 +386,9 @@ mod tests {
         PUBLIC_ROUTES,
     };
 
-    /// The route templates `api_router.rs` mounts, read from the source at compile time. A route
-    /// joining or leaving the router changes this set, which is what makes the parity tests below
-    /// fail loudly instead of the allowlist silently rotting.
-    fn mounted_routes() -> Vec<String> {
-        const ROUTER: &str = include_str!("../api_router.rs");
-        let bytes = ROUTER.as_bytes();
+    /// The `.route("…")` literals in one router source file, in mount order.
+    fn route_literals(src: &str) -> Vec<String> {
+        let bytes = src.as_bytes();
         let needle = b".route(";
         let mut out = Vec::new();
         let mut i = 0usize;
@@ -406,7 +403,7 @@ mod tests {
                     while k < bytes.len() && bytes[k] != b'"' {
                         k += 1;
                     }
-                    out.push(ROUTER[j + 1..k].to_string());
+                    out.push(src[j + 1..k].to_string());
                 }
                 i = j;
             } else {
@@ -414,6 +411,41 @@ mod tests {
             }
         }
         out
+    }
+
+    /// The route templates `api_router.rs` mounts, read from the source at compile time. A route
+    /// joining or leaving the router changes this set, which is what makes the parity tests below
+    /// fail loudly instead of the allowlist silently rotting.
+    fn mounted_routes() -> Vec<String> {
+        route_literals(include_str!("../api_router.rs"))
+    }
+
+    /// Sub-routers that `api_router.rs` mounts with `.nest("<prefix>", …)` and that carry routes of
+    /// their OWN: `(prefix, module source)`. Their `.route("…")` literals live in the module, so an
+    /// allowlist entry naming one of those paths looks unmounted to [`mounted_routes`].
+    ///
+    /// Measured 2026-11-14: the SendGrid inbound receiver (`/api/v1/webhooks/sendgrid` +
+    /// `/inbound/:token`) was mounted as a nest and is deliberately PUBLIC — SendGrid signs
+    /// nothing, so the unguessable per-domain token in the path IS the credential — and this test
+    /// went red on HEAD with no code wrong. The table is explicit rather than a general nest
+    /// expander so a typo cannot widen the whitelist: only a path that really appears as a
+    /// `.route(..)` literal in the named module is accepted under that prefix.
+    const NESTED_ROUTERS: &[(&str, &str)] = &[(
+        "/api/v1/webhooks/sendgrid",
+        include_str!("../private_email/webhook_handler.rs"),
+    )];
+
+    /// True when an allowlist entry names a route the app really serves — mounted at top level, or
+    /// contributed by one of the `.nest()`ed routers above.
+    fn names_a_served_route(entry: &str, mounted: &[String]) -> bool {
+        if mounted.iter().any(|m| m == entry) {
+            return true;
+        }
+        NESTED_ROUTERS.iter().any(|(prefix, src)| {
+            entry
+                .strip_prefix(prefix)
+                .is_some_and(|rest| route_literals(src).iter().any(|r| r == rest))
+        })
     }
 
     /// Every committed allowlist entry must name a route the router actually mounts. A typo, or an
@@ -429,19 +461,18 @@ mod tests {
         );
         for entry in PUBLIC_ROUTES.iter().chain(INTERNAL_ROUTES.iter()) {
             assert!(
-                mounted.iter().any(|m| m == entry),
+                names_a_served_route(entry, &mounted),
                 "{entry:?} is not a mounted route (the router's own spelling must match exactly)"
             );
         }
     }
 
-    /// The census the module docs quote: 228 mounts, 202 of them on the API surface.
+    /// The census the module docs quote: the mount count and how it splits.
     ///
-    /// RE-MEASURED 2026-11-12 with the private-inbox port (kanban t_5592e079): the committed tuple
-    /// had drifted to 226/200 while the router already mounted 227 (commit 3fa1a71 added the
-    /// workspace-rename route without bumping it), so `cargo test` was RED on HEAD before this
-    /// card's change. The numbers below are MEASURED from the router, and this card's own +1 is
-    /// the anonymous Mailgun inbound webhook.
+    /// RE-MEASURED 2026-11-14 (fleet cron): the anonymous Mailgun inbound receiver
+    /// (`/api/v1/webhooks/mailgun/inbound`) and the SendGrid nest landed in `api_router.rs` without
+    /// bumping this tuple, so `cargo test` was RED on HEAD again. Measured from the router today:
+    /// 236 mounts, 236 unique, 210 on the API surface, 24 public, 3 internal, 183 private, 26 served.
     ///
     /// NOTE (kanban t_5592e079): this counts the `.route(..)` mounts in `api_router.rs` only. The
     /// workspaces and private-inbox routers are `.nest()`ed (their routes live in
@@ -475,7 +506,7 @@ mod tests {
                 private,
                 served
             ),
-            (235, 235, 209, 24, 3, 182, 26),
+            (236, 236, 210, 24, 3, 183, 26),
             "the census in the module docs no longer matches the router"
         );
     }

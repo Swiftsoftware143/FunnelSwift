@@ -337,6 +337,24 @@ fn with_branding_header(
     let Some(b) = branding else {
         return (text, html);
     };
+    // An account that uploaded a LOGO but never typed a brand name is the common case — the logo is
+    // one upload, the name is a separate text field — and it used to render a header image with
+    // `alt=""` plus a plain-text part with NO header line at all (measured live 2026-11-14 on this
+    // app's own `GET /api/v1/settings/branding/preview-body` for a tenant in exactly that state:
+    // `alt=""`, text starting `Hi <name>,`). Outlook blocks images by default, so that customer's
+    // first mail arrived with nothing saying who sent it — while `{{brand_name}}` in the same render
+    // already fell back to the app's name. Fall back ONCE, here, so the image alt, the plain-text
+    // header and the merge map cannot disagree.
+    let named;
+    let b: &crate::branding::Branding = if b.brand_name.is_empty() {
+        named = crate::branding::Branding {
+            brand_name: APP_NAME.to_string(),
+            ..b.clone()
+        };
+        &named
+    } else {
+        b
+    };
     let logo = b.resolve_logo_url(APP_URL);
     let header = b.header_html(logo.as_deref());
     let html = match html {
@@ -1829,6 +1847,28 @@ mod tests {
         assert!(html.contains("<img"));
         assert!(html.contains("&lt;b&gt;hi&lt;/b&gt;"));
         assert!(!html.contains("<b>hi</b>"));
+    }
+
+    #[test]
+    fn a_logo_with_no_brand_name_still_says_whose_mail_it_is() {
+        // Measured live 2026-11-14 (`GET /api/v1/settings/branding/preview-body` on a tenant that
+        // had uploaded a logo and typed no name): the header image carried `alt=""` and the
+        // plain-text part had NO header line, so a client that blocks images — Outlook's default —
+        // showed nothing identifying the sender, while `{{brand_name}}` in the same render already
+        // said FunnelSwift. The three must agree.
+        let b = crate::branding::Branding {
+            brand_name: String::new(),
+            brand_color: String::new(),
+            logo_url: "/api/v1/branding/logo/abc?v=1".to_string(),
+        };
+        let (text, html) = with_branding_header(Some(&b), Some("Body".to_string()), None);
+        assert_eq!(text.unwrap(), format!("{APP_NAME}\n\nBody"));
+        let html = html.expect("an html part is built so the logo can render");
+        assert!(
+            html.contains(&format!("alt=\"{APP_NAME}\"")),
+            "the blocked-image fallback must name the app: {html}"
+        );
+        assert!(!html.contains("alt=\"\""), "{html}");
     }
 
     #[test]
