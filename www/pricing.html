@@ -170,7 +170,6 @@
     </div>
 
     <p class="note">Prices in US dollars. <strong>Every account starts on a free plan</strong> — pick Capture Free or Kinetic Free when you sign up. To move to a paid plan, open your <a href="https://app.funnelswift.net/#upgrade" style="color:#4338ca;font-weight:700">⭐ Upgrade screen</a> (the Upgrade tab in your dashboard) and send the upgrade request: our team switches the workspace and the limits change at once. Need more domains, more seats, or a volume deal? Ask on the same screen and we will quote it.</p>
-    <p class="note" id="priceSource"></p>
   </div>
 </section>
 
@@ -191,72 +190,6 @@
   </div>
 </footer>
 
-<script>
-/* Amounts on this page are READ from the plan records this install sells (2026-10-30).
-   The cards above keep their authored copy and feature lists, but every price is a placeholder
-   that must agree with the `plans` table — an operator changing a price in the console would
-   otherwise leave this page quoting a number the app no longer charges, with nothing on the box
-   able to see the drift. GET /api/public/plans is the anonymous, minimal price list.
-   If that read fails, the authored amounts stay and the line under them says so. */
-(function () {
-  'use strict';
-  function money(n) {
-    var v = Number(n) || 0;
-    return '$' + (v % 1 === 0 ? String(v) : v.toFixed(2));
-  }
-  var out = document.getElementById('priceSource');
-  fetch('/api/v1/public/plans', { headers: { 'Accept': 'application/json' } })
-    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(function (d) {
-      var plans = (d && Array.isArray(d.plans)) ? d.plans : [];
-      if (!plans.length) throw new Error('no plans returned');
-      var byslug = {};
-      plans.forEach(function (p) { byslug[p.slug] = p; });
-      var painted = 0, limsPainted = 0, books = document.querySelectorAll('.price[data-plan]');
-      for (var i = 0; i < books.length; i++) {
-        var p = byslug[books[i].getAttribute('data-plan')];
-        if (!p) continue;
-        var amt = books[i].querySelector('[data-role="amt"]');
-        if (amt) { amt.textContent = money(p.price); painted++; }
-        // The allowance numbers on this card come from the SAME plan row the app enforces, so a
-        // limit an operator changes in the console is what a buyer reads here (kanban t_lim_live).
-        var card = books[i].closest ? books[i].closest('.card') : null;
-        if (card && p.limits) {
-          var spans = card.querySelectorAll('[data-role="lim"]');
-          for (var j = 0; j < spans.length; j++) {
-            var field = spans[j].getAttribute('data-limit');
-            var v = p.limits[field];
-            if (v === null || typeof v === 'undefined') continue;
-            if (v < 0) {
-              spans[j].textContent = spans[j].getAttribute('data-word') || 'Unlimited';
-            } else if (v > 0) {
-              spans[j].textContent = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-            }
-            limsPainted++;
-          }
-        }
-        var yr = books[i].parentNode.querySelector('p.yr[data-role="yr"]');
-        if (yr && p.annual_price > 0) {
-          yr.textContent = 'or ' + money(p.annual_price) + ' a year'
-            + (Math.abs(p.annual_price - p.price * 10) < 0.01 ? ' (two months free)' : '');
-        }
-      }
-      if (out) {
-        out.textContent = painted
-          ? 'Prices and plan allowances read live from this install\u2019s own plan records just now \u2014 '
-            + painted + ' plan' + (painted === 1 ? '' : 's') + ' confirmed'
-            + (limsPainted ? ', ' + limsPainted + ' allowance' + (limsPainted === 1 ? '' : 's') + ' painted from the same records' : '') + '.'
-          : 'Live prices were read, but no card on this page matched a plan this install sells.';
-      }
-    })
-    .catch(function (e) {
-      if (out) {
-        out.textContent = 'The live price list could not be read just now (' + e.message
-          + '), so the amounts above are the last published ones. Reload to try again.';
-      }
-    });
-})();
-</script>
 
 </body>
 </html>
