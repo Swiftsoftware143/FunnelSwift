@@ -145,6 +145,16 @@ var PLAN_REQ_OPEN = 0;
 // label is rebuilt on every view switch, and the boot IIFE paints it before any view has rendered.
 var SUP_LIST = null;
 var SUP_OPEN = 0;
+// Workspaces (kanban B203): the switcher's list and the active workspace. Fetched once at boot and
+// re-fetched after any mutation, because the shell is rebuilt on every render and a cached list
+// would keep showing a renamed workspace under its old name (measured in IncentiveSwift).
+var WS_LIST = null;
+var WS_ERR = '';
+// Whether THIS session may rename / delete / change the default. Answered by the server on the
+// list read (`can_manage`), because FunnelSwift ownership is "the tenant's oldest active person"
+// and signup writes role='user' for the workspace's own creator — a role check would hide the
+// controls from a real owner.
+var WS_CAN = null;
 
 // ── API ──
 async function api(path, opts={}) {
@@ -459,6 +469,7 @@ function doLogout() {
 // ── Init ──
 (async function init() {
   if (TOKEN) await loadUser();
+  if (TOKEN) wsLoadList();
   renderApp();
   // kanban cron-1019: put the count of waiting plan asks on the sidebar label before the operator
   // has to think of opening the screen. Fire-and-forget: a failure here must not delay the console.
@@ -549,6 +560,7 @@ function renderShell() {
         <span class="title">FunnelSwift</span>
       </div>
       ${nav}
+      ${wsSwitcherHtml()}
       <div class="nav-footer">
         ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - tenants, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
         <div style="display:flex;gap:12px;padding:8px 0 10px;border-top:1px solid var(--border);margin-top:8px">
@@ -595,6 +607,9 @@ function buildNav() {
     // allowance bounded nothing a customer could reach. David's rule: a backend route with no UI
     // is a defect.
     { id: 'team', icon: '👥', label: 'Team' },
+    // Workspaces (kanban B203): the same defect the Team screen closed — /api/v1/workspaces
+    // served add / rename / default / delete / switch with no screen calling any of it.
+    { id: 'workspaces', icon: '🏢', label: 'Workspaces' },
     { id: 'portfolio', icon: '🏢', label: 'Portfolio Companies' },
     { id: 'plans', icon: '💳', label: 'Plans' },
     { id: 'leads', icon: '👥', label: 'Leads' },
@@ -679,11 +694,158 @@ function buildNav() {
   return `<div class="flex-1">${sections.join('')}</div>`;
 }
 
+// ── WORKSPACES ─────────────────────────────────────────────────────────────────────────────────
+// The session token carries `wsid` (create_jwt), so the ACTIVE workspace is read from the token
+// rather than guessed from the default.
+function wsCurId() {
+  try {
+    const part = String(TOKEN || '').split('.')[1];
+    if (!part) return '';
+    const claims = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+    return claims && claims.wsid ? String(claims.wsid) : '';
+  } catch (e) { return ''; }
+}
+function wsCanManage() {
+  const u = USER || {};
+  if (u.is_admin) return true;
+  return ['admin', 'super_admin', 'company_admin'].indexOf(String(u.role || '')) >= 0;
+}
+async function wsLoadList() {
+  try {
+    const d = await api('/workspaces');
+    WS_LIST = Array.isArray(d && d.workspaces) ? d.workspaces : [];
+    WS_CAN = (d && typeof d.can_manage === 'boolean') ? d.can_manage : null;
+    WS_ERR = '';
+  } catch (e) { WS_ERR = e.message || String(e); }
+  try { renderApp(); } catch (e) {}
+}
+// The two-level switcher: the account is the session, the workspace is what every screen shows.
+function wsSwitcherHtml() {
+  if (!WS_LIST || !WS_LIST.length) return '';
+  const cur = wsCurId() || ((WS_LIST.find(w => w.is_default) || {}).id || '');
+  const active = WS_LIST.find(w => String(w.id) === String(cur)) || WS_LIST[0] || null;
+  return `<div style="padding:0 12px 10px" data-workspace-switcher="1">
+    <label for="ws-switcher-select" style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">Workspace</label>
+    <select id="ws-switcher-select" class="input" style="margin-top:4px;padding:6px 8px;font-size:13px" title="Switch the console to another workspace">
+      ${WS_LIST.map(w => `<option value="${x(w.id)}"${active && String(w.id) === String(active.id) ? ' selected' : ''}>${x(w.name)}${w.is_default ? ' (default)' : ''}</option>`).join('')}
+    </select>
+    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px;width:100%;justify-content:center" data-ws-manage="1" onclick="window._wsOpenManage()">Manage workspaces</button>
+  </div>`;
+}
+
+window._wsOpenManage = function () { STATE.view = 'workspaces'; STATE.subView = null; renderApp(); };
+window._wsSwitch = async function (id) {
+  try {
+    const d = await api('/workspaces/' + encodeURIComponent(id) + '/switch', { method: 'POST' });
+    if (d && d.token) { TOKEN = d.token; localStorage.setItem('ws_fs_token', d.token); }
+    await loadUser();
+    await wsLoadList();
+    showToast('Switched workspace', 'success');
+    renderApp();
+  } catch (e) { showToast('Could not switch workspace: ' + e.message, 'error'); }
+};
+window._wsAdd = async function () {
+  const el = document.getElementById('ws-new-name');
+  const name = el ? String(el.value || '').trim() : '';
+  if (!name) { showToast('Give the workspace a name', 'error'); return; }
+  try {
+    await api('/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
+    showToast('Workspace added', 'success');
+    await wsLoadList();
+  } catch (e) { showToast(e.message, 'error'); }
+};
+window._wsEdit = function (id) {
+  const w = (WS_LIST || []).find(x => String(x.id) === String(id));
+  const name = w ? w.name : '';
+  const cell = document.querySelector('[data-ws-name="' + id + '"]');
+  if (!cell) return;
+  cell.innerHTML = '<input class="input" style="max-width:240px" id="ws-rename-input" value="' + x(name).replace(/"/g, '&quot;') + '">'
+    + '<button type="button" class="btn btn-primary btn-sm" style="margin-left:6px" onclick="window._wsRenameSave(\'' + id + '\')">Save</button>'
+    + '<button type="button" class="btn btn-secondary btn-sm" style="margin-left:4px" onclick="renderApp()">Cancel</button>';
+  const inp = document.getElementById('ws-rename-input');
+  if (inp) { inp.focus(); inp.onkeydown = (e) => { if (e.key === 'Enter') window._wsRenameSave(id); }; }
+};
+window._wsRenameSave = async function (id) {
+  const inp = document.getElementById('ws-rename-input');
+  const name = inp ? String(inp.value || '').trim() : '';
+  if (!name) { showToast('Give the workspace a name', 'error'); return; }
+  try {
+    await api('/workspaces/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ name }) });
+    showToast('Workspace renamed', 'success');
+    await wsLoadList();
+  } catch (e) { showToast(e.message, 'error'); }
+};
+window._wsDefault = async function (id) {
+  try {
+    await api('/workspaces/' + encodeURIComponent(id) + '/default', { method: 'POST' });
+    showToast('Default workspace changed', 'success');
+    await wsLoadList();
+  } catch (e) { showToast(e.message, 'error'); }
+};
+window._wsDelete = async function (id) {
+  const w = (WS_LIST || []).find(x => String(x.id) === String(id));
+  const name = w ? w.name : 'this workspace';
+  if (!confirm('Delete the workspace "' + name + '"? This cannot be undone.')) return;
+  try {
+    await api('/workspaces/' + encodeURIComponent(id), { method: 'DELETE' });
+    showToast('Workspace deleted', 'success');
+    await wsLoadList();
+  } catch (e) { showToast(e.message, 'error'); }
+};
+
+async function renderWorkspaces() {
+  let list = WS_LIST;
+  if (!list) { try { const d = await api('/workspaces'); list = WS_LIST = Array.isArray(d && d.workspaces) ? d.workspaces : []; WS_CAN = (d && typeof d.can_manage === 'boolean') ? d.can_manage : null; } catch (e) { list = []; WS_ERR = e.message || String(e); } }
+  const cur = wsCurId();
+  // The server's own answer wins; the role list is only a fallback for an older read.
+  const can = WS_CAN === true ? true : (WS_CAN === false ? false : wsCanManage());
+  const rows = list.map(w => `<tr data-workspace-row="${x(w.id)}">
+      <td data-ws-name="${x(w.id)}"><strong>${x(w.name)}</strong></td>
+      <td>${w.is_default ? '<span class="badge" style="background:#dbeafe;color:#1e40af">Default</span>' : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${String(w.id) === String(cur) ? '<span class="badge" style="background:#d1fae5;color:#065f46">Active</span>' : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${String(w.id) !== String(cur) ? `<button type="button" class="btn btn-secondary btn-sm" onclick="window._wsSwitch('${x(w.id)}')">Switch to</button>` : ''}
+        ${can ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-left:6px" onclick="window._wsEdit('${x(w.id)}')">Rename</button>` : ''}
+        ${can && !w.is_default ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-left:6px" onclick="window._wsDefault('${x(w.id)}')">Make default</button>` : ''}
+        ${can && list.length > 1 ? `<button type="button" class="btn btn-danger btn-sm" style="margin-left:6px" onclick="window._wsDelete('${x(w.id)}')">Delete</button>` : ''}
+      </td>
+    </tr>`).join('');
+  return `<div>
+    <div class="page-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <h1 class="page-title" style="font-size:20px;font-weight:700">Workspaces</h1>
+        <p style="font-size:13px;color:var(--muted)">Each workspace keeps its own funnels, leads, tags and cards. Switch between them from the sidebar.</p>
+      </div>
+    </div>
+    ${WS_ERR ? `<div data-ws-error="1" style="margin-bottom:12px;padding:10px 14px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:10px;font-size:13px">${x(WS_ERR)}</div>` : ''}
+    <div class="card">
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Your workspaces</h3>
+      <table class="table" style="width:100%" data-workspaces-table="1">
+        <thead><tr><th>Name</th><th>Default</th><th>Active</th><th style="text-align:right">Actions</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No workspaces yet.</td></tr>'}</tbody>
+      </table>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">An account always keeps at least one workspace, and the workspace you are signed into cannot be deleted — switch away first. Portfolio businesses always keep their workspaces.</p>
+    </div>
+    <div class="card">
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Add a workspace</h3>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <label class="form-label" for="ws-new-name">Name</label>
+          <input id="ws-new-name" class="input" placeholder="e.g. Second store">
+        </div>
+        <button type="button" class="btn btn-primary" onclick="window._wsAdd()">Add workspace</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">If your plan includes a set number of workspaces, adding past it tells you to upgrade — the ceiling comes from your plan, not this screen.</p>
+    </div>
+  </div>`;
+}
+
 // ── VIEW ROUTER ──
 const viewRenderers = {
   cardAnalytics: renderCardAnalytics,
   cardUtmBuilder: renderCardUtmBuilder,
   cardLocations: renderCardLocations,
+  workspaces: renderWorkspaces,
   dashboard: renderDashboard,
   team: renderTeam,
   myAccount: renderMyAccount,
@@ -745,6 +907,8 @@ async function renderView() {
 }
 
 function bindShell() {
+  const wsSel = document.getElementById('ws-switcher-select');
+  if (wsSel) wsSel.onchange = () => { const v = wsSel.value; if (v && v !== wsCurId()) window._wsSwitch(v); };
   document.querySelectorAll('.nav-item[data-view]').forEach(el => {
     el.onclick = () => {
       STATE.view = el.dataset.view;

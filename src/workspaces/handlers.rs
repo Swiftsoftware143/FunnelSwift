@@ -96,7 +96,15 @@ pub async fn list_workspaces(
     .map_err(AppError::Database)?;
 
     let items: Vec<serde_json::Value> = rows.iter().map(row_json).collect();
-    Ok(Json(json!({ "count": items.len(), "workspaces": items })))
+    // `can_manage` answers the ONE question the console cannot answer for itself: FunnelSwift
+    // signup writes `role = "user"` for the workspace's own creator, and ownership is "the tenant's
+    // oldest active person" — a role string cannot express it (see `is_workspace_owner`). Without
+    // this flag the screen had to hide Rename/Delete from a real owner, or show controls that 403.
+    // It is the same `may_manage` every mutation applies, so the UI and the server cannot disagree.
+    let can_manage = may_manage(&state, &auth).await;
+    Ok(Json(
+        json!({ "count": items.len(), "workspaces": items, "can_manage": can_manage }),
+    ))
 }
 
 /// POST /api/workspaces
