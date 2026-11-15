@@ -3213,6 +3213,13 @@ function SC2(id){
   showMsg("Saving...","mi");
   api(u,{method:mu,body:JSON.stringify(d)}).then(function(r){
     document.querySelector(".modal").style.width="600px";
+    // A NEW card can land on a different address than the one the editor derived from the title:
+    // /k/<slug> is unique, so the server reserves the first free one (`my-links`, `my-links-2`, …).
+    // Say so out loud — the tile below then shows that address — instead of rewriting a customer's
+    // page link in silence (measured live 2026-11-15: the second card titled the same used to answer
+    // 500, so it never got an address at all).
+    if(!id && r && r.slug && String(r.slug) !== String(d.slug))
+      showMsg("That page address was already taken, so your card was published at /k/"+r.slug+".","mi");
     C(); KCB.tab="my"; S("cards");
   }).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
