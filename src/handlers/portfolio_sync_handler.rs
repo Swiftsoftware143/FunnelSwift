@@ -355,6 +355,301 @@ async fn send_welcome(
     }
 }
 
+/// The workspace this app ALREADY holds for a portfolio company, found by the company's stable
+/// identity (slug → name → email) rather than by the caller's id.
+///
+/// WHY (adopt-before-create, 2026-11-15): the hub changed which id it sends — it used to carry its
+/// own ADMIN workspace id for every company, and now carries each company's OWN id
+/// (`tenant_id == portfolio_id`, CoreSwift `src/portfolio/sync.rs`). This app already held
+/// Giraudy/ZaarHub/SwiftImpact under the OLD ids, so a re-sync whose id matched nothing minted a
+/// SECOND, empty workspace beside the real one (cleaned 2026-11-15). Matching on the identity this
+/// app already stores finds the workspace that exists and adopts it instead of minting a duplicate.
+///
+/// The TENANT (workspace) is matched first and in full (slug → name → email), because the workspace
+/// is the thing a re-sync must never duplicate. The `portfolio_companies` row is only a FALLBACK
+/// source of a workspace id (a company whose tenant this app never mirrored), never a preferred
+/// match — a stale company row can point at a shared/admin workspace while the company's own tenant
+/// carries the correct name.
+struct AdoptedCompany {
+    /// The existing workspace (tenants.id) to reuse in place of the caller's id.
+    tenant_id: Uuid,
+    /// The existing portfolio_companies.id to refresh in place (None when this app holds a
+    /// workspace for the company but no company row yet).
+    company_id: Option<Uuid>,
+}
+
+/// Resolve the `portfolio_companies` row to refresh alongside the adopted workspace: the row already
+/// linked to it, else the row matching the company's identity (slug → name → email) — the pre-fix
+/// link may point at a shared/admin workspace while the adopted tenant is the company's own.
+async fn resolve_company_id(
+    db: &sqlx::PgPool,
+    tenant_id: Uuid,
+    name: &str,
+    slug: &str,
+    email: &str,
+) -> Result<Option<Uuid>, AppError> {
+    let by_tenant: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM portfolio_companies WHERE tenant_id = $1 LIMIT 1")
+            .bind(tenant_id)
+            .fetch_optional(db)
+            .await?;
+    if by_tenant.is_some() {
+        return Ok(by_tenant);
+    }
+    if !slug.trim().is_empty() {
+        let by_slug: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM portfolio_companies WHERE slug = $1 LIMIT 1")
+                .bind(slug.trim())
+                .fetch_optional(db)
+                .await?;
+        if by_slug.is_some() {
+            return Ok(by_slug);
+        }
+    }
+    if !name.trim().is_empty() {
+        let by_name: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM portfolio_companies WHERE name = $1 LIMIT 1")
+                .bind(name.trim())
+                .fetch_optional(db)
+                .await?;
+        if by_name.is_some() {
+            return Ok(by_name);
+        }
+    }
+    if !email.trim().is_empty() {
+        let by_email: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM portfolio_companies WHERE email = $1 LIMIT 1")
+                .bind(email.trim())
+                .fetch_optional(db)
+                .await?;
+        if by_email.is_some() {
+            return Ok(by_email);
+        }
+    }
+    Ok(None)
+}
+
+/// Find the workspace this app already holds for a portfolio company — slug → name → email, in the
+/// `tenants` table first (the workspace itself) and then, as a fallback, the `portfolio_companies`
+/// row's parent. Returns None only when this app holds nothing for the company, which is exactly the
+/// case the create arm may mint a fresh workspace for.
+async fn find_existing_company(
+    db: &sqlx::PgPool,
+    name: &str,
+    slug: &str,
+    email: &str,
+) -> Result<Option<AdoptedCompany>, AppError> {
+    // 1. The workspace (tenants), slug → name → email.
+    if !slug.trim().is_empty() {
+        let t: Option<Uuid> = sqlx::query_scalar("SELECT id FROM tenants WHERE slug = $1 LIMIT 1")
+            .bind(slug.trim())
+            .fetch_optional(db)
+            .await?;
+        if let Some(t) = t {
+            return Ok(Some(AdoptedCompany {
+                tenant_id: t,
+                company_id: resolve_company_id(db, t, name, slug, email).await?,
+            }));
+        }
+    }
+    if !name.trim().is_empty() {
+        let t: Option<Uuid> = sqlx::query_scalar("SELECT id FROM tenants WHERE name = $1 LIMIT 1")
+            .bind(name.trim())
+            .fetch_optional(db)
+            .await?;
+        if let Some(t) = t {
+            return Ok(Some(AdoptedCompany {
+                tenant_id: t,
+                company_id: resolve_company_id(db, t, name, slug, email).await?,
+            }));
+        }
+    }
+    if !email.trim().is_empty() {
+        let t: Option<Uuid> = sqlx::query_scalar("SELECT id FROM tenants WHERE email = $1 LIMIT 1")
+            .bind(email.trim())
+            .fetch_optional(db)
+            .await?;
+        if let Some(t) = t {
+            return Ok(Some(AdoptedCompany {
+                tenant_id: t,
+                company_id: resolve_company_id(db, t, name, slug, email).await?,
+            }));
+        }
+    }
+
+    // 2. Fallback — a company whose tenant this app never mirrored: its parent id is the workspace
+    //    to adopt. slug → name → email.
+    if !slug.trim().is_empty() {
+        let t: Option<Uuid> =
+            sqlx::query_scalar("SELECT tenant_id FROM portfolio_companies WHERE slug = $1 LIMIT 1")
+                .bind(slug.trim())
+                .fetch_optional(db)
+                .await?;
+        if let Some(t) = t {
+            return Ok(Some(AdoptedCompany {
+                tenant_id: t,
+                company_id: resolve_company_id(db, t, name, slug, email).await?,
+            }));
+        }
+    }
+    if !name.trim().is_empty() {
+        let t: Option<Uuid> =
+            sqlx::query_scalar("SELECT tenant_id FROM portfolio_companies WHERE name = $1 LIMIT 1")
+                .bind(name.trim())
+                .fetch_optional(db)
+                .await?;
+        if let Some(t) = t {
+            return Ok(Some(AdoptedCompany {
+                tenant_id: t,
+                company_id: resolve_company_id(db, t, name, slug, email).await?,
+            }));
+        }
+    }
+    if !email.trim().is_empty() {
+        let t: Option<Uuid> =
+            sqlx::query_scalar("SELECT tenant_id FROM portfolio_companies WHERE email = $1 LIMIT 1")
+                .bind(email.trim())
+                .fetch_optional(db)
+                .await?;
+        if let Some(t) = t {
+            return Ok(Some(AdoptedCompany {
+                tenant_id: t,
+                company_id: resolve_company_id(db, t, name, slug, email).await?,
+            }));
+        }
+    }
+
+    Ok(None)
+}
+
+/// Adopt an existing workspace for a portfolio re-sync: refresh its name/slug/email and its company
+/// row (re-pointing the company to the adopted workspace), then run the SAME provisioning the create
+/// arm runs (owner user if missing, one live key if missing, welcome mail only when the user was
+/// actually created). Never mints a second tenant.
+async fn adopt_existing_company(
+    state: &AppState,
+    found: AdoptedCompany,
+    payload_pid: Option<Uuid>,
+    name: &str,
+    slug: &str,
+    email: &str,
+    can_provision: bool,
+) -> AppResult<Json<Value>> {
+    let tenant_slug = resolve_tenant_slug(name, slug);
+    let mut tx = state.db.begin().await?;
+
+    // 1. Refresh the existing workspace's name + slug. Email is filled by `mirror_tenant` below (a
+    //    re-sync fills a blank address, never rewrites one the operator already holds). A slug that
+    //    belongs to another account is refused with a 409 that NAMES it, the same refusal the mirror
+    //    gives on INSERT.
+    sqlx::query("UPDATE tenants SET name = $1, slug = $2, updated_at = NOW() WHERE id = $3")
+        .bind(name)
+        .bind(&tenant_slug)
+        .bind(found.tenant_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => AppError::Conflict(
+                format!("slug '{tenant_slug}' is already in use by another account"),
+            ),
+            other => other.into(),
+        })?;
+
+    // 2. Fill the workspace email if blank + seat the top plan — the create arm's `mirror_tenant`
+    //    does exactly this; its INSERT is an `ON CONFLICT (id) DO NOTHING` no-op here.
+    mirror_tenant(&mut tx, found.tenant_id, name, &tenant_slug, email).await?;
+
+    // 3. Refresh + re-point the company row. The pre-fix link may point at a shared/admin workspace;
+    //    the company's OWN tenant is the correct scoping parent.
+    match (found.company_id, payload_pid) {
+        (Some(cid), _) => {
+            sqlx::query(
+                "UPDATE portfolio_companies SET name = $1, slug = $2, email = $3, tenant_id = $4, updated_at = NOW() WHERE id = $5",
+            )
+            .bind(name)
+            .bind(&tenant_slug)
+            .bind(email)
+            .bind(found.tenant_id)
+            .bind(cid)
+            .execute(&mut *tx)
+            .await?;
+        }
+        (None, Some(pid)) => {
+            sqlx::query(SQL_COMPANY_UPSERT)
+                .bind(pid)
+                .bind(found.tenant_id)
+                .bind(name)
+                .bind(&tenant_slug)
+                .bind(email)
+                .execute(&mut *tx)
+                .await?;
+        }
+        (None, None) => {}
+    }
+
+    // 4. Provision — owner user if missing, one live key if missing, welcome mail only if the user
+    //    was actually created (the fleet standard, same as the create arm).
+    let prov = if can_provision {
+        match payload_pid {
+            Some(pid) => {
+                provision_workspace(
+                    &mut tx,
+                    &state.internal_sync_key,
+                    found.tenant_id,
+                    pid,
+                    name,
+                    email,
+                )
+                .await?
+            }
+            None => ProvisionOutcome {
+                user_id: Uuid::nil(),
+                user_created: false,
+                password: String::new(),
+                key_prefix: None,
+                key_minted: false,
+            },
+        }
+    } else {
+        ProvisionOutcome {
+            user_id: Uuid::nil(),
+            user_created: false,
+            password: String::new(),
+            key_prefix: None,
+            key_minted: false,
+        }
+    };
+
+    tx.commit().await?;
+
+    let welcome_sent = if prov.user_created {
+        send_welcome(
+            state,
+            found.tenant_id,
+            name,
+            email,
+            &prov.password,
+            prov.key_prefix.as_deref().unwrap_or(""),
+        )
+        .await
+    } else {
+        false
+    };
+
+    Ok(Json(json!({
+        "status": if prov.user_created || prov.key_minted { "synced" } else { "already_provisioned" },
+        "adopted": true,
+        "tenant_id": found.tenant_id.to_string(),
+        "portfolio_id": found.company_id
+            .map(|c| c.to_string())
+            .or_else(|| payload_pid.map(|p| p.to_string())),
+        "user_created": prov.user_created,
+        "key_minted": prov.key_minted,
+        "welcome_sent": welcome_sent,
+        "key_prefix": prov.key_prefix,
+    })))
+}
+
 /// POST /api/v1/internal/portfolio-sync
 /// Accepts x-internal-key header for authentication.
 pub async fn portfolio_sync_internal(
@@ -408,6 +703,18 @@ pub async fn portfolio_sync_internal(
     // mirror — the workspace is just left as the contact-less shell it always was, and the missing
     // owner is filled by a later sync that carries the address.
     let can_provision = !email.trim().is_empty();
+
+    // ── adopt-before-create (2026-11-15) ────────────────────────────────────────────────────────
+    // A re-sync of a company this app ALREADY holds must adopt the existing workspace, never mint a
+    // duplicate beside it. The hub changed which id it sends (the company's OWN id instead of its
+    // admin-workspace id), so the caller's id no longer matches the id this app stored; the match is
+    // the company's stable identity — slug → name → email. Only when NOTHING matches does the
+    // create/update arm below mint a fresh workspace.
+    if action == "create" || action == "update" {
+        if let Some(found) = find_existing_company(&state.db, &name, &slug, &email).await? {
+            return adopt_existing_company(&state, found, portfolio_id, &name, &slug, &email, can_provision).await;
+        }
+    }
 
     match action {
         "create" => {
