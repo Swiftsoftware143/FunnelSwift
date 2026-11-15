@@ -1847,7 +1847,7 @@ function openPlanModal(id) {
           const mode = tplMode.value;
           const listed = String(tplIds && tplIds.value ? tplIds.value : '').split(',').map(s => s.trim()).filter(Boolean);
           const allowed = mode === 'all' ? null : (mode === 'none' ? [] : listed);
-          await api('/plans/' + id + '/templates', { method: 'PUT', body: JSON.stringify({ allowed_template_ids: allowed }) });
+          await api('/admin/plans/' + id + '/templates', { method: 'PUT', body: JSON.stringify({ allowed_template_ids: allowed }) });
         }
         showToast(id?'Plan updated':'Plan created', 'success');
         STATE.modal = null; renderApp();
@@ -1868,7 +1868,7 @@ function openPlanModal(id) {
     if (tplMode && id) {
       tplMode.onchange = showTplIds;
       try {
-        const cur = await api('/plans/' + id + '/templates');
+        const cur = await api('/admin/plans/' + id + '/templates');
         const rule = cur && cur.rule;
         if (rule === 'none') tplMode.value = 'none';
         else if (rule === 'specific') { tplMode.value = 'only'; tplIds.value = (cur.allowed_template_ids || []).join(', '); }
