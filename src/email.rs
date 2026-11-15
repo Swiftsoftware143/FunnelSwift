@@ -1215,6 +1215,83 @@ pub async fn send_signup_operator_alert(
     dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
 }
 
+/// Tell the OPERATOR that a customer's first password never reached them (2026-11-15).
+///
+/// WHY THIS EXISTS (measured live 2026-11-15 on the sibling app ADASwift): a real customer signed
+/// up, the mail carrying their first password never left the box, and the account sat unusable for
+/// two days. The `password_undelivered` latch and the console badge both existed — but a badge is
+/// only read by somebody who happens to open that screen, and nobody was ever told. The operator
+/// already gets a mail for a new workspace, a plan request and a support request; a customer who
+/// cannot sign in is the most urgent of those four, and it was the only one with no alert.
+///
+/// Recipient = the operator's own `operator_alert_email` (Admin -> System Settings), passed in by
+/// the caller, which resolves it once for the whole pass. Sent through the SYSTEM mail configuration
+/// (`None`), so it still arrives when the customer's own mail path is the broken thing.
+///
+/// The SUBJECT carries the user id: that is the watch's "already reported" key, so a later pass does
+/// not page the operator twice for one account. It returns the status of the row this send wrote —
+/// `deliver` answers Ok for a recipient the transport WITHHOLDS, and Ok is not "the operator saw it".
+pub async fn send_undelivered_credential_operator_alert(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_email: &str,
+    workspace: &str,
+    owner_name: &str,
+    signed_up: &str,
+    to: &str,
+) -> Result<String, String> {
+    let who = if owner_name.trim().is_empty() {
+        customer_email.to_string()
+    } else {
+        format!("{} ({})", owner_name.trim(), customer_email)
+    };
+    let workspace = if workspace.trim().is_empty() {
+        customer_email
+    } else {
+        workspace.trim()
+    };
+    let signed_up = if signed_up.trim().is_empty() {
+        "unknown"
+    } else {
+        signed_up.trim()
+    };
+    let subject = format!("A customer cannot sign in — no password was delivered ({user_id})");
+    let text = format!(
+        "{workspace} signed up, but the email carrying their first password never reached them, so \
+         they cannot sign in.\n\n\
+         Workspace: {workspace}\n\
+         Customer: {who}\n\
+         Signed up: {signed_up}\n\n\
+         A reset code travels the same mail path that just failed, so it may not reach them either. \
+         The admin console (Tenants) shows a badge on that row and has the door that sets a first \
+         password for them, which is the way back in."
+    );
+    let html = format!(
+        "<p><strong>{}</strong> signed up, but the email carrying their first password never reached \
+         them, so they cannot sign in.</p>\
+         <p>Customer: {}<br>Signed up: {}</p>\
+         <p>A reset code travels the same mail path that just failed, so it may not reach them \
+         either. The admin console (Tenants) shows a badge on that row and has the door that sets a \
+         first password for them, which is the way back in.</p>",
+        crate::templates::html_escape(workspace),
+        crate::templates::html_escape(&who),
+        crate::templates::html_escape(signed_up),
+    );
+    dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await?;
+    // What the send ACTUALLY did. The withheld arm records its row with a " (withheld)" suffix, so
+    // the read-back matches on the user id rather than the exact subject.
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM email_send_log WHERE to_email = $1 AND subject LIKE '%' || $2 || '%' \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(to)
+    .bind(user_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("read back the alert row: {e}"))?;
+    Ok(status.unwrap_or_else(|| "unknown".to_string()))
+}
+
 /// Tell the OPERATOR that a customer wrote to support (2026-11-09).
 ///
 /// WHY THIS EXISTS (measured live 2026-11-09): `POST /api/v1/support-requests` and its public twin

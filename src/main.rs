@@ -27,6 +27,7 @@ mod card_blocks;
 mod card_types;
 mod commission;
 mod coreswift;
+mod credential_watch;
 mod db;
 mod email;
 mod email_provider;
@@ -198,6 +199,13 @@ async fn main() -> Result<()> {
     // touches a workspace whose owner is the fleet's own provider identity or a fleet-owned real
     // domain.
     probe_sweep::spawn_probe_sweeper(app_state.pool.clone());
+
+    // Undelivered-credential watch (2026-11-15). A signup mints the first password on the server and
+    // mails it; when that mail does not go, the account exists with a password nobody has ever read.
+    // The latch and the console badge both existed, but nobody was ever TOLD — measured on ADASwift,
+    // where a real customer sat locked out for two days. This mails the operator once per account,
+    // and only counts an alert that actually reached them.
+    credential_watch::spawn_credential_watch(app_state.pool.clone());
 
     // Request-body read deadline (kanban t_488a19d4). Printed here so an operator can see the
     // bound that is actually in force: every request that DECLARES a body on a body-carrying
