@@ -506,11 +506,12 @@ async fn find_existing_company(
         }
     }
     if !email.trim().is_empty() {
-        let t: Option<Uuid> =
-            sqlx::query_scalar("SELECT tenant_id FROM portfolio_companies WHERE email = $1 LIMIT 1")
-                .bind(email.trim())
-                .fetch_optional(db)
-                .await?;
+        let t: Option<Uuid> = sqlx::query_scalar(
+            "SELECT tenant_id FROM portfolio_companies WHERE email = $1 LIMIT 1",
+        )
+        .bind(email.trim())
+        .fetch_optional(db)
+        .await?;
         if let Some(t) = t {
             return Ok(Some(AdoptedCompany {
                 tenant_id: t,
@@ -549,9 +550,11 @@ async fn adopt_existing_company(
         .execute(&mut *tx)
         .await
         .map_err(|e| match e {
-            sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => AppError::Conflict(
-                format!("slug '{tenant_slug}' is already in use by another account"),
-            ),
+            sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => {
+                AppError::Conflict(format!(
+                    "slug '{tenant_slug}' is already in use by another account"
+                ))
+            }
             other => other.into(),
         })?;
 
@@ -712,7 +715,16 @@ pub async fn portfolio_sync_internal(
     // create/update arm below mint a fresh workspace.
     if action == "create" || action == "update" {
         if let Some(found) = find_existing_company(&state.db, &name, &slug, &email).await? {
-            return adopt_existing_company(&state, found, portfolio_id, &name, &slug, &email, can_provision).await;
+            return adopt_existing_company(
+                &state,
+                found,
+                portfolio_id,
+                &name,
+                &slug,
+                &email,
+                can_provision,
+            )
+            .await;
         }
     }
 
