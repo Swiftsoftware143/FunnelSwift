@@ -5263,6 +5263,17 @@ function bindLeadCapture() {
 }
 async function renderEmailBranding() {
   let brand = {};
+  // The workspace signature (kanban cron 2026-11-15): GET|PUT /private-email/signature/workspace is
+  // the ONLY writer of the tenant default the send path prints under the logo. The mail client tells
+  // a user "Set one in Email Branding" (src/private_email/signature.rs) and this screen never reached
+  // the route — a backend route with no UI is a defect.
+  let sig = { full_name: '', job_title: '', company: '', phone: '', line: '' };
+  try {
+    const s = await api('/private-email/signature/workspace');
+    const got = (s && s.signature) || {};
+    sig = { full_name: got.full_name || '', job_title: got.job_title || '', company: got.company || '',
+            phone: got.phone || '', line: got.line || '' };
+  } catch (e) { /* the signature is optional — a refusal must never blank the branding screen */ }
   try {
     const rows = await api('/settings');
     const list = Array.isArray(rows) ? rows : ((rows && rows.data) || []);
@@ -5314,6 +5325,33 @@ async function renderEmailBranding() {
         </div>
       </div>
     </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title">Company signature</span>
+        <span class="badge ${(sig.full_name||sig.company)?'badge-green':'badge-yellow'}">${(sig.full_name||sig.company)?'set':'not set'}</span>
+      </div>
+      <div style="padding:16px">
+        <div style="font-size:12px;color:#64748b;margin-bottom:12px">
+          Five plain fields that print under your logo on every message this workspace sends. Each
+          mailbox can use this default, write its own, or send without one.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="margin:0"><label class="form-label">Full name</label>
+            <input class="input" id="sig-full-name" maxlength="120" value="${x(sig.full_name)}" placeholder="e.g. Dana Reed"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">Job title</label>
+            <input class="input" id="sig-job-title" maxlength="120" value="${x(sig.job_title)}" placeholder="e.g. Owner"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">Company</label>
+            <input class="input" id="sig-company" maxlength="120" value="${x(sig.company)}" placeholder="e.g. Acme Capital"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">Phone</label>
+            <input class="input" id="sig-phone" maxlength="120" value="${x(sig.phone)}" placeholder="e.g. +1 555 010 1234"></div>
+          <div class="form-group" style="margin:0;grid-column:1 / -1"><label class="form-label">A line</label>
+            <input class="input" id="sig-line" maxlength="160" value="${x(sig.line)}" placeholder="e.g. Miami - Mon-Fri"></div>
+        </div>
+        <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" id="brand-sig-save">Save signature</button>
+        </div>
+      </div>
+    </div>
     <div class="card">
       <div class="card-header">
         <span class="card-title">How it looks in a mail</span>
@@ -5355,6 +5393,7 @@ function bindEmailBranding() {
     hex.addEventListener('input', () => { if (/^#[0-9a-fA-F]{6}$/.test(hex.value.trim())) picker.value = hex.value.trim(); });
   }
   document.getElementById('brand-save')?.addEventListener('click', saveEmailBranding);
+  document.getElementById('brand-sig-save')?.addEventListener('click', saveWorkspaceSignature);
   /* FS-10: the inline guide promises "Preview how a mail will look" — re-render the mock header on
      every edit (name, colour, logo) so the operator sees the real header before saving. */
   const bpName = document.getElementById('brand-name');
@@ -5461,6 +5500,26 @@ async function saveEmailBranding() {
     showToast('Email branding saved', 'success');
     renderApp();
   } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+}
+
+// The workspace signature save (kanban cron 2026-11-15). PUT /private-email/signature/workspace is
+// the ONLY writer of the tenant default the send path prints under the logo, so this is the one
+// control the mail client's "Set one in Email Branding" promise depends on.
+async function saveWorkspaceSignature() {
+  const g = id => ((document.getElementById(id) || {}).value || '').trim();
+  const btn = document.getElementById('brand-sig-save');
+  if (btn) btn.disabled = true;
+  try {
+    const d = await api('/private-email/signature/workspace', { method: 'PUT', body: JSON.stringify({
+      full_name: g('sig-full-name'), job_title: g('sig-job-title'), company: g('sig-company'),
+      phone: g('sig-phone'), line: g('sig-line') }) });
+    // showToast repaints the shell (reRender defaults to true here), which reloads this card from the
+    // route — that repaint IS the confirmation. A message painted into a node the repaint replaces is
+    // invisible, which is exactly what a live run measured before this comment existed.
+    showToast((d && d.detail) || 'Signature saved', 'success');
+  } catch (e) {
+    showToast('Signature not saved: ' + (e.message || e), 'error');
+  } finally { if (btn) btn.disabled = false; }
 }
 
 async function uploadBrandLogo() {

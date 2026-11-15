@@ -434,6 +434,17 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             account has no address or the address is on a reserved test domain.</li>
           <li><strong>Where it renders:</strong> every rendered mail for that tenant opens with the branding
             header block — welcome, login credentials, purchase confirmations and password resets.</li>
+          <li><strong>Company signature:</strong> <code>GET|PUT /api/v1/private-email/signature/workspace</code>
+            is the <em>only</em> writer of the workspace default (one row per tenant in
+            <code>tenant_email_signatures</code>: <code>full_name</code>, <code>job_title</code>,
+            <code>company</code>, <code>phone</code>, <code>line</code> &mdash; 120 chars per field, 160 for
+            the line). The single send path in <code>private_email::send_handler::deliver</code> appends it
+            under the logo for compose, replies and forwards alike; <code>include_signature: false</code>
+            drops it for one message, and each mailbox carries its own
+            <code>signature_mode</code> (<code>inherit</code> / <code>custom</code> / <code>off</code>) at
+            <code>PUT /api/v1/private-email/signature?mailbox=</code>. The Branding screen reaches the
+            workspace default through its <strong>Company signature</strong> card (Save signature); before
+            that card existed the route had no UI while the mail client told people to set it there.</li>
           <li><strong>Additive by construction:</strong> a tenant with no name and no logo gets byte-identical
             mail to before the feature existed, so it is safe for every existing account.</li>
         </ul>
