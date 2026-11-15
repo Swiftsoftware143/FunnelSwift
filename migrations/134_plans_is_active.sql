@@ -1,0 +1,15 @@
+-- 134_plans_is_active.sql
+-- A plan can be RETIRED from the catalogue without being deleted.
+--
+-- DELETE /api/v1/admin/plans/:id refuses to remove a plan any workspace sits on
+-- (`tenant_plan_subscriptions.plan_id` is ON DELETE NO ACTION). Both that refusal and the console's
+-- disabled Delete button told the operator to "switch the plan off instead" — a control that did not
+-- exist: `plans` carried no lifecycle column at all (measured 2026-11-15: information_schema listed 36
+-- columns and none of them was is_active/archived), so an obsolete plan could never leave the catalogue
+-- while a single workspace stayed on it.
+--
+-- `is_active = false` means HIDDEN FROM SALE, not disabled. The plan keeps its row, its subscribers,
+-- its limits and its features, every workspace on it keeps working, and only the anonymous price list
+-- (GET /api/v1/public/plans — what the pricing page reads) stops offering it. The single writer of this
+-- column is PUT /api/v1/admin/plans/:id/listing.
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;

@@ -867,6 +867,15 @@ pub fn create_router(
             "/api/v1/admin/plans/:id/features",
             put(crate::handlers::plan_handler::admin_update_plan_features),
         )
+        // Retire a plan from the catalogue WITHOUT deleting it (2026-11-15). A plan a workspace sits
+        // on cannot be deleted (`tenant_plan_subscriptions.plan_id` is ON DELETE NO ACTION) and that
+        // refusal told the operator to "switch the plan off instead" — a control `plans` had no column
+        // for. This is that switch: `is_active = false` hides the plan from the anonymous price list
+        // while every workspace already on it keeps its limits and its features.
+        .route(
+            "/api/v1/admin/plans/:id/listing",
+            put(crate::handlers::plan_handler::set_plan_listing),
+        )
         .route(
             "/api/v1/admin/plans/:id",
             get(crate::handlers::plan_handler::get_plan)

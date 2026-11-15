@@ -960,6 +960,13 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
         capability without moving them to a new tier — that is what the override is for. The plan
         requests your customers file appear on their own screen and are approved from the Tenants
         list above.</p>
+        <p><strong>Hide / Show — retiring a plan without deleting it.</strong> A plan that any
+        workspace sits on cannot be deleted; it is the plan those customers are on. <strong>Hide</strong>
+        stops offering it to new customers: it leaves the public price list at once (the marketing
+        pricing page reads that list), and nothing else changes — the row, its limits, its features
+        and every workspace already on it all stay exactly as they were. A hidden plan is badged
+        <em>hidden</em> in the catalogue, and <strong>Show</strong> puts it back on sale. This is the
+        switch the delete refusal points at: move nobody, lose nothing.</p>
       </div>
 
       <!-- ============ API ============ -->
@@ -972,6 +979,7 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
           <tr><td>GET</td><td>/api/v1/admin/plans</td><td>List all plans</td></tr>
           <tr><td>POST</td><td>/api/v1/admin/plans</td><td>Create a plan</td></tr>
           <tr><td>PUT</td><td>/api/v1/admin/plans/:id/features</td><td>Update plan features</td></tr>
+          <tr><td>PUT</td><td>/api/v1/admin/plans/:id/listing</td><td>Hide a plan from the public price list (<code>{"is_active": false}</code>) or put it back on sale (<code>true</code>). Nothing is deleted and workspaces already on it keep it.</td></tr>
           <tr><td>POST</td><td>/api/v1/admin/plans/assign</td><td>Assign plan to tenant</td></tr>
           <tr><td>GET</td><td>/api/v1/admin/plans/registry</td><td>Feature registry: every gated key × every plan, plus the superset verdict</td></tr>
           <tr><td>PUT</td><td>/api/v1/admin/plans/entitlement</td><td>Set one entitlement ({plan, feature, value}) — what a matrix cell click sends</td></tr>

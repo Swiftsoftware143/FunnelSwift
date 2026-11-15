@@ -6091,18 +6091,21 @@ async function renderPlanAdmin() {
              click instead of surfacing a refusal afterwards. */
           const held = Number(p.tenant_count || 0);
           return `<tr data-plan-row="${x(p.id)}">
-          <td><strong>${x(p.name)}</strong></td>
+          <td><strong>${x(p.name)}</strong>${p.is_active === false ? ' <span class="badge badge-yellow" title="Hidden from the catalogue: new customers are not offered this plan. Workspaces already on it keep it, with its limits and features.">hidden</span>' : ''}</td>
           <td><code>${x(p.slug)}</code></td>
           <td>${formatCurrency(p.price)}</td>
           <td>${fmtPlanLimit(p.max_leads)}</td>
           <td>${fmtPlanLimit(p.max_tags)}</td>
-          <td>${held ? `<span class="badge badge-blue" title="A workspace on this plan pins it, so it cannot be deleted. Move them to another plan first, or switch this plan off.">${held}</span>` : `<span style="color:var(--muted)">none</span>`}</td>
+          <td>${held ? `<span class="badge badge-blue" title="A workspace on this plan pins it, so it cannot be deleted. Move them to another plan first, or press Hide to stop offering it to new customers.">${held}</span>` : `<span style="color:var(--muted)">none</span>`}</td>
           <td>${p.payment_provider ? `<span class="badge badge-blue">${x(p.payment_provider)}</span>` : '-'}</td>
           <td>${featSummary(p.features)}</td>
           <td style="white-space:nowrap"><button class="btn btn-secondary btn-xs" data-plan-edit="${x(p.id)}">Edit Features</button>
             ${held
-              ? `<button class="btn btn-secondary btn-xs" disabled title="${x(p.name)} is still the plan on ${held} workspace${held === 1 ? '' : 's'} — move them to another plan first, or switch this plan off instead of deleting it.">Delete</button>`
-              : `<button class="btn btn-danger btn-xs" data-plan-delete="${x(p.id)}" data-plan-name="${x(p.name)}">Delete</button>`}</td>
+              ? `<button class="btn btn-secondary btn-xs" disabled title="${x(p.name)} is still the plan on ${held} workspace${held === 1 ? '' : 's'} — move them to another plan first, or press Hide to stop offering it to new customers.">Delete</button>`
+              : `<button class="btn btn-danger btn-xs" data-plan-delete="${x(p.id)}" data-plan-name="${x(p.name)}">Delete</button>`}
+            ${p.is_active === false
+              ? `<button class="btn btn-secondary btn-xs" data-plan-listing="${x(p.id)}" data-listing="true" title="Offer ${x(p.name)} to new customers again.">Show</button>`
+              : `<button class="btn btn-secondary btn-xs" data-plan-listing="${x(p.id)}" data-listing="false" title="Stop offering ${x(p.name)} to new customers. Nothing is deleted — workspaces already on it keep it, with its limits and features.">Hide</button>`}</td>
         </tr>`;
         }).join('') : `<tr><td colspan="9">No plans returned</td></tr>`}</tbody>
       </table></div>
@@ -6203,6 +6206,25 @@ function bindPlanAdmin() {
     }
   };
   document.querySelectorAll('[data-plan-delete]').forEach(b => b.onclick = () => window._deletePlan(b.dataset.planDelete, b.dataset.planName));
+  /* HIDE A PLAN FROM THE CATALOGUE (2026-11-15). DELETE refuses a plan any workspace sits on, and its
+     refusal used to tell the operator to "switch the plan off instead" — a switch that did not exist,
+     because `plans` had no lifecycle column. PUT /admin/plans/:id/listing is that switch: it hides the
+     plan from the anonymous price list (what the marketing pricing page reads) and touches nothing
+     else — the row, its subscribers, its limits and its features all stay. The server's own sentence
+     says how many workspaces keep the plan, so the toast answers "what happened to them". */
+  window._listPlan = async function (id, list) {
+    if (!id) return;
+    const on = list === 'true' || list === true;
+    if (!on && !window.confirm('Stop offering this plan to new customers?\\n\\nNothing is deleted. Every workspace already on it keeps it, with its limits and features. You can put it back with Show.')) return;
+    try {
+      const r = await api('/admin/plans/' + id + '/listing', { method: 'PUT', body: JSON.stringify({ is_active: on }) });
+      showToast((r && r.message) || (on ? 'Plan is on sale again' : 'Plan hidden from the catalogue'), 'success');
+      renderView();
+    } catch (e) {
+      showToast('Could not change the listing: ' + e.message, 'error');
+    }
+  };
+  document.querySelectorAll('[data-plan-listing]').forEach(b => b.onclick = () => window._listPlan(b.dataset.planListing, b.dataset.listing));
   const ab = $('planadmin-assign-btn');
   if (ab) ab.onclick = async () => {
     const tenant_id = ($('planadmin-assign-tenant') || {}).value;

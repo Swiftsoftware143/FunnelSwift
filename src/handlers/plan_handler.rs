@@ -350,7 +350,7 @@ pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde
                 COALESCE(billing_cycle, 'month') AS billing_cycle, \
                 COALESCE(side, 'both') AS side, \
                 max_leads, max_tags, max_ocr_scans, max_forms, max_custom_domains \
-           FROM plans ORDER BY price, slug",
+           FROM plans WHERE COALESCE(is_active, true) ORDER BY price, slug",
     )
     .fetch_all(&state.pool)
     .await?;
@@ -378,6 +378,80 @@ pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde
         .collect();
 
     Ok(Json(json!({ "plans": plans })))
+}
+
+/// `PUT /api/v1/admin/plans/:id/listing` — retire a plan from the catalogue, or put it back on sale.
+///
+/// Body: `{"is_active": true|false}`.
+///
+/// Why this exists (measured 2026-11-15): `DELETE /api/v1/admin/plans/:id` refuses to remove a plan
+/// any workspace sits on — `tenant_plan_subscriptions.plan_id` is ON DELETE NO ACTION — and both that
+/// refusal and the console's disabled Delete button told the operator to "switch the plan off
+/// instead". `plans` carried no lifecycle column at all (36 columns, none of them `is_active`), so
+/// there was nothing to switch: an obsolete plan stayed on sale for ever.
+///
+/// `is_active = false` means HIDDEN FROM SALE, never "off": the row, its subscribers, its limits and
+/// its features are untouched, every workspace already on it keeps working, and only the anonymous
+/// price list (`GET /api/v1/public/plans`, the one the marketing pricing page reads) stops offering
+/// it. The reply names how many workspaces still hold the plan, so the operator knows who keeps it.
+pub async fn set_plan_listing(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<serde_json::Value>,
+) -> AppResult<Json<serde_json::Value>> {
+    if !auth.is_admin {
+        return Err(AppError::Forbidden("Admin access required".into()));
+    }
+    let is_active = body
+        .get("is_active")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| {
+            AppError::BadRequest(
+                "Say whether the plan should be listed: {\"is_active\": true} or {\"is_active\": false}."
+                    .into(),
+            )
+        })?;
+
+    let name: Option<String> = sqlx::query_scalar("SELECT name FROM plans WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let name = name.ok_or_else(|| AppError::NotFound("Plan not found".into()))?;
+
+    // ONE WRITER of this column. Nothing else in the app writes `plans.is_active`, so the badge the
+    // console paints is always the value this route last set.
+    sqlx::query("UPDATE plans SET is_active = $2, updated_at = NOW() WHERE id = $1")
+        .bind(id)
+        .bind(is_active)
+        .execute(&state.pool)
+        .await?;
+
+    let holders: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tenant_plan_subscriptions WHERE plan_id = $1")
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+
+    let message = if is_active {
+        format!("{name} is on sale again: it is offered to new customers.")
+    } else if holders == 0 {
+        format!("{name} is no longer offered to new customers. Nothing was deleted.")
+    } else {
+        format!(
+            "{name} is no longer offered to new customers. The {holders} workspace{} already on it keep it, with its limits and features.",
+            if holders == 1 { "" } else { "s" }
+        )
+    };
+
+    Ok(Json(json!({
+        "status": "ok",
+        "plan": name,
+        "is_active": is_active,
+        "tenants_on_plan": holders,
+        "message": message,
+    })))
 }
 
 /// A plan's `purchase_url` is a hosted payment page an OPERATOR types in, so refuse a typo at
@@ -780,7 +854,7 @@ pub async fn admin_list_all_plans(
     // only feedback was the refusal afterwards. Measured live 2026-11-15 11:22 UTC: the delete
     // answered a bare 500 "violates foreign key constraint" for every in-use plan. The refusal was
     // made readable the same morning; this column is what lets the screen say it first.
-    let plans = sqlx::query("SELECT id, name, slug, price, annual_price, billing_cycle, max_leads, max_tags, max_cards, max_team_members, has_dual_routing, has_multi_tenant, has_white_label, has_webhooks, has_analytics, has_import_export, payment_provider, purchase_url, features, allowed_template_ids, created_at, updated_at, (SELECT COUNT(*) FROM tenant_plan_subscriptions s WHERE s.plan_id = plans.id) AS tenant_count FROM plans ORDER BY price")
+    let plans = sqlx::query("SELECT id, name, slug, price, annual_price, billing_cycle, max_leads, max_tags, max_cards, max_team_members, has_dual_routing, has_multi_tenant, has_white_label, has_webhooks, has_analytics, has_import_export, payment_provider, purchase_url, features, allowed_template_ids, created_at, updated_at, is_active, (SELECT COUNT(*) FROM tenant_plan_subscriptions s WHERE s.plan_id = plans.id) AS tenant_count FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
 
@@ -815,6 +889,10 @@ pub async fn admin_list_all_plans(
             "has_white_label": row.try_get::<bool, _>("has_white_label").unwrap_or(false),
             "features": row.try_get::<Option<serde_json::Value>, _>("features").unwrap_or(None),
             "allowed_template_ids": row.try_get::<Option<Vec<String>>, _>("allowed_template_ids").unwrap_or(None),
+            // HIDDEN FROM SALE (migration 134): the console prints this badge and offers the switch
+            // that writes it, so the list has to carry it. `unwrap_or(true)` matches the column
+            // default — a row that somehow cannot be read as a bool is on sale, never silently hidden.
+            "is_active": row.try_get::<bool, _>("is_active").unwrap_or(true),
         })
     }).collect();
 
