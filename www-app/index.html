@@ -4683,6 +4683,8 @@ function LAFN(){
       +'Create it here, then share its link — renaming keeps the same link, so anything already sent still works.</p>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
       +'<input id="fn-name" placeholder="New funnel name (e.g. Spring Webinar Signups)" maxlength="200" style="flex:1;min-width:220px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">'
+      +'<input id="fn-hl-new" placeholder="Headline your visitors read (optional)" maxlength="200" style="flex:1;min-width:220px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">'
+      +'<input id="fn-cta-new" placeholder="Button label (optional)" maxlength="60" style="min-width:160px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px">'
       +'<button class="btn btn-p" id="fn-add">+ Create funnel</button></div>'
       +'<div id="fn-msg">'+(FNSAY?'<p style="font-size:13px;color:'+(FNSAY.bad?"#dc2626":"#16a34a")+'">'+X(FNSAY.msg)+'</p>':'')+'</div><div id="fn-edit"></div><div id="fn-list"></div></div>';
     var nameEl=$("fn-name");
@@ -4690,7 +4692,16 @@ function LAFN(){
       var nm=(nameEl.value||"").trim();
       if(!nm){fnSay("Give the funnel a name first.",true);nameEl.focus();return;}
       var b=$("fn-add"); b.disabled=true; b.textContent="Creating...";
-      api("/api/v1/funnels",{method:"POST",body:JSON.stringify({name:nm})})
+      // THE PAGE COPY IN THE SAME PRESS (2026-11-15). `POST /api/v1/funnels` now persists
+      // headline/subheadline/cta_label/thank_you, so the two strings a customer most wants are asked
+      // for here instead of costing a second trip through "Edit page". Left blank they are simply not
+      // sent, and the create writes NULL exactly as before (the renderer falls back).
+      var body={name:nm};
+      var hl=($("fn-hl-new")?($("fn-hl-new").value||"").trim():"");
+      var cta=($("fn-cta-new")?($("fn-cta-new").value||"").trim():"");
+      if(hl)body.headline=hl;
+      if(cta)body.cta_label=cta;
+      api("/api/v1/funnels",{method:"POST",body:JSON.stringify(body)})
         .then(function(r){fnSay("Funnel created"+(r&&r.slug?" — its link is /funnel/"+r.slug:"")+".",false);LAFN();})
         .catch(function(e){b.disabled=false;b.textContent="+ Create funnel";fnSay((e&&e.message)||"Could not create the funnel.",true);});
     };
