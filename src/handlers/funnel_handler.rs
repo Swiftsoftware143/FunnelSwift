@@ -126,6 +126,30 @@ pub async fn create_funnel(
     let tenant_id =
         crate::handlers::tenant_handler::require_existing_workspace(&state.pool, &auth.tenant_id)
             .await?;
+    // THE PAGE COPY ON A CREATE (2026-11-15). `headline` / `subheadline` / `cta_label` /
+    // `thank_you` / `ask_phone` are writable through `update_funnel` and carried by the list and
+    // GET routes — but this route only ever inserted `(id, tenant_id, name, slug)` and answered
+    // 201, so a client that sent its page copy in the SAME create call had every field silently
+    // dropped. Measured live 2026-11-15 on the origin: `POST /api/v1/funnels
+    // {"name":…,"headline":"Probe headline","cta_label":"Get it"}` answered 201, the row carried
+    // NULL for both, and the public page rendered the renderer's default text instead of the
+    // customer's words. The four fields are validated by the SAME `field_edit` rules the update
+    // path uses, so a value the column cannot hold is a 400 naming the field and never a 500, and
+    // an empty string means "not set" exactly as it does on an edit.
+    let mut page_copy: [Option<String>; 4] = [None, None, None, None];
+    for (i, (key, max_chars, label)) in PAGE_FIELDS.iter().enumerate() {
+        if let FieldEdit::Set(v) = field_edit(&payload, key, *max_chars, label)? {
+            page_copy[i] = Some(v);
+        }
+    }
+    // A NON-boolean `ask_phone` is refused rather than defaulted: answering 201 for a page that
+    // silently will not ask for a phone number is the same lie the update path refuses.
+    let ask_phone = match payload.get("ask_phone") {
+        None => false,
+        Some(raw) => raw
+            .as_bool()
+            .ok_or_else(|| AppError::BadRequest("ask_phone must be true or false".into()))?,
+    };
     // The public page is addressed by SLUG ALONE (`/funnel/<slug>`, no tenant in the path), so the
     // slug must be (a) URL-safe and (b) unique across the fleet: the old transform was
     // `name.to_lowercase().replace(' ', "-")`, which put an apostrophe ("Sam's Funnel"),
@@ -146,13 +170,19 @@ pub async fn create_funnel(
     let mut attempt = 1u32;
     loop {
         let res = sqlx::query(
-            "INSERT INTO funnels (id, tenant_id, name, slug) VALUES ($1, $2, $3, $4)
+            "INSERT INTO funnels (id, tenant_id, name, slug, headline, subheadline, cta_label, \
+             thank_you, ask_phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
              ON CONFLICT (slug) DO NOTHING",
         )
         .bind(id)
         .bind(tenant_id)
         .bind(&name)
         .bind(&slug)
+        .bind(&page_copy[0])
+        .bind(&page_copy[1])
+        .bind(&page_copy[2])
+        .bind(&page_copy[3])
+        .bind(ask_phone)
         .execute(&state.pool)
         .await?;
         if res.rows_affected() == 1 {
@@ -172,6 +202,15 @@ pub async fn create_funnel(
             "id": id.to_string(),
             "name": name,
             "slug": slug,
+            // The copy this create actually persisted, in the SAME shape the list and GET routes
+            // ship, so a client that sends its page copy on create reads back what it wrote
+            // instead of a three-field stub.
+            "headline": page_copy[0],
+            "subheadline": page_copy[1],
+            "cta_label": page_copy[2],
+            "thank_you": page_copy[3],
+            "ask_phone": ask_phone,
+            "is_active": true,
             "public_path": format!("/funnel/{slug}"),
             "message": "Funnel created"
         })),
