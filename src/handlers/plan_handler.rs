@@ -699,12 +699,63 @@ pub async fn delete_plan_admin(
     // time the UPDATE ran, it matched 0 rows, and deleting a plan left its product `is_active =
     // true` (kanban t_9c30ce49). The error is propagated, not discarded: a retirement that did not
     // happen must not answer 200.
+    // Pre-flight: a workspace that is ON this plan pins it (see the deletion arm below), and the
+    // affiliate product is retired BEFORE the delete — so a plan that is in use has to be refused
+    // HERE, or a refused delete leaves its product switched off while the plan itself lives on.
+    // Same rule, same sentence as the database's own refusal; this arm simply runs before anything
+    // is mutated.
+    let holders: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tenant_plan_subscriptions WHERE plan_id = $1")
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await?;
+    if holders > 0 {
+        let name: String = sqlx::query_scalar("SELECT name FROM plans WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or_else(|_| "This plan".to_string());
+        return Err(AppError::Validation(format!(
+            "{name} is still the plan on {holders} workspace{}. Move them to another plan first, or switch the plan off instead of deleting it — nothing was changed.",
+            if holders == 1 { "" } else { "s" }
+        )));
+    }
+
     deactivate_affiliate_product_for_plan(&state.pool, id).await?;
 
     let result = sqlx::query("DELETE FROM plans WHERE id = $1")
         .bind(id)
         .execute(&state.pool)
-        .await?;
+        .await;
+    // A plan that a workspace is ON cannot be deleted: `tenant_plan_subscriptions.plan_id` is
+    // ON DELETE NO ACTION, so Postgres refused the delete and this route answered 500 "update or
+    // delete on table plans violates foreign key constraint
+    // tenant_plan_subscriptions_plan_id_fkey" (measured live 2026-11-15 11:20 UTC, every attempt).
+    // The operator saw "Internal Server Error" and had no idea which workspaces were in the way. The
+    // refusal is a real product rule, so it gets a sentence and the count that explains it; the plan
+    // is left untouched (nothing to undo — the delete did not happen).
+    let result = match result {
+        Ok(r) => r,
+        Err(sqlx::Error::Database(ref db)) if db.code().as_deref() == Some("23503") => {
+            let holders: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM tenant_plan_subscriptions WHERE plan_id = $1",
+            )
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+            let name: String = sqlx::query_scalar("SELECT name FROM plans WHERE id = $1")
+                .bind(id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or_else(|_| "this plan".to_string());
+            return Err(AppError::Validation(format!(
+                "{name} is still the plan on {holders} workspace{}. Move them to another plan first, or switch the plan off instead of deleting it — nothing was changed.",
+                if holders == 1 { "" } else { "s" }
+            )));
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Plan not found".into()));

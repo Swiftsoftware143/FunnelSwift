@@ -230,7 +230,36 @@ pub async fn create_card(
         .filter(|t| !t.is_empty())
         .ok_or_else(|| AppError::BadRequest("A card needs a title".into()))?;
     let id_str = id.to_string();
-    let slug = body["slug"].as_str().unwrap_or(&id_str[..8]);
+    // A card's public address is /k/<slug> and `kinetic_cards.slug` is UNIQUE, so a slug the client
+    // sends can already be taken: the editor derives it from the card title, so a SECOND card titled
+    // "My Links" sent `my-links` again and the INSERT answered 500 "duplicate key value violates
+    // unique constraint \"kinetic_cards_slug_key\"" (measured live 2026-11-15 11:20 UTC). The customer
+    // was building their own page and got "Internal Server Error" for a name the editor picked for
+    // them, with no way to correct it from the panel. Reserve a FREE slug here instead — the requested
+    // one when it is free, else `-2`, `-3`, … bounded, and `-<id8>` last (the id is unique, so that arm
+    // cannot lose). The UNIQUE index still decides any race; that refusal is answered below as a 400
+    // with a sentence, never a 500.
+    let requested = body["slug"]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&id_str[..8]);
+    let mut slug = requested.to_string();
+    for attempt in 1..=20u32 {
+        let taken: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)")
+                .bind(&slug)
+                .fetch_one(&state.pool)
+                .await?;
+        if !taken {
+            break;
+        }
+        slug = if attempt == 20 {
+            format!("{requested}-{}", &id_str[..8])
+        } else {
+            format!("{requested}-{}", attempt + 1)
+        };
+    }
     let bio = body["bio"].as_str().unwrap_or("");
     let bg_color = body["bg_color"].as_str().unwrap_or("#0f172a");
     let accent_color = body["accent_color"].as_str().unwrap_or("#6366f1");
@@ -296,10 +325,25 @@ pub async fn create_card(
         crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
     }
 
-    sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
-        .bind(id).bind(tenant_id).bind(id).bind(title).bind(slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
+    let insert = sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
+        .bind(id).bind(tenant_id).bind(id).bind(title).bind(&slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
         .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
-        .execute(&state.pool).await?;
+        .execute(&state.pool)
+        .await;
+    if let Err(e) = insert {
+        // A lost race on the reserved slug is the ONLY failure here that the customer can act on, so
+        // it is answered as a 400 with a sentence: the panel shows it as a readable message and the
+        // editor can simply press create again. Every other database answer keeps its own status.
+        if let sqlx::Error::Database(db) = &e {
+            if db.code().as_deref() == Some("23505") {
+                return Err(AppError::Validation(format!(
+                    "The page address \"{slug}\" was just taken — please press create again and we will pick a free one."
+                )));
+            }
+        }
+        return Err(e.into());
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({"id": id, "slug": slug, "message": "Card created"})),
