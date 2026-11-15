@@ -5,9 +5,17 @@ use crate::{
     error::{AppError, AppResult},
     AppState,
 };
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    Argon2,
+};
 use axum::{extract::State, http::HeaderMap, response::IntoResponse, Json};
+use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
+use sha2::Sha256;
 use uuid::Uuid;
+
+type HmacSha256 = Hmac<Sha256>;
 
 /// Constant-time string comparison — avoids leaking the internal key via early exit.
 fn ct_eq(a: &str, b: &str) -> bool {
@@ -18,6 +26,51 @@ fn ct_eq(a: &str, b: &str) -> bool {
         diff |= (x ^ y) as usize;
     }
     diff == 0
+}
+
+/// RFC 4648 Base32, UPPERCASE, padding stripped — the exact encoding the fleet's derived-password
+/// rule specifies. `base64` (already a dependency) is Base64 only, so this is the one codec that
+/// must be written by hand; the unit tests below pin it against known vectors.
+fn base32_encode_upper_no_pad(data: &[u8]) -> String {
+    const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut out = String::with_capacity((data.len() * 8).div_ceil(5));
+    let mut buffer: u32 = 0;
+    let mut bits: usize = 0;
+    for &byte in data {
+        buffer = (buffer << 8) | u32::from(byte);
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            let idx = ((buffer >> bits) & 0x1F) as usize;
+            out.push(ALPHABET[idx] as char);
+        }
+    }
+    if bits > 0 {
+        let idx = ((buffer << (5 - bits)) & 0x1F) as usize;
+        out.push(ALPHABET[idx] as char);
+    }
+    out
+}
+
+/// The fleet's derived portfolio password — deterministic, never transmitted in the payload, never
+/// logged, and identical across every app that holds the same `INTERNAL_SYNC_KEY`.
+///
+/// ```text
+/// raw      = HMAC-SHA256(key = INTERNAL_SYNC_KEY, message = "portfolio:" + portfolio_uuid_string)
+/// password = Base32(raw), RFC 4648, UPPERCASE, padding stripped, FIRST 20 CHARACTERS
+/// ```
+///
+/// Because it is a pure function of the sync key and the portfolio id, a re-sync reproduces the
+/// same value — so it can never invalidate a credential the user has since changed (the derivation
+/// is only applied at creation/backfill, and an existing user's `password_hash` is never touched).
+fn derive_password(sync_key: &str, portfolio_id: Uuid) -> String {
+    let message = format!("portfolio:{portfolio_id}");
+    let mut mac =
+        HmacSha256::new_from_slice(sync_key.as_bytes()).expect("HMAC accepts a key of any length");
+    mac.update(message.as_bytes());
+    let raw = mac.finalize().into_bytes();
+    let b32 = base32_encode_upper_no_pad(&raw);
+    b32.chars().take(20).collect()
 }
 
 /// The slug a mirrored `tenants` row must carry: the caller's own slug (the hub's contract is that
@@ -125,6 +178,183 @@ const SQL_COMPANY_UPSERT: &str =
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug, \
      email = EXCLUDED.email, updated_at = NOW()";
 
+/// What the provisioning half of a sync did, so the caller can see which rows changed and the
+/// welcome-mail arm can send exactly once (only when the owner user was actually created).
+struct ProvisionOutcome {
+    /// The workspace's owner user — either the one just created or the one already present.
+    user_id: Uuid,
+    /// True only when THIS sync created the user. The welcome mail is gated on this: a workspace
+    /// that already had a login is never re-mailed and its password is never touched.
+    user_created: bool,
+    /// The derived password, meaningful only when `user_created` is true (otherwise empty).
+    password: String,
+    /// The workspace's live key prefix, whether minted by this sync or already present.
+    key_prefix: Option<String>,
+    /// True only when THIS sync minted the key.
+    key_minted: bool,
+}
+
+/// Ensure the workspace holds its owner user and exactly one live API key — the fleet portfolio
+/// provisioning standard (2026-11-15) — inside the caller's transaction, idempotently.
+///
+/// * workspace, no user → create the owner (payload email, role `user` — this app's manual-signup
+///   role — Argon2 hash of the DERIVED password) and mint a key; `user_created = true` so the
+///   caller sends the welcome mail.
+/// * workspace + user, no key → mint the key, `user_created = false` (no re-mail, no password
+///   reset).
+/// * everything present → no-op; both flags false.
+///
+/// The role is `user`, NOT a foreign `owner` word: FunnelSwift's signup writes `role = "user"` and
+/// resolves workspace ownership by the OLDEST active user (`team_handler::is_workspace_creator`),
+/// so a single-user portfolio account is the owner by construction — exactly the shape a manual
+/// signup produces and the shape the sibling portfolio tenant (Xride) already carries. The
+/// standard's own non-negotiable is "the same role a manual signup would get in that app".
+async fn provision_workspace(
+    tx: &mut sqlx::PgConnection,
+    sync_key: &str,
+    tenant_id: Uuid,
+    portfolio_id: Uuid,
+    name: &str,
+    email: &str,
+) -> Result<ProvisionOutcome, AppError> {
+    // Owner lookup: the workspace's oldest active person, the same predicate
+    // `is_workspace_creator` uses. A workspace that already has ANY login keeps it untouched.
+    let existing_user: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE tenant_id = $1 AND is_active = true \
+         ORDER BY created_at, id LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (user_id, user_created, password) = match existing_user {
+        Some(uid) => (uid, false, String::new()),
+        None => {
+            let derived = derive_password(sync_key, portfolio_id);
+            let salt = SaltString::generate(&mut OsRng);
+            let hash = Argon2::default()
+                .hash_password(derived.as_bytes(), &salt)
+                .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+                .to_string();
+            let uid = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active) \
+                 VALUES ($1, $2, $3, $4, $5, 'user', true)",
+            )
+            .bind(uid)
+            .bind(tenant_id)
+            .bind(email)
+            .bind(&hash)
+            .bind(name)
+            .execute(&mut *tx)
+            .await?;
+            (uid, true, derived)
+        }
+    };
+
+    // Seat the seven default lead stages when the workspace has none, exactly as a manual signup
+    // (`public_signup`) and the app's own repair door (`create_owner_login`) do — a portfolio
+    // account must be indistinguishable from a signup account, and the sibling portfolio tenant
+    // (Xride) carries these rows. Guarded on NOT-EXISTS so a re-sync adds nothing.
+    let stages: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tenant_settings WHERE tenant_id = $1 AND key = 'lead_stages'",
+    )
+    .bind(tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if stages == 0 {
+        sqlx::query(
+            "INSERT INTO tenant_settings (id, tenant_id, key, value) VALUES ($1, $2, 'lead_stages', $3)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(tenant_id)
+        .bind(json!([
+            "New",
+            "Contacted",
+            "Qualified",
+            "Proposal",
+            "Negotiation",
+            "Closed Won",
+            "Closed Lost"
+        ]))
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // One live key per workspace, enforced by the partial unique index
+    // (`idx_api_keys_tenant_live_unique`). Mint only when there is none; a re-sync never mints a
+    // second key and never revokes the one the owner already holds.
+    let live_prefix: Option<String> = sqlx::query_scalar(
+        "SELECT key_prefix FROM api_keys WHERE tenant_id = $1 AND revoked_at IS NULL LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (key_prefix, key_minted) = match live_prefix {
+        Some(prefix) => (Some(prefix), false),
+        None => {
+            // `mint_on` is the ONE key writer: hash + sealed copy + prefix + audit row, all on this
+            // connection so they commit or roll back with the account.
+            let minted = crate::handlers::api_keys::mint_on(
+                &mut *tx,
+                tenant_id,
+                Some(user_id),
+                "auto-provisioned",
+            )
+            .await?;
+            (Some(minted.prefix), true)
+        }
+    };
+
+    Ok(ProvisionOutcome {
+        user_id,
+        user_created,
+        password,
+        key_prefix,
+        key_minted,
+    })
+}
+
+/// Send the welcome mail for a just-provisioned portfolio workspace — best effort, AFTER commit.
+///
+/// The standard is explicit: a mail failure must never fail the sync (the account already exists),
+/// so the failure is logged loudly and reported in the response, never returned as an error. The
+/// mail goes to the PORTFOLIO email only, never to the operator.
+async fn send_welcome(
+    state: &AppState,
+    tenant_id: Uuid,
+    name: &str,
+    email: &str,
+    password: &str,
+    key_prefix: &str,
+) -> bool {
+    match crate::email::send_portfolio_provision_email(
+        &state.pool,
+        tenant_id,
+        email,
+        name,
+        password,
+        key_prefix,
+    )
+    .await
+    {
+        Ok(()) => {
+            tracing::info!(email = %email, tenant = %tenant_id, "portfolio sync: welcome email sent");
+            true
+        }
+        Err(e) => {
+            tracing::error!(
+                email = %email,
+                tenant = %tenant_id,
+                error = %e,
+                "portfolio sync: workspace provisioned but the WELCOME EMAIL FAILED"
+            );
+            false
+        }
+    }
+}
+
 /// POST /api/v1/internal/portfolio-sync
 /// Accepts x-internal-key header for authentication.
 pub async fn portfolio_sync_internal(
@@ -174,22 +404,14 @@ pub async fn portfolio_sync_internal(
     // (kanban t_5230513b), fleet-wide lead guard 2026-10-29.
     crate::security::email_addr::check_lead_address(&email).map_err(AppError::Validation)?;
 
+    // Provisioning needs an address (users.email is NOT NULL); a payload without one stays a legal
+    // mirror — the workspace is just left as the contact-less shell it always was, and the missing
+    // owner is filled by a later sync that carries the address.
+    let can_provision = !email.trim().is_empty();
+
     match action {
         "create" => {
             if let (Some(pid), Some(tid)) = (portfolio_id, tenant_id) {
-                // `tenants.slug` carries UNIQUE `tenants_slug_key`, and the slug on this arm is
-                // CALLER-SUPPLIED (`body.slug`), so a slug that already belongs to any tenant made
-                // the tenants INSERT raise 23505 — and `.ok()` DISCARDED it. The next statement then
-                // wrote a `portfolio_companies` row whose `tenant_id` had no parent, so the FK
-                // (`portfolio_companies_tenant_id_fkey`) raised and the caller got an opaque
-                // `500 {"error":"Database error"}` naming nothing (measured live on 1ea4fa90,
-                // 2026-10-08T18:10:41Z — the same run that measured it on the update arm below).
-                // The two statements now run in ONE transaction and the error is PROPAGATED: a
-                // caller-supplied slug is honoured when it is actually free and refused with a 409
-                // that names it when it is taken — never silently replaced, because the hub's
-                // contract is that `body.slug` is what lands in both rows. A create that supplies NO
-                // slug is derived by the app's own rule (one rule, both arms — this door cannot
-                // drift from itself).
                 let tenant_slug = resolve_tenant_slug(&name, &slug);
                 let mut tx = state.db.begin().await?;
                 mirror_tenant(&mut tx, tid, &name, &tenant_slug, &email).await?;
@@ -201,7 +423,39 @@ pub async fn portfolio_sync_internal(
                     .bind(&email)
                     .execute(&mut *tx)
                     .await?;
+                let prov = if can_provision {
+                    provision_workspace(&mut tx, &state.internal_sync_key, tid, pid, &name, &email)
+                        .await?
+                } else {
+                    ProvisionOutcome {
+                        user_id: Uuid::nil(),
+                        user_created: false,
+                        password: String::new(),
+                        key_prefix: None,
+                        key_minted: false,
+                    }
+                };
                 tx.commit().await?;
+                let welcome_sent = if prov.user_created {
+                    send_welcome(
+                        &state,
+                        tid,
+                        &name,
+                        &email,
+                        &prov.password,
+                        prov.key_prefix.as_deref().unwrap_or(""),
+                    )
+                    .await
+                } else {
+                    false
+                };
+                return Ok(Json(json!({
+                    "status": if prov.user_created || prov.key_minted { "synced" } else { "already_provisioned" },
+                    "user_created": prov.user_created,
+                    "key_minted": prov.key_minted,
+                    "welcome_sent": welcome_sent,
+                    "key_prefix": prov.key_prefix,
+                })));
             }
         }
         "update" => {
@@ -227,9 +481,6 @@ pub async fn portfolio_sync_internal(
                         ));
                     };
                     let tenant_slug = resolve_tenant_slug(&name, &slug);
-                    // The UPDATE above matched no row, so there is nothing to roll back; the
-                    // transaction covers the two rows that must land together (mirror parent +
-                    // company), so a refusal leaves the DB untouched.
                     let mut tx = state.db.begin().await?;
                     mirror_tenant(&mut tx, tid, &name, &tenant_slug, &email).await?;
                     sqlx::query(SQL_COMPANY_UPSERT)
@@ -240,8 +491,93 @@ pub async fn portfolio_sync_internal(
                         .bind(&email)
                         .execute(&mut *tx)
                         .await?;
+                    let prov = if can_provision {
+                        provision_workspace(
+                            &mut tx,
+                            &state.internal_sync_key,
+                            tid,
+                            pid,
+                            &name,
+                            &email,
+                        )
+                        .await?
+                    } else {
+                        ProvisionOutcome {
+                            user_id: Uuid::nil(),
+                            user_created: false,
+                            password: String::new(),
+                            key_prefix: None,
+                            key_minted: false,
+                        }
+                    };
                     tx.commit().await?;
+                    let welcome_sent = if prov.user_created {
+                        send_welcome(
+                            &state,
+                            tid,
+                            &name,
+                            &email,
+                            &prov.password,
+                            prov.key_prefix.as_deref().unwrap_or(""),
+                        )
+                        .await
+                    } else {
+                        false
+                    };
+                    return Ok(Json(json!({
+                        "status": if prov.user_created || prov.key_minted { "synced" } else { "already_provisioned" },
+                        "user_created": prov.user_created,
+                        "key_minted": prov.key_minted,
+                        "welcome_sent": welcome_sent,
+                        "key_prefix": prov.key_prefix,
+                    })));
                 }
+                // The company row already existed: this is the "update when provisioning is
+                // missing" arm. Provision against the company's OWN tenant (the row's scoping key,
+                // never a caller-supplied guess), and only the rows that are actually absent.
+                let existing_tid: Option<Uuid> =
+                    sqlx::query_scalar("SELECT tenant_id FROM portfolio_companies WHERE id = $1")
+                        .bind(pid)
+                        .fetch_optional(&state.db)
+                        .await?;
+                let Some(tid) = existing_tid else {
+                    // Unreachable in practice (the UPDATE above matched a row), but never a 500.
+                    return Ok(Json(json!({"status": "synced"})));
+                };
+                let mut tx = state.db.begin().await?;
+                let prov = if can_provision {
+                    provision_workspace(&mut tx, &state.internal_sync_key, tid, pid, &name, &email)
+                        .await?
+                } else {
+                    ProvisionOutcome {
+                        user_id: Uuid::nil(),
+                        user_created: false,
+                        password: String::new(),
+                        key_prefix: None,
+                        key_minted: false,
+                    }
+                };
+                tx.commit().await?;
+                let welcome_sent = if prov.user_created {
+                    send_welcome(
+                        &state,
+                        tid,
+                        &name,
+                        &email,
+                        &prov.password,
+                        prov.key_prefix.as_deref().unwrap_or(""),
+                    )
+                    .await
+                } else {
+                    false
+                };
+                return Ok(Json(json!({
+                    "status": if prov.user_created || prov.key_minted { "synced" } else { "already_provisioned" },
+                    "user_created": prov.user_created,
+                    "key_minted": prov.key_minted,
+                    "welcome_sent": welcome_sent,
+                    "key_prefix": prov.key_prefix,
+                })));
             }
         }
         "delete" => {
@@ -256,4 +592,43 @@ pub async fn portfolio_sync_internal(
     }
 
     Ok(Json(json!({"status": "synced"})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{base32_encode_upper_no_pad, derive_password};
+
+    /// The derivation is a pure function of the sync key and the portfolio id: deterministic,
+    /// 20 chars, and Base32-uppercase. The fleet's own verification token — BV Premiere's derived
+    /// password hashes to `sha256` beginning `a1647a97a644` — is asserted against the LIVE key in
+    /// the acceptance probe, not here (the sync key is a secret and must not be embedded in tests).
+    #[test]
+    fn derived_password_is_deterministic_uppercase_base32_of_20_chars() {
+        let sync_key = "0123456789abcdef0123456789abcdef0123456789abcdef"; // length matches live key
+        let portfolio_id = uuid::Uuid::nil();
+        let password = derive_password(sync_key, portfolio_id);
+        assert_eq!(password.len(), 20);
+        assert!(
+            password
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c)),
+            "Base32-uppercase alphabet only: {password}"
+        );
+        // Round-trip sanity: the value is deterministic.
+        assert_eq!(password, derive_password(sync_key, portfolio_id));
+        // A different portfolio id yields a different password.
+        let other = derive_password(sync_key, uuid::Uuid::new_v4());
+        assert_ne!(password, other);
+    }
+
+    /// RFC 4648 Base32, uppercase, no padding — pinned against the standard's RFC 4648 test vector
+    /// (`foobar` → `MZXW6YTBOI`, `foo` → `MZXW6===` padded).
+    #[test]
+    fn base32_is_rfc_4648_uppercase_no_pad() {
+        assert_eq!(base32_encode_upper_no_pad(b"f"), "MY");
+        assert_eq!(base32_encode_upper_no_pad(b"fo"), "MZXQ");
+        assert_eq!(base32_encode_upper_no_pad(b"foo"), "MZXW6");
+        assert_eq!(base32_encode_upper_no_pad(b"foob"), "MZXW6YQ");
+        assert_eq!(base32_encode_upper_no_pad(b"foobar"), "MZXW6YTBOI");
+    }
 }
