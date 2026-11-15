@@ -14,7 +14,12 @@ type TierFn = fn(&str) -> &'static str;
 /// items simply carry `"locked": true` so the UI can badge them. `locked` can
 /// only ever be true for a premium entry when the caller's plan does not grant
 /// `premium_themes`. The existing payload keys are left untouched.
-fn annotate_catalogue(items: &mut Value, premium_granted: bool, tier_of: TierFn) {
+fn annotate_catalogue(
+    items: &mut Value,
+    premium_granted: bool,
+    tier_of: TierFn,
+    allowed: Option<&[String]>,
+) {
     let Some(arr) = items.as_array_mut() else {
         return;
     };
@@ -25,7 +30,13 @@ fn annotate_catalogue(items: &mut Value, premium_granted: bool, tier_of: TierFn)
             .unwrap_or_default()
             .to_string();
         let tier = tier_of(&id);
-        let locked = tier == "premium" && !premium_granted;
+        // The plan's own whitelist (`plans.allowed_template_ids`) locks an entry the plan does not
+        // include, exactly as the create/update gate refuses it — so the picker and the gate tell
+        // one story. `None` (SQL NULL) restricts nothing.
+        let outside_whitelist = allowed
+            .map(|list| !list.iter().any(|a| a == &id))
+            .unwrap_or(false);
+        let locked = outside_whitelist || (tier == "premium" && !premium_granted);
         if let Some(obj) = item.as_object_mut() {
             obj.insert("tier".to_string(), json!(tier));
             obj.insert("locked".to_string(), json!(locked));
@@ -172,7 +183,7 @@ pub async fn list_themes(auth: AuthUser, State(state): State<AppState>) -> AppRe
             }
         }
     ]);
-    annotate_catalogue(&mut items, granted, crate::features::theme_tier);
+    annotate_catalogue(&mut items, granted, crate::features::theme_tier, None);
     Ok(Json(items))
 }
 
@@ -1499,6 +1510,14 @@ pub async fn list_templates(
             ]
         }
     ]);
-    annotate_catalogue(&mut items, granted, crate::features::template_tier);
+    // The template catalogue obeys the plan's OWN whitelist as well as the premium tier, so a
+    // template this plan does not include is badged locked here exactly as it is refused on create.
+    let allowed = crate::features::allowed_templates(&state, tenant_id).await?;
+    annotate_catalogue(
+        &mut items,
+        granted,
+        crate::features::template_tier,
+        allowed.as_deref(),
+    );
     Ok(Json(items))
 }

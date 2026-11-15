@@ -1812,6 +1812,18 @@ function openPlanModal(id) {
           ${['has_webhooks','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
         </div>
       </div>
+      <div style="margin-top:16px"><div class="form-label" style="margin-bottom:8px">Templates this plan may use</div>
+        ${id ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select aria-label="Template access" class="input" id="plan-tpl-mode" style="max-width:260px">
+            <option value="all">Every template</option>
+            <option value="only">Only the templates I list</option>
+            <option value="none">No page templates at all</option>
+          </select>
+          <input aria-label="Allowed template ids" class="input" id="plan-tpl-ids" style="flex:1;min-width:220px;display:none" placeholder="biz_executive, page_saas">
+        </div>
+        <div id="plan-tpl-note" style="font-size:11px;color:var(--muted);margin-top:4px">Loading the plan's saved template list&hellip;</div>`
+        : `<div style="font-size:11px;color:var(--muted)">Save the plan first, then reopen it to limit which page templates it may use.</div>`}
+      </div>
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn btn-secondary" onclick="window._closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">${id?'Update':'Create'} Plan</button>
@@ -1828,12 +1840,49 @@ function openPlanModal(id) {
       try {
         if (id) await api('/plans/'+id, { method: 'PUT', body: JSON.stringify(data) });
         else await api('/plans', { method: 'POST', body: JSON.stringify(data) });
+        // The plan's template whitelist rides its own route (PUT /admin/plans/:id/templates):
+        // all -> null, none -> [], only these -> the ids typed. Saved after the plan itself so a
+        // changed name/price is never lost behind a whitelist error.
+        if (id && tplMode) {
+          const mode = tplMode.value;
+          const listed = String(tplIds && tplIds.value ? tplIds.value : '').split(',').map(s => s.trim()).filter(Boolean);
+          const allowed = mode === 'all' ? null : (mode === 'none' ? [] : listed);
+          await api('/plans/' + id + '/templates', { method: 'PUT', body: JSON.stringify({ allowed_template_ids: allowed }) });
+        }
         showToast(id?'Plan updated':'Plan created', 'success');
         STATE.modal = null; renderApp();
       } catch(e) { showToast(e.message, 'error'); }
     });
     // Toggle clicks
     document.querySelectorAll('.toggle[data-toggle]').forEach(t=>{ t.onclick = function(){ this.classList.toggle('on'); }; });
+
+    // ── Templates this plan may use (`plans.allowed_template_ids`) ──
+    // GET|PUT /api/v1/admin/plans/:id/templates shipped with NO screen, and the column it writes
+    // was read by no gate at all: an operator could save a whitelist, read "Template list updated",
+    // and every template still passed. features::allowed_templates refuses a template the plan does
+    // not list now, and the catalogue badges it locked — so this is the control over it.
+    const tplMode = document.getElementById('plan-tpl-mode');
+    const tplIds = document.getElementById('plan-tpl-ids');
+    const tplNote = document.getElementById('plan-tpl-note');
+    const showTplIds = () => { if (tplIds && tplMode) tplIds.style.display = tplMode.value === 'only' ? '' : 'none'; };
+    if (tplMode && id) {
+      tplMode.onchange = showTplIds;
+      try {
+        const cur = await api('/plans/' + id + '/templates');
+        const rule = cur && cur.rule;
+        if (rule === 'none') tplMode.value = 'none';
+        else if (rule === 'specific') { tplMode.value = 'only'; tplIds.value = (cur.allowed_template_ids || []).join(', '); }
+        else tplMode.value = 'all';
+        showTplIds();
+        if (tplNote) tplNote.textContent = rule === 'all'
+          ? 'This plan may use every template its other gates allow.'
+          : rule === 'none'
+            ? 'No page template is available on this plan.'
+            : 'Only the templates listed here are available on this plan.';
+      } catch (e) {
+        if (tplNote) tplNote.textContent = 'Could not read the saved template list: ' + (e.message || e) + '. Reload this plan to try again.';
+      }
+    }
   }, 100);
 }
 

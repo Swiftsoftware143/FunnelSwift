@@ -827,9 +827,47 @@ pub async fn enforce_theme_access(
     )))
 }
 
+/// `plans.allowed_template_ids` — the per-plan template WHITELIST an operator sets from
+/// Admin > Plans (`GET|PUT /api/v1/admin/plans/:id/templates`).
+///
+/// Three states, and they mean different things:
+///   * `NULL` — this plan restricts nothing; every template its other gates allow is allowed;
+///   * `[]`   — this plan admits NO catalogue template at all;
+///   * `[ids]`— only the listed catalogue templates.
+///
+/// Resolved out of [`effective_plan`]'s own `to_jsonb` row, so the whitelist is read against the
+/// SAME plan every other gate reads (the workspace's active subscription, else this install's free
+/// tier). Until `enforce_template_access` called this, the column was WRITTEN by the admin route and
+/// read by no gate at all: an operator could save a whitelist, be told "Template list updated", and
+/// every template still passed. `None` is returned both for `NULL` and for any row whose value is
+/// not an array, so a malformed value can never close a plan that never asked to be closed.
+pub async fn allowed_templates(
+    state: &AppState,
+    tenant_id: Uuid,
+) -> AppResult<Option<Vec<String>>> {
+    let Some(plan) = effective_plan(state, tenant_id).await? else {
+        return Ok(None);
+    };
+    match plan.row.get("allowed_template_ids") {
+        Some(Value::Array(items)) => Ok(Some(
+            items
+                .iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        )),
+        _ => Ok(None),
+    }
+}
+
 /// Reject a premium catalogue `template` with 402 when the caller's plan lacks
 /// `premium_themes`. Free (`bio_*`) templates and non-catalogue values (card
-/// types) pass untouched.
+/// types) pass.
+///
+/// The plan's OWN whitelist ([`allowed_templates`]) runs FIRST and is authoritative: a plan that
+/// lists templates admits exactly those — free or premium — and `[]` admits none. A `NULL` list
+/// restricts nothing, so an install that never opened the screen behaves exactly as it did before.
 pub async fn enforce_template_access(
     state: &AppState,
     tenant_id: Uuid,
@@ -838,7 +876,28 @@ pub async fn enforce_template_access(
     let Some(template) = template.map(str::trim).filter(|t| !t.is_empty()) else {
         return Ok(());
     };
-    if !is_catalogue_template(template) || template_tier(template) == "free" {
+    if !is_catalogue_template(template) {
+        return Ok(());
+    }
+    if let Some(allowed) = allowed_templates(state, tenant_id).await? {
+        if !allowed.iter().any(|a| a == template) {
+            return Err(AppError::UpgradeRequired(if allowed.is_empty() {
+                format!(
+                    "Your plan does not include page templates, so \"{}\" is not available. \
+                     Upgrade to a plan that includes templates.",
+                    template
+                )
+            } else {
+                format!(
+                    "Your plan does not include the \"{}\" template. It includes: {}. \
+                     Upgrade to a plan that includes it.",
+                    template,
+                    allowed.join(", ")
+                )
+            }));
+        }
+    }
+    if template_tier(template) == "free" {
         return Ok(());
     }
     if premium_themes_granted(state, tenant_id).await? {
