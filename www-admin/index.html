@@ -974,7 +974,7 @@ async function renderDashboard() {
       <div class="stat-card"><div class="stat-value">${stats?.total_leads||0}</div><div class="stat-label">Total Leads</div></div>
       <div class="stat-card"><div class="stat-value">${stats?.total_cards||0}</div><div class="stat-label">Cards Created</div></div>
       <div class="stat-card"><div class="stat-value">${stats?.total_affiliates||0}</div><div class="stat-label">Affiliates</div></div>
-      <div class="stat-card"><div class="stat-value">${stats?.total_tags||0}</div><div class="stat-label">Tags</div></div>
+      <div class="stat-card"><div class="stat-value">${stats?.tags_own ?? stats?.total_tags ?? 0}</div><div class="stat-label">Tags</div></div>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">📋 Recent Activity</span></div>
