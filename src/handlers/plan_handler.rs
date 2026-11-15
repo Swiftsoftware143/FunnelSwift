@@ -773,7 +773,14 @@ pub async fn admin_list_all_plans(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
-    let plans = sqlx::query("SELECT id, name, slug, price, annual_price, billing_cycle, max_leads, max_tags, max_cards, max_team_members, has_dual_routing, has_multi_tenant, has_white_label, has_webhooks, has_analytics, has_import_export, payment_provider, purchase_url, features, allowed_template_ids, created_at, updated_at FROM plans ORDER BY price")
+    // `tenant_count` is the number of workspaces whose subscription row pins this plan. It rides
+    // this list because DELETE /api/v1/admin/plans/:id refuses to remove a plan that is in use
+    // (`tenant_plan_subscriptions.plan_id` is ON DELETE NO ACTION) — and until now the console had
+    // no way to know that BEFORE the operator clicked: every plan row looked deletable, and the
+    // only feedback was the refusal afterwards. Measured live 2026-11-15 11:22 UTC: the delete
+    // answered a bare 500 "violates foreign key constraint" for every in-use plan. The refusal was
+    // made readable the same morning; this column is what lets the screen say it first.
+    let plans = sqlx::query("SELECT id, name, slug, price, annual_price, billing_cycle, max_leads, max_tags, max_cards, max_team_members, has_dual_routing, has_multi_tenant, has_white_label, has_webhooks, has_analytics, has_import_export, payment_provider, purchase_url, features, allowed_template_ids, created_at, updated_at, (SELECT COUNT(*) FROM tenant_plan_subscriptions s WHERE s.plan_id = plans.id) AS tenant_count FROM plans ORDER BY price")
         .fetch_all(&state.pool)
         .await?;
 
@@ -786,6 +793,8 @@ pub async fn admin_list_all_plans(
             "max_leads": row.try_get::<Option<i32>, _>("max_leads").unwrap_or(None),
             "max_tags": row.try_get::<Option<i32>, _>("max_tags").unwrap_or(None),
             "max_cards": row.try_get::<Option<i32>, _>("max_cards").unwrap_or(None),
+            // How many workspaces sit on this plan — 0 means the delete button is safe to press.
+            "tenant_count": row.try_get::<i64, _>("tenant_count").unwrap_or(0),
             // THE CONSOLE'S PLAN TABLE RENDERS THESE, SO THE LIST MUST CARRY THEM (2026-11-13).
             // `www-admin/funnelswift` prints a plan's billing term, yearly price, team limit and
             // feature badges straight off this row, and its sellability badge is

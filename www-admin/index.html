@@ -6050,17 +6050,30 @@ async function renderPlanAdmin() {
       <div class="card-header"><div><div class="card-title">Plan catalogue</div><div class="card-subtitle">Every plan this app offers, with its price, lead and tag caps, and its feature flags.</div></div></div>
       <div id="planadmin-pay-check"></div>
       <div class="table-wrap"><table class="table" id="planadmin-plans-table">
-        <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
-        <tbody>${plans.length ? plans.map(p => `<tr>
+        <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Workspaces</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
+        <tbody>${plans.length ? plans.map(p => {
+          /* A plan a workspace is ON cannot be deleted, and the app refuses it with a sentence that
+             names the count (DELETE /api/v1/admin/plans/:id, ON DELETE NO ACTION on
+             tenant_plan_subscriptions.plan_id). Until 2026-11-15 that route had NO control in any
+             shipped shell — a backend door with no UI — so the only way to retire a plan was to
+             curl it. The count now rides GET /admin/plans, so this screen says WHY before the
+             click instead of surfacing a refusal afterwards. */
+          const held = Number(p.tenant_count || 0);
+          return `<tr data-plan-row="${x(p.id)}">
           <td><strong>${x(p.name)}</strong></td>
           <td><code>${x(p.slug)}</code></td>
           <td>${formatCurrency(p.price)}</td>
           <td>${fmtPlanLimit(p.max_leads)}</td>
           <td>${fmtPlanLimit(p.max_tags)}</td>
+          <td>${held ? `<span class="badge badge-blue" title="A workspace on this plan pins it, so it cannot be deleted. Move them to another plan first, or switch this plan off.">${held}</span>` : `<span style="color:var(--muted)">none</span>`}</td>
           <td>${p.payment_provider ? `<span class="badge badge-blue">${x(p.payment_provider)}</span>` : '-'}</td>
           <td>${featSummary(p.features)}</td>
-          <td><button class="btn btn-secondary btn-xs" data-plan-edit="${x(p.id)}">Edit Features</button></td>
-        </tr>`).join('') : `<tr><td colspan="8">No plans returned</td></tr>`}</tbody>
+          <td style="white-space:nowrap"><button class="btn btn-secondary btn-xs" data-plan-edit="${x(p.id)}">Edit Features</button>
+            ${held
+              ? `<button class="btn btn-secondary btn-xs" disabled title="${x(p.name)} is still the plan on ${held} workspace${held === 1 ? '' : 's'} — move them to another plan first, or switch this plan off instead of deleting it.">Delete</button>`
+              : `<button class="btn btn-danger btn-xs" data-plan-delete="${x(p.id)}" data-plan-name="${x(p.name)}">Delete</button>`}</td>
+        </tr>`;
+        }).join('') : `<tr><td colspan="9">No plans returned</td></tr>`}</tbody>
       </table></div>
     </div>
     <div class="card">
@@ -6141,6 +6154,24 @@ function bindPlanAdmin() {
     cpp.disabled = false;
   };
   document.querySelectorAll('[data-plan-edit]').forEach(b => b.onclick = () => window._editPlanFeatures(b.dataset.planEdit));
+  /* RETIRING A PLAN NOW HAS A SCREEN (2026-11-15). DELETE /api/v1/admin/plans/:id was served by the
+     backend with NO control in any shipped shell — a backend door with no UI, which is a defect by
+     this app's own standard. The button is only painted for a plan no workspace is on (the count
+     rides GET /admin/plans); an in-use plan shows a disabled button that names the reason, so the
+     operator never gets a refusal they could have known about. The route's own refusal is still
+     surfaced verbatim if the count changed between page load and click — a workspace can be moved
+     onto the plan by someone else in that window, and the database, not this screen, is the judge. */
+  window._deletePlan = async function (id, name) {
+    if (!id) return;
+    if (!window.confirm('Delete the plan "' + (name || '') + '"?\n\nThis cannot be undone. A plan that a workspace is still on is refused, never deleted.')) return;
+    try {
+      const r = await api('/admin/plans/' + id, { method: 'DELETE' });
+      showToast((r && r.message) || 'Plan deleted', 'success');
+    } catch (e) {
+      showToast('Could not delete the plan: ' + e.message, 'error');
+    }
+  };
+  document.querySelectorAll('[data-plan-delete]').forEach(b => b.onclick = () => window._deletePlan(b.dataset.planDelete, b.dataset.planName));
   const ab = $('planadmin-assign-btn');
   if (ab) ab.onclick = async () => {
     const tenant_id = ($('planadmin-assign-tenant') || {}).value;
