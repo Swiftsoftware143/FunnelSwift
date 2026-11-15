@@ -85,6 +85,13 @@ pub async fn sweep_once(pool: &PgPool) -> Result<usize, sqlx::Error> {
                  LIMIT 1) AS owner_email
           FROM tenants c
          WHERE c.created_at < now() - make_interval(days => $1::int)
+           -- never a portfolio company: the registry the hub's own sync writes is authoritative,
+           -- so a company mirrored tomorrow cannot be retired by the janitor (2026-11-15).
+           AND NOT EXISTS (
+                 SELECT 1 FROM portfolio_companies pc
+                  WHERE pc.tenant_id = c.id
+                     OR lower(pc.name) = lower(c.name)
+                     OR lower(pc.slug) = lower(c.slug))
            -- never the fleet's own provider identity, and never a fleet-owned REAL
            -- domain: those can be a human's workspace (residue policy, FINDING 2).
            AND NOT EXISTS (

@@ -775,6 +775,39 @@ const PORTFOLIO_MARKERS: [&str; 3] = ["swiftimpact", "zaarhub", "giraudy"];
 /// this list so the day a seed row reappears it is still undeletable.
 const FIXTURE_SLUG_PREFIXES: [&str; 2] = ["probe-canary-", "system"];
 
+/// Is this tenant one of the portfolio companies, according to the REGISTRY the hub's own
+/// portfolio sync writes (`portfolio_companies`)?
+///
+/// The three-name `PORTFOLIO_MARKERS` constant above is a fallback for a row the hub has not
+/// mirrored yet; it is not the authority. Measured live 2026-11-15: the registry held FIVE
+/// companies — BV Premiere Products, Giraudy Capital, SwiftImpact Solutions, Xride Drivers,
+/// ZaarHub — while the constant named three, so the two newest were deletable from the console's
+/// own bulk control in one click. Reading the registry is what makes a company the sync mirrors
+/// tomorrow protected without anyone editing a constant.
+pub(crate) async fn portfolio_registry_hit(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    name: &str,
+    slug: &str,
+) -> Result<Option<String>, AppError> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT COALESCE(name, '') FROM portfolio_companies \
+          WHERE tenant_id = $1 OR lower(name) = lower($2) OR lower(slug) = lower($3) \
+          ORDER BY (tenant_id = $1) DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(name)
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Database)?;
+    Ok(match row {
+        Some((n,)) if !n.trim().is_empty() => Some(n),
+        Some(_) => Some("portfolio registry".to_string()),
+        None => None,
+    })
+}
+
 /// Refuse to delete three things: the account the caller is signed in as (a lockout, not a cleanup),
 /// a portfolio company (kept by rule) and a fleet fixture the canary looks up by name (sabotage).
 /// Everything else behaves exactly as before.
@@ -807,6 +840,13 @@ async fn guard_protected(
         }
         let hay = format!("{} {}", name, email).to_lowercase();
         if let Some(hit) = PORTFOLIO_MARKERS.iter().find(|m| hay.contains(*m)) {
+            return Err(AppError::BadRequest(format!(
+                "refusing to delete a portfolio account ({})",
+                hit
+            )));
+        }
+        // The registry is the authority; the name list above is only a fallback (see the helper).
+        if let Some(hit) = portfolio_registry_hit(&state.pool, tenant_id, &name, &slug).await? {
             return Err(AppError::BadRequest(format!(
                 "refusing to delete a portfolio account ({})",
                 hit
