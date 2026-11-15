@@ -718,17 +718,21 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  </div>
  <form onsubmit="handleSignup(event)">
  <div style="margin-bottom:14px">
- <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Your Name</label>
- <input type="text" id="signupName" placeholder="John Smith" required maxlength="243" aria-label="Your name" autocomplete="name">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Full name</label>
+ <input type="text" id="signupName" placeholder="John Smith" required maxlength="243" aria-label="Full name" autocomplete="name">
  </div>
  <div style="margin-bottom:14px">
- <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Work Email</label>
- <input type="email" id="signupEmail" placeholder="you@company.com" required aria-label="Your email" autocomplete="email">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Workspace name</label>
+ <input type="text" id="signupWorkspace" placeholder="Your company name" maxlength="255" aria-label="Workspace name" autocomplete="organization">
+ </div>
+ <div style="margin-bottom:14px">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Work email</label>
+ <input type="email" id="signupEmail" placeholder="you@company.com" required aria-label="Work email" autocomplete="email">
  </div>
  <!-- No password field: the server generates the login credentials and emails them. -->
  <div class="error-msg" id="signupError">Error message</div>
  <button type="submit" id="signupBtn" style="width:100%;padding:12px;background:#2563EB;color:white;border:none;border-radius:8px;font-weight:600;font-size:13px;margin-top:8px;cursor:pointer" class="hover:bg-blue-700">
- <span id="signupBtnText">Create Free Account</span>
+ <span id="signupBtnText">Create free account</span>
  <span id="signupBtnSpinner" class="spinner" style="display:none"></span>
  </button>
  </form>
@@ -787,9 +791,11 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  async function handleSignup(e){
  e.preventDefault();
  const name = document.getElementById('signupName').value.trim();
+ const ws = document.getElementById('signupWorkspace').value.trim();
  const email = document.getElementById('signupEmail').value.trim();
 
  if(!name || !email) return showError('All fields are required.');
+ if(!ws) return showError('Please name your workspace.');
 
  document.getElementById('signupBtnText').style.display = 'none';
  document.getElementById('signupBtnSpinner').style.display = 'inline-block';
@@ -803,7 +809,8 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  body: JSON.stringify({
  name: name,
  email: email,
- 
+ tenant_name: ws,
+
  source: 'kinetic-landing',
  plan: 'kinetic-free',
  affiliate_code: window._kineticRef || null
@@ -833,9 +840,12 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  var okBox = document.createElement('p');
  okBox.setAttribute('style','text-align:center;font-size:13px;color:' + (emailed ? '#16a34a' : '#b45309') + ';margin-top:14px;line-height:1.55');
  if (emailed) {
-   okBox.innerHTML = '<strong>Account created!</strong><br>Check your email. We sent your login '
-     + 'details to ' + email.replace(/[<>&]/g, '') + '.<br>You can change your password any time in '
-     + 'your profile settings.';
+   okBox.innerHTML = '<strong>Account created!</strong> Check your email \u2014 we sent your login '
+     + 'details to ' + email.replace(/[<>&]/g, '') + '. You can change your password any time in '
+     + 'your profile settings.'
+     + '<br><span style="font-size:12px;color:#64748b">Nothing in your inbox after a minute? '
+     + 'Check your spam folder, then <a href="https://app.funnelswift.net/forgot-password?email='
+     + encodeURIComponent(email) + '" style="color:#2563eb;font-weight:600">send yourself a reset code</a>.</span>';
  } else if (withheld) {
    // Reserved / undeliverable address: a DELIBERATE non-send, not an outage (kanban t_499119d2).
    okBox.innerHTML = '<strong>Account created!</strong><br>We did not send your login details to '
@@ -847,7 +857,7 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
      + 'from an address that can receive mail.</span>';
    okBox.insertAdjacentHTML('beforeend', initialPwBoxHtml());
  } else {
-   okBox.innerHTML = '<strong>Account created!</strong><br>We could not send your login details to '
+   okBox.innerHTML = '<strong>Account created</strong> \u2014 but we could not send your login details to '
      + email.replace(/[<>&]/g, '') + ', so there is nothing in your inbox. '
      + 'Choose your password in the box below and sign in with it.'
      + '<br><span style="font-size:12px;color:#64748b">If you would rather use a reset code, '

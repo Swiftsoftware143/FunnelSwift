@@ -46,18 +46,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="error" id="signup-error"></div>
 <form id="signup-form">
 <div class="form-group">
-<label>Full Name</label>
-<input type="text" id="signup-name" placeholder="Your name" required autocomplete="name" maxlength="243" aria-label="Your name">
+<label>Full name</label>
+<input type="text" id="signup-name" placeholder="Your name" required autocomplete="name" maxlength="243" aria-label="Full name">
 </div>
 <div class="form-group">
-<label>Email</label>
-<input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email" aria-label="Email">
+<label>Workspace name</label>
+<input type="text" id="signup-workspace" placeholder="Your company name" autocomplete="organization" maxlength="255" aria-label="Workspace name">
 </div>
-<!-- No password field here by design: the server generates the login credentials and emails them,
-     so signup uses the SAME path as the auto-created tag accounts; the user confirms their address
-     by signing in with the password we sent. The empty .form-group wrapper that used to hold this
-     note rendered a stray 14px gap under the Email field, so the note is a comment now. -->
-<button type="submit" class="btn" id="signup-btn">Create Free Account</button>
+<div class="form-group">
+<label>Work email</label>
+<input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email" aria-label="Work email">
+</div>
+<!-- No password field: the server generates the login credentials and emails them, so the user
+     confirms their address by signing in with the password we sent (a real two-step check). -->
+<button type="submit" class="btn" id="signup-btn">Create free account</button>
 <p style="font-size:12px;color:#64748b;line-height:1.5;margin:0">By creating an account you agree to our
 <a href="https://funnelswift.net/terms" target="_blank" rel="noopener" style="color:#2563eb">Terms of Service</a> and
 <a href="https://funnelswift.net/privacy" target="_blank" rel="noopener" style="color:#2563eb">Privacy Policy</a>.</p>
@@ -125,10 +127,15 @@ err.classList.remove('show');
 btn.disabled = true;
 loading.style.display = 'block';
 
+var nameVal = document.getElementById('signup-name').value.trim();
+var wsVal = document.getElementById('signup-workspace').value.trim();
+if (!nameVal) { err.textContent = 'Please enter your name.'; err.classList.add('show'); btn.disabled = false; loading.style.display = 'none'; return; }
+if (!wsVal) { err.textContent = 'Please name your workspace — it becomes your address in FunnelSwift.'; err.classList.add('show'); btn.disabled = false; loading.style.display = 'none'; return; }
 var body = {
-  name: document.getElementById('signup-name').value,
-  email: document.getElementById('signup-email').value,
+  name: nameVal,
+  email: document.getElementById('signup-email').value.trim(),
   // No password: the server generates the login credentials and emails them to this address.
+  tenant_name: wsVal,
   source: refCode ? 'affiliate_referral' : 'homepage',
   // The slug the visitor chose. The server honours only its PRODUCT SIDE and always seats
   // that side's zero-priced tier, so a paid card still starts on the matching free plan.
@@ -175,13 +182,12 @@ try{
   var resetLink = '<a href="https://app.funnelswift.net/forgot-password?email=' +
     encodeURIComponent(body.email) + '" style="color:#2563eb;font-weight:600">send yourself a reset code</a>';
   if (emailed) {
-    loading.innerHTML = "<strong>Account created!</strong><br>Check your email — we've sent your login " +
-      "details to " + body.email.replace(/[<>&]/g, '') + '.<br><br>You can change your password any time ' +
+    loading.innerHTML = "<strong>Account created!</strong> Check your email — we sent your login " +
+      "details to " + body.email.replace(/[<>&]/g, '') + '. You can change your password any time ' +
       'in your profile settings.' + ask +
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
       'Nothing in your inbox after a minute? Check your spam folder, then ' + resetLink +
-      ' or <a href="https://app.funnelswift.net/login.html" style="color:#2563eb;font-weight:600">sign in</a>.' +
-      '</div>';
+      '.</div>';
     btn.innerHTML = 'Check your email';
   } else if (withheld) {
     // A reserved / undeliverable address is a DELIBERATE non-send, not an outage (kanban t_499119d2):
@@ -195,9 +201,8 @@ try{
     btn.innerHTML = 'Set your password';
     loading.insertAdjacentHTML('beforeend', initialPwBoxHtml());
   } else {
-    loading.innerHTML = "<strong>Account created!</strong><br>We could not send your login details to " +
-      body.email.replace(/[<>&]/g, '') + ' — so there is nothing waiting in your inbox, and we will not ' +
-      'pretend otherwise. Choose your password in the box below and sign in with it.' + ask +
+    loading.innerHTML = "<strong>Account created</strong> — but we could not send your login details to " +
+      body.email.replace(/[<>&]/g, '') + ', so there is nothing in your inbox. Choose your password in the box below and sign in with it.' + ask +
       '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:13px">' +
       'You can also ' + resetLink + ' — though while the ' +
       'mail service for this site is having trouble that code will not arrive either. In that case write to ' +
