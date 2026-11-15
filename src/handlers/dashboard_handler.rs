@@ -116,6 +116,23 @@ pub async fn get_dashboard_stats(
             .fetch_one(&state.pool)
             .await?;
 
+    // THE WORKSPACE'S OWN TAGS, counted the way the PLAN counts them (2026-11-15, cron `default`).
+    // Measured live on a brand-new Capture Free workspace: `/dashboard/stats` answered
+    // `total_tags: 9` while `tags` held ZERO rows for that tenant — the nine are the install's own
+    // SYSTEM labels, which every workspace can use. The admin console paints `total_tags` under the
+    // bare label "Tags" beside Total Leads / Cards Created / Affiliates, and all three of those are
+    // strictly tenant-scoped, so the tile told an operator the workspace had nine tags of its own.
+    // The same screen's plan line reads `GET /api/v1/me/usage` -> `tags`, which counts
+    // `is_system = false` (the figure the tag GATE compares against `max_tags`), so the two numbers
+    // on ONE screen contradicted each other: "Tags 9" beside "Tags 0 / 2".
+    // `total_tags` is left exactly as it was — it mirrors the list `GET /api/v1/tags` opens, which
+    // includes the system rows, and that list is unchanged. This adds the honest count beside it.
+    let tags_own: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE tenant_id = $1 AND is_system = false")
+            .bind(tenant_id)
+            .fetch_one(&state.pool)
+            .await?;
+
     let stats = serde_json::json!({
         "total_leads": total_leads,
         "leads_by_stage": leads_by_stage,
@@ -129,6 +146,7 @@ pub async fn get_dashboard_stats(
         "total_cards": total_cards,
         "total_affiliates": total_affiliates,
         "total_tags": total_tags,
+        "tags_own": tags_own,
     });
 
     Ok(Json(stats))
