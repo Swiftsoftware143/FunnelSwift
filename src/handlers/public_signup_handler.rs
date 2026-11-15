@@ -36,6 +36,30 @@ pub(crate) fn legacy_plan_slug(slug: &str) -> &str {
     }
 }
 
+/// Turn a catalogue slug into something an operator can read in the queue:
+/// `kinetic-pro` -> `Kinetic Pro`, `agency_scale` -> `Agency Scale`.
+///
+/// Only used for a pick that matched NO plan row, so the queue can still show what the visitor
+/// asked for. A slug that DOES resolve always carries the catalogue's own name.
+fn humanise_plan_slug(slug: &str) -> String {
+    let words: Vec<String> = slug
+        .split(['-', '_', ' '])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    if words.is_empty() {
+        slug.to_string()
+    } else {
+        words.join(" ")
+    }
+}
+
 /// File the PAID plan a signup named, and describe it for the caller.
 ///
 /// ONE implementation for BOTH doors (cron 2026-10-29). The public page
@@ -47,8 +71,11 @@ pub(crate) fn legacy_plan_slug(slug: &str) -> &str {
 /// BOTH spellings (`plan` and `plan_slug`), while the same app's public door filed the request for
 /// the identical ask.
 ///
-/// Writes only when the slug names a live PAID plan on this workspace's side (`price > 0`, the
-/// same predicate `plan_resolver` uses), and never twice for the same open ask. A harness signup is
+/// Writes when the slug names a live PAID plan on this workspace's side (`price > 0`, the same
+/// predicate `plan_resolver` uses) — and, since 2026-11-15, ALSO when the slug resolves to a paid
+/// tier of the other product side or matches no plan row at all (recorded by name, flagged), so a
+/// paid ask can never be dropped in silence. A real FREE pick files nothing: there is nothing to
+/// sell. Never twice for the same open ask. A harness signup is
 /// still recorded — the operator's QUEUE hides harness tenants at read time
 /// (`plan_request_handler::admin_list`, `?include_probe=1`), so attribution stays in the data
 /// while the list the operator reads stays clean.
@@ -78,19 +105,67 @@ pub async fn file_chosen_plan_request(
     .bind(side_word)
     .fetch_optional(pool)
     .await?;
-    let Some((slug, plan_name)) = target else {
-        // A non-empty slug that names no live PAID tier on this side used to vanish with no trace.
-        // One line, naming the door and the exact word the caller sent, makes the next occurrence
-        // diagnosable instead of invisible.
-        tracing::warn!(
-            requested_by = %requested_by,
-            plan = %requested_slug,
-            side = side_word,
-            door = door,
-            "signup: the tier this caller chose names no live paid plan on this side, so no plan \
-             request was recorded"
-        );
-        return Ok(None);
+    // THE ASK IS NEVER DROPPED (2026-11-15). A slug this install does not sell — an old pricing
+    // link, a renamed tier, a typo'd campaign URL — used to end here with a log line that neither
+    // the buyer nor the operator ever sees: measured live, `{"plan":"not-a-plan"}` answered 201
+    // with `plan_request: null` and zero rows, so a visitor who said "I want to buy X" was seated
+    // on free and nobody learned they had asked. The queue is the operator's ONLY record of a paid
+    // intent, so an unrecognised slug is now recorded BY NAME and flagged, the same way the known
+    // paid tier is; a real FREE tier still files nothing, because there is nothing to sell.
+    let (slug, plan_name, note) = match target {
+        Some((s, n)) => (
+            s,
+            n,
+            "Chosen on the pricing page at signup. Checkout has no payment provider yet, so the \
+             workspace starts on the free tier of the same product.",
+        ),
+        None => {
+            let known: Option<(String, String, f64, String)> =
+                sqlx::query_as("SELECT slug, name, price::float8, side FROM plans WHERE slug = $1")
+                    .bind(&requested_slug)
+                    .fetch_optional(pool)
+                    .await?;
+            match known {
+                // A live PAID tier on the OTHER product side is still a paid ask: record it.
+                Some((s, n, price, _)) if price > 0.0 => (
+                    s,
+                    n,
+                    "Chosen on a pricing page for the other product. Recorded so the ask is not \
+                     lost; the workspace was seated on the free tier of the page it signed up on.",
+                ),
+                // A real FREE tier names nothing to sell, so nothing is asked.
+                Some(_) => return Ok(None),
+                // No such tier at all: keep the WORD the visitor sent, so we can follow it up.
+                None => {
+                    let cleaned: String = requested_slug
+                        .chars()
+                        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ' '))
+                        .take(60)
+                        .collect();
+                    let cleaned = cleaned.trim().to_string();
+                    if cleaned.is_empty() {
+                        return Ok(None);
+                    }
+                    tracing::warn!(
+                        requested_by = %requested_by,
+                        plan = %cleaned,
+                        side = side_word,
+                        door = door,
+                        "signup: the tier this caller chose is not in the catalogue, so it is \
+                         recorded by name instead of being dropped"
+                    );
+                    let human = humanise_plan_slug(&cleaned);
+                    (
+                        cleaned,
+                        human,
+                        "The plan this visitor chose at signup is not in this install's \
+                         catalogue (a stale pricing link, a renamed tier, or a typo), so it could \
+                         not be priced. Recorded by name so the ask still reaches us; the \
+                         workspace was seated on the free tier.",
+                    )
+                }
+            }
+        }
     };
     let row = sqlx::query(
         "INSERT INTO plan_requests (tenant_id, user_id, requested_by, plan_slug, plan_name, note)
@@ -105,10 +180,7 @@ pub async fn file_chosen_plan_request(
     .bind(requested_by)
     .bind(&slug)
     .bind(&plan_name)
-    .bind(
-        "Chosen on the pricing page at signup. Checkout has no payment provider yet, so the \
-         workspace starts on the free tier of the same product.",
-    )
+    .bind(note)
     .fetch_optional(pool)
     .await?;
     let Some(r) = row else { return Ok(None) };
