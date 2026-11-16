@@ -1457,7 +1457,18 @@ function D(){
     if(st==='open'||st==='contacted'){
       h+='<button class="btn" data-withdraw-plan-request="'+X(q.id)+'" onclick="withdrawPlanRequest(\''+X(q.id)+'\')">Withdraw this request</button>';
     }
-    h+='<button class="btn btn-o" onclick="S(\'upgrade\')">Open the Upgrade screen</button></div></div>';
+    h+='<button class="btn btn-o" onclick="S(\'upgrade\')">Open the Upgrade screen</button></div>';
+    /* WHERE TO SEND THE MONEY, on the home screen too (2026-11-16). The same words the Upgrade
+       screen paints, from the same answer (GET /plan-requests now carries them): a customer who
+       lands here after asking to buy must not have to hunt the Upgrade tab - or an email - for
+       them. Absent/empty = nothing is painted and the card is exactly what it was. */
+    var pay=String((d&&d.payment_instructions)||'').trim();
+    if(pay){
+      h+='<div data-how-to-pay="1" style="margin-top:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:12px 14px">'
+        +'<div style="font-weight:700;color:#1e3a8a;margin:0 0 6px;font-size:13px">How to pay now</div>'
+        +'<div data-how-to-pay-text="1" style="white-space:pre-wrap;font-size:13px;line-height:1.5;color:#1e293b">'+X(pay)+'</div></div>';
+    }
+    h+='</div>';
     box.innerHTML=h;
   });
   /* The dashboard's own withdraw control. It calls the SAME endpoint the Upgrade screen's control
