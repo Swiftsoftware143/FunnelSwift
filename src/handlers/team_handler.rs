@@ -28,10 +28,13 @@
 //! operator console runs, so the address rule, the duplicate check, the generated password, the
 //! credentials mail and the withheld/handover contract cannot drift between the two doors.
 
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHasher};
 use axum::{
     extract::{Path, State},
     Json,
 };
+use rand::rngs::OsRng;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -213,6 +216,124 @@ pub async fn remove_teammate(
         "removed": true,
         "email": email,
         "seats": { "used": used, "limit": limit },
+    })))
+}
+
+/// `POST /api/v1/team/members/:id/reissue` — send a teammate's login details again (2026-11-16).
+///
+/// The invite door mints a generated password and mails it ONCE. If that message never arrived (a
+/// mistyped address the reader fixed later, a spam trap, a provider hiccup) or the person lost it,
+/// the customer had NO remedy of their own: the only door that re-issues credentials was the
+/// PLATFORM operator's `/api/v1/admin/users/:id/resend-credentials`, so a workspace owner had to ask
+/// us for help — or remove the person and invite them again, which throws away every lead they own.
+///
+/// Authority is the SAME rule the invite and removal doors apply ([`may_invite`]) and the tenant
+/// comes from the session, so a row in another workspace is a 404: the answer cannot confirm that
+/// somebody else's teammate exists. The password is generated and mailed through the SAME
+/// credentials mailer and the SAME reserved-address test as the mint, so a test address gets the
+/// handover password back instead of a message nobody receives, and `sessions_valid_from` moves so
+/// a token minted from the OLD password stops working immediately — exactly what `reset_password`
+/// and the operator's own resend do.
+pub async fn reissue_teammate(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    let tenant_id = Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::Unauthorized("Invalid tenant".into()))?;
+
+    if !may_invite(&state, &auth, tenant_id).await? {
+        return Err(AppError::Forbidden(
+            "Only the workspace owner or a company admin can send login details".into(),
+        ));
+    }
+
+    let me = Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user".into()))?;
+    if id == me {
+        return Err(AppError::BadRequest(
+            "That is your own login — change your password on your profile screen instead.".into(),
+        ));
+    }
+
+    // The workspace is in the WHERE clause: somebody else's teammate is a 404, not a 403, so this
+    // door can never be used to confirm that a row exists in another workspace.
+    let row: Option<(String, String, bool)> = sqlx::query_as(
+        "SELECT email, COALESCE(name, email) AS name, is_active FROM users \
+          WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (email, name, is_active) =
+        row.ok_or_else(|| AppError::NotFound("That teammate is not in this workspace.".into()))?;
+    // A deactivated row cannot sign in whatever password it holds, so mailing one would be a lie.
+    if !is_active {
+        return Err(AppError::BadRequest(
+            "That teammate has been removed — add them again instead.".into(),
+        ));
+    }
+
+    let generated_password = Uuid::new_v4()
+        .to_string()
+        .replace('-', "")
+        .chars()
+        .take(12)
+        .collect::<String>();
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = Argon2::default()
+        .hash_password(generated_password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(format!("Password hash error: {e}")))?
+        .to_string();
+
+    // `password_undelivered` is the operator console's badge: TRUE until a credentials mail really
+    // went out for this row, so a re-issue that is withheld or refused keeps that badge honest
+    // instead of claiming a delivery that did not happen.
+    sqlx::query(
+        "UPDATE users SET password_hash = $1, password_undelivered = TRUE, \
+                sessions_valid_from = NOW(), updated_at = NOW() \
+          WHERE id = $2 AND tenant_id = $3",
+    )
+    .bind(&password_hash)
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    let withheld = crate::security::probe_addr::harness_domain(&email).is_some();
+    let mut emailed = false;
+    let mut detail = String::new();
+    if !withheld {
+        match crate::email::send_credentials_email(
+            &state.pool,
+            tenant_id,
+            &email,
+            &name,
+            &generated_password,
+        )
+        .await
+        {
+            Ok(()) => emailed = true,
+            Err(e) => detail = e,
+        }
+    } else {
+        detail = "that address is a reserved test address, so no message was sent".to_string();
+    }
+    if emailed {
+        let _ = sqlx::query("UPDATE users SET password_undelivered = FALSE WHERE id = $1")
+            .bind(id)
+            .execute(&state.pool)
+            .await;
+    }
+
+    Ok(Json(json!({
+        "reissued": true,
+        "email": email,
+        "credentials_emailed": emailed,
+        "withheld": withheld,
+        "detail": detail,
+        "handover_password": if emailed { Value::Null } else { json!(generated_password) },
     })))
 }
 

@@ -336,6 +336,15 @@ pub fn create_router(
             axum::routing::delete(crate::handlers::team_handler::remove_teammate)
                 .patch(crate::handlers::team_handler::update_teammate_role),
         )
+        // The RESEND twin (2026-11-16). The invite mints a generated password and mails it ONCE; if
+        // that message never arrived, a customer's only doors were "ask the platform operator" or
+        // "remove and re-invite", and the second throws away every lead the person owns. This is the
+        // customer's own re-send: authority, the self/removed refusals and the tenant scope live in
+        // the handler. PRIVATE by default (it is not in `auth::route_policy::PUBLIC_ROUTES`).
+        .route(
+            "/api/v1/team/members/:id/reissue",
+            post(crate::handlers::team_handler::reissue_teammate),
+        )
         .route(
             "/api/v1/leads/:id/stage",
             post(lead_handler::update_lead_stage),
