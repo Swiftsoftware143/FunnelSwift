@@ -34,6 +34,11 @@ pub struct Plan {
     pub billing_cycle: String,
     pub purchase_url: Option<String>,
     pub payment_provider: Option<String>,
+    /// Whether this plan is still ON SALE (2026-11-16). The operator retires a plan with
+    /// `PUT /api/v1/admin/plans/:id/listing`, which hides it from the anonymous price list; the
+    /// customer's Upgrade screen reads THIS list, so without the flag the retired plan kept being
+    /// offered to customers and could still be requested (measured live before the fix).
+    pub is_active: bool,
     pub features: Option<serde_json::Value>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,

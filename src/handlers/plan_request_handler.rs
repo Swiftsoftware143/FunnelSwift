@@ -85,14 +85,30 @@ pub async fn create(
         return Err(AppError::BadRequest("plan_slug is required".into()));
     }
 
-    let plan: Option<(String, f64, f64)> = sqlx::query_as(
-        "SELECT name, price::float8, COALESCE(annual_price, 0)::float8 FROM plans WHERE slug = $1",
+    let plan: Option<(String, f64, f64, bool)> = sqlx::query_as(
+        "SELECT name, price::float8, COALESCE(annual_price, 0)::float8, \
+                COALESCE(is_active, true) \
+           FROM plans WHERE slug = $1",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
     .await?;
-    let (plan_name, price, annual_price) =
+    let (plan_name, price, annual_price, on_sale) =
         plan.ok_or_else(|| AppError::NotFound(format!("No plan with slug '{slug}'")))?;
+
+    // A RETIRED PLAN IS NOT FOR SALE (2026-11-16). `PUT /api/v1/admin/plans/:id/listing` is the
+    // operator's "stop offering this" switch, and it only hid the plan from the ANONYMOUS price
+    // list. Measured live before this arm existed: after retiring a plan the operator's console
+    // still showed it on the customer's Upgrade screen and `POST /api/v1/plan-requests` answered
+    // 201, so a request for a plan that had deliberately been withdrawn landed in the operator's
+    // queue — and the customer was told it was with the team. A stale tab or a bookmarked POST is
+    // exactly what this refuses; nothing is recorded and the sentence says what to do instead.
+    if !on_sale {
+        return Err(AppError::BadRequest(format!(
+            "{plan_name} is no longer offered, so there is nothing to ask for. Pick a plan that is \
+             on sale — nothing was recorded."
+        )));
+    }
 
     // ── WHICH BILLING TERM THE CUSTOMER CHOSE (2026-11-10) ──────────────────────────────────────
     // The Upgrade screen has priced a yearly term from `plans.annual_price` since 2026-10-24, but

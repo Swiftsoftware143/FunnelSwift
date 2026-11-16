@@ -312,7 +312,8 @@ macro_rules! plan_select {
     max_leads, max_tags, max_team_members, max_ocr_scans, has_webhooks, has_api, \
     has_dual_routing, has_mini_funnels, has_card_gating, has_remove_branding, \
     has_white_label, has_multi_tenant, has_analytics, has_import_export, billing_cycle, \
-    purchase_url, payment_provider, features, created_at, updated_at FROM plans ",
+    purchase_url, payment_provider, COALESCE(is_active, true) AS is_active, \
+    features, created_at, updated_at FROM plans ",
             $tail
         )
     };
