@@ -359,29 +359,91 @@ pub async fn create_card(
         crate::features::enforce_template_access(&state, tenant_id, Some(candidate)).await?;
     }
 
-    let insert = sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
-        .bind(id).bind(tenant_id).bind(id).bind(title).bind(&slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
-        .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
-        .execute(&state.pool)
-        .await;
-    if let Err(e) = insert {
-        // A lost race on the reserved slug is the ONLY failure here that the customer can act on, so
-        // it is answered as a 400 with a sentence: the panel shows it as a readable message and the
-        // editor can simply press create again. Every other database answer keeps its own status.
-        if let sqlx::Error::Database(db) = &e {
-            if db.code().as_deref() == Some("23505") {
-                return Err(AppError::Validation(format!(
-                    "The page address \"{slug}\" was just taken — please press create again and we will pick a free one."
-                )));
+    // A DOUBLE PRESS OF "CREATE" IS ONE CARD, NOT AN ERROR (measured live 2026-11-16). The free
+    // address is reserved by a SELECT above, but that reservation is not atomic: two creates for the
+    // same editor state both see the address free, both INSERT, and the loser hit the UNIQUE index.
+    // It used to be answered 400 "please press create again" — an error toast for a customer who had
+    // just double-clicked, and an instruction that mints a DUPLICATE card if they obey it. Measured
+    // live with 12 simultaneous creates of one title: 1 card created, 4 error toasts. Now the loser is
+    // resolved instead: if the address is held by THIS workspace's card with the SAME title it is the
+    // same create arriving twice, so the row that already exists is returned (200, `duplicate: true`)
+    // and the customer ends up with one card; if another workspace holds it, the next free address is
+    // reserved and the INSERT retried, which is what the reservation loop above promises. Three
+    // attempts, then a readable refusal — never a raw database answer.
+    let mut attempt_slug = slug.clone();
+    let mut outcome: Option<(StatusCode, Value)> = None;
+    let mut last_err: Option<sqlx::Error> = None;
+    for _attempt in 0..3u32 {
+        let insert = sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
+            .bind(id).bind(tenant_id).bind(id).bind(title).bind(&attempt_slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
+            .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
+            .execute(&state.pool)
+            .await;
+        match insert {
+            Ok(_) => {
+                outcome = Some((
+                    StatusCode::CREATED,
+                    json!({"id": id, "slug": attempt_slug, "message": "Card created"}),
+                ));
+                break;
+            }
+            Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("23505") => {
+                let mine: Option<(Uuid, String)> = sqlx::query_as(
+                    "SELECT id, slug FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2 AND title = $3",
+                )
+                .bind(&attempt_slug)
+                .bind(tenant_id)
+                .bind(title)
+                .fetch_optional(&state.pool)
+                .await?;
+                if let Some((existing_id, existing_slug)) = mine {
+                    outcome = Some((
+                        StatusCode::OK,
+                        json!({
+                            "id": existing_id,
+                            "slug": existing_slug,
+                            "message": "Card already created",
+                            "duplicate": true
+                        }),
+                    ));
+                    break;
+                }
+                let mut next: Option<String> = None;
+                for n in 2..=20u32 {
+                    let candidate = format!("{requested}-{n}");
+                    let taken: bool = sqlx::query_scalar(
+                        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)",
+                    )
+                    .bind(&candidate)
+                    .fetch_one(&state.pool)
+                    .await?;
+                    if !taken {
+                        next = Some(candidate);
+                        break;
+                    }
+                }
+                attempt_slug = next.unwrap_or_else(|| {
+                    let stem: String = requested.chars().take(41).collect();
+                    format!("{stem}-{}", &id_str[..8])
+                });
+            }
+            Err(e) => {
+                last_err = Some(e);
+                break;
             }
         }
-        return Err(e.into());
     }
 
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({"id": id, "slug": slug, "message": "Card created"})),
-    ))
+    match outcome {
+        Some((status, body)) => Ok((status, Json(body))),
+        None => match last_err {
+            Some(e) => Err(e.into()),
+            // Every attempt lost the address race — say so in the customer's words rather than 500.
+            None => Err(AppError::Validation(format!(
+                "The page address \"{requested}\" is unavailable — pick another one, like /k/{requested}-2."
+            ))),
+        },
+    }
 }
 
 pub async fn update_card(
