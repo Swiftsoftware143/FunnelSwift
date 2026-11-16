@@ -287,6 +287,19 @@ function renderUpgrade(plans){
   var cp = (window.U && window.U.current_plan) || null;
   var curSlug = (cp && cp.slug) ? String(cp.slug) : '';
   var currentPlan = (cp && cp.name) || (window.U && (window.U.plan_name||window.U.plan)) || 'Free';
+  /* A RETIRED PLAN IS NOT AN OFFER (2026-11-16). `PUT /api/v1/admin/plans/:id/listing` lets the
+     operator withdraw a plan from sale; it already hid the plan from the anonymous price list, but
+     THIS screen reads the authenticated `/api/v1/plans`, which still returned it — so a withdrawn
+     plan stayed on sale to every existing customer and could still be requested. The list now
+     carries `is_active`, and a plan that is off sale is dropped from the tiles. The ONE exception is
+     the workspace's own current plan: a customer already on a retired plan must still see which plan
+     they are on, so it keeps its tile, marked as current, and nothing else. */
+  var offered = (plans || []).filter(function(p){
+    if(!p) return false;
+    if(p.is_active === false) return curSlug ? (String(p.slug) === curSlug) : false;
+    return true;
+  });
+  if(offered.length !== (plans || []).length){ plans = offered; LAST_PLANS = offered; }
   var html = '<div style="max-width:900px;margin:0 auto"><h2 style="font-size:22px;font-weight:700">Upgrade Your Plan</h2>';
   html += '<p style="color:#64748b;margin-bottom:12px">Current: <strong>'+esc(currentPlan)+'</strong></p>';
   // SAY IT BEFORE THE CLICK (2026-10-25). Measured live on this installation: `payment_providers`
