@@ -847,12 +847,27 @@ pub async fn team_members(
             } else {
                 name
             };
+            let is_owner = id.is_some() && id == creator;
+            // THE OWNER IS NOT A ROLE WORD (2026-11-16). `users.role` cannot carry the level: the
+            // public signup mints the workspace's first person as plain `user`, the very value the
+            // invite door gives a teammate, so the column says the owner and every member are the
+            // same thing. The console has painted `is_owner` as "Owner" since 2026-10-31, but the
+            // PAYLOAD still said `role: "user"` — so the account export a customer downloads
+            // ("Download your data") and any API client read a bare role word where a level
+            // belongs, which is the stray label David reported. Report the level the authority
+            // already recognises: the creator reads `owner`, everyone else keeps the column's
+            // value. `is_owner` stays for callers that already use it.
+            let role = if is_owner {
+                "owner".to_string()
+            } else {
+                r.try_get::<String, _>("role").unwrap_or_default()
+            };
             json!({
                 "id": id.map(|v| v.to_string()).unwrap_or_default(),
                 "name": label,
                 "email": email,
-                "role": r.try_get::<String, _>("role").unwrap_or_default(),
-                "is_owner": id.is_some() && id == creator,
+                "role": role,
+                "is_owner": is_owner,
             })
         })
         .collect();
