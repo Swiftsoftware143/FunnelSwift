@@ -432,6 +432,17 @@ pub async fn checkout_status(
         "reason": match reason { Some(r) => json!(r), None => Value::Null },
         "upgrade_path": upgrade_path,
         "sellable_plans": sellable_plans,
+        // WHERE TO SEND THE MONEY (2026-11-16). `payment_instructions` is the operator's own words,
+        // written once on the Payment Providers screen, and until now only the plan-request answer
+        // and its receipt email carried them - so a buyer read "upgrades are not switched on" and
+        // nothing else until AFTER filing an ask. The other four apps publish this on their till
+        // status and paint it on the Upgrade screen; this is the same field, from the same settings
+        // row, so the sentence the screen shows and the words the receipt carries cannot disagree.
+        // Empty/absent = the feature is off and the screen is exactly what it was.
+        "payment_instructions": crate::platform_settings::load(&state.pool)
+            .await
+            .payment_instructions
+            .filter(|v| !v.trim().is_empty()),
         "message": match upgrade_path {
             "checkout" => "Upgrades are open: pressing Upgrade takes you to a secure payment page.",
             "payment_link" => "Pressing Upgrade opens the plan's own payment page; the workspace is switched on once the team confirms it.",

@@ -15,6 +15,7 @@ var LAST_PLANS = [];    // the catalogue as last rendered, so a term switch can 
 var PREQS = [];        // this workspace's plan requests, newest first
 var PREQ_OFFER = null; // {slug,name} — set when checkout refused, offered as a request button
 var PREQ_MSG = null;   // {ok,text}
+var HOWTOPAY = '';     // the operator's own words: where to send the money (2026-11-16)
 
 async function LPU(){
   $("pt").textContent="Upgrade Plan";
@@ -26,7 +27,23 @@ async function LPU(){
     if(!Array.isArray(plans)) { $("ct").innerHTML='<div class="error">Failed to load plans.</div>'; return; }
     renderUpgrade(plans);
     loadRequests();
+    loadHowToPay();
   } catch(e) { $("ct").innerHTML='<div class="error">'+e.message+'</div>'; }
+}
+
+/** BEFORE the ask: GET /api/v1/checkout/status now publishes the operator's payment words (the
+ *  same field the ask answer and the receipt carry). Read once per load; a failure changes nothing. */
+async function loadHowToPay(){
+  try {
+    var r = await fetch(window.location.origin+'/api/v1/checkout/status', {headers:{Authorization:'Bearer '+(T||'')}});
+    if(!r.ok) return;
+    var d = await r.json();
+    var w = String((d && d.payment_instructions) || '').trim();
+    if(!w) return;
+    HOWTOPAY = w;
+    var box = document.getElementById('preq');
+    if(box) box.innerHTML = renderRequests();
+  } catch(e) { /* the screen is already usable without it */ }
 }
 
 function esc(v){
@@ -57,11 +74,27 @@ async function loadRequests(){
     if(r.ok){
       var d = await r.json();
       PREQS = Array.isArray(d && d.requests) ? d.requests : [];
+      // The operator's payment words ride on this answer (2026-11-16). Every sibling app paints
+      // them on the Upgrade screen; this one received them and dropped them, so a buyer who had
+      // asked to pay was never told where to send the money except by email.
+      var w = String((d && d.payment_instructions) || '').trim();
+      if(w) HOWTOPAY = w;
     }
   } catch(e) { PREQS = []; }
   var box = document.getElementById('preq');
   if(box) box.innerHTML = renderRequests();
   if(window.U && window.U.is_admin) loadAdminRequests();
+}
+
+/** The operator's payment words, in one box. Painted only when he has written some: an empty
+ *  field leaves the screen exactly as it was. `data-how-to-pay` is the marker the proof reads. */
+function renderHowToPay(){
+  var words = String(HOWTOPAY || '').trim();
+  if(!words) return '';
+  return '<div data-how-to-pay="1" style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:14px 16px;margin-bottom:16px">'
+    + '<div style="font-weight:700;color:#1e3a8a;margin:0 0 6px;font-size:14px">How to pay now</div>'
+    + '<div data-how-to-pay-text="1" style="white-space:pre-wrap;font-size:13.5px;line-height:1.5;color:#1e293b">'
+    + esc(words) + '</div></div>';
 }
 
 function renderRequests(){
@@ -71,6 +104,9 @@ function renderRequests(){
       + (PREQ_MSG.ok?'#16a34a':'#dc2626') + ';padding:12px 14px;border-radius:6px;margin-bottom:14px;font-size:14px">'
       + esc(PREQ_MSG.text) + '</div>';
   }
+  // WHERE TO SEND THE MONEY, above everything else: a buyer who has just asked to pay needs this
+  // sentence, not a scroll past the catalogue.
+  h += renderHowToPay();
   // The offer the checkout refusal raised: the customer's next step instead of a dead end.
   if(PREQ_OFFER && !PREQS.some(function(x){ return x.plan_slug === PREQ_OFFER.slug && (x.status === 'open' || x.status === 'contacted'); })){
     h += '<div data-plan-offer="'+esc(PREQ_OFFER.slug)+'" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;margin-bottom:16px">'
@@ -179,6 +215,8 @@ async function requestPlan(slug){
          older server, a proxy, any caller of this endpoint that is not the current binary — made
          the console promise a copy nothing had queued. The promise needs a positive `true`, which
          is what ADASwift, IncentiveSwift and MissedCall already require. */
+      var asked = String((d && d.payment_instructions) || '').trim();
+      if(asked) HOWTOPAY = asked;
       var mailed = (d && d.acknowledged === true) ? ' We have emailed you a copy of this request.' : '';
       var termWord = useYear ? ' on the yearly term (2 months free)' : ' on the monthly term';
       PREQ_MSG = {ok:true, text:'Request sent — our team will move this workspace to the '+esc(p.name)+' plan'+termWord+' and confirm here. Nothing was charged.'+mailed};
