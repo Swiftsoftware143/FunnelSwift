@@ -359,7 +359,7 @@ var helpContent={
   
   "templates":'<h4>Template Gallery</h4><p><strong>54 templates</strong> across 5 archetypes and dozens of industries.</p><ul><li><strong>Free Plan:</strong> 8 templates (4 starters + 4 blank canvases)</li><li><strong>Paid Plans:</strong> All 54 templates unlocked</li><li><strong>Blank Canvas:</strong> Start from scratch with just a title</li><li><strong>Industry:</strong> Real Estate, Cleaning, Gym, VC, Podcast, Photography, SaaS, etc.</li></ul>',
   "themes":'<h4>8 Visual Themes</h4><ul><li><strong>Cyber Dark</strong> — Purple/black neon</li><li><strong>Ghost White</strong> — Clean glassmorphic</li><li><strong>Ocean</strong> — Blue/teal professional</li><li><strong>Forest</strong> — Green organic</li><li><strong>Sunset</strong> — Orange/amber warm</li><li><strong>Ruby</strong> — Red/crimson bold</li><li><strong>Midnight</strong> — Deep indigo</li><li><strong>Arctic</strong> — Ice blue crisp</li></ul>',
-  "profile":'<h4>Profile</h4><p>Your own details: the name and company your workspace shows, the picture that appears beside your name, the password you sign in with, and the address you sign in with.</p><ul><li><strong>Name / Company</strong> &mdash; Save updates your account everywhere.</li><li><strong>Picture</strong> &mdash; PNG, JPEG, GIF or WebP, up to 2 MB.</li><li><strong>Change sign-in email</strong> &mdash; type the new address and press <em>Send confirmation link</em>. We mail a link to the NEW address and nothing changes until you open it, so a typo cannot lock you out. Your current address keeps working until then; after the change, sign in with the new one.</li><li><strong>Change Password</strong> &mdash; enter your current password to prove it is you, then the new one twice.</li></ul>',
+  "profile":'<h4>Profile</h4><p>Your own details: the name and company your workspace shows, the picture that appears beside your name, the password you sign in with, and the address you sign in with.</p><ul><li><strong>Name / Company</strong> &mdash; Save updates your account everywhere.</li><li><strong>Picture</strong> &mdash; PNG, JPEG, GIF or WebP, up to 2 MB.</li><li><strong>Change sign-in email</strong> &mdash; type the new address and press <em>Send confirmation link</em>. We mail a link to the NEW address and nothing changes until you open it, so a typo cannot lock you out. Your current address keeps working until then; after the change, sign in with the new one.</li><li><strong>Change Password</strong> &mdash; enter your current password to prove it is you, then the new one twice.</li><li><strong>Download my data</strong> &mdash; one file with everything this workspace holds (profile, plan, leads, tags, funnels, cards, campaigns and requests). Passwords, API-key secrets and webhook signing secrets are never in it.</li></ul>',
   "wtl":'<h4>Lead Forms</h4><p>A lead form is a small form you paste onto your own website. Everyone who fills it in arrives in <strong>Leads</strong> with the source <strong>Web Form</strong>, stamped with the tag you pick here &mdash; that tag is also what credits the affiliate whose form it is.</p><ul><li><strong>+ New form</strong> &mdash; name it, set the form title a visitor sees, tick the fields to ask for (name and email are always asked), pick the tag it stamps, and write the thank-you line. A redirect address is optional: fill it in and the visitor is sent there instead of seeing the thank-you line.</li><li><strong>Get code</strong> &mdash; shows the snippet to paste where the form should appear. It posts straight to FunnelSwift, so nothing else needs connecting.</li><li><strong>Switch off</strong> keeps the snippet on your page but stops it capturing leads; <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the form &mdash; a snippet already on your page stops working immediately.</li><li>Each form counts against the form allowance on your plan; once it is used up the screen points you at the plans instead of saving another one.</li></ul>',
   "upgrade":'<h4>Upgrade</h4><p>The plans available to this workspace and the way up to one. A plan is a bundle of limits and features (cards, templates, custom domains and more).</p><ul><li>Your current plan is shown on the dashboard.</li><li>Checkout is handled by the payment provider; a plan change applies to the whole workspace.</li><li>If this install has no payment provider connected yet, the screen offers to file a request instead \u2014 the request and its state stay listed here until our team handles it.</li></ul>',
   "lead-stages":'<h4>Lead Stages</h4><p>The stages a lead moves through in your pipeline (for example New, Contacted, Won). Group and filter leads by stage so you can see where every lead stands.</p>',
@@ -5342,6 +5342,14 @@ h+='<div class="fld"><label for="pf-user">Username</label><input id="pf-user" ma
        instead (POST /api/v1/auth/close-account) and re-checks the password and the word CLOSE itself.
        Two deliberate steps here: the first only REVEALS the form, the second is the red button, and it
        is last on the screen on purpose. */
+    /* Download my data (2026-11-15). The customer's OWN copy of their account, one JSON document,
+       built by GET /api/v1/account/export from the session's tenant — there is no id to spoof, so
+       this can only ever download the workspace you are signed in to. Sits immediately above the
+       exit door because that is when it matters most. */
+    h+='<div class="card" id="pf-download" style="margin-bottom:14px"><h3>Download my data</h3>';
+    h+='<p style="font-size:12px;color:#64748b;margin:0 0 8px">One file with everything this workspace holds: your profile, plan, leads, tags, funnels, cards, campaigns and requests. Passwords, API-key secrets and webhook signing secrets are never included — the file lists what it left out.</p>';
+    h+='<button class="btn btn-sm" onclick="DLDATA()">Download my data</button>';
+    h+='<span id="pf-dlmsg" class="msg" style="margin:6px 0 0"></span></div>';
     h+='<div class="card" id="pf-close"><h3>Close my account</h3>';
     h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">This ends your sign-in and every API key, and you will not be able to sign in again. Your campaigns, leads and history are kept for our records and are not deleted, so support can help you if you close it by mistake.</p>';
     h+='<div id="pf-ca-arm"><button class="btn btn-sm" onclick="CAARM()" style="background:#fff;color:#b91c1c;border:1px solid #fca5a5">Close my account</button></div>';
@@ -5437,6 +5445,32 @@ function LGA(){
       pfMsg("pf-devmsg",d.message||"Every other device has been signed out.","ms");
     })
     .catch(function(e){ pfMsg("pf-devmsg",(e&&e.message)||"Could not sign the other devices out","me"); });
+}
+/* Download my data (2026-11-15). Fetched directly, not through api(), because the route answers a
+   DOCUMENT (a JSON file), not a JSON value this page then renders — api() would parse it and throw
+   the body away. The browser saves the blob, so a large workspace is never held in a string. Every
+   refusal is printed in the card's own message with the server's sentence. */
+function DLDATA(){
+  var m=document.getElementById("pf-dlmsg");
+  if(m){m.className="msg";m.textContent="Preparing your copy…";}
+  fetch("/api/v1/account/export",{headers:T?{"Authorization":"Bearer "+T}:{}}).then(function(r){
+    if(!r.ok){
+      return r.text().then(function(t){
+        var s="Could not build your copy (error "+r.status+").";
+        try{var j=JSON.parse(t);if(j&&(j.message||j.error))s=j.message||j.error;}catch(e){}
+        throw Error(s);
+      });
+    }
+    return r.blob().then(function(bl){
+      var a=document.createElement("a");
+      a.href=URL.createObjectURL(bl);
+      a.download="funnelswift-account-"+new Date().toISOString().slice(0,10)+".json";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){try{URL.revokeObjectURL(a.href);}catch(e){}a.remove();},1500);
+      if(m){m.className="msg ms";m.textContent="Your copy has been downloaded.";}
+    });
+  }).catch(function(e){ if(m){m.className="msg me";m.textContent=e.message||"Could not build your copy.";} });
 }
 /* Close my account (2026-11-13). CAARM only reveals the form — nothing is sent until CADO, which
    posts the bearer token, the password and the word CLOSE. The SERVER owns every rule (the word, the

@@ -56,7 +56,12 @@
 //! the message reader and is `require_auth` + tenant-scoped in the handler, so the public and
 //! internal buckets did NOT move.
 //!
-//! 235 `.route(..)` mounts / 235 unique paths, classified three ways:
+//! 2026-11-15 recount (the customer's own data export): ONE more private mount —
+//! `GET /api/v1/account/export`, the whole-account JSON download added to the customer console's
+//! Profile screen. It is a plain `require_auth` route scoped to the SESSION's tenant (no id in the
+//! path), so the public and internal buckets did NOT move: only the numbers.
+//!
+//! 236 `.route(..)` mounts / 236 unique paths, classified three ways:
 //!
 //! (The 2026-11-06 recount also folds in TWO public `/api` mounts that the same day's contact-page
 //! work landed without bumping this census — `POST /api/v1/public/support-request` (a visitor with
@@ -506,7 +511,7 @@ mod tests {
                 private,
                 served
             ),
-            (236, 236, 210, 24, 3, 183, 26),
+            (237, 237, 211, 24, 3, 184, 26),
             "the census in the module docs no longer matches the router"
         );
     }

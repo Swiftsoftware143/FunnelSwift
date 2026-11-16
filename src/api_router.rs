@@ -13,18 +13,19 @@ use crate::auth::handlers::{
     update_profile, upload_avatar,
 };
 use crate::handlers::{
-    admin_handler, affiliate_commission_handler, affiliate_handler, affiliate_lead_handler,
-    affiliate_onboarding_handler, affiliate_payout_handler, affiliate_portal_handler,
-    affiliate_product_handler, affiliate_rate_band_handler, affiliate_referral_handler,
-    affiliate_tracking_handler, api_keys, branding_handler, bulk_handler, campaigns_handler,
-    checkout_handler, coreswift_integration_handler, coreswift_push, cross_app_webhook_handler,
-    dashboard_handler, email_template_handler, funnel_handler, incentiveswift_handler,
-    insight_handler, kinetic_handler, lead_handler, linkedin, mobile_notify_handler, ocr,
-    plan_handler, plan_request_handler, platform_settings_handler, portfolio_handler,
-    product_category_handler, provider_keys_handler, public_signup_handler, qr_handler,
-    seo_handler, settings_handler, site_handler, site_settings_handler, support_request_handler,
-    tag_group_handler, tag_handler, tag_rule_handler, template_gating_handler, tenant_handler,
-    theme_endpoint, web_to_lead_handler, webhook_handler, workflowswift_push,
+    account_export, admin_handler, affiliate_commission_handler, affiliate_handler,
+    affiliate_lead_handler, affiliate_onboarding_handler, affiliate_payout_handler,
+    affiliate_portal_handler, affiliate_product_handler, affiliate_rate_band_handler,
+    affiliate_referral_handler, affiliate_tracking_handler, api_keys, branding_handler,
+    bulk_handler, campaigns_handler, checkout_handler, coreswift_integration_handler,
+    coreswift_push, cross_app_webhook_handler, dashboard_handler, email_template_handler,
+    funnel_handler, incentiveswift_handler, insight_handler, kinetic_handler, lead_handler,
+    linkedin, mobile_notify_handler, ocr, plan_handler, plan_request_handler,
+    platform_settings_handler, portfolio_handler, product_category_handler, provider_keys_handler,
+    public_signup_handler, qr_handler, seo_handler, settings_handler, site_handler,
+    site_settings_handler, support_request_handler, tag_group_handler, tag_handler,
+    tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler,
+    webhook_handler, workflowswift_push,
 };
 use crate::state::AppState;
 
@@ -362,6 +363,13 @@ pub fn create_router(
         .route(
             "/api/v1/tags",
             get(tag_handler::list_tags).post(tag_handler::create_tag),
+        )
+        // The customer's OWN copy of their data, one JSON document (2026-11-15). Tenant-scoped by
+        // the session's claim — there is no id in the path — so a workspace can only ever download
+        // itself. Reads only, and the column lists exclude every replayable secret.
+        .route(
+            "/api/v1/account/export",
+            get(account_export::export_account),
         )
         .route(
             "/api/v1/tags/:id",
