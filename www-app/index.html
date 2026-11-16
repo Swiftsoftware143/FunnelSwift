@@ -6312,6 +6312,7 @@ function TMLOAD(msg,kind){
       h+='<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;align-items:center">'
         +'<span>'+X(m.name||m.email)+' <span style="color:#94a3b8;font-size:11px">'+X(m.email||"")+'</span></span>'
         +'<span style="color:#94a3b8;font-size:11px;white-space:nowrap">'+X(teamRoleWord(m))+roleSel
+        +(removable?' <a href="#" style="color:#2563eb;margin-left:8px" data-tm-reissue="'+X(m.id)+'" data-tm-email="'+X(m.email||"")+'">Send login details</a>':'')
         +(removable?' <a href="#" style="color:#dc2626;margin-left:8px" data-tm-remove="'+X(m.id)+'" data-tm-email="'+X(m.email||"")+'">Remove</a>':'')
         +'</span></div>';
     });
@@ -6365,6 +6366,14 @@ function TMLOAD(msg,kind){
       a.addEventListener("click",function(ev){
         ev.preventDefault();
         TMDEL(a.getAttribute("data-tm-remove"),a.getAttribute("data-tm-email"));
+      });
+    });
+    /* The re-send control is wired the same way, and for the same reason: it is markup created by
+       the paint, so a listener can only be attached once the element exists. */
+    Array.prototype.forEach.call(box.querySelectorAll("[data-tm-reissue]"),function(a){
+      a.addEventListener("click",function(ev){
+        ev.preventDefault();
+        TMREISSUE(a.getAttribute("data-tm-reissue"),a.getAttribute("data-tm-email"));
       });
     });
     /* The role selects are wired here for the same reason: they are markup, so the listener can
@@ -6425,6 +6434,33 @@ function TMDEL(id,email){
       /* 404 = already gone (two tabs, or another admin got there first): say so plainly rather
          than showing an error for a state that is already what the customer asked for. */
       var why=(e&&e.message)||"That teammate could not be removed.";
+      if(msg){ msg.style.color="#dc2626"; msg.textContent=why; }
+    });
+}
+
+/* === Send a teammate's login details again (2026-11-16) =====================================
+   `POST /api/v1/team/members/:id/reissue`. The invite mints a generated password and mails it ONCE;
+   if it never arrived, the owner's only remedies were to ask the platform operator or to remove the
+   person and invite them again — and the second throws away every lead they own. This is the
+   customer's own re-send: a NEW password is generated, the old one stops working immediately, and
+   the mail goes out through the same credentials mailer as the invitation. A reserved test address
+   is never mailed; the server hands the password back instead, so the pane must print it. */
+function TMREISSUE(id,email){
+  if(!id) return;
+  if(!confirm("Send "+(email||"this person")+" a new temporary password? Their current password stops working straight away.")) return;
+  var msg=$("tm-note")||$("tm-msg");
+  if(msg){ msg.style.color="#64748b"; msg.textContent="Sending…"; }
+  api("/api/v1/team/members/"+encodeURIComponent(id)+"/reissue",{method:"POST"})
+    .then(function(d){
+      var to=(d&&d.email)||email;
+      var note=d.credentials_emailed
+        ? ("Sent "+to+" a new temporary password — it is in their inbox.")
+        : ("New password for "+to+": "+(d&&d.handover_password?d.handover_password:"(none)")
+           +(d&&d.withheld?" (that address is a reserved test address, so no mail was attempted)":""));
+      TMLOAD(note, d&&d.credentials_emailed?"":"w");
+    })
+    .catch(function(e){
+      var why=(e&&(e.planMessage||e.message))||"The login details could not be sent.";
       if(msg){ msg.style.color="#dc2626"; msg.textContent=why; }
     });
 }
