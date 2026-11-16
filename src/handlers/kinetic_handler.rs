@@ -208,6 +208,31 @@ pub async fn list_cards(
     Ok(Json(json!({"cards": cards})))
 }
 
+/// A card's public address, reduced to the ONE shape `GET /k/:slug` can route to.
+///
+/// The address is a SINGLE path segment (`api_router.rs` mounts `GET /k/:slug`), and
+/// `kinetic_cards.slug` is UNIQUE — so a slug carrying a slash, a space or an upper-case letter
+/// cannot be reached by the link the editor prints, and a duplicate is a database refusal rather
+/// than a product answer. Both were reachable from the card editor's own Slug field (measured live
+/// 2026-11-16: a taken address answered `500 Database error`, and `My Card/2026` was stored
+/// verbatim, leaving the page reachable only by a percent-encoded URL). ONE normaliser, applied by
+/// BOTH the create and the update arm, so an address is never stored in a shape the route cannot
+/// serve.
+fn normalise_card_slug(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    let cleaned = out.trim_matches('-');
+    let capped: String = cleaned.chars().take(50).collect();
+    capped.trim_end_matches('-').to_string()
+}
+
 pub async fn create_card(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -239,12 +264,21 @@ pub async fn create_card(
     // one when it is free, else `-2`, `-3`, … bounded, and `-<id8>` last (the id is unique, so that arm
     // cannot lose). The UNIQUE index still decides any race; that refusal is answered below as a 400
     // with a sentence, never a 500.
-    let requested = body["slug"]
-        .as_str()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or(&id_str[..8]);
-    let mut slug = requested.to_string();
+    let requested = normalise_card_slug(
+        body["slug"]
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&id_str[..8]),
+    );
+    // 41 leaves room for the `-<id8>` last resort below (41 + 1 + 8 = 50, the column's width).
+    let requested: String = requested.chars().take(41).collect();
+    let requested = if requested.chars().count() < 3 {
+        id_str[..8].to_string()
+    } else {
+        requested
+    };
+    let mut slug = requested.clone();
     for attempt in 1..=20u32 {
         let taken: bool =
             sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)")
@@ -416,7 +450,51 @@ pub async fn update_card(
             ))
         }
     };
-    let result = sqlx::query("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2")
+    // THE ADDRESS THE EDITOR SENDS, CHECKED BEFORE IT IS WRITTEN (measured live 2026-11-16). This
+    // route wrote `body["slug"]` straight into a UNIQUE column: a taken address answered 500
+    // "Database error", and any text was stored verbatim — `My Card/2026` left the card's own page
+    // reachable only by a percent-encoded URL. The create arm has reserved a free address since
+    // 2026-11-15; here the customer is TYPING one, so a clash is refused in their words and a free
+    // alternative is named rather than silently renaming their page.
+    let slug_change: Option<String> = match body.get("slug").and_then(Value::as_str) {
+        None => None,
+        Some(raw) if raw.trim().is_empty() => None,
+        Some(raw) => {
+            let want = normalise_card_slug(raw);
+            if want.chars().count() < 3 {
+                return Err(AppError::Validation(
+                    "A card address needs at least three letters or numbers \u{2014} try your name, like /k/jane-doe.".into(),
+                ));
+            }
+            let other: Option<Uuid> =
+                sqlx::query_scalar("SELECT id FROM kinetic_cards WHERE slug = $1 AND id <> $2")
+                    .bind(&want)
+                    .bind(id)
+                    .fetch_optional(&state.pool)
+                    .await?;
+            if other.is_some() {
+                let mut suggestion = want.clone();
+                for n in 2..=20u32 {
+                    let candidate = format!("{want}-{n}");
+                    let taken: bool = sqlx::query_scalar(
+                        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)",
+                    )
+                    .bind(&candidate)
+                    .fetch_one(&state.pool)
+                    .await?;
+                    if !taken {
+                        suggestion = candidate;
+                        break;
+                    }
+                }
+                return Err(AppError::Conflict(format!(
+                    "/k/{want} already belongs to another card, so nothing was changed. Pick another address \u{2014} /k/{suggestion} is free."
+                )));
+            }
+            Some(want)
+        }
+    };
+    let result = sqlx::query_scalar::<_, String>("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2 RETURNING slug")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
@@ -428,17 +506,17 @@ pub async fn update_card(
         // `cta_text` was dropped: `kinetic_cards` has no such column and nothing reads one —
         // the footer CTA is the plan feature `kinetic_cta_text` and per-block CTAs live inside
         // `layout_blocks`. Naming it made this UPDATE fail 42703 on every card edit.
-        .bind(body["slug"].as_str())
+        .bind(slug_change.as_deref())
         .bind(body["theme"].as_str())
         .bind(template_type)
         .bind(vp_change.is_some())
         .bind(vp_change.flatten())
         .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
-        .execute(&state.pool).await?;
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Card not found".into()));
-    }
-    Ok(Json(json!({"message": "Card updated"})))
+        .fetch_optional(&state.pool).await?;
+    // The address the row ACTUALLY holds, so the editor can print the page link it just saved
+    // instead of echoing what was typed (`/k/<returned>`).
+    let saved_slug = result.ok_or_else(|| AppError::NotFound("Card not found".into()))?;
+    Ok(Json(json!({"message": "Card updated", "slug": saved_slug})))
 }
 
 #[derive(Deserialize)]
