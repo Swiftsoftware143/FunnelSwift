@@ -575,7 +575,8 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         <h3>What this screen controls</h3>
         <p>Everything else in this console acts on <em>your own workspace</em>. This screen acts on
         the installation: two controls that decide what a new signup becomes, wherever it comes from,
-        and one that tells you the moment a customer wants to buy.</p>
+        one that tells you the moment a customer wants to buy, and one that tells that customer how to
+        pay you.</p>
 
         <h4>New signups are OPEN / CLOSED</h4>
         <p>Open is the normal state: anyone can create a workspace from the public signup pages. Close
@@ -607,6 +608,20 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         stops the emails, never the records. The alert is platform mail: it goes out through the
         installation's own mail settings, so it still arrives when a customer's own mail server is
         the thing that is broken. Probe and test signups never alert — machinery cannot mail you.</p>
+
+        <h4>How a customer pays you while card payments are off</h4>
+        <p>With no payment provider connected, a customer who wants a paid plan cannot pay by card — so
+        their <strong>Request this plan</strong> is the buying path, and until now that path ended with
+        “a person will reply”. This box closes that gap with your own words: write them once (a bank
+        account and routing number, a Zelle or Cash App handle, a payment link, or simply “reply and I
+        will send an invoice”), and they appear in two places — on the customer's own Plans screen
+        beside their open request, and inside the receipt email we send them. They also ride along on
+        the receipt a new signup earns when they pick a paid plan at signup, so every door that files
+        an ask carries the same words. Nothing is charged automatically: when the money arrives you
+        still move the workspace onto the plan yourself from the <strong>Plan Requests</strong> queue,
+        and marking the request done also sends the customer their confirmation. Leave the box empty
+        and nothing is shown anywhere — the screen and the emails read exactly as they did before this
+        field existed.</p>
 
         <h4>What is deliberately not on this screen</h4>
         <p>Prices, lead caps and gated features live under <strong>Plans</strong>; per-customer limits
