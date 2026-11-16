@@ -1260,6 +1260,51 @@ pub async fn close_account(
         ),
     }
 
+    // TELL SOMEONE (2026-11-16). A closure used to be silent in both directions: the owner got no
+    // record of the decision, and the operator — whose business just lost a customer — was never
+    // told, so a cancellation was indistinguishable from a quiet week. Both mails are best effort:
+    // the closure above is already committed, and a mail failure must never turn it into an error.
+    // The workspace name is read once, for both messages and nothing else.
+    let customer_name = user.name.trim().to_string();
+    let workspace: String = sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(NULLIF(btrim(name), ''), '') FROM tenants WHERE id = $1",
+    )
+    .bind(user.tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    if let Err(e) = crate::email::send_account_closed_confirmation(
+        &state.pool,
+        user.tenant_id,
+        &user.email,
+        &customer_name,
+        &workspace,
+    )
+    .await
+    {
+        tracing::warn!(
+            error = %e,
+            user = %user.id,
+            "account closed: the closure is recorded, but its confirmation mail did not go"
+        );
+    }
+    if let Err(e) = crate::email::send_account_closed_operator_alert(
+        &state.pool,
+        &customer_name,
+        &user.email,
+        &workspace,
+    )
+    .await
+    {
+        tracing::warn!(
+            error = %e,
+            user = %user.id,
+            "account closed: the closure is recorded, but the operator alert did not go"
+        );
+    }
+
     Ok(Json(json!({
         "status": "account_closed",
         "closed_at": closed_at,

@@ -542,6 +542,18 @@ fn get_inline(
         // customer's only clue was a screen whose allowances had moved. This arm is what the
         // operator's assign action sends once the plan has actually moved; nothing is charged, so it
         // says so, and it points at the plan screen rather than the marketing site.
+        // THE CUSTOMER'S OWN RECORD OF A CLOSURE (2026-11-16). The console says "your account is
+        // closed" once and then drops the session, so without this mail there is no lasting proof
+        // the owner can look at later — and no way for the owner to learn that somebody else closed
+        // it. It reassures the legitimate case and raises the alarm in the other one.
+        "account_closed" => {
+            let workspace = vars.get("workspace").copied().unwrap_or("your workspace");
+            let subject = format!("Your {APP_NAME} account is closed");
+            let text = format!(
+                "Hi {name},\n\nThis confirms that the {APP_NAME} account for {workspace} has been closed. Every signed-in session on it has been ended and every API key on it has been revoked.\n\nNothing further will be charged, and you can sign up again at any time with this address.\n\nIf you did NOT ask for this, reply to this message straight away: closing an account needs somebody signed in to it together with its password, so this would mean another person had both.\n\n- The {APP_NAME} Team"
+            );
+            (subject, Some(text), None)
+        }
         "plan_changed" => {
             let subject = format!("Your {APP_NAME} plan is now {plan_name}");
             let text = format!(
@@ -1092,6 +1104,117 @@ pub(crate) async fn send_support_request_receipt_email(
         &bound_vars(vars),
     )
     .await
+}
+
+/// Confirm to the CUSTOMER that their workspace is closed (2026-11-16).
+///
+/// WHY THIS EXISTS: `POST /api/v1/auth/close-account` answered 200, ended every session and revoked
+/// every API key — and told nobody. The owner who pressed the button got no record that the account
+/// was closed, and an owner whose account was closed by somebody else (a stolen session, a shared
+/// laptop) got no signal at all: the next thing they saw was "password incorrect". A closure is the
+/// most consequential thing that happens to an account short of deletion, so it is confirmed by mail
+/// to the very address the closure keeps refusing.
+///
+/// The same single send funnel as every other mail here: the workspace's own stored template row if
+/// it has one, per-account branding, and the reserved/harness-address gate — a probe address is
+/// recorded as a `withheld` non-send and no message is attempted.
+///
+/// Best effort by design: the closure is already committed, so a mail failure is logged by the caller
+/// and never turned into an error.
+pub(crate) async fn send_account_closed_confirmation(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    name: &str,
+    workspace: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("workspace", workspace);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "account_closed",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+/// Tell the OPERATOR that a customer closed their own account (2026-11-16).
+///
+/// WHY THIS EXISTS: the operator is mailed for a new workspace, a plan request, a support request, a
+/// customer whose first password never arrived and a customer who is locked out — but a customer
+/// LEAVING, the one event a subscription business cannot afford to hear about late, was silent. The
+/// workspace simply stopped appearing, and nothing distinguished "cancelled" from "a quiet week".
+///
+/// Recipient = the operator's own `operator_alert_email` (Admin -> System Settings). An unset address
+/// sends nothing; this code never invents a mailbox. Sent through the SYSTEM mail configuration
+/// (`None`), because this is platform mail and must arrive even when the leaving workspace's own mail
+/// path is the thing that is broken.
+///
+/// Never sent for a probe/harness identity: the gate is on the REQUESTER (the owner identity and the
+/// workspace name), never on the route, because the same door serves real customers. A harness that
+/// closes its own probe account must not tell the operator that a customer cancelled.
+pub async fn send_account_closed_operator_alert(
+    pool: &PgPool,
+    owner_name: &str,
+    owner_email: &str,
+    workspace: &str,
+) -> Result<(), String> {
+    let settings = crate::platform_settings::load(pool).await;
+    let Some(to) = settings
+        .operator_alert_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return Ok(());
+    };
+    let synthetic = crate::security::probe_addr::synthetic_requester(owner_email, owner_name)
+        .or_else(|| crate::security::probe_addr::synthetic_requester("", workspace));
+    if let Some(reason) = synthetic {
+        tracing::info!(
+            reason = %reason,
+            "account-closed operator alert WITHHELD — the closed account is a synthetic identity"
+        );
+        return Ok(());
+    }
+    let who = if owner_name.trim().is_empty() {
+        owner_email.to_string()
+    } else {
+        format!("{} ({})", owner_name.trim(), owner_email)
+    };
+    let workspace = if workspace.trim().is_empty() {
+        owner_email.to_string()
+    } else {
+        workspace.trim().to_string()
+    };
+    let cancelled_on = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let subject = format!("Customer cancelled: {workspace}");
+    let text = format!(
+        "A customer closed their own account.\n\n\
+         Workspace: {workspace}\n\
+         Owner: {who}\n\
+         Closed on: {cancelled_on}\n\n\
+         Nothing was charged for the closure. The account can no longer sign in, every session it \
+         had is dead and every API key on it has been revoked. Its data is kept, so the workspace, \
+         its leads and its figures are still in the admin console if they come back or ask about it."
+    );
+    let html = format!(
+        "<p>A customer closed their own account.</p>\
+         <p><strong>{}</strong><br>\
+         Owner: {}<br>\
+         Closed on: {}</p>\
+         <p>Nothing was charged for the closure. The account can no longer sign in, every session it \
+         had is dead and every API key on it has been revoked. Its data is kept, so the workspace, \
+         its leads and its figures are still in the admin console if they come back or ask about it.</p>",
+        crate::templates::html_escape(&workspace),
+        crate::templates::html_escape(&who),
+        crate::templates::html_escape(&cancelled_on),
+    );
+    dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
 }
 
 /// Tell the OPERATOR that a workspace asked to buy a plan (2026-11-09).
