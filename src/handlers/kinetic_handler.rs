@@ -494,6 +494,15 @@ pub async fn update_card(
             Some(want)
         }
     };
+    // THE ADDRESS THIS CARD ANSWERS ON BEFORE THE UPDATE, so a rename can keep the old one alive
+    // (migration 136). Read as its own statement: the UPDATE below is one big COALESCE list and
+    // cannot return the pre-image.
+    let slug_before: Option<String> =
+        sqlx::query_scalar("SELECT slug FROM kinetic_cards WHERE id = $1 AND tenant_id = $2")
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
     let result = sqlx::query_scalar::<_, String>("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2 RETURNING slug")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str()).bind(body["bio"].as_str())
@@ -516,6 +525,30 @@ pub async fn update_card(
     // The address the row ACTUALLY holds, so the editor can print the page link it just saved
     // instead of echoing what was typed (`/k/<returned>`).
     let saved_slug = result.ok_or_else(|| AppError::NotFound("Card not found".into()))?;
+    // A RENAMED CARD KEEPS ITS OLD ADDRESS ALIVE (migration 136). Every business card, QR code and
+    // social post already printed with the previous /k/<slug> would otherwise answer "Card not
+    // found" the moment this save landed. `render_card` answers a 302 to the card's CURRENT slug for
+    // any retired address that no other card owns. The alias write can never fail the save: the
+    // rename itself is already committed, so a failure here is logged and the customer is told the
+    // truth about the address they now have.
+    if let Some(before) = slug_before.as_deref() {
+        if before != saved_slug {
+            if let Err(e) = sqlx::query(
+                "INSERT INTO kinetic_card_slug_aliases (old_slug, card_id) VALUES ($1, $2) \
+                 ON CONFLICT (old_slug) DO UPDATE SET card_id = EXCLUDED.card_id, created_at = now()",
+            )
+            .bind(before)
+            .bind(id)
+            .execute(&state.pool)
+            .await
+            {
+                tracing::error!(
+                    "card rename could not record the retired address '{}' -> '{}' (migration 136): {}",
+                    before, saved_slug, e
+                );
+            }
+        }
+    }
     Ok(Json(json!({"message": "Card updated", "slug": saved_slug})))
 }
 
@@ -1278,6 +1311,32 @@ pub async fn render_card(
     seo_meta.push_str("<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n");
 
     if row.is_none() {
+        // A RETIRED ADDRESS STILL FINDS ITS CARD (migration 136). A customer who renames their card
+        // keeps every link already in the world: look the old address up in the alias table and send
+        // the reader to the card's CURRENT address. The live lookup above ran FIRST, so an address a
+        // DIFFERENT card now owns serves that card and is never hijacked by this arm.
+        let retired: Option<String> = sqlx::query_scalar(
+            "SELECT c.slug FROM kinetic_card_slug_aliases a \
+             JOIN kinetic_cards c ON c.id = a.card_id \
+             WHERE a.old_slug = $1 LIMIT 1",
+        )
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None);
+        if let Some(target) = retired {
+            if !target.is_empty() && target != slug {
+                // 302, not 301: a retired address may be claimed by a different card later, and a
+                // browser must ask again rather than cache this hop for ever. The query string rides
+                // along so `?preview=1` and campaign parameters survive the rename.
+                let mut loc = format!("/{}/{}", prefix, target);
+                if let Some(q) = uri.query() {
+                    loc.push('?');
+                    loc.push_str(q);
+                }
+                return (StatusCode::FOUND, [(axum::http::header::LOCATION, loc)]).into_response();
+            }
+        }
         // 404, not 200 (kanban t_80649ea9): the lookup ran and found no card, so this IS a
         // missing resource. Same bytes as before — only the status moves, so nothing
         // user-visible changes except that a crawler stops treating a dead URL as a live page.
