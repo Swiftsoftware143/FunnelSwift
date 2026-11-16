@@ -35,6 +35,11 @@ pub struct UpdateSettings {
     /// means "stop emailing me", and a value replaces it.
     #[serde(default)]
     pub operator_alert_email: Option<String>,
+    /// HOW A CUSTOMER PAYS on an install with no card provider (2026-11-16). Same three-state
+    /// contract as the alert address: ABSENT keeps what is stored (a client that predates the field
+    /// must not wipe the operator's bank details), an EMPTY string clears it, a value replaces it.
+    #[serde(default)]
+    pub payment_instructions: Option<String>,
 }
 
 /// `GET /api/v1/admin/platform-settings`
@@ -69,6 +74,9 @@ pub async fn get_settings(auth: AuthUser, State(state): State<AppState>) -> AppR
             "registration_open": settings.registration_open,
             "default_plan_slug": settings.default_plan_slug,
             "operator_alert_email": settings.operator_alert_email,
+            // The operator's own words about how to pay, for the Settings screen to show back to him
+            // and for a client that wants to preview what a buyer will read.
+            "payment_instructions": settings.payment_instructions,
         },
         "default_plan": default_plan,
         "seatable_plans": plans
@@ -141,6 +149,19 @@ pub async fn update_settings(
                 Some(v.to_string())
             }
         },
+        // Same contract. No format is imposed: this is the operator's own prose (a bank account, a
+        // payment handle, a link, "reply and I will invoice you"), and refusing his wording would be
+        // this code inventing a payment policy. Only the length is bounded, so a paste cannot bloat
+        // every receipt mail.
+        payment_instructions: match body.payment_instructions.as_deref().map(str::trim) {
+            None => {
+                platform_settings::load(&state.pool)
+                    .await
+                    .payment_instructions
+            }
+            Some("") => None,
+            Some(v) => Some(v.chars().take(1200).collect::<String>()),
+        },
     };
     platform_settings::save(&state.pool, &settings)
         .await
@@ -162,6 +183,7 @@ pub async fn update_settings(
             "registration_open": saved.registration_open,
             "default_plan_slug": saved.default_plan_slug,
             "operator_alert_email": saved.operator_alert_email,
+            "payment_instructions": saved.payment_instructions,
         },
     })))
 }

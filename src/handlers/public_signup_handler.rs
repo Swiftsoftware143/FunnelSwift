@@ -207,6 +207,13 @@ pub async fn file_chosen_plan_request(
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "there".to_string());
+    // HOW TO PAY (2026-11-16): the signup door is the COMMON way a paid ask arrives, so the receipt
+    // this door sends must carry the operator's own payment details too. Read through the pool the
+    // caller already holds; empty means the feature is off and the mail is unchanged.
+    let how_to_pay = crate::platform_settings::load(pool)
+        .await
+        .payment_instructions
+        .unwrap_or_default();
     let receipt_sent = match crate::email::send_plan_request_received_email(
         pool,
         tenant_id,
@@ -214,6 +221,7 @@ pub async fn file_chosen_plan_request(
         &greeting,
         &plan_name,
         "",
+        &how_to_pay,
     )
     .await
     {

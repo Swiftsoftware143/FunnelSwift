@@ -637,9 +637,20 @@ fn get_inline(
                 format!("What you told us:\n\n{note}\n\n")
             };
             let subject = format!("We have your {APP_NAME} plan request - {plan}");
+            // HOW TO PAY (2026-11-16). While no card provider is connected this request IS the
+            // buying path, and until now it ended at "a person will reply" — a customer ready to
+            // send money had nowhere to send it. When the operator has written his own payment
+            // details, they appear here word for word; when he has not, the mail is exactly what it
+            // was before, so an install that never sets them reads nothing new.
+            let how = vars.get("how_to_pay").map(|s| s.trim()).unwrap_or("");
+            let pay_block = if how.is_empty() {
+                String::new()
+            } else {
+                format!("How to pay now:\n\n{how}\n\n")
+            };
             let text = format!(
-                "Hi {0},\n\nThanks - your request for the {1} plan is with our team. You asked for the upgrade and nothing has been charged.\n\n{2}A person will reply to this address, and the answer appears on your Upgrade tab: {3}/upgrade\n\nIf you change your mind, you can withdraw the request from that same screen until we answer it.\n\n- The {4} Team",
-                name, plan, note_block, app_url, APP_NAME
+                "Hi {0},\n\nThanks - your request for the {1} plan is with our team. You asked for the upgrade and nothing has been charged.\n\n{2}{5}A person will reply to this address, and the answer appears on your Upgrade tab: {3}/upgrade\n\nIf you change your mind, you can withdraw the request from that same screen until we answer it.\n\n- The {4} Team",
+                name, plan, note_block, app_url, APP_NAME, pay_block
             );
             (subject, Some(text), None)
         }
@@ -1029,11 +1040,15 @@ pub async fn send_plan_request_received_email(
     name: &str,
     plan_name: &str,
     note: &str,
+    how_to_pay: &str,
 ) -> Result<(), String> {
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
     vars.insert("note", note);
+    // The operator's own payment details, when he has written any (2026-11-16). Always bound, so a
+    // template that references `{{how_to_pay}}` cannot send the placeholder literally.
+    vars.insert("how_to_pay", how_to_pay);
     send_template_email_for_tenant(
         pool,
         tenant_id,

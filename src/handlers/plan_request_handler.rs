@@ -183,6 +183,20 @@ pub async fn create(
         format!("{plan_name} — {term_label}")
     };
 
+    // HOW TO PAY (2026-11-16). While no card provider is configured a plan request IS the buying
+    // path, so both the receipt and the answer have to say where the money goes and what to quote.
+    // The operator writes those details once in System Settings; nothing is ever invented here.
+    // Empty = feature off, and every response is exactly what it said before.
+    let how_to_pay = crate::platform_settings::load(&state.pool)
+        .await
+        .payment_instructions
+        .unwrap_or_default();
+    let pay_json = if how_to_pay.trim().is_empty() {
+        Value::Null
+    } else {
+        json!(how_to_pay)
+    };
+
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM plan_requests
           WHERE tenant_id = $1 AND plan_slug = $2 AND billing_cycle = $3
@@ -204,7 +218,8 @@ pub async fn create(
                 "message": format!(
                     "Your request for {} is already with our team.",
                     plan_display
-                )
+                ),
+                "payment_instructions": pay_json,
             })),
         ));
     }
@@ -252,6 +267,7 @@ pub async fn create(
         &greeting,
         &plan_display,
         &note,
+        &how_to_pay,
     )
     .await
     {
@@ -298,6 +314,9 @@ pub async fn create(
             // Whether the customer's receipt actually went out, so the Upgrade screen can say
             // "we emailed you a copy" only when it is true.
             "acknowledged": acknowledged,
+            // Where to send the money, in the operator's own words — null when he has written none,
+            // in which case the screen shows exactly what it showed before.
+            "payment_instructions": pay_json,
         })),
     ))
 }
@@ -333,7 +352,17 @@ pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResu
         })
         .collect();
 
-    Ok(Json(json!({ "requests": requests })))
+    // The operator's payment details ride with the list (2026-11-16): the Upgrade screen shows them
+    // beside an open ask, and a reload must not lose them — that screen has no other source.
+    let how_to_pay = crate::platform_settings::load(&state.pool)
+        .await
+        .payment_instructions
+        .filter(|v| !v.trim().is_empty());
+
+    Ok(Json(json!({
+        "requests": requests,
+        "payment_instructions": how_to_pay,
+    })))
 }
 
 /// `DELETE /api/v1/plan-requests/:id` — this workspace WITHDRAWS its own open ask.

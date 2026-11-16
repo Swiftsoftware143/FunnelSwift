@@ -850,6 +850,14 @@ pub async fn create_checkout_session(
                         // Best effort by design, like every other mail here: the `plan_requests`
                         // row is the record the operator works from, so a mail failure is
                         // logged and reported, never fatal.
+                        //
+                        // HOW TO PAY (2026-11-16): the same operator-written details the customer's
+                        // own request door uses, so the buyer who pressed Upgrade learns where to
+                        // send the money from the receipt rather than waiting for a human.
+                        let how_to_pay = crate::platform_settings::load(&state.pool)
+                            .await
+                            .payment_instructions
+                            .unwrap_or_default();
                         match crate::email::send_plan_request_received_email(
                             &state.pool,
                             tenant_id,
@@ -857,6 +865,7 @@ pub async fn create_checkout_session(
                             &greeting,
                             &asked_name,
                             "",
+                            &how_to_pay,
                         )
                         .await
                         {

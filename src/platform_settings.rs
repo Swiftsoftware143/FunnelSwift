@@ -51,6 +51,18 @@ pub struct PlatformSettings {
     /// something this code invents.
     #[serde(default)]
     pub operator_alert_email: Option<String>,
+    /// HOW A CUSTOMER ACTUALLY PAYS while this installation has no card provider (2026-11-16).
+    ///
+    /// Why it lives here: `checkout/create` refuses a paid plan with
+    /// `payment_provider_not_configured` on every cloud install of this fleet, so the plan request IS
+    /// the buying path — and until now that path ended with "a person will reply". A customer willing
+    /// to pay by bank transfer, check or any rail the operator already owns had nowhere to send the
+    /// money and no reference to quote. The operator writes his own payment details ONCE (it is his
+    /// business decision, never something this code invents), and every buyer who asks to buy reads
+    /// them on the Upgrade screen and in the receipt email. Empty/absent = the feature is off and the
+    /// receipt says exactly what it said before.
+    #[serde(default)]
+    pub payment_instructions: Option<String>,
 }
 
 fn default_registration_open() -> bool {
@@ -63,6 +75,7 @@ impl Default for PlatformSettings {
             registration_open: true,
             default_plan_slug: None,
             operator_alert_email: None,
+            payment_instructions: None,
         }
     }
 }
