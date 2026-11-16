@@ -3999,7 +3999,7 @@ async function renderProviderKeys() {
         <div class="form-group" style="margin:0;min-width:170px">
           <label class="form-label">Provider type</label>
           <input aria-label="Provider type" class="input" name="provider_type" list="payment-catalog" placeholder="e.g. stripe" required>
-          <datalist id="payment-catalog"><option value="stripe"><option value="paypal"><option value="mintbird"><option value="groovesell"></datalist>
+          <datalist id="payment-catalog"><option value="stripe"></datalist><div style="font-size:11px;color:#64748b;margin-top:4px">Stripe is the only provider this installation can charge with. A PayPal, Mintbird or Groovesell key would save but could not take a payment, so those are not offered here.</div>
         </div>
         <div class="form-group" style="margin:0;min-width:260px;flex:1">
           <label class="form-label">Secret key</label>
