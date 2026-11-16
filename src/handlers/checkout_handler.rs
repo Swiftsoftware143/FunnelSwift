@@ -393,10 +393,50 @@ pub async fn checkout_status(
             }
         }
     };
+    // ── What a press ACTUALLY reaches (2026-11-16) ───────────────────────────────────────────────
+    // `configured` answers ONE arm of the sale ladder: a provider row whose key is readable. It is
+    // not the whole answer. Since 2026-10-24 a plan can carry its own hosted payment page
+    // (`plans.purchase_url`) and the till below hands the buyer to it with NO provider at all — so
+    // an install answering `configured:false` can still SELL. The panel had only `configured` to go
+    // on and told the customer "upgrades are not switched on … no charge is made" while a working
+    // payment page sat on the plan, i.e. it talked a buyer out of a purchase it could complete.
+    // Every sibling app answers an `upgrade_path` for exactly this; this is the same field against
+    // THIS app's ladder (`resolve_plan_provider` above + the hosted-link arm of `create_checkout_session`),
+    // so the sentence the panel prints and the action a press performs cannot disagree.
+    //   * `checkout`     — provider configured with a readable key: a press reaches the provider.
+    //   * `payment_link` — no provider, but an active plan carries a hosted page: a press hands the
+    //                      buyer to it (and still files the ask; a hosted page tells us nothing).
+    //   * `request`      — nothing can take money: the honest action is to request the plan.
+    // Counted, never assumed: `is_hosted_payment_url` is the till's own predicate, so this cannot
+    // promise a hand-off the sale would then reject.
+    let purchase_urls: Vec<String> =
+        sqlx::query_scalar("SELECT COALESCE(purchase_url, '') FROM plans WHERE is_active = true")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
+    let sellable_plans = purchase_urls
+        .iter()
+        .filter(|u| is_hosted_payment_url(u))
+        .count();
+    let upgrade_path = if configured {
+        "checkout"
+    } else if sellable_plans > 0 {
+        "payment_link"
+    } else {
+        "request"
+    };
+
     Ok(Json(json!({
         "configured": configured,
         "provider": provider,
         "reason": match reason { Some(r) => json!(r), None => Value::Null },
+        "upgrade_path": upgrade_path,
+        "sellable_plans": sellable_plans,
+        "message": match upgrade_path {
+            "checkout" => "Upgrades are open: pressing Upgrade takes you to a secure payment page.",
+            "payment_link" => "Pressing Upgrade opens the plan's own payment page; the workspace is switched on once the team confirms it.",
+            _ => "Upgrades are not open on this installation yet, and nothing will be charged. Pressing next records your request for the plan so the team can switch your workspace onto it.",
+        },
     })))
 }
 
