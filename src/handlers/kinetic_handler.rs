@@ -1879,6 +1879,18 @@ pub async fn submit_lead(
         ),
     );
 
+    // Activity feed (best-effort): the Kinetic card is this app's front door, so a submission lands
+    // on the dashboard's Recent Activity. No signed-in user here — the row names the door.
+    crate::activity::lead_created(
+        &state.pool,
+        tenant_id,
+        crate::activity::PUBLIC_ACTOR,
+        lead_id,
+        &name,
+        Some("kinetic_card"),
+    )
+    .await;
+
     // The raw card event (migration 0017's `lead_events`) — this is what ties the lead to the
     // card it was submitted from. `source_param` carries the traffic source, as in the table's
     // own historical rows ('ig'/'fb'); `ip_hash` stays NULL exactly like those rows. `user_id` is

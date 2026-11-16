@@ -312,6 +312,18 @@ pub async fn create_lead(
         ),
     );
 
+    // Activity feed (best-effort): a lead the operator creates is a captured lead, so it belongs on
+    // the dashboard's Recent Activity beside the ones arriving from the public doors.
+    crate::activity::lead_created(
+        &state.pool,
+        tenant_id,
+        &auth.user_id,
+        lead_id,
+        &display_name,
+        req.source.as_deref(),
+    )
+    .await;
+
     // Best-effort push to WorkflowSwift — the REAL POST {WORKFLOWSWIFT_URL}/api/v1/incoming call,
     // the same `deliver_lead` the /api/v1/push/workflowswift leg uses. Until 2026-09-25 this spawn
     // was `push_to_workflowswift`, which only wrote a log line while the route beside it fabricated
@@ -1898,6 +1910,21 @@ pub async fn import_leads(
         .await?;
     }
     tx.commit().await?;
+
+    // Activity feed (best-effort): ONE row for the whole import, not one per lead — a 5,000-row CSV
+    // would otherwise bury every other event in the 50-row window the dashboard reads.
+    if !prepared.is_empty() {
+        crate::activity::log(
+            &state.pool,
+            tenant_id,
+            &auth.user_id,
+            "leads.imported",
+            "lead",
+            None,
+            json!({ "count": prepared.len() }),
+        )
+        .await;
+    }
 
     Ok(Json(json!({
         "imported": prepared.len(),

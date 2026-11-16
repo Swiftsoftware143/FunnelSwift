@@ -1488,13 +1488,32 @@ function D(){
     sr.innerHTML=h;
     ST=d; paintStart();
   });
+  /* RECENT ACTIVITY: the label and the sentence (2026-11-16). This table used to print
+     `r.description`, a field GET /api/v1/dashboard/activity has NEVER returned — the route answers
+     ActivityLog rows (action, entity_type, entity_id, metadata), so every Description cell on the
+     customer dashboard showed blank whatever had happened. Both cells are now built from the fields
+     that exist, and the `lead.created` / `leads.imported` events the capture doors record today read
+     in plain English with the lead's name beside them. */
+  var ACT_LABELS={"lead.created":"👤 New lead","stage_change":"↔ Stage changed","leads.imported":"📥 Leads imported","api_key_created":"🔑 API key created","api_key_revealed":"🔑 API key revealed","api_key_regenerated":"🔑 API key regenerated","api_key_revoked":"🔑 API key revoked","admin_impersonate":"🕵 Support signed in"};
+  function actLabel(a){return ACT_LABELS[a]||a;}
+  function actDesc(r){
+    var m=(r&&r.metadata&&typeof r.metadata==='object')?r.metadata:{};
+    if(r.action==='lead.created') return (m.name?m.name:'A lead')+(m.source?' — from '+String(m.source).replace(/_/g,' '):'');
+    if(r.action==='stage_change') return m.new_stage?('Moved to '+m.new_stage):'';
+    if(r.action==='leads.imported') return (m.count||0)+' lead'+(Number(m.count)===1?'':'s')+' added from a file';
+    var parts=[];
+    if(r.entity_type) parts.push(String(r.entity_type).replace(/_/g,' '));
+    Object.keys(m).forEach(function(k){var v=m[k];if(v!==null&&v!==undefined&&typeof v!=='object')parts.push(k.replace(/_/g,' ')+': '+v);});
+    if(parts.length) return parts.join(' — ');
+    return r.entity_id?('id '+String(r.entity_id).slice(0,8)):'';
+  }
   api("/api/v1/dashboard/activity").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
     var h='<div class="card"><h3>Recent Activity</h3>';
     if(!a.length) h+='<p style="color:#64748b;font-size:13px">No recent activity.</p>';
     else{
       h+='<table><tr><th>Action</th><th>Description</th></tr>';
-      a.slice(0,10).forEach(function(r){h+='<tr><td style="color:#6366f1;font-weight:600">'+X(r.action)+'</td><td>'+X(r.description)+'</td></tr>';});
+      a.slice(0,10).forEach(function(r){h+='<tr><td style="color:#6366f1;font-weight:600">'+X(actLabel(r.action))+'</td><td>'+X(actDesc(r))+'</td></tr>';});
       h+="</table>";
     }
     h+="</div>";

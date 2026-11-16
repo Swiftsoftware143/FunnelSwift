@@ -478,6 +478,23 @@ pub async fn handle_web_to_lead(
         ),
     );
 
+    // Activity feed (best-effort): a web-to-lead post is a captured lead, so it appears on the
+    // dashboard's Recent Activity with the door it arrived through. An affiliate-submitted form has
+    // no signed-in user either, so the actor names the door rather than inventing a user id.
+    crate::activity::lead_created(
+        &state.pool,
+        tenant_id,
+        if affiliate_user.is_some() {
+            "affiliate"
+        } else {
+            crate::activity::PUBLIC_ACTOR
+        },
+        id,
+        payload["name"].as_str().unwrap_or(""),
+        Some(&source),
+    )
+    .await;
+
     // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be
     // able to land in CoreSwift as a contact. Fire-and-forget: the visitor's submission above
     // already succeeded, and this is a no-op when the tenant has no `coreswift` BYOK key.

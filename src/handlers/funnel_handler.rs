@@ -807,6 +807,18 @@ pub async fn submit_funnel_lead(
         ),
     );
 
+    // Activity feed (best-effort): the same capture, on the dashboard's Recent Activity. The visitor
+    // has no account here, so the row records the public actor rather than a made-up user id.
+    crate::activity::lead_created(
+        &state.pool,
+        tenant_id,
+        crate::activity::PUBLIC_ACTOR,
+        lead_id,
+        &name,
+        Some("funnel"),
+    )
+    .await;
+
     // TELL THE OWNER (2026-11-01). The lead is written and the webhook has fired; without this the
     // owner only found out by opening the panel. Best effort by design: a mail problem must never
     // cost the capture, so every failure below is logged and the visitor still gets their 201. The
