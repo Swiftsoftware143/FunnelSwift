@@ -355,12 +355,7 @@ async fn seat_refusal(state: &AppState, tenant_id: Uuid, refusal: AppError) -> A
         Ok(Some(limit)) if limit > 0 => limit,
         _ => return refusal,
     };
-    let best: Option<i32> =
-        sqlx::query_scalar("SELECT MAX(max_team_members) FROM plans WHERE max_team_members > 0")
-            .fetch_one(&state.pool)
-            .await
-            .ok()
-            .flatten();
+    let best = features::catalogue_seat_ceiling(state).await.ok().flatten();
     if matches!(best, Some(best) if best > current) {
         return refusal;
     }

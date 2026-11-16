@@ -213,7 +213,12 @@ pub const SPECS: &[Spec] = &[
         // The allowance itself is still the plans' to set: measured 2026-10-31, all six plans
         // (free .. agency $79) carry `max_team_members = 1` and the count includes the owner, so
         // every workspace reads "1 of 1 seat used" and an invite is refused until a plan grants a
-        // second seat — a pricing decision, not this file's (NEEDS-DAVID, card filed).
+        // second seat — that was a pricing decision, and it is now made (kanban t_8e9d41d7,
+        // 2026-11-16): 1 / 1 / 3 / 3 / 10 / 25 captured by migration 135 and recorded in
+        // docs/fleet-team-seat-policy-2026-11-16.md. The catalogue ceiling the pane reads
+        // (`features::catalogue_seat_ceiling`) resolves with the SAME precedence as the gate, so a
+        // number the operator writes through PUT /api/v1/admin/plans/entitlement is honoured by
+        // both the resolver and the upgrade link.
         enforced_by: "POST /api/v1/team/invite (handlers::team_handler::invite_teammate) — refuses the mint when the workspace's active people reach the plan's max_team_members",
         read_by_gate: true,
     },

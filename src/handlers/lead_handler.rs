@@ -886,10 +886,7 @@ pub async fn team_members(
     // taken. Upgrade to add a teammate" — and on this install EVERY plan carries
     // `max_team_members = 1`, so the upgrade it promised adds no seat at all. The ceiling of the
     // catalogue travels with the list so the screen only offers a link a plan can honour.
-    let best_limit: Option<i64> =
-        sqlx::query_scalar("SELECT MAX(max_team_members)::bigint FROM plans")
-            .fetch_one(&state.pool)
-            .await?;
+    let best_limit: Option<i32> = features::catalogue_seat_ceiling(&state).await?;
 
     Ok(Json(json!({
         "members": members,

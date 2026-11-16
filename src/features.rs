@@ -441,6 +441,28 @@ pub async fn remaining_headroom(
     }
 }
 
+/// The highest SEAT ceiling any plan on this installation actually grants, resolved with the SAME
+/// precedence as [`resolved_limit`]: a `feature_limits` row (the number the admin entitlement editor
+/// writes, kanban t_8e9d41d7) wins over the plan's own column.
+///
+/// The team pane and `seat_refusal` used to ask `MAX(plans.max_team_members)` straight off the
+/// column. That is the number nobody edits: the editor writes `feature_limits`, so the moment seats
+/// were raised through the console the catalogue ceiling still answered the OLD value and the screen
+/// hid the upgrade the owner had just made possible — the same dead end this reading exists to
+/// prevent. `-1`/`0` are excluded: unlimited is not "more seats", and 0 is "not available".
+pub async fn catalogue_seat_ceiling(state: &AppState) -> AppResult<Option<i32>> {
+    let best: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(COALESCE(fl.limit_value, p.max_team_members)) \
+           FROM plans p \
+           LEFT JOIN feature_limits fl \
+             ON fl.plan_id = p.id AND fl.feature_key = 'max_team_members' \
+          WHERE COALESCE(fl.limit_value, p.max_team_members) > 0",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+    Ok(best)
+}
+
 /// The effective numeric limit for the tenant, in precedence order (see [`pick_limit`]): the
 /// tenant's own override FIRST, then a `feature_limits` row (the custom per-plan number the admin
 /// panel writes), then the plan's own column through [`plan_limit`]. `None` = the key is
