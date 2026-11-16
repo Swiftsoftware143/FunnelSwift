@@ -2820,7 +2820,36 @@ function MFC(data){
   // TAB 0: Info
   var p0=El("div",{"class":"mc-tab-pane"});
   p0.appendChild(MF("Title","mc-title",c.title||"","My Card"));
-  p0.appendChild(MF("Slug","mc-slug",c.slug||"","my-card"));
+  /* THE CARD'S PUBLIC ADDRESS IS PART OF THE CARD (2026-11-16). Save has always sent `slug`, but the
+     field was a bare text box that never said what it becomes: the address a customer shares
+     ("/k/2cd97e26") was invisible here, and a value the public route cannot serve (a space, a slash,
+     capitals) only showed up as a broken link AFTER saving. The normaliser below mirrors the
+     server's `normalise_card_slug` exactly, so what is typed is what will be saved, and the line
+     under the box is the link that gets printed on the card. */
+  var slugWrap = MF("Card address","mc-slug",c.slug||"","my-card");
+  var slugInput = slugWrap.querySelector("input");
+  var slugHint = El("p",{id:"mc-slug-hint",style:"font-size:11px;color:#94a3b8;margin:4px 0 0"});
+  var slugBase = "https://"+(((typeof KCB!="undefined" && KCB && KCB.subdomain) ? KCB.subdomain+".kntcrd.com" : "kntcrd.com"))+"/k/";
+  function normSlug(v){
+    var s=String(v||"").toLowerCase(), out="";
+    for(var i=0;i<s.length;i++){
+      var ch=s.charAt(i);
+      if(/[a-z0-9]/.test(ch)) out+=ch;
+      else if(out.charAt(out.length-1)!=="-") out+="-";
+    }
+    out=out.replace(/^-+/,"").slice(0,50).replace(/-+$/,"");
+    return out;
+  }
+  function paintSlugHint(){
+    var v=normSlug(slugInput.value);
+    slugHint.innerHTML = v.length>=3
+      ? ('Published at <b>'+X(slugBase+v)+'</b> \u2014 lowercase letters, numbers and hyphens only, so the link is one you can read out loud.')
+      : 'A card address needs at least three letters or numbers \u2014 try your name.';
+  }
+  slugInput.addEventListener("input", paintSlugHint);
+  paintSlugHint();
+  slugWrap.appendChild(slugHint);
+  p0.appendChild(slugWrap);
   var ts=El("select",{id:"mc-type"});
   cardTemplates(c.template_type).forEach(function(o){
     ts.appendChild(El("option",{value:o.v,selected:(c.template_type||"default")===o.v?"selected":null},o.l));
@@ -3248,6 +3277,11 @@ function SC2(id){
     // 500, so it never got an address at all).
     if(!id && r && r.slug && String(r.slug) !== String(d.slug))
       showMsg("That page address was already taken, so your card was published at /k/"+r.slug+".","mi");
+    /* An EDIT says which address the card now answers on (2026-11-16). The server returns the slug
+       the row actually holds after its own normalising, so the confirmation quotes the saved link
+       rather than the text that was typed over it. */
+    else if(id && r && r.slug)
+      showMsg("Saved \u2014 your card is published at /k/"+r.slug+".","mk");
     C(); KCB.tab="my"; S("cards");
   }).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
