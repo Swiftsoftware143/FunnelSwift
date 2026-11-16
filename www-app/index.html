@@ -3281,7 +3281,11 @@ function SC2(id){
        the row actually holds after its own normalising, so the confirmation quotes the saved link
        rather than the text that was typed over it. */
     else if(id && r && r.slug)
-      showMsg("Saved \u2014 your card is published at /k/"+r.slug+".","mk");
+      /* A RENAME KEEPS THE OLD ADDRESS ALIVE (2026-11-16): the server records the address the card
+         used to answer on and redirects it to this one, so a printed business card, a QR code or a
+         post already out in the world still lands on the card. Said here because the customer is
+         looking at the address change and needs to know their old link did not die with it. */
+      showMsg("Saved \u2014 your card is published at /k/"+r.slug+". Links to your old address still reach it.","mk");
     C(); KCB.tab="my"; S("cards");
   }).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
