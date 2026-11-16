@@ -6517,8 +6517,11 @@ function tagLabel(id){
    Routes: GET|POST /api/v1/support-requests (tenant-scoped in the handler, never from the body).
    The row IS the record: the answer is written on the request the customer filed, so reload shows it. */
 var SUP_LABEL={open:"With our team",answered:"Answered",closed:"Closed"};
+/* The sentence the send produces, carried ACROSS the list re-render below: say() writes into the
+   old #sup-msg node and LSUP replaces it, so the note is re-planted in the fresh card. */
+var SUP_NOTE="";
 function LSUP(){
-  api("/api/v1/support-requests").then(function(d){
+  return api("/api/v1/support-requests").then(function(d){
     var a=(d&&d.requests)||[];
     var h='<div class="cc"><h3>Support</h3>';
     h+='<p style="color:#64748b;font-size:12px;margin-bottom:14px">Ask the team anything about this workspace and read the answer here. Every request and its answer stay listed, and the answer is also emailed to the address you are signed in with &mdash; so you hear about it without having to come back and look.</p>';
@@ -6542,6 +6545,11 @@ function LSUP(){
     });}
     h+='<p style="font-size:11px;color:#94a3b8;margin-top:10px">Need something else? Send another request above &mdash; every ask is its own row.</p></div></div>';
     $("ct").innerHTML=h;
+    if(SUP_NOTE){
+      var nm=$("sup-msg");
+      if(nm){nm.style.display="block";nm.style.color="#166534";nm.textContent=SUP_NOTE;}
+      SUP_NOTE="";
+    }
   }).catch(function(e){
     $("ct").innerHTML='<div class="cc"><h3>Support</h3><p style="color:#b91c1c;font-size:13px">Could not load your requests: '+X((e&&e.message)||"unknown error")+'</p></div>';
   });
@@ -6554,7 +6562,15 @@ function SUPSEND(){
   if(!subject){say("Give the request a short subject.",false);return;}
   if(!body){say("Write your message.",false);return;}
   api("/api/v1/support-requests",{method:"POST",body:JSON.stringify({subject:subject,body:body})})
-    .then(function(d){ LSUP(); })
+    .then(function(d){
+      /* The route reports whether the receipt was actually QUEUED (2026-11-16), so this sentence
+         never promises a mail that did not happen: an address the app withholds gets the plain
+         "it is with our team" line, not a receipt claim. */
+      if(d&&d.status==="existing"){ SUP_NOTE="You already have an open request with that subject - it is with our team."; }
+      else if(d&&d.acknowledged===true){ SUP_NOTE="Request sent - a receipt is on its way to your email address."; }
+      else { SUP_NOTE="Request sent - it is with our team. Its answer appears on this screen."; }
+      return LSUP();
+    })
     .catch(function(e){ say((e&&e.message)||"Could not send the request.",false); });
 }
 function LWTL(){

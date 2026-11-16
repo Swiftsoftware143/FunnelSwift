@@ -643,6 +643,26 @@ fn get_inline(
             );
             (subject, Some(text), None)
         }
+        // THE RECEIPT FOR AN ORDINARY HELP REQUEST (2026-11-16). The plan arm above answers a
+        // customer who asked to BUY; this one answers a customer who asked for HELP - "I cannot
+        // sign in", "my form stopped collecting". Until now that message wrote the row and told
+        // the operator, and the person who wrote in got nothing back: no written proof their
+        // message had reached anyone, so silence was indistinguishable from a lost request. It
+        // promises no answer time, because no person has read it yet. `subject_line` is the
+        // customer's own subject, so the mail is recognisable in an inbox list. A template row
+        // named `support_request_receipt` overrides this arm.
+        "support_request_receipt" => {
+            let asked = vars
+                .get("subject_line")
+                .unwrap_or(&"your message")
+                .to_string();
+            let subject = format!("We have your message - {APP_NAME}");
+            let text = format!(
+                "Hi {0},\n\nThanks - your message reached us:\n\n    {1}\n\nA person (not a robot) reads every message and answers this address. You can follow it on the Support screen in your account: {2}/app#support\n\nIf you meant to add something, send another request from that same screen - it lands in the same queue.\n\n- The {3} Team",
+                name, asked, app_url, APP_NAME
+            );
+            (subject, Some(text), None)
+        }
         // The operator's own in-inbox proof of the branding above (cron 2026-10-23, parity with
         // IncentiveSwift). `render_template` has ALREADY swapped APP_NAME for the tenant's brand
         // name and `logo_url` for the tenant's logo, and `with_branding_header` has already put
@@ -1020,6 +1040,40 @@ pub async fn send_plan_request_received_email(
         tenant_id,
         to,
         "plan_request_received",
+        &bound_vars(vars),
+    )
+    .await
+}
+
+/// Acknowledge an ORDINARY support request the moment the customer files it (2026-11-16).
+///
+/// The plan-request receipt above answers "I want to buy"; this one answers "help me" — "I cannot
+/// sign in", "my form stopped collecting". Until this existed the request wrote its row and mailed
+/// the operator, and the person who wrote in got nothing at all, so they could not tell a request
+/// that reached the team from one that never left the browser. The same single send funnel as every
+/// other mail here: the tenant's own template row if it has one, per-account branding, and the
+/// reserved/harness-address gate — a probe address is recorded as a `withheld` non-send and no
+/// message is attempted.
+///
+/// Best effort by design: the row is the record, so a mail failure must never lose a filed request.
+/// The caller reports the outcome as `acknowledged`, so the console never promises a receipt that
+/// did not happen.
+pub(crate) async fn send_support_request_receipt_email(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    name: &str,
+    subject_line: &str,
+) -> Result<(), String> {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("name", name);
+    vars.insert("subject_line", subject_line);
+    send_template_email_for_tenant(
+        pool,
+        tenant_id,
+        tenant_id,
+        to,
+        "support_request_receipt",
         &bound_vars(vars),
     )
     .await
@@ -1775,6 +1829,37 @@ mod tests {
         let text = text.unwrap_or_default();
         assert!(!text.contains("What you told us"), "empty note leaked");
         assert!(text.contains("Kinetic Pro"));
+    }
+
+    // The receipt an ORDINARY help request now earns (2026-11-16). Before it, only a plan request
+    // was acknowledged by mail; "I cannot sign in" got a sentence on a screen and an empty inbox.
+    #[test]
+    fn support_request_receipt_quotes_the_request_and_names_where_it_lives() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("subject_line", "I cannot sign in"),
+        ]));
+        let (subject, text, _html) = get_inline("support_request_receipt", &v);
+        let text = text.unwrap_or_default();
+        assert!(
+            text.contains("I cannot sign in"),
+            "the ask is not quoted: {text}"
+        );
+        assert!(
+            text.contains("/app#support"),
+            "where to look is missing: {text}"
+        );
+        assert!(
+            subject.contains("We have your message"),
+            "subject was {subject}"
+        );
+        // It is a receipt, not a promise: no person has read the request yet, so it must not
+        // name an answer time.
+        assert!(
+            !text.contains("within"),
+            "an answer time was promised: {text}"
+        );
+        assert!(!unsubstituted(&text).contains(&"name"));
     }
 
     #[test]

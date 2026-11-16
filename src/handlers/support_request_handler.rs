@@ -143,6 +143,15 @@ pub async fn create(
     .fetch_one(&state.pool)
     .await?;
 
+    // ACKNOWLEDGE THE CUSTOMER (2026-11-16). The plan-request arm next door has mailed a receipt
+    // since 2026-10-20; an ordinary help request ("I cannot sign in") was written to the queue,
+    // alerted the operator and left the person who wrote in with nothing — silence they could not
+    // tell apart from a message that never left the browser. The old comment here claimed "the
+    // customer got its acknowledgement": that acknowledgement was only the sentence below, on a
+    // screen they may never look at again. Best effort, exactly like the operator alert — the row
+    // is the record, so a mail failure never turns a filed request into a 500.
+    let acknowledged = acknowledge_customer(&state, tenant_id, &auth.email, &subject).await;
+
     // Tell the OPERATOR (2026-11-09): until this arm existed the row was written, the customer got
     // its acknowledgement, and nobody was told — the message waited for someone to open the
     // console. Best effort: the row is already the record, so a mail failure is logged, never
@@ -167,9 +176,54 @@ pub async fn create(
             "status": row.get::<String, _>("status"),
             "subject": subject,
             "created_at": row.get::<String, _>("created_at"),
+            // Whether the receipt was QUEUED, so the console never promises a mail that did not
+            // happen. The row above is written either way.
+            "acknowledged": acknowledged,
             "message": "Your request is with our team. Its answer appears on this screen.",
         })),
     ))
+}
+
+/// Mail the person who filed an ordinary support request, and report whether it was queued.
+///
+/// The recipient is the CALLER's own signed-in address — never one taken from the body — so the
+/// receipt can only go to the person who filed it. The name is read from that user's own row (the
+/// credential carries no display name); with no name, the mail greets the reader neutrally rather
+/// than inventing one. Reserved/harness recipients are recorded `withheld` by the send funnel and
+/// nothing is attempted, so a probe can never reach the fleet's inboxes.
+async fn acknowledge_customer(
+    state: &AppState,
+    tenant_id: Uuid,
+    email: &str,
+    subject: &str,
+) -> bool {
+    let name: Option<String> = sqlx::query_scalar(
+        "SELECT NULLIF(btrim(name), '') FROM users WHERE tenant_id = $1 AND lower(email) = lower($2) LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(email)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    let name = name.unwrap_or_else(|| "there".to_string());
+    match crate::email::send_support_request_receipt_email(
+        &state.pool,
+        tenant_id,
+        email,
+        &name,
+        subject,
+    )
+    .await
+    {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                "support-request receipt to {email} not queued (tenant {tenant_id}): {e}"
+            );
+            false
+        }
+    }
 }
 
 /// `POST /api/v1/public/support-request` — a message from someone who is NOT signed in.
