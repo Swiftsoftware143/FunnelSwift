@@ -116,6 +116,17 @@ pub async fn portfolio_sync(
         )));
     }
 
+    // ── ONE transaction over the whole mint (measured defect class, 2026-11-16) ─────────────────
+    // Every row below used to be written as its own statement on its own pooled connection, so a
+    // failure anywhere after the `tenants` INSERT — the plan lookup, the subscription, the users row
+    // — left a workspace behind with NO owner login: an empty "…'s Workspace" in the operator's
+    // Tenants list that nobody can sign into, while the caller only saw a 500. Rows of exactly that
+    // shape exist on this install today ("System", 0 users, measured 2026-11-16). The transaction
+    // writes nothing unless the account is COMPLETE, and a duplicate address is refused at the
+    // database as well as at the fast-path pre-check above (that check cannot see a concurrent writer
+    // which has not committed yet, so `users_email_key` is the real arbiter).
+    let mut tx = state.pool.begin().await?;
+
     // Create tenant
     let tenant_id = Uuid::new_v4();
     let tenant_slug = crate::security::display_name::slugify(&name);
@@ -124,7 +135,7 @@ pub async fn portfolio_sync(
         .bind(tenant_id)
         .bind(&name)
         .bind(&tenant_slug)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
 
     // Portfolio tenants are sister companies David owns, so they always get THIS app's highest plan
@@ -139,7 +150,7 @@ pub async fn portfolio_sync(
         // Its price column is `price` (no is_active, no price_monthly) - checked on the live schema.
         "SELECT id FROM plans ORDER BY price DESC NULLS LAST, slug ASC LIMIT 1",
     )
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await?;
 
     let pid = plan_id.ok_or_else(|| {
@@ -152,7 +163,7 @@ pub async fn portfolio_sync(
     .bind(Uuid::new_v4())
     .bind(tenant_id)
     .bind(pid)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
 
     // Create user
@@ -171,7 +182,7 @@ pub async fn portfolio_sync(
         .to_string();
 
     let now = Utc::now().naive_utc();
-    sqlx::query(
+    let raw_user_insert = sqlx::query(
         "INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, 'member', true, $6, $7)"
     )
     .bind(user_id)
@@ -181,8 +192,39 @@ pub async fn portfolio_sync(
     .bind(&name)
     .bind(now)
     .bind(now)
-    .execute(&state.pool)
+    .execute(&mut *tx)
+    .await;
+    if let Err(sqlx::Error::Database(e)) = &raw_user_insert {
+        // A concurrent mint of the same address won the race after the pre-check above passed.
+        // Because this INSERT runs inside the transaction, the losing attempt rolls back its own
+        // tenant and subscription — no orphan workspace, and the caller gets the same 409 the
+        // fast path gives instead of a 500.
+        if e.code().as_deref() == Some("23505") {
+            return Err(AppError::Conflict(format!(
+                "A user with email {} already exists",
+                email
+            )));
+        }
+    }
+    raw_user_insert?;
+
+    // Create portfolio company record
+    sqlx::query(
+        "INSERT INTO portfolio_companies (id, tenant_id, name, slug, email, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET name = $3, email = $5, description = $6, updated_at = NOW()"
+    )
+    .bind(sync_id)
+    .bind(tenant_id)
+    .bind(&name)
+    .bind(&tenant_slug)
+    .bind(&email)
+    .bind(&description)
+    .execute(&mut *tx)
     .await?;
+
+    // Commit BEFORE any mail leaves: a customer must never be handed a password for a workspace the
+    // database did not keep.
+    tx.commit().await?;
+
     // ── David: *"if the admin creates a user the same thing happens."* ───────────────────────────
     // This function already generated `generated_password` from the OS RNG and hashed it — and then
     // sent it NOWHERE. The account existed with a password nobody knew, so the user could never sign
@@ -204,19 +246,6 @@ pub async fn portfolio_sync(
             "admin: user created but the CREDENTIAL EMAIL FAILED — they have no password."
         ),
     }
-
-    // Create portfolio company record
-    sqlx::query(
-        "INSERT INTO portfolio_companies (id, tenant_id, name, slug, email, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET name = $3, email = $5, description = $6, updated_at = NOW()"
-    )
-    .bind(sync_id)
-    .bind(tenant_id)
-    .bind(&name)
-    .bind(&tenant_slug)
-    .bind(&email)
-    .bind(&description)
-    .execute(&state.pool)
-    .await?;
 
     // Sync to all other apps via internal endpoints
     let sync_body = json!({
