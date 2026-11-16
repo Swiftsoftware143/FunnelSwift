@@ -6339,7 +6339,11 @@ function TMLOAD(msg,kind){
     h+='<div id="tm-note" style="font-size:12px;margin-top:8px"></div>';
     box.innerHTML=h;
     var up=$("tm-upgrade");
-    if(up){ up.addEventListener("click",function(ev){ ev.preventDefault(); S("plans"); }); }
+    /* The customer's plan screen is `upgrade`; `plans` is the PLATFORM operator's catalogue screen
+       (ADMIN_ONLY), so pointing a workspace owner there answered "Admins only" — the dead end one
+       click deeper. It was never seen until the seat ladder made this link render at all for the
+       first time (kanban t_8e9d41d7). */
+    if(up){ up.addEventListener("click",function(ev){ ev.preventDefault(); S("upgrade"); }); }
     /* The Remove links are wired AFTER the paint, exactly like the upgrade link above: they are
        created as markup, so a listener can only be attached once the element exists. */
     Array.prototype.forEach.call(box.querySelectorAll("[data-tm-remove]"),function(a){
