@@ -511,7 +511,11 @@ mod tests {
                 private,
                 served
             ),
-            (237, 237, 211, 24, 3, 184, 26),
+            // 2026-11-16: +1 mounted API route, private — `GET /api/v1/account/export` (commit
+            // 3836015, "a customer can download their own workspace's data"). It takes the tenant
+            // from the session like every other console read, so it belongs in `private`; the
+            // census simply was not moved with it, which left this guard red for every later run.
+            (238, 238, 212, 24, 3, 185, 26),
             "the census in the module docs no longer matches the router"
         );
     }

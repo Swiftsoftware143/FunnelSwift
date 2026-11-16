@@ -1846,6 +1846,47 @@ mod tests {
         assert!(text.contains("Kinetic Pro"));
     }
 
+    // HOW TO PAY (2026-11-16): with no card provider the plan request is the buying path, so the
+    // receipt must carry the operator's own payment details when he has written any — and must be
+    // byte-identical to before when he has not.
+    #[test]
+    fn plan_request_receipt_carries_the_operators_payment_instructions_when_set() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("plan_name", "Kinetic Pro"),
+            ("note", ""),
+            ("how_to_pay", "Bank transfer to Swift Software LLC, account 000111222. Quote your workspace name."),
+        ]));
+        let (_subject, text, _html) = get_inline("plan_request_received", &v);
+        let text = text.unwrap_or_default();
+        assert!(text.contains("How to pay now:"), "no pay heading: {text}");
+        assert!(
+            text.contains("account 000111222"),
+            "the operator's own words are missing: {text}"
+        );
+        assert!(
+            text.contains("/upgrade"),
+            "where to look is missing: {text}"
+        );
+    }
+
+    #[test]
+    fn plan_request_receipt_shows_no_pay_block_when_none_is_configured() {
+        let v = bound_vars(vars(&[
+            ("name", "Probe"),
+            ("plan_name", "Kinetic Pro"),
+            ("note", ""),
+            ("how_to_pay", ""),
+        ]));
+        let (_subject, text, _html) = get_inline("plan_request_received", &v);
+        let text = text.unwrap_or_default();
+        assert!(
+            !text.contains("How to pay now:"),
+            "an empty setting painted a block: {text}"
+        );
+        assert!(text.contains("nothing has been charged"));
+    }
+
     // The receipt an ORDINARY help request now earns (2026-11-16). Before it, only a plan request
     // was acknowledged by mail; "I cannot sign in" got a sentence on a screen and an empty inbox.
     #[test]
