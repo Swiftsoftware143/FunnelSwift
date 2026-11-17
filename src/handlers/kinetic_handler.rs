@@ -243,7 +243,6 @@ pub async fn create_card(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     check_card_text(&body)?;
-    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let id = Uuid::new_v4();
     // A card needs a TITLE. This defaulted a missing one to "New Card", so an empty body minted a
     // real card (measured live 2026-10-28: `POST /api/v1/kinetic/cards {}` -> 201, row "New Card",
@@ -328,6 +327,16 @@ pub async fn create_card(
             })),
         ));
     }
+    // kanban t_20261117-kinetic-doublepress — THE PLAN LIMIT IS CHECKED *AFTER* THE SAME-PRESS ARM.
+    // It used to run first (right after `check_card_text`), so on a plan whose whole allowance is one
+    // card a double press of Create answered **402 `Cards limit reached (1/1). Upgrade to increase your
+    // limit.`** for the card the customer had just made — an upgrade nag, which is exactly what the
+    // arm above exists to prevent. Measured live 2026-11-17: two identical POSTs (same title, same
+    // slug, the shape the editor sends) on Kinetic Free answered 201 then 402, while the same-press
+    // arm below never got to run. A genuinely DIFFERENT card still hits this gate and is refused in
+    // plan words (same probe: a second title on the one-card plan answers 402), so the allowance is
+    // unchanged — only the repeat of a press that already landed is now recognised as itself.
+    crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
     let bio = body["bio"].as_str().unwrap_or("");
     let bg_color = body["bg_color"].as_str().unwrap_or("#0f172a");
     let accent_color = body["accent_color"].as_str().unwrap_or("#6366f1");
