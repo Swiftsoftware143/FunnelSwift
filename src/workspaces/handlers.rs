@@ -226,7 +226,7 @@ pub async fn rename_workspace(
         ));
     }
 
-    let row = sqlx::query(
+    let updated = sqlx::query(
         "UPDATE workspaces SET name = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3 \
          RETURNING id, name, is_default",
     )
@@ -234,9 +234,25 @@ pub async fn rename_workspace(
     .bind(id)
     .bind(tid)
     .fetch_optional(&state.db)
-    .await
-    .map_err(AppError::Database)?
-    .ok_or_else(|| AppError::NotFound("Workspace not found.".into()))?;
+    .await;
+    // TWO OVERLAPPING RENAMES ARE ONE ANSWER, NOT A DATABASE ERROR (measured live 2026-11-17).
+    // The duplicate-name probe above and this UPDATE are two statements, so two presses that
+    // overlap — a double-click on Save, or a rename racing a workspace CREATE — both read
+    // `dup = none`, both UPDATE, and the loser hit `ux_workspaces_tenant_name` as a raw
+    // `AppError::Database`, i.e. HTTP 500 "Database error" for a customer who only saved twice.
+    // Measured on the pre-fix binary: two overlapping renames to one name answered
+    // [200, 500]. The CREATE route already closes its half of this race with a tenant advisory
+    // lock; the rename answers the collision the way its own pre-check does — a readable 409 —
+    // so the customer is told the truth and no request can produce a 500 from a taken name.
+    let row = match updated {
+        Ok(row) => row.ok_or_else(|| AppError::NotFound("Workspace not found.".into()))?,
+        Err(sqlx::Error::Database(db)) if db.constraint() == Some("ux_workspaces_tenant_name") => {
+            return Err(AppError::Duplicate(
+                "You already have a workspace with that name.".into(),
+            ));
+        }
+        Err(e) => return Err(AppError::Database(e)),
+    };
 
     Ok(Json(json!({ "workspace": row_json(&row) })))
 }
