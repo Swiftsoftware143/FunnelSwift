@@ -1970,12 +1970,13 @@ pub async fn submit_lead(
     State(state): State<AppState>,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let card: Option<(Uuid, Uuid, Uuid)> =
-        sqlx::query_as("SELECT id, tenant_id, user_id FROM kinetic_cards WHERE slug = $1 LIMIT 1")
-            .bind(&slug)
-            .fetch_optional(&state.pool)
-            .await?;
-    let Some((card_id, tenant_id, owner_id)) = card else {
+    let card: Option<(Uuid, Uuid, Uuid, String)> = sqlx::query_as(
+        "SELECT id, tenant_id, user_id, COALESCE(title, '') FROM kinetic_cards WHERE slug = $1 LIMIT 1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((card_id, tenant_id, owner_id, card_title)) = card else {
         return Err(AppError::NotFound("Card not found".into()));
     };
 
@@ -2110,6 +2111,91 @@ pub async fn submit_lead(
     )
     .execute(&state.pool)
     .await?;
+
+    // TELL THE OWNER (2026-11-16). A card lead was stored, its webhook fired and the dashboard
+    // activity row was written — but nobody was told, while a FUNNEL lead has mailed the workspace
+    // owner since 2026-11-01 (`funnel_handler` -> `email::send_new_lead_email`). The Kinetic card is
+    // this app's front door, so the card's capture was the louder half of that silence: a stranger
+    // filled in the owner's card and the owner only found out by opening the panel (measured live
+    // 2026-11-16 01:49 UTC: a card lead wrote `leads` + `lead_events` and left `email_send_log`
+    // empty for the workspace).
+    //
+    // Same rules as the funnel arm, deliberately: the recipient is the workspace OWNER's own address
+    // (never the visitor's) so replying answers the person who filled the form; the
+    // `lead_notifications` tenant setting switches it off for a workspace taking hundreds an hour
+    // (ABSENT means ON, an unreadable row is ON, and `AND $2` means a switched-off workspace runs no
+    // owner query at all); and every failure is logged, never fatal — a mail problem must not cost
+    // the capture or the visitor's 201. `dispatch_for_tenant` withholds a reserved/harness address
+    // and records the non-send, exactly as it does for the funnel mail.
+    let notifications_on = match sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = 'lead_notifications'",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(Some(v)) => v
+            .get("enabled")
+            .and_then(|e| e.as_bool())
+            .or_else(|| v.as_bool())
+            .unwrap_or(true),
+        Ok(None) => true,
+        Err(e) => {
+            tracing::warn!(
+                tenant = %tenant_id,
+                "card new-lead notification: setting read failed, sending: {e}"
+            );
+            true
+        }
+    };
+    let card_owner: Option<(String, String)> = match sqlx::query_as(
+        "SELECT COALESCE(name,''), email FROM users \
+          WHERE tenant_id = $1 AND is_active AND email <> '' AND $2 \
+          ORDER BY CASE WHEN role IN ('admin','company_admin') THEN 0 ELSE 1 END, created_at \
+          LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(notifications_on)
+    .fetch_optional(&state.pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!(
+                tenant = %tenant_id,
+                "card new-lead notification: owner lookup failed: {e}"
+            );
+            None
+        }
+    };
+    if let Some((owner_name, owner_email)) = card_owner {
+        let owner_name = if owner_name.trim().is_empty() {
+            "there".to_string()
+        } else {
+            owner_name
+        };
+        // The template's own sentence is "Someone just filled in {funnel_name}", so the door is
+        // named the way a person reads it: your card "My Links".
+        let door = if card_title.trim().is_empty() {
+            "your card".to_string()
+        } else {
+            format!("your card \"{}\"", card_title.trim())
+        };
+        if let Err(e) = crate::email::send_new_lead_email(
+            &state.pool,
+            tenant_id,
+            &owner_email,
+            &owner_name,
+            &name,
+            email.as_deref().unwrap_or(""),
+            phone.as_deref(),
+            &door,
+        )
+        .await
+        {
+            tracing::warn!(tenant = %tenant_id, "card new-lead notification not sent: {e}");
+        }
+    }
 
     // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be able
     // to land in CoreSwift as a contact. Fire-and-forget, a no-op without a `coreswift` BYOK key.
