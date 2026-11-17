@@ -1551,6 +1551,25 @@ function D(){
    NAME into the search box, which matched any lead whose text mentioned it and only ever filtered
    the single page of rows the console had already loaded. */
 var LD_FUNNEL=null, LD_FUNNEL_NAME="";
+/* A LEAD'S SOURCE IS A CUSTOMER-FACING WORD, NOT THE COLUMN VALUE (measured live 2026-11-17).
+   `leads.source` holds internal tokens (`kinetic_card`, `funnel`, `web_to_lead`, …) and the table
+   printed the raw one for everything except `funnel`, which had a hard-coded "Funnel". A card
+   capture — the app's flagship door — therefore showed `kinetic_card` in the customer's own Leads
+   list, an underscore identifier in the middle of a name/email/phone row. Every value now goes
+   through one label: a known source keeps its proper name, and anything else is at least made
+   readable (underscores become spaces, first letter capitalised) so no internal token can leak
+   into the table when a new door is added later. The EDIT form still carries the raw value
+   (`fs.value=l.source`) on purpose — that field is what a save writes back. */
+var LD_SRC_LABEL={"funnel":"Funnel","kinetic_card":"Kinetic card","web_to_lead":"Web form",
+  "private_email":"Email","ocr":"Card scan","import":"Import","manual":"Added by hand",
+  "affiliate":"Affiliate","api":"API"};
+function srcLabel(s){
+  if(s===null||s===undefined||String(s).trim()==="") return "-";
+  var k=String(s).trim();
+  if(LD_SRC_LABEL[k]) return LD_SRC_LABEL[k];
+  var t=k.replace(/_/g," ").replace(/\s+/g," ");
+  return t.charAt(0).toUpperCase()+t.slice(1);
+}
 function LD(){
   var ldu="/api/v1/leads";
   if(LD_FUNNEL) ldu+="?funnel_id="+encodeURIComponent(LD_FUNNEL)+"&per_page=100";
@@ -1690,7 +1709,7 @@ function LD(){
       tr.setAttribute("data-search",(name+" "+l.email+" "+l.phone+" "+status+" "+l.source).toLowerCase());
       tr.setAttribute("data-status",status);
       tr.innerHTML='<td><input type="checkbox" class="ld-sel" value="'+X(l.id)+'"></td>'
-        +'<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'')+(liUrl?' <a href="'+X(liUrl)+'" target="_blank" rel="noopener noreferrer" title="LinkedIn profile" style="font-size:10px;color:#0a66c2;font-weight:700;text-decoration:none">in</a>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(l.source==="funnel"?"Funnel":(l.source||"-"))+'</span></td><td><span class="ld-own" data-uid="'+X(l.assigned_to?String(l.assigned_to):"")+'" title="'+X(l.assigned_to?"Lead owner":"No owner yet — open Edit to hand this lead to a teammate")+'">'+(l.assigned_to?"…":"—")+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
+        +'<td><strong>'+X(name)+'</strong>'+ (l.company?'<br><span style="font-size:10px;color:#94a3b8">'+X(l.company)+'</span>':'')+(liUrl?' <a href="'+X(liUrl)+'" target="_blank" rel="noopener noreferrer" title="LinkedIn profile" style="font-size:10px;color:#0a66c2;font-weight:700;text-decoration:none">in</a>':'') +'</td><td>'+X(l.email||"-")+'</td><td>'+X(l.phone||"-")+'</td><td><span class="ld-src" data-slug="'+X(((l.custom_fields&&typeof l.custom_fields==="object"&&l.custom_fields.funnel_slug)||""))+'">'+X(srcLabel(l.source))+'</span></td><td><span class="ld-own" data-uid="'+X(l.assigned_to?String(l.assigned_to):"")+'" title="'+X(l.assigned_to?"Lead owner":"No owner yet — open Edit to hand this lead to a teammate")+'">'+(l.assigned_to?"…":"—")+'</span></td><td><span class="badge" style="background:'+sc+';color:'+sc2+';cursor:pointer" onclick="LDC(\''+l.id+'\',\''+X(status)+'\')">'+X(status)+'</span></td><td><button class="btn btn-sm" onclick="LDV(\''+l.id+'\')">View</button> <button class="btn btn-sm" onclick="MFL(\''+l.id+'\')">Edit</button></td>';
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
