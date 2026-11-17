@@ -388,14 +388,37 @@ pub async fn create_card(
                 break;
             }
             Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("23505") => {
-                let mine: Option<(Uuid, String)> = sqlx::query_as(
-                    "SELECT id, slug FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2 AND title = $3",
-                )
-                .bind(&attempt_slug)
-                .bind(tenant_id)
-                .bind(title)
-                .fetch_optional(&state.pool)
-                .await?;
+                // ONE PRESS OF "CREATE" IS ONE CARD, EVEN WHEN THE PRESSES RUN AT THE SAME INSTANT
+                // (measured live 2026-11-17). This arm exists to recognise the same create arriving
+                // twice, but it read the winner ONCE — and an uncommitted row is invisible to that
+                // read, so a loser that lost the race by a few microseconds concluded the address
+                // belonged to somebody else, reserved the NEXT free address and inserted a SECOND
+                // card for one customer intent. Measured: 8 simultaneous creates of one title from
+                // one workspace produced TWO cards (`race-card-2`, `race-card-3`) on a plan whose
+                // whole allowance is one card, so a double-click could eat the customer's entire
+                // allowance. Re-read the winner a few times before giving up on it: its INSERT
+                // commits in milliseconds and the address was free a moment before this attempt.
+                // The bounded waits are short (300 ms worst case) and only on the conflict path.
+                // A genuine cross-workspace collision still falls through to the next free address
+                // below, and a sequential second card with the same title is unaffected (it never
+                // reaches this arm — the reservation above already answered `-2`).
+                let mut mine: Option<(Uuid, String)> = None;
+                for wait_ms in [0u64, 60, 140, 300] {
+                    if wait_ms > 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+                    }
+                    mine = sqlx::query_as(
+                        "SELECT id, slug FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2 AND title = $3",
+                    )
+                    .bind(&attempt_slug)
+                    .bind(tenant_id)
+                    .bind(title)
+                    .fetch_optional(&state.pool)
+                    .await?;
+                    if mine.is_some() {
+                        break;
+                    }
+                }
                 if let Some((existing_id, existing_slug)) = mine {
                     outcome = Some((
                         StatusCode::OK,
