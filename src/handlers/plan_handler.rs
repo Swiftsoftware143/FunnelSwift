@@ -341,7 +341,9 @@ pub async fn list_plans(State(state): State<AppState>) -> AppResult<Json<Vec<Pla
 /// allowance caps each card prints (leads / tags / card scans / forms / custom domains) so the
 /// marketing page can paint the same record the app enforces instead of hand-authored numbers
 /// that drift. No ids, no feature flags, no purchase URLs — those stay on the authenticated
-/// `/api/v1/plans` the console reads.
+/// `/api/v1/plans` the console reads. It also carries the operator's own `payment_instructions`
+/// (2026-11-17), because a visitor deciding to buy is exactly who needs to know how this
+/// installation can take the money while no card provider is configured.
 /// It sits on [`crate::auth::route_policy::PUBLIC_ROUTES`] on purpose: a stranger is exactly who
 /// needs a price.
 pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
@@ -378,7 +380,20 @@ pub async fn public_plans(State(state): State<AppState>) -> AppResult<Json<serde
         })
         .collect();
 
-    Ok(Json(json!({ "plans": plans })))
+    // HOW TO PAY while this installation has no card provider (2026-11-17). The operator writes his
+    // own payment details once on the Payment Providers screen; every signed-in buyer already reads
+    // them on the Upgrade screen and in the receipt mail, but a VISITOR on the public pricing page
+    // had no way to see them — so the one rail this install can actually collect on was invisible
+    // everywhere a customer decides to buy. Empty/absent keeps the page exactly as it shipped.
+    let settings = crate::platform_settings::load(&state.pool).await;
+    let payment_instructions = settings
+        .payment_instructions
+        .filter(|v| !v.trim().is_empty());
+
+    Ok(Json(json!({
+        "plans": plans,
+        "payment_instructions": payment_instructions,
+    })))
 }
 
 /// `PUT /api/v1/admin/plans/:id/listing` — retire a plan from the catalogue, or put it back on sale.
