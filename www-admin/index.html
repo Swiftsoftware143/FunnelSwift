@@ -1772,11 +1772,25 @@ async function renderPlans() {
     try { const r = await api('/plan-requests'); mine = (r && r.requests) || []; payHow = (r && r.payment_instructions) || ''; } catch(e) { mine = []; payHow = ''; }
   }
 
+  // PLANS NOBODY CAN BUY (cron 2026-11-17). Every row below already carries its own "no payment
+  // link — cannot be bought yet" note, but a per-row note is easy to scroll past: measured live on
+  // this install, FOUR paid plans are on sale and NONE of them carries a payment page, so the
+  // operator's catalogue looked healthy while not one plan could take money. This is the same
+  // summary the MissedCall console carries (its cron fix, 2026-11-17), stated once above the table
+  // with the count and the way out. It is a READ of the rows already loaded — no extra request.
+  const _onSale = plans.filter(p => Number(p.price) > 0 && p.is_active !== false);
+  const _unbuyable = _onSale.filter(p => !String(p.purchase_url || '').trim());
+  window._unbuyablePlans = _unbuyable.length;
+
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <h1 style="font-size:22px;font-weight:700">Plans</h1>
       ${isSuperAdmin() ? `<button class="btn btn-primary btn-sm" id="add-plan-btn">+ Add Plan</button>` : ''}
     </div>
+    ${(isSuperAdmin() && _unbuyable.length) ? `<div data-unbuyable-summary="1" style="border-left:4px solid #b45309;background:#fffbeb;padding:12px 14px;margin:0 0 16px">
+      <div style="font-weight:700;font-size:14px;color:#92400e">${_unbuyable.length} of ${_onSale.length} plan${_onSale.length === 1 ? '' : 's'} on sale cannot be bought — no payment page</div>
+      <div style="font-size:13px;color:#475569;margin-top:2px">A customer can pick ${_unbuyable.length === 1 ? 'this plan' : 'these plans'} (${_unbuyable.map(p => x(p.name)).join(', ')}) but there is nowhere to send the money, so the buyer is asked to request ${_unbuyable.length === 1 ? 'it' : 'them'} instead of paying. Open each one in Edit and paste the checkout address your payment provider gives you for that price — the row turns green and the plan can be sold the same minute.</div>
+    </div>` : ''}
     ${(!isSuperAdmin() && _yearAny) ? `<div class="card" id="plan-term-switch" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:14px;font-weight:600;color:var(--muted)">Pay:</span>
       <button class="btn btn-xs ${_term === 'month' ? 'btn-primary' : 'btn-secondary'}" data-plan-term="month" onclick="window._setPlanTerm('month')">Monthly</button>
@@ -6144,6 +6158,14 @@ async function renderPlanAdmin() {
     const who = (nameCounts[nm] > 1 && (t.owner_email || t.slug)) ? ' · ' + x(t.owner_email || t.slug) : '';
     return `<option value="${x(t.id)}">${x(nm)}${who}${t.plan_name ? ' — ' + x(t.plan_name) : ''}</option>`;
   }).join('');
+  // PLANS NOBODY CAN BUY (cron 2026-11-17). This is the screen that carries the Edit controls and
+  // the "Check payment pages" button, so it is where the operator must be told the count: measured
+  // live on this install, four paid plans are on sale and NONE carries a payment page, so not one
+  // plan could take money while the catalogue looked healthy. The same figure is what the check
+  // now names when it opened nothing (it reads window._unbuyablePlans).
+  const _onSale = plans.filter(p => Number(p.price) > 0 && p.is_active !== false);
+  const _unbuyable = _onSale.filter(p => !String(p.purchase_url || '').trim());
+  window._unbuyablePlans = _unbuyable.length;
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <div><h1 style="font-size:22px;font-weight:700">🎚️ Plans &amp; Features</h1>
@@ -6157,6 +6179,10 @@ async function renderPlanAdmin() {
       <!-- route: GET /api/v1/admin/plans -->
       <div class="card-header"><div><div class="card-title">Plan catalogue</div><div class="card-subtitle">Every plan this app offers, with its price, lead and tag caps, and its feature flags.</div></div></div>
       <div id="planadmin-pay-check"></div>
+      ${_unbuyable.length ? `<div data-unbuyable-summary="1" style="border-left:4px solid #b45309;background:#fffbeb;padding:12px 14px;margin:12px 0 16px">
+        <div style="font-weight:700;font-size:14px;color:#92400e">${_unbuyable.length} of ${_onSale.length} plan${_onSale.length === 1 ? '' : 's'} on sale cannot be bought — no payment page</div>
+        <div style="font-size:13px;color:#475569;margin-top:2px">A customer can pick ${_unbuyable.length === 1 ? 'this plan' : 'these plans'} (${_unbuyable.map(p => x(p.name)).join(', ')}) but there is nowhere to send the money, so the buyer asks for ${_unbuyable.length === 1 ? 'it' : 'them'} instead of paying. Press Edit Features on each row below and paste the checkout address your payment provider gives you for that price.</div>
+      </div>` : ''}
       <div class="table-wrap"><table class="table" id="planadmin-plans-table">
         <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Workspaces</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
         <tbody>${plans.length ? plans.map(p => {
@@ -6240,6 +6266,17 @@ function bindPlanAdmin() {
     try {
       const r = await api('/admin/plans/payment-pages/check', { method: 'POST', body: '{}' });
       const rows = (r && r.plans) || [];
+      // A CHECK THAT OPENED NOTHING IS NOT GOOD NEWS WHEN NOTHING IS STORED (cron 2026-11-17).
+      // The server's "nothing to open" and this title used to be the whole answer while the table
+      // above listed plans nobody can buy; it read like a clean bill of health. Say the count the
+      // Plans screen already computed, and say what to do.
+      const _gap = Number(window._unbuyablePlans || 0);
+      const _opened = Number((r && r.checked) || 0);
+      const _title = (r && r.dead) ? 'At least one payment page is dead'
+        : (_opened ? 'Every stored payment page opened'
+        : (_gap ? (_gap + ' plan' + (_gap === 1 ? ' is' : 's are') + ' on sale with no payment page — nobody can buy ' + (_gap === 1 ? 'it' : 'them') + ' yet')
+        : 'No plan has a payment page yet'));
+      const _note = String((r && r.note) || '') + ((!(_opened) && _gap) ? ' Open each of the ' + _gap + ' plan' + (_gap === 1 ? '' : 's') + ' in Edit and paste the checkout address your payment provider gives you — until then a buyer who picks one asks the team instead of paying.' : '');
       const badge = (s) => s === 'ok' ? '<span class="badge badge-green">opens</span>'
         : s === 'dead' ? '<span class="badge badge-red">dead page</span>'
         : s === 'not_https' ? '<span class="badge badge-red">not https</span>'
@@ -6253,10 +6290,10 @@ function bindPlanAdmin() {
             + '<td>' + (p.http ? x(String(p.http)) : '—') + '</td></tr>').join('')
           + '</tbody></table></div>'
         : '';
-      if (out) out.innerHTML = '<div data-pay-check-result="1" style="border-left:4px solid ' + ((r && r.dead) ? '#dc2626' : '#15803d')
+      if (out) out.innerHTML = '<div data-pay-check-result="1" style="border-left:4px solid ' + ((r && r.dead) ? '#dc2626' : (_opened ? '#15803d' : '#b45309'))
         + ';background:#fff;padding:12px 14px;margin:0 0 12px">'
-        + '<div style="font-weight:700;font-size:14px">' + ((r && r.dead) ? 'At least one payment page is dead' : ((r && r.checked) ? 'Every stored payment page opened' : 'No plan has a payment page yet')) + '</div>'
-        + '<div style="font-size:13px;color:#475569;margin-top:2px">' + x(String((r && r.note) || '')) + '</div>'
+        + '<div style="font-weight:700;font-size:14px">' + x(_title) + '</div>'
+        + '<div style="font-size:13px;color:#475569;margin-top:2px">' + x(_note) + '</div>'
         + '<div style="font-size:12px;color:var(--muted);margin-top:4px">Checked ' + x(String((r && r.checked) || 0)) + ' page(s) — ' + x(String((r && r.ok) || 0)) + ' opened, ' + x(String((r && r.dead) || 0)) + ' dead.</div>'
         + body + '</div>';
     } catch (e) {
