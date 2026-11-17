@@ -279,20 +279,54 @@ pub async fn create_card(
         requested
     };
     let mut slug = requested.clone();
+    // THE RESERVATION ARM RECOGNISES THE SAME PRESS TOO (measured live 2026-11-17, after the
+    // duplicate-key arm below was already retried). The second card in that measurement was not
+    // created by the UNIQUE race at all: a press that arrived a few milliseconds AFTER the winner
+    // committed found the address taken by the reservation read below and simply reserved the next
+    // free one — so one customer intent minted `race-card` and `race-card-2`, on a plan whose whole
+    // allowance is one card. The documented rule is that a double press of Create is ONE card; apply
+    // it here as well, and only inside a short window: a card of THIS workspace with the SAME title
+    // holding the address, created in the last two minutes, is the same press arriving twice and the
+    // existing row is answered. A holder older than that (or another workspace's, or another title's)
+    // keeps the old behaviour — reserve the next free address and create the card the customer asked
+    // for, so a genuine second card with a repeated title is never refused.
+    let mut same_press: Option<(Uuid, String)> = None;
     for attempt in 1..=20u32 {
-        let taken: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)")
-                .bind(&slug)
-                .fetch_one(&state.pool)
-                .await?;
-        if !taken {
-            break;
+        let holder: Option<(Uuid, Uuid, String, Option<f64>)> = sqlx::query_as(
+            "SELECT id, tenant_id, title, EXTRACT(EPOCH FROM (now() - created_at))::float8 \
+               FROM kinetic_cards WHERE slug = $1",
+        )
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+        match holder {
+            None => break,
+            Some((held_id, held_tenant, held_title, age_s)) => {
+                let same = held_tenant == tenant_id
+                    && held_title == title
+                    && age_s.map(|a| a <= 120.0).unwrap_or(false);
+                if same {
+                    same_press = Some((held_id, slug.clone()));
+                    break;
+                }
+            }
         }
         slug = if attempt == 20 {
             format!("{requested}-{}", &id_str[..8])
         } else {
             format!("{requested}-{}", attempt + 1)
         };
+    }
+    if let Some((existing_id, existing_slug)) = same_press {
+        return Ok((
+            StatusCode::OK,
+            Json(json!({
+                "id": existing_id,
+                "slug": existing_slug,
+                "message": "Card already created",
+                "duplicate": true
+            })),
+        ));
     }
     let bio = body["bio"].as_str().unwrap_or("");
     let bg_color = body["bg_color"].as_str().unwrap_or("#0f172a");
