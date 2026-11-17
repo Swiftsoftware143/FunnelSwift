@@ -583,7 +583,42 @@ pub async fn update_card(
         .bind(vp_change.is_some())
         .bind(vp_change.flatten())
         .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
-        .fetch_optional(&state.pool).await?;
+        .fetch_optional(&state.pool).await;
+    // THE ADDRESS WAS TAKEN BETWEEN THE CHECK AND THE WRITE (measured live 2026-11-17).
+    // The pre-check above reads a free address and then this UPDATE writes it, so two saves that
+    // pick the same address in the same instant both pass the check and the loser meets the UNIQUE
+    // index: a raw `500 {"error":"Database error"}` for a customer who typed a name, with no way to
+    // tell what to do next. Reproduced deterministically with two workspaces renaming their cards to
+    // one fresh address at once (8 of 8 rounds: one 200, one 500). Answer it in the customer's words,
+    // naming a free alternative — the same shape the pre-check already uses — and let a genuine
+    // database failure through unchanged.
+    let result = match result {
+        Ok(r) => r,
+        Err(sqlx::Error::Database(db))
+            if db.code().as_deref() == Some("23505")
+                || db.message().contains("kinetic_cards_slug_key") =>
+        {
+            let want = slug_change.clone().unwrap_or_default();
+            let mut suggestion = want.clone();
+            for n in 2..=20u32 {
+                let candidate = format!("{want}-{n}");
+                let taken: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)",
+                )
+                .bind(&candidate)
+                .fetch_one(&state.pool)
+                .await?;
+                if !taken {
+                    suggestion = candidate;
+                    break;
+                }
+            }
+            return Err(AppError::Conflict(format!(
+                "/k/{want} was taken while you were saving, so nothing was changed. Try again — /k/{suggestion} is free."
+            )));
+        }
+        Err(e) => return Err(e.into()),
+    };
     // The address the row ACTUALLY holds, so the editor can print the page link it just saved
     // instead of echoing what was typed (`/k/<returned>`).
     let saved_slug = result.ok_or_else(|| AppError::NotFound("Card not found".into()))?;
