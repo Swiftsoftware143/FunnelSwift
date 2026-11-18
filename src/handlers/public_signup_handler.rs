@@ -36,6 +36,21 @@ pub(crate) fn legacy_plan_slug(slug: &str) -> &str {
     }
 }
 
+/// Is this pick a GENERIC name for the free tier rather than a paid ask?
+///
+/// Measured live 2026-11-18: the pricing page's free tile links to signup with `plan=free`, and
+/// `free` is not a row in `plans` (this install's free tiers are `capture-free` / `kinetic-free`),
+/// so the pick fell through to the "matches no plan row at all" arm — which filed a plan request
+/// titled **Free** and mailed the operator **"A customer asked to buy Free"** for a visitor who was
+/// simply signing up for the free tier. The visitor is seated on free either way, so there is
+/// nothing to sell and nothing to queue; an unknown PAID-looking tier still files its request.
+fn is_generic_free_pick(slug: &str) -> bool {
+    matches!(
+        slug.trim().to_ascii_lowercase().as_str(),
+        "free" | "free-tier" | "free_plan" | "free-plan" | "freeplan" | "trial"
+    )
+}
+
 /// Turn a catalogue slug into something an operator can read in the queue:
 /// `kinetic-pro` -> `Kinetic Pro`, `agency_scale` -> `Agency Scale`.
 ///
@@ -97,6 +112,18 @@ pub async fn file_chosen_plan_request(
         crate::plan_resolver::ProductSide::Capture => "main",
         crate::plan_resolver::ProductSide::Kinetic => "kinetic",
     };
+    // A GENERIC FREE PICK IS NOT A PAID ASK (measured live 2026-11-18 — see `is_generic_free_pick`).
+    // Nothing is filed and nobody is paged: this visitor is about to be seated on the free tier.
+    if is_generic_free_pick(&requested_slug) {
+        tracing::info!(
+            requested_by = %requested_by,
+            plan = %requested_slug,
+            side = side_word,
+            door = door,
+            "signup: the caller picked the FREE tier, so no plan request is filed (nothing to sell)"
+        );
+        return Ok(None);
+    }
     let target: Option<(String, String)> = sqlx::query_as(
         "SELECT slug, name FROM plans
           WHERE slug = $1 AND price > 0 AND side IN ($2, 'both')",
@@ -872,7 +899,7 @@ pub async fn public_signup(
 
 #[cfg(test)]
 mod legacy_plan_slug_tests {
-    use super::{legacy_plan_slug, optional_str};
+    use super::{is_generic_free_pick, legacy_plan_slug, optional_str};
     use serde_json::json;
 
     /// The spelling the $79 card shipped until 2026-10-23 must name the tier that card sold.
@@ -916,6 +943,40 @@ mod legacy_plan_slug_tests {
         );
         let body = json!({"plan": ["kinetic-pro"]});
         assert!(optional_str(&body, "plan").is_err());
+    }
+
+    /// A generic free pick files nothing, while a paid-looking slug still does — the two arms the
+    /// signup doors depend on (measured live 2026-11-18: `plan=free` filed "Free" and paged the
+    /// operator).
+    #[test]
+    fn a_generic_free_pick_is_not_a_paid_ask() {
+        for word in [
+            "free",
+            " FREE ",
+            "free-tier",
+            "free_plan",
+            "free-plan",
+            "freeplan",
+            "trial",
+        ] {
+            assert!(
+                is_generic_free_pick(word),
+                "{word:?} names the free tier, so it must file no request"
+            );
+        }
+        for word in [
+            "kinetic-pro",
+            "capture-starter",
+            "suite",
+            "agency",
+            "free-cards",
+            "freestyle",
+        ] {
+            assert!(
+                !is_generic_free_pick(word),
+                "{word:?} is not a generic free word; its ask must still be recorded"
+            );
+        }
     }
 
     /// Absent and null stay "not sent", and a string is the value itself — the three arms the

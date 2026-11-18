@@ -485,6 +485,12 @@ mod tests {
     /// of those paths is under `/api/` and therefore PRIVATE (behind `require_auth`) unless named
     /// above, which is the property this test exists to protect. If a route is
     /// added or removed, this test is the reminder to re-measure the docs above with it.
+    ///
+    /// RE-MEASURED 2026-11-18 (fleet cron): `POST /api/v1/team/members/:id/reissue` (commit
+    /// 9542e7b, "a workspace can send a teammate's login details again") landed without moving this
+    /// tuple, so `cargo test` was RED on HEAD for every later run. It is a console write that takes
+    /// the tenant from the session, so it belongs in `private`: 239 mounts, 239 unique, 213 on the
+    /// API surface, 24 public, 3 internal, 186 private, 26 served.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
@@ -515,7 +521,8 @@ mod tests {
             // 3836015, "a customer can download their own workspace's data"). It takes the tenant
             // from the session like every other console read, so it belongs in `private`; the
             // census simply was not moved with it, which left this guard red for every later run.
-            (238, 238, 212, 24, 3, 185, 26),
+            // 2026-11-18: +1 more, private — `POST /api/v1/team/members/:id/reissue` (9542e7b).
+            (239, 239, 213, 24, 3, 186, 26),
             "the census in the module docs no longer matches the router"
         );
     }
