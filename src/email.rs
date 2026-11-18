@@ -1054,6 +1054,17 @@ pub async fn send_plan_request_received_email(
     note: &str,
     how_to_pay: &str,
 ) -> Result<(), String> {
+    // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin
+    // (David) filing from his own workspace would otherwise receive this receipt about a request he
+    // filed himself. The row still lands in the queue and the request still works; only the receipt
+    // mail to the requester is withheld.
+    if requester_is_platform_admin(pool, to).await {
+        tracing::info!(
+            requester = %to,
+            "operator self-request: receipt suppressed"
+        );
+        return Ok(());
+    }
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
@@ -1092,6 +1103,17 @@ pub(crate) async fn send_support_request_receipt_email(
     name: &str,
     subject_line: &str,
 ) -> Result<(), String> {
+    // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin
+    // (David) filing from his own workspace would otherwise receive this receipt about a request he
+    // filed himself. The row still lands in the queue and the request still works; only the receipt
+    // mail to the requester is withheld.
+    if requester_is_platform_admin(pool, to).await {
+        tracing::info!(
+            requester = %to,
+            "operator self-request: receipt suppressed"
+        );
+        return Ok(());
+    }
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("subject_line", subject_line);
