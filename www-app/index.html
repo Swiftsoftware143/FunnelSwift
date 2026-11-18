@@ -1337,7 +1337,7 @@ var paintStart=function(){
   gs.innerHTML=h;
 };
 function D(){
-  $("ct").innerHTML='<div id="pl"></div><div id="gs"></div><div id="prq"></div><div id="sr"></div><div id="da"></div>';
+  $("ct").innerHTML='<div id="pl"></div><div id="gs"></div><div id="prq"></div><div id="ph"></div><div id="sr"></div><div id="da"></div>';
   /* kanban cron-1015 — this console's own help text promises "Your current plan is shown on the
      dashboard", and the dashboard showed only lead/card counts (the "Plans" tile is the tenant's
      own funnel-plan count, `d.plans_total`). The subscription plan is already in this page: the
@@ -1488,6 +1488,62 @@ function D(){
   /* The dashboard's own withdraw control. It calls the SAME endpoint the Upgrade screen's control
      calls (one write path, so the two screens cannot disagree) and repaints this tab from the server
      afterwards, so what is shown is the row that is now stored. */
+  /* ── PAYMENT HISTORY (2026-11-18) ────────────────────────────────────────────────────────────
+     GET /api/v1/checkout/sessions is this app's own read of what the workspace has tried to buy
+     (tenant-scoped on the server, so it can only ever return our own rows). It had NO caller on
+     any page a CUSTOMER sees: only the operator's console listed those rows, so a workspace whose
+     press never reached a till — or whose plan was bought through the operator's own payment page —
+     had no screen that said so, and the only trace was a queue the customer cannot open. This is
+     the same read, with the same honesty: nothing is computed here (the amount, its currency and
+     the outcome are the row's own values), an unknown outcome is printed rather than guessed at,
+     and a FAILED read paints NOTHING so an error is never dressed up as "no payments yet". */
+  var payMoney=function(r){
+    var amt=r&&r.amount, cur=String((r&&r.currency)||'').toUpperCase();
+    if(amt===null||amt===undefined||amt==='') return '\u2014';
+    var n=Number(amt);
+    if(isNaN(n)) return String(amt)+(cur&&cur!=='USD'?(' '+cur):'');
+    return (cur&&cur!=='USD')?(n.toFixed(2)+' '+cur):('$'+n.toFixed(2));
+  };
+  var payWhat=function(r){
+    var n=String((r&&r.plan_name)||'').trim();
+    if(n) return n;
+    var s=String((r&&r.purchasable_type)||'').trim();
+    return s?('Your '+s):'Plan';
+  };
+  var payState=function(r){
+    var st=String((r&&r.status)||'').trim().toLowerCase();
+    var m={completed:'Paid',paid:'Paid',succeeded:'Paid',
+           pending:'Waiting for payment',payment_link:'Payment page opened',
+           provider_missing:'Could not start \u2014 payments are not switched on yet',
+           expired:'Payment link expired',failed:'Did not go through',
+           refunded:'Refunded',cancelled:'Cancelled',canceled:'Cancelled'};
+    return m[st]||(st?st.replace(/_/g,' '):'\u2014');
+  };
+  api("/api/v1/checkout/sessions").then(function(d){
+    var box=$("ph"); if(!box||!box.parentNode) return;
+    var rows=(d&&Array.isArray(d.sessions))?d.sessions:[];
+    var h='<div class="card" data-payment-history="1" style="margin-bottom:16px">';
+    h+='<h3 style="margin:0 0 2px">Payment history</h3>';
+    if(!rows.length){
+      h+='<p style="color:#64748b;font-size:13px;margin:0">Nothing has been charged on this workspace yet. When a plan is bought \u2014 or a payment is attempted \u2014 it appears here with its date, amount and outcome.</p>';
+      box.innerHTML=h+'</div>'; return;
+    }
+    h+='<p style="color:#64748b;font-size:13px;margin:0 0 10px">Newest first. The amount and the outcome are the ones the payment record carries.</p>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>';
+    var cols=['Date','What for','Amount','What happened'];
+    for(var ci=0;ci<cols.length;ci++){h+='<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0;color:#475569;font-weight:600">'+X(cols[ci])+'</th>';}
+    h+='</tr></thead><tbody>';
+    for(var ri=0;ri<rows.length;ri++){
+      var r=rows[ri]||{};
+      h+='<tr data-payment-row="'+X(r.id||'')+'">';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(r.created_at?TSFMT(r.created_at,0):'\u2014')+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(payWhat(r))+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(payMoney(r))+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(payState(r))+'</td>';
+      h+='</tr>';
+    }
+    box.innerHTML=h+'</tbody></table></div></div>';
+  }).catch(function(){ /* a failed read paints nothing — never an invented "no payments" */ });
   window.withdrawPlanRequest=function(id){
     if(!confirm('Withdraw your plan request? Nothing has been charged, and you can ask again later.')) return;
     fetch("/api/v1/plan-requests/"+encodeURIComponent(id),{method:"DELETE",headers:{"Authorization":"Bearer "+T}})
