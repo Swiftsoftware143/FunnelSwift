@@ -1148,6 +1148,11 @@ async function renderMyAccount() {
         <div><div class="form-label">Custom Domains</div><div>${fmtPlanLimit(plan.max_custom_domains)}</div></div>
         <div><div class="form-label">Team Members</div><div>${fmtPlanLimit(plan.max_team_members)}</div></div>
         <div><div class="form-label">QR codes</div><div>${fmtPlanLimit(plan.max_qr_codes)}</div></div>
+        <!-- (2026-11-18) Action buttons are a LIVE per-card gate (features::enforce_action_button_limit
+             refuses with "Action buttons are not included in your plan" and "Action buttons limit
+             reached (n/m)"), and this card never showed the allowance it enforces. Read-only row:
+             current_plan already carries the column (row_to_json(p.*)), so no route changed. -->
+        <div><div class="form-label">Action buttons</div><div>${fmtPlanLimit(plan.max_action_buttons)}</div></div>
         <div><div class="form-label">Analytics</div><div>${plan.has_analytics?'✅':'❌'}</div></div>
         <div><div class="form-label">Remove our branding</div><div>${plan.has_white_label?'✅':'❌'}</div></div>
         <!-- (kanban t_726416be) "API Access" was RETIRED here with the api-key surface: POST
@@ -1915,6 +1920,8 @@ function openPlanModal(id) {
       <div class="form-row"><div class="form-group"><label class="form-label">Max Team Members</label><input aria-label="Max Team Members" class="input" name="max_team_members" type="number" value="${f('max_team_members','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max Custom Domains</label><input aria-label="Max Custom Domains" class="input" name="max_custom_domains" type="number" value="${f('max_custom_domains','')}" placeholder="Unlimited"></div></div>
       <div style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Team Members is how many logins this plan allows in one workspace: 1 is the owner alone, leave it blank for unlimited. The customer's own dashboard reads the same number as "Team used / allowed".</div>
       <div class="form-row"><div class="form-group"><label class="form-label">Max QR Codes</label><input aria-label="Max QR Codes" class="input" name="max_qr_codes" type="number" value="${f('max_qr_codes','')}" placeholder="Unlimited"></div><div class="form-group"><label class="form-label">Max OCR Scans</label><input aria-label="Max OCR Scans" class="input" name="max_ocr_scans" type="number" value="${f('max_ocr_scans','')}" placeholder="Unlimited"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">Max Action Buttons</label><input aria-label="Max Action Buttons" class="input" name="max_action_buttons" type="number" value="${f('max_action_buttons','')}" placeholder="Unlimited"></div><div class="form-group"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Action buttons are the call-to-action buttons on ONE card (a per-card limit, not an account total). 0 means the plan includes none, which is what the Capture tiers carry; blank means this plan sets no action-button limit at all. The customer's own plan card reads the same number.</div>
       <div style="margin-top:12px"><div class="form-label" style="margin-bottom:8px">Feature Toggles</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${['has_webhooks','has_dual_routing','has_mini_funnels','has_card_gating','has_remove_branding','has_white_label','has_multi_tenant','has_analytics','has_import_export'].map(k=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><span class="toggle ${f(k)===true?'on':''}" data-toggle="${k}"></span> ${k.replace('has_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</label>`).join('')}
