@@ -6393,6 +6393,28 @@ function TMLOAD(msg,kind){
        click deeper. It was never seen until the seat ladder made this link render at all for the
        first time (kanban t_8e9d41d7). */
     if(up){ up.addEventListener("click",function(ev){ ev.preventDefault(); S("upgrade"); }); }
+    /* NAME THE PLAN (2026-11-18). The link read "Upgrade to add a teammate" and the seat sentence
+       only "every seat is taken" — no plan, no price — while upgrades in this installation are
+       switched on by hand from the Upgrade screen, so the owner had no way to know WHICH plan to
+       ask for. Ask the catalogue (GET /api/v1/plans carries max_team_members and price) for the
+       cheapest plan whose seat ceiling is above this one's and say so on the link. Best effort:
+       when the catalogue cannot be read the old wording stands, and a textContent write keeps a
+       plan name from ever being markup. */
+    if(up&&full){
+      api("/api/v1/plans").then(function(list){
+        var curLimit=(seats&&seats.limit!=null)?Number(seats.limit):null;
+        if(curLimit===null||!Array.isArray(list)) return;
+        var best=null;
+        list.forEach(function(p){
+          var n=Number(p.max_team_members);
+          if(!isFinite(n)||n<=curLimit) return;
+          if(!best||Number(p.price)<Number(best.price)||(Number(p.price)===Number(best.price)&&n>Number(best.max_team_members))) best=p;
+        });
+        if(!best) return;
+        var price=Number(best.price);
+        up.textContent=(best.name||"a bigger plan")+(price>0?(" ($"+price.toFixed(2)+"/month)"):"")+" includes "+Number(best.max_team_members).toFixed(0)+" seats — open Upgrade";
+      }).catch(function(){});
+    }
     /* The Remove links are wired AFTER the paint, exactly like the upgrade link above: they are
        created as markup, so a listener can only be attached once the element exists. */
     Array.prototype.forEach.call(box.querySelectorAll("[data-tm-remove]"),function(a){
