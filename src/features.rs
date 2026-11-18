@@ -463,6 +463,36 @@ pub async fn catalogue_seat_ceiling(state: &AppState) -> AppResult<Option<i32>> 
     Ok(best)
 }
 
+/// The CHEAPEST plan whose effective seat ceiling is above `current` — the plan a customer sitting
+/// at their seat limit should be told to request. Same precedence as [`catalogue_seat_ceiling`]:
+/// a `feature_limits` row (what the admin entitlement editor writes) wins over the plan's column.
+///
+/// Measured 2026-11-18: a Capture Free workspace (1 seat) adding a teammate was told "Team members
+/// limit reached (1/1). Upgrade to increase your limit." — no plan, no price — while Capture
+/// Starter (3 seats, $9.00/month) sat on the catalogue. Upgrades are switched on by hand from the
+/// Upgrade screen, so "upgrade" has to say WHICH plan to request, exactly like [`not_included`].
+pub async fn cheapest_plan_with_more_seats(
+    state: &AppState,
+    current: i32,
+) -> Option<(String, i32, f64)> {
+    sqlx::query_as::<_, (String, i32, f64)>(
+        "SELECT p.name, \
+                COALESCE(fl.limit_value, p.max_team_members), \
+                COALESCE(p.price, 0)::float8 \
+           FROM plans p \
+           LEFT JOIN feature_limits fl \
+             ON fl.plan_id = p.id AND fl.feature_key = 'max_team_members' \
+          WHERE COALESCE(fl.limit_value, p.max_team_members) > $1 \
+          ORDER BY COALESCE(p.price, 0) ASC \
+          LIMIT 1",
+    )
+    .bind(current)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+}
+
 /// The effective numeric limit for the tenant, in precedence order (see [`pick_limit`]): the
 /// tenant's own override FIRST, then a `feature_limits` row (the custom per-plan number the admin
 /// panel writes), then the plan's own column through [`plan_limit`]. `None` = the key is

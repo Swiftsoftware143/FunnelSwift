@@ -465,10 +465,14 @@ async fn seat_tally(state: &AppState, tenant_id: Uuid) -> AppResult<Value> {
 /// told to upgrade to something that does not exist (`402 Team members limit reached (1/1).
 /// Upgrade to increase your limit.`). Nothing on the screen could satisfy that instruction.
 ///
-/// So when no plan offers more seats than the caller already has, say what is true instead: the
-/// allowance is in use and a person has to raise it. When SOME plan does offer more, the generic
-/// sentence is correct and is returned untouched — this can never suppress a real upgrade path, and
-/// it needs no change the day a plan's seat count is raised.
+/// Measured again 2026-11-18, from the other side: on Capture Free (1 seat) the same generic
+/// sentence was returned while Capture Starter (3 seats, $9.00/month) was on the catalogue — so the
+/// customer could reach their limit and never learn which plan lifts it or what it costs. Upgrades
+/// in this installation are switched on by hand from the Upgrade screen, so "upgrade" has to NAME a
+/// plan. Both branches therefore say something true and actionable:
+///
+/// * a bigger plan exists → name the cheapest one, its seat count and its price;
+/// * no plan sells more seats → say the allowance is in use and a person has to raise it.
 async fn seat_refusal(state: &AppState, tenant_id: Uuid, refusal: AppError) -> AppError {
     // The number the gates actually enforce for THIS workspace (tenant override, plan row or plan
     // column — the one resolver), not the plan's raw column.
@@ -476,9 +480,26 @@ async fn seat_refusal(state: &AppState, tenant_id: Uuid, refusal: AppError) -> A
         Ok(Some(limit)) if limit > 0 => limit,
         _ => return refusal,
     };
-    let best = features::catalogue_seat_ceiling(state).await.ok().flatten();
-    if matches!(best, Some(best) if best > current) {
-        return refusal;
+    if let Some((name, seats, price)) =
+        features::cheapest_plan_with_more_seats(state, current).await
+    {
+        // A bigger plan EXISTS, so name it: which plan to request and what it costs. The generic
+        // "Upgrade to increase your limit" named neither, and upgrades here are switched on by hand
+        // from the Upgrade screen (measured 2026-11-18 on a Capture Free workspace).
+        let seats_label = if seats > 0 {
+            format!("{seats} teammates")
+        } else {
+            "unlimited teammates".to_string()
+        };
+        let tail = if price > 0.0 {
+            format!("{name} (${price:.2}/month) includes {seats_label} — open Upgrade and request that plan.")
+        } else {
+            format!("The {name} plan includes {seats_label} — open Upgrade to switch to it.")
+        };
+        return AppError::UpgradeRequired(format!(
+            "Your plan includes {current} teammate{}. {tail}",
+            if current == 1 { "" } else { "s" }
+        ));
     }
     AppError::UpgradeRequired(format!(
         "Your plan includes {current} teammate{}. That seat is already in use, and no plan on this \
