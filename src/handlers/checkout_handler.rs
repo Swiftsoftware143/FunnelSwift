@@ -1215,7 +1215,19 @@ pub async fn list_checkout_sessions(
     let rows = sqlx::query(
         r#"SELECT cs.id, cs.provider_type, cs.purchasable_type, cs.purchasable_id::text,
                   cs.amount::text, cs.currency, cs.status, cs.provider_session_id, cs.created_at,
-                  cs.metadata, p.name AS plan_name, p.slug AS plan_slug
+                  cs.metadata,
+                  -- WHAT WAS ASKED FOR, even after the catalogue moved on. A refused attempt records
+                  -- its slug in `metadata` and resolves `purchasable_id` only while the plan still
+                  -- exists, so a customer's own payment history named it only from the join and read
+                  -- "unnamed" for every attempt whose catalogue row was gone (measured 2026-11-18:
+                  -- 7 of 25 rows on the operator workspace, one still carrying plan_slug=pro from
+                  -- 2026-10-21 — the screen then printed "Your plan | 0.00"). The operator list
+                  -- (admin_handler::list_checkout_requests) has read metadata->>'plan_slug' since
+                  -- 2026-10-24; this is the same rule on the customer's own door.
+                  -- NULLIF(btrim(..),'') matters: 6 of those 7 rows carry an EMPTY slug, and an empty
+                  -- string would read as blank instead of as unnamed.
+                  COALESCE(p.name, NULLIF(btrim(cs.metadata->>'plan_slug'), '')) AS plan_name,
+                  COALESCE(p.slug, NULLIF(btrim(cs.metadata->>'plan_slug'), '')) AS plan_slug
            FROM checkout_sessions cs
            LEFT JOIN plans p
                   ON cs.purchasable_type = 'plan' AND p.id = cs.purchasable_id

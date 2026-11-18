@@ -1507,8 +1507,13 @@ function D(){
   var payWhat=function(r){
     var n=String((r&&r.plan_name)||'').trim();
     if(n) return n;
-    var s=String((r&&r.purchasable_type)||'').trim();
-    return s?('Your '+s):'Plan';
+    // A session recorded before (or without) a catalogue row still names the plan it asked for.
+    var sl=String((r&&r.plan_slug)||'').trim();
+    if(sl) return sl;
+    var t=String((r&&r.purchasable_type)||'').trim();
+    if(t&&t!=='plan') return 'Your '+t;
+    // Nothing on the row identifies what was bought. Say that, rather than "Your plan" next to 0.00.
+    return 'Plan purchase (name not recorded)';
   };
   var payState=function(r){
     var st=String((r&&r.status)||'').trim().toLowerCase();
