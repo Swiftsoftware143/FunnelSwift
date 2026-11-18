@@ -1398,6 +1398,20 @@ function D(){
         var over=(uu!==null&&typeof lim==="number"&&lim>0&&uu>lim)?" \u26a0":"";
         var zeroAllow=(lim!==null&&lim!==undefined&&Number(lim)===0);bits.push(X(pairs[pi][0])+" "+((zeroAllow||uu===null)?limTxt:(uu+" / "+limTxt))+over);}
       h+='<div style="color:#64748b;font-size:12px;margin-top:4px">'+bits.join(" \u00b7 ")+'</div>';
+      /* 2026-11-18 — the ACTION-BUTTON allowance is a live gate on this app
+         (`features::enforce_action_button_limit`, which refuses with "Action buttons are not
+         included in your plan" / "Action buttons limit reached (n/m)"), yet this strip never
+         named it, so the one screen that sells an upgrade was silent about the limit a Capture
+         customer meets first: capture-free and capture-starter both carry
+         `max_action_buttons = 0`, and the console never said so. The figure is read from the SAME
+         `current_plan` row the gate resolves, so the words here and the refusal cannot disagree.
+         `-1` is unlimited and `0` is "not on this plan" — the same convention the strip uses; a
+         NULL means this plan sets no action-button limit, so no claim is made. */
+      var abt=cp.max_action_buttons;
+      if(abt!==null&&abt!==undefined){
+        var abtTxt=(Number(abt)<0)?'unlimited':(Number(abt)===0?'not on this plan':'up to '+abt+' per card');
+        h+='<div data-plan-action-buttons="'+X(String(abt))+'" style="color:#64748b;font-size:12px;margin-top:2px">Action buttons '+X(abtTxt)+'</div>';
+      }
       /* 2026-11-08 — an allowance the customer has USED UP was only ever a fraction in the strip
          above ("Tags 2 / 2"), so the one screen that decides whether they buy made them read a
          number and guess. This names it in the same words the refusal uses and offers the plans.
