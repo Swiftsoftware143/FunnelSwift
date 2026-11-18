@@ -62,7 +62,11 @@ pub const FLEET_HARNESS_DOMAINS: &[&str] = &[
 /// "Sink Probe attrpre1792882105's Workspace" with `probe_harness` NULL, so it sat in the operator's
 /// tenant list as a real customer until it was deleted by hand. The five sibling apps were fixed the
 /// same day; this is the last door.
-pub const ATTRIBUTION_ONLY_DOMAINS: &[&str] = &["maxxspace.com"];
+///
+/// `fldubai.com` and `euploading.com` (added 2026-11-18) are the rotating disposable inboxes the
+/// audit harness mints fresh addresses on; like `maxxspace.com` no customer can own an address there,
+/// so a signup on one is a probe by construction and must stay classified as one.
+pub const ATTRIBUTION_ONLY_DOMAINS: &[&str] = &["maxxspace.com", "fldubai.com", "euploading.com"];
 
 /// The domain that makes a SIGNUP a probe: the fleet-harness class of [`harness_domain`] plus the
 /// attribution-only class above. The mail layer must keep using [`harness_domain`], never this.
@@ -187,6 +191,16 @@ mod attribution_only_tests {
         // A domain that merely CONTAINS the name is somebody else's mailbox.
         assert_eq!(attribution_domain("person@notmaxxspace.com"), None);
         assert_eq!(attribution_domain("person@maxxspace.com.evil.net"), None);
+        // The rotating disposable inboxes are probes too (2026-11-18).
+        assert_eq!(
+            attribution_domain("x@euploading.com"),
+            Some("euploading.com")
+        );
+        assert_eq!(attribution_domain("audit@fldubai.com"), Some("fldubai.com"));
+        assert_eq!(
+            attribution_domain("x@mail.fldubai.com"),
+            Some("fldubai.com")
+        );
     }
 
     #[test]

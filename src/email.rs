@@ -1217,6 +1217,29 @@ pub async fn send_account_closed_operator_alert(
     dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
 }
 
+/// Is the requester a platform admin? (2026-11-18)
+///
+/// The operator's OWN account is a workspace in its own product. When David — or any platform
+/// admin — files a plan or support request from his own workspace, the request door mails
+/// `operator_alert_email`, which is his own address, so he receives "A customer asked to buy X"
+/// about a request he filed himself. The row still lands in the queue and the request still works;
+/// only the ALERT to a human is withheld. A lookup failure answers `false` (send the alert): a real
+/// customer's alert must never be lost because this probe tripped.
+async fn requester_is_platform_admin(pool: &PgPool, email: &str) -> bool {
+    let Ok(roles) = sqlx::query_scalar::<_, String>(
+        "SELECT role FROM users WHERE lower(email) = lower($1) AND is_active = true",
+    )
+    .bind(email.trim())
+    .fetch_all(pool)
+    .await
+    else {
+        return false;
+    };
+    roles
+        .iter()
+        .any(|role| crate::auth::global_auth::is_platform_admin(role))
+}
+
 /// Tell the OPERATOR that a workspace asked to buy a plan (2026-11-09).
 ///
 /// `POST /api/v1/plan-requests` already mails the person who filed the ask; this is the other half
@@ -1269,6 +1292,17 @@ pub async fn send_plan_request_operator_alert(
         tracing::info!(
             reason = %reason,
             "plan-request operator alert WITHHELD — the requester is a synthetic identity"
+        );
+        return Ok(());
+    }
+    // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin
+    // (David) filing from his own workspace would otherwise mail `operator_alert_email` — his own
+    // address — "A customer asked to buy X" about a request he filed himself. The row still lands
+    // in the queue; only the alert to a human is withheld.
+    if requester_is_platform_admin(pool, requester_email).await {
+        tracing::info!(
+            requester = %requester_email,
+            "operator self-request: alert suppressed"
         );
         return Ok(());
     }
@@ -1555,6 +1589,16 @@ pub async fn send_support_request_operator_alert(
         tracing::info!(
             reason = %reason,
             "support operator alert WITHHELD — the filer is a synthetic identity"
+        );
+        return Ok(());
+    }
+    // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin filing
+    // from his own workspace would otherwise mail `operator_alert_email` — his own address — about
+    // a ticket he filed himself. The row still lands in the queue; only the alert is withheld.
+    if requester_is_platform_admin(pool, from_email).await {
+        tracing::info!(
+            requester = %from_email,
+            "operator self-request: alert suppressed"
         );
         return Ok(());
     }
