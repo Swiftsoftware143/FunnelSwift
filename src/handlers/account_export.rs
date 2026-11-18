@@ -37,10 +37,21 @@ use crate::state::AppState;
 /// the column list lives in ONE place per table and never needs a Rust mirror type.
 const COLLECTIONS: &[(&str, &str)] = &[
     (
+        // The account block is the FIRST thing a customer reads in their own download, and it used
+        // to answer `"email": null` on every account (measured live 2026-11-17 against a freshly
+        // registered account whose users.email was plainly set): the address does not live on
+        // `tenants` at all — the column is NULL for every row — it lives on the account's people.
+        // The block now names the account owner's own address (the oldest person on the account,
+        // the same "who owns this" rule `is_workspace_owner` uses), so the download answers the
+        // question it exists to answer instead of implying the address was lost.
         "account",
         "SELECT coalesce(json_agg(x), '[]'::json)::text FROM (
-             SELECT id, name, slug, email, status, affiliate_code, created_at, updated_at
-               FROM tenants WHERE id = $1) x",
+             SELECT t.id, t.name, t.slug,
+                    (SELECT u.email FROM users u
+                      WHERE u.tenant_id = t.id AND u.email IS NOT NULL
+                      ORDER BY u.created_at, u.id LIMIT 1) AS email,
+                    t.status, t.affiliate_code, t.created_at, t.updated_at
+               FROM tenants t WHERE t.id = $1) x",
     ),
     (
         "plan",
