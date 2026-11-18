@@ -773,7 +773,9 @@ window.FunnelSwiftConfig = {
         <em>Could not start &mdash; payments are not switched on yet</em>; a workspace that has never tried to
         buy anything reads <em>Nothing has been charged on this workspace yet</em> instead of an empty table.
         The amounts and the outcomes are the ones the payment record carries &mdash; nothing is estimated, and
-        nothing appears there until the server has actually recorded the attempt.</p>
+        nothing appears there until the server has actually recorded the attempt. Each row also names the
+        plan the attempt was for; where a record carries no plan name at all, the row says
+        <em>Plan purchase (name not recorded)</em> rather than guessing one.</p>
       <p>Picking a paid plan on the pricing page when you <strong>sign up</strong> files the same request:
         the workspace still starts on Free, nothing is charged, and the choice is already with our team, so
         you do not have to ask again once you are in.</p>
