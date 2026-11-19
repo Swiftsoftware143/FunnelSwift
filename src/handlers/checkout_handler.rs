@@ -743,6 +743,7 @@ pub async fn create_checkout_session(
                                 plan_price: asked_for,
                                 billing_cycle: if yearly { "yearly" } else { "monthly" },
                                 payment_link: Some(url.as_str()),
+                                filed_because: "a hosted payment link was opened for the buyer",
                             },
                         )
                         .await
@@ -812,6 +813,7 @@ pub async fn create_checkout_session(
                             plan_price: asked_for,
                             billing_cycle: if yearly { "yearly" } else { "monthly" },
                             payment_link: None,
+                            filed_because: "no payment provider is configured",
                         },
                     )
                     .await
@@ -1108,6 +1110,99 @@ pub async fn create_checkout_session(
                 }
                 Err(e) => {
                     tracing::error!(tenant = %tenant_id, plan = %plan_slug, error = %e, "stripe checkout session FAILED — no charge can occur");
+                    // A REFUSED SESSION MUST NOT LOSE THE SALE (2026-11-19). Measured live on this
+                    // app: with a provider row whose key Stripe rejects, a buyer who pressed Upgrade
+                    // got `424 {"message":"Stripe refused the session: Invalid API Key provided:
+                    // sk_test_…"}` — the provider's own operator-facing text, shown to the person
+                    // trying to give us money — while `plan_requests` gained NOTHING and the operator
+                    // was never told, so the sale simply evaporated. The no-provider arm above has
+                    // filed the ask, mailed the buyer a receipt and alerted the operator since
+                    // 2026-10-23; this arm is the same failure from the buyer's side and now behaves
+                    // the same way. The provider's raw sentence stays in the LOG (it is what an
+                    // operator needs) and never in the response body.
+                    let recorded = sqlx::query(
+                        "INSERT INTO checkout_sessions \
+                           (tenant_id, user_id, provider_type, purchasable_type, purchasable_id, amount, \
+                            currency, status, metadata) \
+                         VALUES ($1, $2, 'stripe', 'plan', $3, $4, 'USD', 'provider_error', $5)",
+                    )
+                    .bind(tenant_id)
+                    .bind(Uuid::parse_str(&auth.user_id).ok())
+                    .bind(plan_id)
+                    .bind(amount)
+                    .bind(json!({
+                        "plan_slug": plan_slug,
+                        "billing_cycle": interval,
+                        "reason": "payment_provider_refused"
+                    }))
+                    .execute(&state.pool)
+                    .await;
+                    if let Err(e) = recorded {
+                        tracing::error!(
+                            "checkout/create: could not record the refused session: {e:?}"
+                        );
+                    }
+                    let plan_request = record_upgrade_request(
+                        &state.pool,
+                        UpgradeAsk {
+                            tenant_id,
+                            user_id: Uuid::parse_str(&auth.user_id).ok(),
+                            requested_by: &auth.email,
+                            plan_slug: &plan_slug,
+                            plan_name: &plan_name,
+                            plan_price: amount,
+                            billing_cycle: if yearly { "yearly" } else { "monthly" },
+                            payment_link: None,
+                            filed_because: "the payment provider refused the checkout session",
+                        },
+                    )
+                    .await;
+                    let request_recorded = plan_request.is_some();
+                    let mut receipt_emailed = false;
+                    let fresh = plan_request
+                        .as_ref()
+                        .and_then(|v| v.get("already_open"))
+                        .and_then(|v| v.as_bool())
+                        == Some(false);
+                    if fresh {
+                        if let Ok(uid) = Uuid::parse_str(&auth.user_id) {
+                            let filer: Option<(String, String)> = sqlx::query_as(
+                                "SELECT email, COALESCE(NULLIF(name, ''), '') FROM users WHERE id = $1",
+                            )
+                            .bind(uid)
+                            .fetch_optional(&state.pool)
+                            .await
+                            .unwrap_or(None);
+                            if let Some((email, name)) = filer {
+                                let greeting = if name.trim().is_empty() {
+                                    "there".to_string()
+                                } else {
+                                    name.trim().to_string()
+                                };
+                                let how_to_pay = crate::platform_settings::load(&state.pool)
+                                    .await
+                                    .payment_instructions
+                                    .unwrap_or_default();
+                                match crate::email::send_plan_request_received_email(
+                                    &state.pool,
+                                    tenant_id,
+                                    &email,
+                                    &greeting,
+                                    &plan_name,
+                                    "",
+                                    &how_to_pay,
+                                )
+                                .await
+                                {
+                                    Ok(()) => receipt_emailed = true,
+                                    Err(e) => tracing::warn!(
+                                        to = %email,
+                                        "refused-session receipt was not sent: {e}"
+                                    ),
+                                }
+                            }
+                        }
+                    }
                     // 424 FAILED DEPENDENCY, never 502 (kanban work 2026-10-15). Cloudflare —
                     // which fronts app.funnelswift.net — REPLACES the body of an origin 502 (and
                     // 504) with its own page: measured live, this arm answered the origin
@@ -1121,9 +1216,26 @@ pub async fn create_checkout_session(
                     // path and this app's CoreSwift integration already carry.
                     Ok((
                         StatusCode::FAILED_DEPENDENCY,
-                        Json(
-                            json!({"error": "checkout_session_failed", "message": e, "configured": true}),
-                        ),
+                        Json(json!({
+                            "error": "checkout_session_failed",
+                            // BUYER-FIRST: nothing was charged and whether the ask was taken —
+                            // the provider's own error text is in the server log, where the
+                            // operator reads it.
+                            "message": if request_recorded {
+                                "No charge was made \u{2014} the payment provider could not start a \
+                                 checkout, so you cannot be billed. Your request has been passed to \
+                                 the team that runs this installation, who can activate this plan for \
+                                 your workspace."
+                            } else {
+                                "No charge was made \u{2014} the payment provider could not start a \
+                                 checkout, so you cannot be billed. Press Upgrade again in a moment; \
+                                 if it keeps failing, contact support and name the plan above."
+                            },
+                            "configured": true,
+                            "request_recorded": request_recorded,
+                            "plan_request": plan_request,
+                            "receipt_emailed": receipt_emailed
+                        })),
                     ))
                 }
             }
@@ -2098,6 +2210,12 @@ struct UpgradeAsk<'a> {
     billing_cycle: &'a str,
     /// The hosted payment page the buyer was handed to, when the plan carries one.
     payment_link: Option<&'a str>,
+    /// WHY THE ASK WAS FILED, spoken verbatim in the operator alert and in the row note.
+    /// Two arms file an ask automatically and they fail for different reasons: no provider is
+    /// configured, or (2026-11-19) a provider EXISTS and REFUSED the session. Reusing the
+    /// "no payment provider is configured" sentence for the second told the operator a provider was
+    /// missing while one was present with an unusable key — the exact wrong repair.
+    filed_because: &'a str,
 }
 
 async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Option<Value> {
@@ -2110,6 +2228,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
         plan_price,
         billing_cycle,
         payment_link,
+        filed_because,
     } = ask;
     let open: Option<Uuid> = match sqlx::query_scalar(
         "SELECT id FROM plan_requests \
@@ -2167,8 +2286,8 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
     .bind(plan_slug)
     .bind(plan_name)
     .bind(format!(
-        "This workspace pressed Upgrade on the {plan_name} plan (${plan_price:.0}/{unit}) and no \
-         payment provider is configured, so nothing was charged and nothing can be billed. Filed \
+        "This workspace pressed Upgrade on the {plan_name} plan (${plan_price:.0}/{unit}); \
+         {filed_because}, so nothing was charged and nothing can be billed. Filed \
          automatically by the checkout refusal arm, so the ask survives even if the customer closes \
          the tab. Resolving this request seats the workspace on the plan.{}",
         match payment_link {
@@ -2194,7 +2313,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
                 tenant_id,
                 plan_name,
                 requested_by,
-                "Filed when the customer pressed Upgrade and no payment provider was configured.",
+                &format!("Filed when the customer pressed Upgrade and {filed_because}."),
             )
             .await
             {
