@@ -7397,6 +7397,17 @@ function paintSupportRequests() {
 // read paints nothing — "I could not check" is never shown as "you cannot take money" — and a
 // connected installation sees no card at all. The copy names the platform account on purpose: a
 // workspace that brought its own merchant key can still be charged, so the card cannot claim it cannot.
+// THE CARD REPORTS WHAT A PRESS ACTUALLY REACHES (2026-11-19). It used to test only
+// `configured === false`, which is true whenever no provider KEY is saved — even when an active
+// plan carries its own hosted payment page, or the operator has published "how to pay" words that
+// every buyer reads on the upgrade screen. Measured live on this install: with a hosted link on
+// one active plan the till status answered configured:false, upgrade_path:"payment_link",
+// sellable_plans:1 — a press of Upgrade reaches a page that takes money, while this card said
+// "Buyers cannot pay" and sent the operator chasing a problem nobody has. `upgrade_path` is the
+// same three-valued answer the customer till uses (checkout / payment_link / request) and
+// `payment_instructions` is the operator's own published words, so the panel and the buyer cannot
+// disagree. A failed or malformed read leaves PAY_STATUS null and paints NOTHING — "I could not
+// check" is never shown as "you cannot take money".
 var PAY_STATUS = null;
 async function refreshPaymentHealth() {
   if (!USER || (USER.role !== 'admin' && !USER.is_admin)) return;
@@ -7410,19 +7421,48 @@ function paintPaymentHealth() {
   if (PAY_STATUS === null) return;
   const box = document.getElementById('payCard');
   if (!box) return;
-  if (PAY_STATUS.configured) { box.innerHTML = ''; return; }
-  const savedUnusable = !!PAY_STATUS.provider;
-  const detail = savedUnusable
-    ? 'A ' + String(PAY_STATUS.provider) + ' key is saved on the platform account but it cannot be read, so every workspace without its own key is refused at checkout before any charge is made. Re-enter the key and those buyers can pay again.'
-    : "No payment provider is connected on the platform account, so every workspace without its own key is refused at checkout before any charge is made. Add the platform's <strong>Stripe</strong> key and those buyers can pay again — a PayPal key can be stored but cannot take a payment yet. A hosted payment link pasted on a plan (Plans &rarr; Payment link) also works today, with no key at all.";
-  box.innerHTML = '<div class="card" data-payment-provider-missing="1" style="border-left:4px solid #dc2626;margin-bottom:16px">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
-    + '<div><div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Checkout is switched off</div>'
-    + '<div style="font-size:20px;font-weight:800">Buyers cannot pay</div>'
-    + '<div style="color:#475569;font-size:13px;margin-top:2px">' + detail + '</div></div>'
-    + '<button class="btn" data-open-provider-keys="1">' + (savedUnusable ? 'Fix the payment provider' : 'Connect a payment provider') + '</button></div></div>';
-  const btn = box.querySelector('[data-open-provider-keys]');
-  if (btn) btn.addEventListener('click', () => { STATE.view = 'providerKeys'; STATE.subView = null; renderApp(); });
+  const pay = PAY_STATUS;
+  const up = pay.upgrade_path || (pay.configured ? 'checkout' : 'request');
+  if (up === 'checkout') { box.innerHTML = ''; return; }   // money can be taken: stay quiet
+  const doors = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'
+    + '<button class="btn" data-open-view="providerKeys">Open Payment Providers</button>'
+    + '<button class="btn" data-open-view="plans">Add a payment page to plans</button>'
+    + '<button class="btn" data-open-view="settings">Tell buyers how to pay</button></div>';
+  const banner = (colour, kicker, title, body, extra) =>
+    '<div class="card" style="border-left:4px solid ' + colour + ';margin-bottom:16px">'
+    + '<div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">' + kicker + '</div>'
+    + '<div style="font-size:20px;font-weight:800">' + title + '</div>'
+    + '<div style="color:#475569;font-size:13px;margin-top:2px">' + body + '</div>'
+    + (extra || '') + doors + '</div>';
+  if (up === 'payment_link') {
+    const n = Number(pay.sellable_plans || 0);
+    box.innerHTML = '<div data-payment-path="payment_link">' + banner('#2563eb',
+      'No card checkout — a plan carries its own payment page',
+      'Buyers can pay through a plan\u2019s own payment page',
+      'No payment provider key is saved, but ' + (n === 1 ? 'one active plan carries' : n + ' active plans carry')
+      + ' a hosted payment page, so pressing Upgrade opens that page and the workspace is switched on once you confirm the request. Those plans can be bought today — nothing else is needed to sell them.') + '</div>';
+  } else if (pay.payment_instructions && String(pay.payment_instructions).trim()) {
+    box.innerHTML = '<div data-payment-path="instructions">' + banner('#d97706',
+      'No card can be charged — but buyers are told how to pay',
+      'Buyers pay by your own instructions',
+      'No card is charged and no plan carries a payment page, so a buyer presses Upgrade, reads the words you published below and asks for the plan; you switch the workspace on when the money lands. Nothing takes a card automatically.',
+      '<div style="margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#334155;white-space:pre-wrap">'
+      + esc(String(pay.payment_instructions).slice(0, 400)) + '</div>') + '</div>';
+  } else {
+    const savedUnusable = !!pay.provider;
+    const detail = savedUnusable
+      ? 'A ' + esc(String(pay.provider)) + ' key is saved on the platform account but it cannot be read, so every workspace without its own key is refused at checkout before any charge is made. Re-enter the key and those buyers can pay again.'
+      : "No payment provider is connected on the platform account, so every workspace without its own key is refused at checkout before any charge is made. Add the platform's <strong>Stripe</strong> key and those buyers can pay again — a PayPal key can be stored but cannot take a payment yet. A hosted payment link pasted on a plan (Plans &rarr; Payment link) also works today, with no key at all, and so do your own &ldquo;how to pay&rdquo; words under Settings.";
+    box.innerHTML = '<div data-payment-path="request">' + banner('#dc2626',
+      'Checkout is switched off',
+      'Buyers cannot pay',
+      detail) + '</div>';
+    const fix = box.querySelector('[data-open-view="providerKeys"]');
+    if (fix) fix.textContent = savedUnusable ? 'Fix the payment provider' : 'Connect a payment provider';
+  }
+  box.querySelectorAll('[data-open-view]').forEach(btn => btn.addEventListener('click', () => {
+    STATE.view = btn.getAttribute('data-open-view'); STATE.subView = null; renderApp();
+  }));
 }
 
 /* ── Bridge for the CLASSIC <script> blocks that follow ────────────────────────────────────────
