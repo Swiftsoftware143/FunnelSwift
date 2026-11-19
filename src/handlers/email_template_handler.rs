@@ -811,7 +811,7 @@ pub async fn admin_send_reset(
         .ok();
     sqlx::query("INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)")
         .bind(target_id)
-        .bind(&token)
+        .bind(crate::security::reset_token::hash(&token))
         .bind(expires_at)
         .execute(&state.pool)
         .await?;
