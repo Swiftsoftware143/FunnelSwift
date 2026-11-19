@@ -7137,12 +7137,18 @@ async function renderCheckoutSessions() {
 const PLAN_REQ_LABEL = {
   open: 'Open — waiting on us',
   contacted: 'Contacted — we reached out',
-  done: 'Done — moved onto the plan',
+  // NOT 'moved onto the plan' (2026-11-19): a stale ask for a tier the workspace already beats is
+  // closed without touching the plan, so the chip states the state and the OUTCOME is written under
+  // it from the server's own `plan_note` (a lie in an operator's screen is worse than no chip).
+  done: 'Done',
   declined: 'Declined',
   // The customer took the ask back while it was still open (2026-10-19). Kept in the queue as a
   // record, and it can no longer be answered: the server refuses to move a withdrawn ask.
   withdrawn: 'Withdrawn by the customer'
 };
+// What the server said it actually did on the last save, keyed by request id. Rendering it under
+// the status chip keeps the screen honest about a `done` that applied no plan change.
+const PLAN_REQ_NOTE = {};
 const PLAN_REQ_BG = { open: '#fef3c7', contacted: '#dbeafe', done: '#dcfce7', declined: '#fee2e2', withdrawn: '#f1f5f9' };
 const PLAN_REQ_FG = { open: '#92400e', contacted: '#1e40af', done: '#166534', declined: '#991b1b', withdrawn: '#475569' };
 function planReqChip(s) {
@@ -7188,7 +7194,9 @@ async function renderPlanRequests() {
       x(r.requested_by || '') + '</div></td>' +
       '<td>' + x(r.plan_name || r.plan_slug) + term +
       (r.note ? '<div style="font-size:11px;color:var(--muted);max-width:280px">' + x(r.note) + '</div>' : '') + '</td>' +
-      '<td>' + planReqChip(r.status) + '</td>' +
+      '<td>' + planReqChip(r.status) +
+      (PLAN_REQ_NOTE[r.id] ? '<div style="font-size:11px;color:var(--muted);max-width:230px;margin-top:3px">' + x(PLAN_REQ_NOTE[r.id]) + '</div>' : '') +
+      '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
       '<td><div style="display:flex;gap:4px;align-items:center">' +
       '<input data-pr-reply="' + x(r.id) + '" aria-label="Your reply to this plan request" value="' + x(r.reply || '') + '" placeholder="Visible to the customer" ' +
@@ -7264,6 +7272,11 @@ function bindPlanRequests() {
             ? ' and moved the workspace onto the plan it asked for'
             : (resp && resp.plan_note ? ' — ' + resp.plan_note : ''))
           : '';
+        if (status === 'done' && resp && resp.plan_applied === false && resp.plan_note) {
+          PLAN_REQ_NOTE[id] = resp.plan_note;
+        } else {
+          delete PLAN_REQ_NOTE[id];
+        }
         showToast('Marked ' + status + moved, 'success');
         renderApp();
       } catch (e) {
