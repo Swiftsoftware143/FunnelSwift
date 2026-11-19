@@ -7252,30 +7252,18 @@ function bindPlanRequests() {
       if (status === 'declined' && !confirm('Decline ' + ws + '\u2019s plan request?')) return;
       b.disabled = true;
       try {
-        // "done" means the workspace was actually MOVED onto the plan it asked for. The state alone
-        // would leave the customer on the old plan while the chip told them they had been moved, so
-        // the move is written here (the same writer the Tenants screen's plan selector uses:
-        // POST /api/v1/tenants/:id/plan) BEFORE the request is marked done. If the plan cannot be
-        // resolved the operator is told, and the request is NOT marked done — a lie is worse than
-        // an unfinished step.
-        let moved = '';
-        if (status === 'done' && tid && slug) {
-          let plans = [];
-          try { plans = await api('/plans') || []; } catch (e) { plans = []; }
-          const plan = (Array.isArray(plans) ? plans : (plans.plans || [])).find(p => p && p.slug === slug);
-          if (!plan) {
-            b.disabled = false;
-            showToast('Plan "' + slug + '" is not in the catalogue — nothing was changed', 'error');
-            return;
-          }
-          await api('/tenants/' + encodeURIComponent(tid) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id, billing_cycle: cycle }) });
-          moved = ' and moved the workspace onto ' + (plan.name || slug) +
-            (cycle === 'yearly' ? ' (yearly)' : (cycle === 'monthly' ? ' (monthly)' : ''));
-        }
-        // The note typed beside the buttons travels WITH the state change, so a "declined" chip is
-        // never shown to the customer without the sentence that explains it.
-        await api('/admin/plan-requests/' + encodeURIComponent(id),
+        // THE SERVER IS THE ONLY WRITER OF THE PLAN (2026-11-19). This screen used to move the
+        // workspace itself, BEFORE the request was saved — an unguarded POST /tenants/:id/plan that
+        // would happily downgrade a paying workspace onto a stale ask. `PUT /admin/plan-requests/:id`
+        // performs the move on `done` (with the term the customer asked for) and now REFUSES a
+        // downgrade, so the screen only reports what the server actually did.
+        const resp = await api('/admin/plan-requests/' + encodeURIComponent(id),
           { method: 'PUT', body: JSON.stringify({ status, reply: planReqReplyValue(id) }) });
+        const moved = status === 'done'
+          ? (resp && resp.plan_applied
+            ? ' and moved the workspace onto the plan it asked for'
+            : (resp && resp.plan_note ? ' — ' + resp.plan_note : ''))
+          : '';
         showToast('Marked ' + status + moved, 'success');
         renderApp();
       } catch (e) {

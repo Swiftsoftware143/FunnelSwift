@@ -647,12 +647,36 @@ pub async fn admin_update(
                 plan_note = Some(format!("no plan is called '{plan_slug}' any more"));
             }
             Some((plan_id, slug)) => {
-                let already = crate::plan_movement::current_plan(&state.pool, tenant_id)
-                    .await
-                    .map(|(s, _)| s == slug)
-                    .unwrap_or(false);
-                if already {
+                let requested_price: f64 = sqlx::query_scalar(
+                    "SELECT COALESCE(price, 0)::float8 FROM plans WHERE id = $1",
+                )
+                .bind(plan_id)
+                .fetch_one(&state.pool)
+                .await
+                .unwrap_or(0.0);
+                let current = crate::plan_movement::current_plan(&state.pool, tenant_id).await;
+                // ALREADY ON IT, OR ABOVE IT (2026-11-19). Pressing `done` must never move a
+                // workspace DOWN: the queue keeps stale asks, so an old request to be moved onto a
+                // free tier can sit beside a workspace that has since bought Agency, and
+                // `set_active_plan` below would honour it — silently downgrading a paying customer
+                // because an operator cleared an old row. The tier is compared on the catalogue
+                // PRICE every plan already carries: a strictly cheaper ask than the plan the
+                // workspace holds is recorded as answered and the plan is left exactly where it is.
+                // An equal-price ask (the two $9 tiers) still goes through, because that is a
+                // product-side switch, not a downgrade.
+                let current_slug = current.as_ref().map(|(s, _)| s.clone());
+                let current_price = current.as_ref().map(|(_, p)| *p).unwrap_or(0.0);
+                if current_slug.as_deref() == Some(slug.as_str()) {
                     plan_note = Some(format!("already on {slug}"));
+                } else if current_slug.is_some() && current_price > requested_price + 0.001 {
+                    let held = current_slug.unwrap_or_default();
+                    tracing::info!(
+                        request = %id, tenant = %tenant_id, held = %held, asked = %slug,
+                        "plan-request done: the workspace already holds a dearer plan - no change applied"
+                    );
+                    plan_note = Some(format!(
+                        "already on {held} which costs more - no downgrade applied"
+                    ));
                 } else {
                     match crate::handlers::plan_handler::set_active_plan(
                         &state.pool,
