@@ -780,7 +780,55 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
     // on the same read, so what the strip shows and what the gate compares come from one pair.
     let ocr_scans = get_usage_count(state, tenant_id, "max_ocr_scans").await;
 
-    serde_json::json!({
+    // THE ALLOWANCES, beside the counts (2026-11-19). Every figure above is a "used" number and
+    // its ceiling lives on the plan, so a consumer of THIS payload (the dashboard strip, an API
+    // client, an MCP tool) needed a SECOND read of `current_plan` to say "3 / 100 leads" — and a
+    // surface that skipped it could not tell a customer how close they were to the gate.
+    //
+    // Each ceiling is read through `resolved_limit`, the ONE numeric resolver every gate calls
+    // (`enforce_feature_limit` -> `resolved_limit`: the tenant's own override, then a
+    // `feature_limits` row, then the plan's column). Reading the plan COLUMN directly here would
+    // publish a number the gate does not use the moment an operator sets a per-plan or per-tenant
+    // value in the admin panel — the drift this payload exists to kill.
+    //   null = configured nowhere, which the gates read as "nothing bounds it" (allow)
+    //   -1   = unlimited, 0 = the plan does not include the thing
+    //
+    // If a plan read FAILS the whole `limits` key is left OFF the payload: absent means "not
+    // known", which no surface can mistake for an unlimited allowance.
+    const USAGE_LIMIT_KEYS: [(&str, &str); 8] = [
+        ("cards", "max_cards"),
+        ("leads", "max_leads"),
+        ("tags", "max_tags"),
+        ("forms", "max_forms"),
+        ("domains", "max_custom_domains"),
+        ("team", "max_team_members"),
+        ("qr_codes", "max_qr_codes"),
+        ("ocr_scans", "max_ocr_scans"),
+    ];
+    let mut limits = serde_json::Map::new();
+    let mut limits_known = true;
+    for (counter, feature_key) in USAGE_LIMIT_KEYS {
+        match resolved_limit(state, tenant_id, feature_key).await {
+            Ok(Some(value)) => {
+                limits.insert(counter.to_string(), serde_json::json!(value));
+            }
+            Ok(None) => {
+                limits.insert(counter.to_string(), serde_json::Value::Null);
+            }
+            Err(err) => {
+                tracing::warn!(
+                    tenant = %tenant_id,
+                    limit = feature_key,
+                    error = %err,
+                    "usage payload: could not resolve a plan allowance — omitting `limits`"
+                );
+                limits_known = false;
+                break;
+            }
+        }
+    }
+
+    let mut payload = serde_json::json!({
         "cards": cards,
         "leads": leads,
         "tags": tags,
@@ -789,7 +837,11 @@ pub async fn get_usage_json(state: &AppState, tenant_id: Uuid) -> serde_json::Va
         "team": team,
         "qr_codes": qr_codes,
         "ocr_scans": ocr_scans
-    })
+    });
+    if limits_known {
+        payload["limits"] = serde_json::Value::Object(limits);
+    }
+    payload
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
