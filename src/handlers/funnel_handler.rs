@@ -474,8 +474,9 @@ pub async fn render_funnel(
         Option<String>,
         bool,
         bool,
+        Uuid,
     )>(
-        "SELECT name, headline, subheadline, cta_label, thank_you, is_active, ask_phone FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
+        "SELECT name, headline, subheadline, cta_label, thank_you, is_active, ask_phone, tenant_id FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
@@ -495,13 +496,45 @@ pub async fn render_funnel(
     // Does this funnel's page ask for a phone number (migration 117)? Read before the row is
     // destructured below, so the page's shape is decided by the row and nothing else.
     let ask_phone = row.as_ref().map(|r| r.6).unwrap_or(false);
+    // THE CUSTOMER'S OWN IDENTITY ON THE PAGE THEY SHARE (cron 2026-11-19). A funnel link is the
+    // customer's landing page, and until now it always rendered in the app's indigo whatever the
+    // workspace had set: the Settings screen's brand name, brand colour and logo were spent on the
+    // transactional EMAILS only. Same document (`branding::load`) the mail header reads, so there is
+    // one source of truth. Nothing configured means nothing changes: `load` answers None for a
+    // workspace with no brand name and no logo bytes, and the page then renders exactly as before.
+    let branding = match row.as_ref().map(|r| r.7) {
+        Some(tid) => crate::branding::load(&state.pool, tid).await,
+        None => None,
+    };
+    let accent = branding
+        .as_ref()
+        .map(|b| b.effective_color().to_string())
+        .unwrap_or_else(|| "#6366f1".to_string());
+    let brand_block = match branding.as_ref() {
+        Some(b) => {
+            let brand_name = html_escape(&b.brand_name);
+            match b.resolve_logo_url(crate::email::APP_URL) {
+                Some(url) => format!(
+                    "<div style=\"margin:0 0 18px\"><img src=\"{}\" alt=\"{}\" style=\"max-height:56px;max-width:240px;display:inline-block\"></div>",
+                    html_escape(&url),
+                    brand_name
+                ),
+                None if !brand_name.is_empty() => format!(
+                    "<div style=\"font-weight:700;font-size:18px;margin:0 0 12px\">{}</div>",
+                    brand_name
+                ),
+                None => String::new(),
+            }
+        }
+        None => String::new(),
+    };
 
     // The CUSTOMER's words where they set them, a sensible default where they did not: every row
     // that existed before migration 111 keeps rendering, and it now renders a page that can take a
     // lead instead of "under construction". The RAW values are kept for the inline script (a JS
     // string must not carry HTML entities) and escaped only on the way into the markup.
     let (raw_name, raw_headline, raw_subheadline, raw_cta, raw_thanks) = match row {
-        Some((name, h, sl, c, t, _, _)) => {
+        Some((name, h, sl, c, t, _, _, _)) => {
             let headline = h
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| name.clone());
@@ -611,7 +644,7 @@ p.sub{{color:#c7d2fe;font-size:16px;margin-bottom:22px}}
 label{{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#a5b4fc;margin:12px 0 6px}}
 input{{width:100%;padding:12px 14px;border-radius:9px;border:1px solid rgba(255,255,255,.18);background:rgba(15,23,42,.55);color:#fff;font-size:15px}}
 input:focus{{outline:2px solid #818cf8;border-color:transparent}}
-button{{width:100%;margin-top:18px;padding:13px 16px;border:0;border-radius:9px;background:#6366f1;color:#fff;font-size:15px;font-weight:600;cursor:pointer}}
+button{{width:100%;margin-top:18px;padding:13px 16px;border:0;border-radius:9px;background:{accent};color:#fff;font-size:15px;font-weight:600;cursor:pointer}}
 button:disabled{{opacity:.6;cursor:default}}
 .err{{color:#fca5a5;font-size:13px;margin-top:10px;min-height:16px}}
 </style>
@@ -619,7 +652,7 @@ button:disabled{{opacity:.6;cursor:default}}
 </head>
 <body data-slug="{slug_attr}">
 <div class="card" id="fn-card">
-<h1>{headline}</h1>
+{brand_block}<h1>{headline}</h1>
 <p class="sub">{subheadline}</p>
 {form_block}
 </div>
@@ -683,6 +716,8 @@ button:disabled{{opacity:.6;cursor:default}}
         headline = headline,
         subheadline = subheadline,
         form_block = form_block,
+        brand_block = brand_block,
+        accent = accent,
         thank_you_js = js_string(&raw_thanks),
         cta_js = js_string(&raw_cta),
         )),
