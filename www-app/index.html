@@ -3894,6 +3894,48 @@ function ACAT(fac){
   }).catch(function(e){showMsg(e.message||"Could not add the category","me");});
 }
 
+/* Rename the selected product category (2026-11-19). The id comes from the select, which offers the
+   workspace's own categories plus the fleet's shared ones; PUT /api/v1/product-categories/:id is
+   tenant-scoped, so a shared row answers 404 "Category not found" and the message says exactly that
+   instead of a generic failure. The option's label is updated in place, so the product form stays on
+   the row the user was editing. */
+function RCAT(fac){
+  if(!fac||!fac.value){showMsg("Pick a category in the list first, then press Rename.","me");return;}
+  var cur=fac.options[fac.selectedIndex]?fac.options[fac.selectedIndex].text:"";
+  var nm=window.prompt("New name for this category:",cur||"");
+  if(nm===null) return;
+  nm=(nm||"").trim();
+  if(!nm){showMsg("A category name is required.","me");return;}
+  if(nm===cur){showMsg("That is already the category's name.","mi");return;}
+  api("/api/v1/product-categories/"+fac.value,{method:"PUT",body:JSON.stringify({name:nm})}).then(function(){
+    if(fac.options[fac.selectedIndex]) fac.options[fac.selectedIndex].text=nm;
+    showMsg("Category renamed to "+nm+".","mk");
+  }).catch(function(e){
+    var m=(e&&e.message)||"Could not rename the category";
+    if(/not found/i.test(m)) m=m+" — only a category your own workspace created can be renamed; the shared ones are managed by the fleet.";
+    showMsg(m,"me");
+  });
+}
+
+/* Delete the selected product category (2026-11-19). Products in it keep their rows and become
+   uncategorised (the API unlinks them first); the select drops the option and falls back to "(None)"
+   when nothing is left to carry. Same 404 story as the rename for a shared category. */
+function DCAT(fac){
+  if(!fac||!fac.value){showMsg("Pick a category in the list first, then press Delete.","me");return;}
+  var cur=fac.options[fac.selectedIndex]?fac.options[fac.selectedIndex].text:"this category";
+  if(!window.confirm("Delete the category \""+cur+"\"? Products in it keep their row and become uncategorised.")) return;
+  api("/api/v1/product-categories/"+fac.value,{method:"DELETE"}).then(function(){
+    var idx=fac.selectedIndex;
+    if(idx>=0) fac.remove(idx);
+    if(!fac.options.length) fac.appendChild(El("option",{value:""},"(None)"));
+    showMsg("Category \""+cur+"\" deleted.","mk");
+  }).catch(function(e){
+    var m=(e&&e.message)||"Could not delete the category";
+    if(/not found/i.test(m)) m=m+" — only a category your own workspace created can be deleted; the shared ones are managed by the fleet.";
+    showMsg(m,"me");
+  });
+}
+
 function LPAF(id){
   if(id) api("/api/v1/affiliate-products").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
@@ -3930,6 +3972,15 @@ function LPAFS(p){
     var fcw=El("div",{style:"display:flex;gap:6px;margin-top:6px"});
     fcw.appendChild(El("input",{id:"fac-new-name",placeholder:"New category name",style:"flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"}));
     fcw.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"fac-new-btn",onclick:function(){ACAT(fac);}},"+ Add category"));
+    /* Rename / Delete the category currently selected (2026-11-19). PUT and DELETE
+       /api/v1/product-categories/:id have existed since this control was built and NO shipped surface
+       called either: a workspace that typed a category name wrong could not fix it, and one it no
+       longer wanted could not be removed (a backend route with no UI is a defect). Both handlers are
+       tenant-scoped, so the fleet's shared/system categories answer 404 "Category not found" — the
+       toast says that plainly rather than pretending. Delete unlinks the workspace's own products
+       first (the column has no foreign key), so they keep their rows and become uncategorised. */
+    fcw.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"fac-ren-btn",title:"Rename the category selected above. Only a category your own workspace created can be changed.",onclick:function(){RCAT(fac);}},"Rename"));
+    fcw.appendChild(El("button",{"class":"btn btn-sm btn-o",id:"fac-del-btn",title:"Delete the category selected above. Products in it keep their row and become uncategorised. Only your own workspace's categories can be deleted.",onclick:function(){DCAT(fac);}},"Delete"));
     mb.appendChild(fcw);
     api("/api/v1/product-categories").then(function(d){
       var cats=Array.isArray(d)?d:(d&&d.data?d.data:[]);

@@ -178,6 +178,19 @@ pub async fn delete_category(
 ) -> AppResult<Json<Value>> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    // UNLINK FIRST (2026-11-19): `affiliate_products.category_id` carries no foreign key, so
+    // deleting a category used to leave every product that pointed at it holding a dangling id —
+    // the product screen then had to render "Unknown category" and a no-touch save kept the dead
+    // reference. A product keeps its row and just becomes uncategorised, which is what the deletion
+    // means. Same shape as `delete_tag_group`, and tenant-scoped like the delete below so a system
+    // category still answers 404 without touching anyone's products.
+    sqlx::query(
+        "UPDATE affiliate_products SET category_id = NULL WHERE category_id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .execute(&state.pool)
+    .await?;
     let result = sqlx::query("DELETE FROM product_categories WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(tenant_id)
