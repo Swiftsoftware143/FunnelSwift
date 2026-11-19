@@ -670,12 +670,20 @@ pub async fn admin_update(
                     plan_note = Some(format!("already on {slug}"));
                 } else if current_slug.is_some() && current_price > requested_price + 0.001 {
                     let held = current_slug.unwrap_or_default();
+                    // The console shows this sentence to the operator, so it names the tier the way
+                    // the customer sees it, not by its slug.
+                    let held_name: String =
+                        sqlx::query_scalar("SELECT name FROM plans WHERE slug = $1")
+                            .bind(&held)
+                            .fetch_optional(&state.pool)
+                            .await?
+                            .unwrap_or_else(|| held.clone());
                     tracing::info!(
                         request = %id, tenant = %tenant_id, held = %held, asked = %slug,
                         "plan-request done: the workspace already holds a dearer plan - no change applied"
                     );
                     plan_note = Some(format!(
-                        "already on {held} which costs more - no downgrade applied"
+                        "already on {held_name}, which costs more — nothing was changed"
                     ));
                 } else {
                     match crate::handlers::plan_handler::set_active_plan(
