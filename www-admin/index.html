@@ -7421,6 +7421,9 @@ function paintPaymentHealth() {
   if (PAY_STATUS === null) return;
   const box = document.getElementById('payCard');
   if (!box) return;
+  // `esc` is NOT in this module's scope (measured 2026-11-19: the instructions arm threw
+  // ReferenceError: esc is not defined and painted nothing), so the card carries its own escaper.
+  const pEsc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pay = PAY_STATUS;
   const up = pay.upgrade_path || (pay.configured ? 'checkout' : 'request');
   if (up === 'checkout') { box.innerHTML = ''; return; }   // money can be taken: stay quiet
@@ -7447,11 +7450,11 @@ function paintPaymentHealth() {
       'Buyers pay by your own instructions',
       'No card is charged and no plan carries a payment page, so a buyer presses Upgrade, reads the words you published below and asks for the plan; you switch the workspace on when the money lands. Nothing takes a card automatically.',
       '<div style="margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#334155;white-space:pre-wrap">'
-      + esc(String(pay.payment_instructions).slice(0, 400)) + '</div>') + '</div>';
+      + pEsc(String(pay.payment_instructions).slice(0, 400)) + '</div>') + '</div>';
   } else {
     const savedUnusable = !!pay.provider;
     const detail = savedUnusable
-      ? 'A ' + esc(String(pay.provider)) + ' key is saved on the platform account but it cannot be read, so every workspace without its own key is refused at checkout before any charge is made. Re-enter the key and those buyers can pay again.'
+      ? 'A ' + pEsc(String(pay.provider)) + ' key is saved on the platform account but it cannot be read, so every workspace without its own key is refused at checkout before any charge is made. Re-enter the key and those buyers can pay again.'
       : "No payment provider is connected on the platform account, so every workspace without its own key is refused at checkout before any charge is made. Add the platform's <strong>Stripe</strong> key and those buyers can pay again — a PayPal key can be stored but cannot take a payment yet. A hosted payment link pasted on a plan (Plans &rarr; Payment link) also works today, with no key at all, and so do your own &ldquo;how to pay&rdquo; words under Settings.";
     box.innerHTML = '<div data-payment-path="request">' + banner('#dc2626',
       'Checkout is switched off',
