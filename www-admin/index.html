@@ -4656,7 +4656,7 @@ async function renderTagGroups() {
         <td>${g.is_collapsible?'Yes':'No'}</td>
         <td>${g.sort_order||0}</td>
         <td>${own ? '<span class="badge badge-green">yours</span>' : `<span class="badge badge-blue" title="owned by tenant ${x(g.tenant_id||'')} - the shared taxonomy; rename/delete is tenant-scoped and this console does not own it">shared</span>`}</td>
-        <td>${own ? `<button class="btn btn-secondary btn-xs" onclick="window._editTagGroup('${g.id}')">Edit</button>` : '<span style="color:var(--muted)">—</span>'}</td>
+        <td>${own ? `<button class="btn btn-secondary btn-xs" onclick="window._editTagGroup('${g.id}')">Edit</button> <button class="btn btn-danger btn-xs" data-del-group="${x(g.id)}" data-del-name="${x(g.name||'')}" onclick="window._deleteTagGroup(this)">Delete</button>` : '<span style="color:var(--muted)">—</span>'}</td>
       </tr>`; }).join('')}</tbody>
     </table></div></div>`}
   </div>`;
@@ -4665,6 +4665,24 @@ function bindTagGroups() {
   document.getElementById('add-group-btn')?.addEventListener('click', () => openTagGroupModal());
 }
 window._editTagGroup = function(id) { openTagGroupModal(id); };
+// Delete a tag group the caller's tenant owns (kanban 2026-11-19, cron `default`). The backend has
+// carried `DELETE /api/v1/tag-groups/:id` since the screen was built, and the console never reached
+// it: the only control was Edit, so a group made by mistake could not be removed from the product at
+// all — "a backend route with no UI is a defect". The handler ungroups its tags (they survive with
+// group_id NULL) and deletes only a row WHERE tenant_id = the caller's, so a shared/system group
+// answers 404 rather than deleting someone else's taxonomy; the button is offered only on `own` rows.
+window._deleteTagGroup = async function(btn) {
+  const id = btn && btn.getAttribute('data-del-group');
+  const name = (btn && btn.getAttribute('data-del-name')) || 'this group';
+  if (!id) return;
+  if (!confirm('Delete the tag group "' + name + '"? Its tags stay — they simply stop being grouped.')) return;
+  btn.disabled = true;
+  try {
+    await api('/tag-groups/' + id, { method: 'DELETE' });
+    showToast('Tag group deleted', 'success');
+    STATE.modal = null; renderApp();
+  } catch (e) { btn.disabled = false; showToast(e.message, 'error'); }
+};
 function openTagGroupModal(id) {
   STATE.modal = { title: id ? 'Edit Tag Group' : 'Add Tag Group', content: `<div class="empty"><div class="icon">⏳</div></div>` };
   renderApp();
