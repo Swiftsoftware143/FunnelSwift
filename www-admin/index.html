@@ -1740,8 +1740,14 @@ async function renderPlans() {
      hands the buyer straight to it with NO provider key, so `configured === false` is not the
      answer for that row. The buyer console learned this on 2026-11-16 and this panel did not, so
      the panel said "Request plan" for a plan that could be paid for and filed an ask instead of
-     taking the money. Sellable = this plan has a link, or the install can take payment at all. */
-  const _planSellable = (p) => !!String((p && p.purchase_url) || '').trim() || !_payOff;
+     taking the money. Sellable = THIS plan has a link, or a PROVIDER is connected (which can charge
+     any plan). A link on a sibling plan is not permission to offer this one: `upgrade_path:
+     "payment_link"` describes the install, not the row. */
+  const _planSellable = (p) => {
+    if (String((p && p.purchase_url) || '').trim()) return true;      // this plan carries its own page
+    const up = _pay && (_pay.upgrade_path || (_pay.configured ? 'checkout' : 'request'));
+    return up === 'checkout';                                         // a provider can charge any plan
+  };
   // YEARLY TERM. `_yearAny` gates the switch: an install whose catalogue carries no yearly price
   // keeps exactly today's screen. A tier with no yearly price is named "monthly only" rather than
   // sold at the monthly rate under a yearly badge.
@@ -1832,7 +1838,7 @@ async function renderPlans() {
                 ? `<span class="badge badge-blue">Current plan</span>`
                 : (Number(p.price) > 0
                     ? (!_planSellable(p)
-                        ? `<button class="btn btn-secondary btn-xs" data-upgrade-plan="${x(p.slug)}" title="Card payments are not switched on for this installation yet. This records your request for the team that runs it — nothing is charged." onclick="window._startUpgrade('${x(p.slug)}')">Request plan</button>`
+                        ? `<button class="btn btn-secondary btn-xs" data-upgrade-plan="${x(p.slug)}" title="This plan has no payment page yet. Pressing this records your request for the team that runs it — nothing is charged." onclick="window._startUpgrade('${x(p.slug)}')">Request plan</button>`
                         : `<button class="btn btn-primary btn-xs" data-upgrade-plan="${x(p.slug)}" onclick="window._startUpgrade('${x(p.slug)}')">Upgrade</button>`)
                     : `<button class="btn btn-secondary btn-xs" data-switch-plan="${x(p.slug)}" title="This plan costs nothing — switching to it charges nothing." onclick="window._switchFreePlan('${x(p.slug)}')">Switch to this plan</button>`))
         }</td>
@@ -1843,7 +1849,7 @@ async function renderPlans() {
       <div style="font-size:32px;margin-bottom:8px">🚀</div>
       <h2 style="font-size:18px;font-weight:700;margin-bottom:8px">${_tOff?'Get this plan activated':'Ready to unlock more features?'}</h2>
       <p style="font-size:14px;color:var(--muted);margin-bottom:16px">${_tOff
-        ? 'Card payment is not switched on for this installation yet, so nothing can be charged here. Ask for the plan and the team that runs it will activate it for you.'
+        ? 'This plan has no payment page yet, so it cannot be paid for here. Ask for it and the team that runs this \u2014 they switch your workspace on and tell you how to pay.'
         : 'Upgrade to a paid plan to get more cards, leads, and advanced features.'}</p>
       <button class="btn ${_tOff?'btn-secondary':'btn-primary'}" data-upgrade-plan="${x(_target.slug)}" onclick="window._startUpgrade('${x(_target.slug)}')">${_tOff?'Request '+x(_target.name):'Upgrade to '+x(_target.name)}</button>
     </div>`:''}
