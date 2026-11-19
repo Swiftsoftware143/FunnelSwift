@@ -770,7 +770,10 @@ window.FunnelSwiftConfig = {
         button to hunt for.</p>
       <p><strong>Payment history</strong> lists every attempt this workspace has made to buy a plan, newest
         first. An attempt that could not even reach a payment provider appears there too, marked
-        <em>Could not start &mdash; payments are not switched on yet</em>; a workspace that has never tried to
+        <em>Could not start &mdash; payments are not switched on yet</em>, and an attempt the provider itself
+        refused appears as <em>Could not start &mdash; the payment provider refused the request</em>. Neither
+        one means money moved: a refused attempt is filed with our team as the same request, so nothing has to
+        be pressed again; a workspace that has never tried to
         buy anything reads <em>Nothing has been charged on this workspace yet</em> instead of an empty table.
         The amounts and the outcomes are the ones the payment record carries &mdash; nothing is estimated, and
         nothing appears there until the server has actually recorded the attempt. Each row also names the

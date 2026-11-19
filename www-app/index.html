@@ -1520,6 +1520,7 @@ function D(){
     var m={completed:'Paid',paid:'Paid',succeeded:'Paid',
            pending:'Waiting for payment',payment_link:'Payment page opened',
            provider_missing:'Could not start \u2014 payments are not switched on yet',
+           provider_error:'Could not start \u2014 the payment provider refused the request',
            expired:'Payment link expired',failed:'Did not go through',
            refunded:'Refunded',cancelled:'Cancelled',canceled:'Cancelled'};
     return m[st]||(st?st.replace(/_/g,' '):'\u2014');
