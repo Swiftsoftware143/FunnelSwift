@@ -7063,11 +7063,21 @@ async function renderPlanRequests() {
       : ['contacted', 'done', 'declined'].filter(st => st !== r.status).map(st =>
       '<button class="btn" data-pr-id="' + x(r.id) + '" data-pr-status="' + st + '" data-pr-ws="' + x(r.tenant_name || '') +
       '" data-pr-tenant="' + x(r.tenant_id || '') + '" data-pr-slug="' + x(r.plan_slug || '') +
+      '" data-pr-cycle="' + x(r.billing_cycle || '') +
       '" style="padding:4px 8px;font-size:11px;margin-left:4px">' + st + '</button>').join('');
+    // THE TERM THE CUSTOMER ASKED FOR is part of the ask (2026-11-18). `plan_requests.billing_cycle`
+    // has carried 'monthly' | 'yearly' since migration 124 and the fulfilment charges on it, but this
+    // table named only the plan — so the operator pressed "done" without seeing whether the customer
+    // wanted a month or a year. Printed here, from the row, never inferred from the catalogue price.
+    const term = String(r.billing_cycle || '').trim().toLowerCase() === 'yearly'
+      ? '<span style="background:#eef2ff;color:#3730a3;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700;margin-left:6px">Yearly</span>'
+      : (String(r.billing_cycle || '').trim().toLowerCase() === 'monthly'
+        ? '<span style="background:#f1f5f9;color:#475569;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700;margin-left:6px">Monthly</span>'
+        : '');
     return '<tr data-plan-request="' + x(r.id) + '">' +
       '<td><strong>' + x(r.tenant_name || r.tenant_id) + '</strong><div style="font-size:11px;color:var(--muted)">' +
       x(r.requested_by || '') + '</div></td>' +
-      '<td>' + x(r.plan_name || r.plan_slug) +
+      '<td>' + x(r.plan_name || r.plan_slug) + term +
       (r.note ? '<div style="font-size:11px;color:var(--muted);max-width:280px">' + x(r.note) + '</div>' : '') + '</td>' +
       '<td>' + planReqChip(r.status) + '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
@@ -7123,6 +7133,13 @@ function bindPlanRequests() {
       const ws = b.getAttribute('data-pr-ws') || 'this workspace';
       const tid = b.getAttribute('data-pr-tenant');
       const slug = b.getAttribute('data-pr-slug');
+      // THE TERM TRAVELS WITH THE MOVE (2026-11-18). The server's plan-request `done` arm applies the
+      // term the customer asked for — but this screen moved the workspace FIRST, with no term, so
+      // `set_active_plan` created the subscription on the catalogue default ('month') and the server's
+      // own term-aware move then found the workspace "already on" that plan and applied nothing. A
+      // customer who asked for a YEAR was invoiced monthly. The cycle is sent with the move now; an
+      // empty value (a row that predates the column) keeps the old behaviour exactly.
+      const cycle = b.getAttribute('data-pr-cycle') || '';
       if (status === 'declined' && !confirm('Decline ' + ws + '\u2019s plan request?')) return;
       b.disabled = true;
       try {
@@ -7142,8 +7159,9 @@ function bindPlanRequests() {
             showToast('Plan "' + slug + '" is not in the catalogue — nothing was changed', 'error');
             return;
           }
-          await api('/tenants/' + encodeURIComponent(tid) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id }) });
-          moved = ' and moved the workspace onto ' + (plan.name || slug);
+          await api('/tenants/' + encodeURIComponent(tid) + '/plan', { method: 'POST', body: JSON.stringify({ plan_id: plan.id, billing_cycle: cycle }) });
+          moved = ' and moved the workspace onto ' + (plan.name || slug) +
+            (cycle === 'yearly' ? ' (yearly)' : (cycle === 'monthly' ? ' (monthly)' : ''));
         }
         // The note typed beside the buttons travels WITH the state change, so a "declined" chip is
         // never shown to the customer without the sentence that explains it.
