@@ -191,6 +191,7 @@
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
       <a href="#web-to-lead" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🌐</span> Web-to-Lead</a>
       <a href="#webhooks" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🔗</span> Webhooks</a>
+      <a href="#mcp" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🤖</span> MCP</a>
       <a href="#plans" class="section-title" onclick="closeMobile()">Administration</a>
       <a href="#plans" class="nav-item" onclick="closeMobile()"><span class="nav-icon">💳</span> Plans</a>
       <a href="#settings" class="nav-item" onclick="closeMobile()"><span class="nav-icon">⚙️</span> Settings</a>
@@ -734,6 +735,37 @@ window.FunnelSwiftConfig = {
       <p>There is one live key per workspace. While a key is live the screen offers no second one:
       asking anyway is refused with “you already have a key — use Regenerate”, and that is the
       sentence the screen shows.</p>
+
+      <h2 id="mcp">🤖 MCP &mdash; connect your AI tools</h2>
+      <p><strong>MCP</strong> is the open standard an AI client &mdash; Claude Code, Claude Desktop, Cursor,
+      Hermes, or your own agent &mdash; speaks to read your business data. FunnelSwift runs one on the fleet
+      server, so you do not install anything: you paste one endpoint and one key into the client and it can
+      read this workspace. It is <strong>read-only</strong> &mdash; every tool is a SELECT, there is no write
+      tool and no free-form SQL door, and operator-wide tools are refused for a workspace key, so an
+      assistant cannot change or delete anything.</p>
+      <p><strong>Where it is in the console:</strong> <strong>MCP</strong> sits in the sidebar directly above
+      <strong>Settings</strong>, labelled exactly <strong>MCP</strong>. The screen carries four things:</p>
+      <ul>
+        <li><strong>The endpoint</strong> &mdash; <code>https://hooks.swiftsoftware.net/mcp</code>, with a
+        <strong>Copy</strong> button.</li>
+        <li><strong>Your token</strong> &mdash; the same workspace key the API Keys screen shows, listed by its
+        first characters only. <strong>Reveal</strong> asks for the password you sign in with before it shows
+        the key, and every view is recorded; the secret is never on the screen until then. Press
+        <strong>Regenerate</strong> (here or on API Keys) when a key has been shared by mistake.</li>
+        <li><strong>The tools your key can call</strong> &mdash; one line per read-only tool, named exactly as
+        the client sees it: your leads, tags, Kinetic cards, lead events, affiliate products, webhooks, team
+        members, activity, support requests, plan requests, tag automation rules, tag groups, tag change
+        history, affiliates, campaigns, QR codes, webhook deliveries, checkout sessions, portfolio companies
+        and plan subscriptions. Each entity answers a summary or a search, and every answer holds only this
+        workspace&rsquo;s rows.</li>
+        <li><strong>Connect</strong> &mdash; a ready-made client configuration block carrying this endpoint and
+        a <code>Bearer</code> placeholder where your key goes; <strong>Copy config</strong> puts it on your
+        clipboard.</li>
+      </ul>
+      <p>If the token block says you have no active key, create one on the <strong>API Keys</strong> screen and
+      come back &mdash; both screens read the same key, so they can never disagree. If a client says it cannot
+      reach the server, check that the key is the one this screen lists: a regenerated or revoked key stops
+      working immediately, by design.</p>
 
       <h2 id="plans">💳 Plans</h2>
       <p>Configure subscription plans for your tenants. Plans define feature access, credit limits, commissions, and pricing. Each plan can have custom features (analytics, import/export, Kinetic card limits, QR code limits, template access, etc.).</p>
