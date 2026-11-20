@@ -298,6 +298,24 @@ tr:hover{background:#f8fafc}
 /* No inline onclick escaping — zero-bug approach */
 
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
+
+/* SESSION HANDOFF TO THE MAIL CLIENT (2026-11-20). The Inbox card's sentence promises "the same
+   account — there is nothing to sign in to twice", and the door dropped the customer on a login form
+   on another host with a password they only ever saw once, in the welcome email (measured live on
+   app.funnelswift.net -> inbox.funnelswift.net: "Log In"). The console now hands the SAME session over
+   the way the marketing signup already does: in the URL FRAGMENT (#token=...), which a browser never
+   sends to the server, so it cannot reach an nginx access log or a Referer header. The mail client
+   stores it as its own session and strips the fragment before its first render.
+   DELEGATED, in the capture phase, because the Inbox pane is re-rendered on every tab switch — a
+   one-time binding on the anchor would die with the first repaint. */
+document.addEventListener("click", function(ev){
+  var a = ev.target && ev.target.closest ? ev.target.closest("#inboxOpen") : null;
+  if(!a) return;
+  var tok = "";
+  try { tok = localStorage.getItem("ws_fs_token") || ""; } catch(e) {}
+  if(tok) a.href = "https://inbox.funnelswift.net/#token=" + encodeURIComponent(tok);
+}, true);
+
 /* kanban cron-1016 — the workspace's own counts from GET /api/v1/me/usage, beside the plan
    allowances the dashboard already renders. Declared with the shell so the dashboard's
    paintPlan can repaint when either read lands. */
