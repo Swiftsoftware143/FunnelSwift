@@ -216,7 +216,8 @@ async fn acknowledge_customer(
     )
     .await
     {
-        Ok(()) => true,
+        // `Ok(false)` = suppressed/withheld (reserved address): on record, nothing mailed.
+        Ok(sent) => sent,
         Err(e) => {
             tracing::warn!(
                 "support-request receipt to {email} not queued (tenant {tenant_id}): {e}"

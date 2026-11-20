@@ -252,7 +252,8 @@ pub async fn file_chosen_plan_request(
     )
     .await
     {
-        Ok(()) => true,
+        // `Ok(false)` = suppressed/withheld (reserved address): on record, nothing mailed.
+        Ok(sent) => sent,
         Err(e) => {
             tracing::warn!(
                 requested_by = %requested_by, plan = %slug, door = door,

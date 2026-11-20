@@ -882,7 +882,7 @@ pub async fn create_checkout_session(
                         )
                         .await
                         {
-                            Ok(()) => receipt_emailed = true,
+                            Ok(sent) => receipt_emailed = sent,
                             Err(e) => tracing::warn!(
                                 to = %email,
                                 "refused-upgrade receipt was not sent: {e}"
@@ -1194,7 +1194,7 @@ pub async fn create_checkout_session(
                                 )
                                 .await
                                 {
-                                    Ok(()) => receipt_emailed = true,
+                                    Ok(sent) => receipt_emailed = sent,
                                     Err(e) => tracing::warn!(
                                         to = %email,
                                         "refused-session receipt was not sent: {e}"

@@ -1053,7 +1053,13 @@ pub async fn send_plan_request_received_email(
     plan_name: &str,
     note: &str,
     how_to_pay: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    // ANSWERS WHETHER THE RECEIPT REALLY WENT OUT (2026-11-20). It used to answer `Ok(())` for every
+    // suppressed leg too, so `acknowledged` was TRUE for a mail that never left: measured live on this
+    // app, a request filed by a reserved address answered `acknowledged: true` and the Upgrade screen
+    // rendered "We have emailed you a copy of this request." while `email_send_log` carried the row as
+    // `withheld`. The screen promises what the sender knows — so the sender now says it.
+    //
     // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin
     // (David) filing from his own workspace would otherwise receive this receipt about a request he
     // filed himself. The row still lands in the queue and the request still works; only the receipt
@@ -1063,8 +1069,13 @@ pub async fn send_plan_request_received_email(
             requester = %to,
             "operator self-request: receipt suppressed"
         );
-        return Ok(());
+        return Ok(false);
     }
+    // A RESERVED / FLEET-HARNESS RECIPIENT IS A NON-SEND, not a receipt. `dispatch_for_tenant`
+    // records it as `withheld` and attempts no provider request at all, so reporting it as sent is
+    // the same lie one layer down. The verdict below reads the SAME predicate the dispatcher used, so
+    // the two cannot disagree — and the dispatcher still writes its own `withheld` row with the real
+    // subject, which is the history the operator needs.
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
@@ -1080,7 +1091,8 @@ pub async fn send_plan_request_received_email(
         "plan_request_received",
         &bound_vars(vars),
     )
-    .await
+    .await?;
+    Ok(crate::security::probe_addr::harness_domain(to).is_none())
 }
 
 /// Acknowledge an ORDINARY support request the moment the customer files it (2026-11-16).
@@ -1102,7 +1114,10 @@ pub(crate) async fn send_support_request_receipt_email(
     to: &str,
     name: &str,
     subject_line: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    // Same rule as the plan-request receipt above (2026-11-20): the caller's `acknowledged` is only
+    // TRUE when something was really handed to the provider, never for a suppressed or withheld leg.
+    //
     // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin
     // (David) filing from his own workspace would otherwise receive this receipt about a request he
     // filed himself. The row still lands in the queue and the request still works; only the receipt
@@ -1112,7 +1127,7 @@ pub(crate) async fn send_support_request_receipt_email(
             requester = %to,
             "operator self-request: receipt suppressed"
         );
-        return Ok(());
+        return Ok(false);
     }
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
@@ -1125,7 +1140,8 @@ pub(crate) async fn send_support_request_receipt_email(
         "support_request_receipt",
         &bound_vars(vars),
     )
-    .await
+    .await?;
+    Ok(crate::security::probe_addr::harness_domain(to).is_none())
 }
 
 /// Confirm to the CUSTOMER that their workspace is closed (2026-11-16).

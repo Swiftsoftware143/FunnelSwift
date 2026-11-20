@@ -259,8 +259,7 @@ pub async fn create(
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "there".to_string());
-    let mut acknowledged = true;
-    if let Err(e) = crate::email::send_plan_request_received_email(
+    let acknowledged = match crate::email::send_plan_request_received_email(
         &state.pool,
         tenant_id,
         &auth.email,
@@ -271,12 +270,17 @@ pub async fn create(
     )
     .await
     {
-        acknowledged = false;
-        tracing::warn!(
-            plan = %slug, to = %auth.email,
-            "plan-request receipt mail was not sent: {e}"
-        );
-    }
+        // `Ok(false)` is a SUPPRESSED/WITHHELD leg (the operator's own request, or a reserved
+        // address): the row is on record, nothing was mailed, and the screen must not say it was.
+        Ok(sent) => sent,
+        Err(e) => {
+            tracing::warn!(
+                plan = %slug, to = %auth.email,
+                "plan-request receipt mail was not sent: {e}"
+            );
+            false
+        }
+    };
 
     // TELL THE OPERATOR (2026-11-09). The row above is the record, the console queue is where it is
     // worked — but nothing told the person who works it, and while no payment provider is configured
