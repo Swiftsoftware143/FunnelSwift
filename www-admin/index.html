@@ -7773,23 +7773,47 @@ async function renderFeedback() {
   const items = Array.isArray(payload.feedback) ? payload.feedback : [];
   return '<div>'
     + '<h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Feedback</h1>'
-    + '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">What customers told us — idea, bug or complaint, with the account, person, app and screen it came from.</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">What customers told us — idea, bug or complaint, with the account, person, app and screen it came from.'
+    + (items.length ? ' <strong>' + items.filter(function (f) { return String(f.status || 'open') !== 'handled'; }).length + ' still open</strong> of ' + items.length + '.' : '') + '</div>'
     + (err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : '')
     + (items.length
       ? items.map(function (f) {
-          const who = [f.name, f.email].filter(Boolean).join(' · ') || 'unknown';
-          return '<div class="card" style="margin-bottom:12px">'
-            + '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap">'
-            + '<strong>' + x(f.kind) + '</strong>'
-            + '<span style="color:var(--muted);font-size:.75rem">' + x(f.app) + ' · ' + x(f.screen) + ' · ' + x(f.created_at) + '</span>'
-            + '</div>'
-            + '<p style="margin:0 0 6px;white-space:pre-wrap">' + x(f.message) + '</p>'
-            + '<div style="color:var(--muted);font-size:.78rem">' + x(who) + '</div>'
-            + '</div>';
-        }).join('')
+        const who = [f.name, f.email].filter(Boolean).join(' · ') || 'unknown';
+        const handled = String(f.status || 'open') === 'handled';
+        return '<div class="card" style="margin-bottom:12px' + (handled ? ';opacity:.75' : '') + '">'
+          + '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;align-items:center">'
+          + '<strong>' + x(f.kind) + '</strong>'
+          + '<span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+          + '<span style="font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:99px;'
+          + (handled ? 'background:#dcfce7;color:#166534' : 'background:#fef3c7;color:#92400e') + '">'
+          + (handled ? '✅ Handled' : '🕓 Open') + '</span>'
+          + '<span style="color:var(--muted);font-size:.75rem">' + x(f.app) + ' · ' + x(f.screen) + ' · ' + x(f.created_at) + '</span>'
+          + '</span>'
+          + '</div>'
+          + '<p style="margin:0 0 6px;white-space:pre-wrap">' + x(f.message) + '</p>'
+          + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">'
+          + '<div style="color:var(--muted);font-size:.78rem">' + x(who) + '</div>'
+          + '<button type="button" class="btn btn-secondary" style="font-size:.75rem;padding:4px 10px" '
+          + 'onclick="window._feedbackStatus(\'' + x(f.id) + '\',\'' + (handled ? 'open' : 'handled') + '\')">'
+          + (handled ? 'Reopen' : 'Mark handled') + '</button>'
+          + '</div>'
+          + '</div>';
+      }).join('')
       : '<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No feedback yet.</div>')
     + '</div>';
 }
+
+// Close the loop on one message: PATCH /api/v1/feedback/:id {status}. The row's own state is what
+// changes, so a reload shows it; a failed write says so instead of pretending.
+window._feedbackStatus = async function (id, status) {
+  try {
+    await api('/feedback/' + id, { method: 'PATCH', body: JSON.stringify({ status: status }) });
+    showToast(status === 'handled' ? 'Marked handled' : 'Reopened', 'success');
+    renderApp();
+  } catch (e) {
+    showToast('Could not update: ' + ((e && e.message) || 'please try again'), 'error');
+  }
+};
 </script>
 <script src="/inline-guide-widget.js?v=20261110b"></script>
 <script>

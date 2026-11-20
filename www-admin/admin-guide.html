@@ -132,6 +132,7 @@
       <a href="#guide-plans-features" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🎚️</span> Plans &amp; Features</a>
       <a href="#guide-utm-builder" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔗</span> UTM Builder</a>
       <a href="#guide-support-requests" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🛟</span> Support Requests</a>
+      <a href="#guide-feedback" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">💬</span> Feedback</a>
       <a href="#api" class="section-title" onclick="closeMobile()">API Reference</a>
       <a href="#api" class="nav-item" onclick="closeMobile()"><span style="font-size:16px">🔌</span> Admin API Endpoints</a>
       <a href="#faq" class="section-title" onclick="closeMobile()">Support</a>
@@ -1174,6 +1175,23 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
         cannot leave the queue with no answer on it. A request that needs no answer can be
         <strong>closed</strong> instead; answered and closed both take it out of the waiting count.
         There is no delete &mdash; the row is the record of what the customer asked.</p>
+      </div>
+
+      <div class="card">
+        <h3 id="guide-feedback">💬 Feedback</h3>
+        <p>Two ends of one loop. Every signed-in user has a <strong>Feedback</strong> button on every
+        screen: they pick <strong>idea</strong>, <strong>bug</strong> or <strong>complaint</strong>,
+        write the message, and send it. The row that is stored records the workspace, the person, this
+        app's name and the screen they were looking at when they wrote it, so a message can never
+        arrive without the context that makes it actionable.</p>
+        <p>The <strong>Feedback</strong> screen in this console (sidebar, under SUPPORT) is the
+        queue, newest first, and it is visible to platform operators only &mdash; a workspace never
+        reads another's messages. Each row shows the type, the app and screen it came from, when it
+        arrived, who sent it and the message itself, with a count of how many are still open.</p>
+        <p>Every row carries a state. Press <strong>Mark handled</strong> once the team has acted on
+        a message: the row turns green and drops out of the open count, and it stays in the list so
+        the record survives. Press <strong>Reopen</strong> to put it back. Without that state a
+        handled message looked exactly like a new one and the queue could only grow.</p>
       </div>
 
       <!-- ============ API ============ -->
