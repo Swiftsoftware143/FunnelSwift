@@ -6350,6 +6350,21 @@ async function renderPlanAdmin() {
   const _onSale = plans.filter(p => Number(p.price) > 0 && p.is_active !== false);
   const _unbuyable = _onSale.filter(p => !String(p.purchase_url || '').trim());
   window._unbuyablePlans = _unbuyable.length;
+  // HOW A BUYER CAN PAY BY HAND (2026-11-20). A plan with no payment page is not the only thing that
+  // decides whether money can be taken: the operator's own WRITTEN payment instructions are shown to
+  // every buyer who asks — on the pricing page and on their own plan screen — and they need no
+  // payment provider at all. Measured live on this install: 4 of 4 paid plans carry no page, no
+  // provider is connected, and no instructions are written, so a buyer who pressed Upgrade had
+  // nowhere to send the money and this screen said nothing about the third missing piece.
+  // One-shot read; a FAILED read stays null, so "I could not check" never renders as "not set".
+  if (STATE.payWords === undefined) {
+    STATE.payWords = null;
+    api('/admin/platform-settings').then(r => {
+      STATE.payWords = (r && r.settings && typeof r.settings.payment_instructions === 'string')
+        ? r.settings.payment_instructions.trim() : '';
+      renderApp();
+    }).catch(() => { STATE.payWords = null; });
+  }
   return `<div>
     <div class="card-header" style="padding:0;margin-bottom:20px">
       <div><h1 style="font-size:22px;font-weight:700">🎚️ Plans &amp; Features</h1>
@@ -6366,6 +6381,9 @@ async function renderPlanAdmin() {
       ${_unbuyable.length ? `<div data-unbuyable-summary="1" style="border-left:4px solid #b45309;background:#fffbeb;padding:12px 14px;margin:12px 0 16px">
         <div style="font-weight:700;font-size:14px;color:#92400e">${_unbuyable.length} of ${_onSale.length} plan${_onSale.length === 1 ? '' : 's'} on sale cannot be bought — no payment page</div>
         <div style="font-size:13px;color:#475569;margin-top:2px">A customer can pick ${_unbuyable.length === 1 ? 'this plan' : 'these plans'} (${_unbuyable.map(p => x(p.name)).join(', ')}) but there is nowhere to send the money, so the buyer asks for ${_unbuyable.length === 1 ? 'it' : 'them'} instead of paying. Press Edit Features on each row below and paste the checkout address your payment provider gives you for that price.</div>
+        ${(STATE.payWords !== null) ? (STATE.payWords
+          ? `<div data-hand-pay="written" style="font-size:13px;color:#475569;margin-top:6px">Your written payment instructions are published to every buyer who asks — on your pricing page and on their own plan screen — so you can take the money by hand while no plan carries a payment page.</div>`
+          : `<div data-hand-pay="missing" style="font-size:13px;color:#991b1b;margin-top:6px">You have not written how customers pay either, so a buyer who asks has nowhere to send the money. <button class="btn btn-secondary btn-xs" data-write-pay-words="1" onclick="window._navTo('settings')">Write how customers pay</button> — the words go on your pricing page and on the buyer's plan screen, and no payment provider is needed.</div>`) : ''}
       </div>` : ''}
       <div class="table-wrap"><table class="table" id="planadmin-plans-table">
         <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Max Leads</th><th>Max Tags</th><th>Workspaces</th><th>Provider</th><th>Features</th><th>Actions</th></tr></thead>
