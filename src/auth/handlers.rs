@@ -678,7 +678,18 @@ pub async fn me(state: State<AppState>, auth: AuthUser) -> Json<serde_json::Valu
         // address saw the OLD address on their own profile until they signed in again — the one
         // screen they would go to in order to check. The address is the account's identity, so
         // this answer must come from the account.
-        "SELECT name, username, company, avatar_url, email FROM users WHERE id::text = $1",
+        //
+        // The avatar URL is published ONLY when the bytes behind it exist (measured 2026-11-20:
+        // `users.avatar_url` held a pointer for an account whose `user_avatars` row was gone, so
+        // every screen of admin.funnelswift.net fetched /api/v1/auth/avatar/<id> and painted a
+        // broken image — a browser walk flagged 36/37 views on that one 404). The pointer is a
+        // cache; `user_avatars` is the picture. A stale pointer now reads as "no picture", which
+        // is the state the console can actually render (initials), never a 404.
+        "SELECT u.name, u.username, u.company, \
+                CASE WHEN a.user_id IS NULL THEN NULL ELSE u.avatar_url END AS avatar_url, \
+                u.email \
+           FROM users u LEFT JOIN user_avatars a ON a.user_id = u.id \
+          WHERE u.id::text = $1",
     )
     .bind(&auth.user_id)
     .fetch_optional(&state.pool)
