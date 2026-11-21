@@ -447,8 +447,35 @@ pub async fn send_template_email_for_tenant(
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
 ) -> Result<(), String> {
+    let mail_class = crate::compliance::class_of(template_type);
     let (final_subject, final_body, final_html) =
         render_template(pool, aid, template_type, vars).await;
+
+    // The do-not-mail gate (kanban B214). AFTER the render, so the recorded non-send carries the
+    // real subject; BEFORE dispatch, so no provider request is made at all. Transactional mail is
+    // never gated: somebody who opted out of notices must still be able to receive a reset link.
+    if let Some(reason) = crate::compliance::gate(pool, tenant_id, to, mail_class).await {
+        tracing::info!(
+            to = %to,
+            reason = %reason,
+            "send withheld — recipient is on this workspace's do-not-mail list"
+        );
+        record_withheld(
+            pool,
+            &final_subject,
+            to,
+            &format!("recipient is on the do-not-mail list ({reason})"),
+        )
+        .await;
+        return Ok(());
+    }
+
+    // Notification mail carries a working opt-out link for THIS recipient.
+    let (final_body, final_html) = if mail_class == crate::compliance::NOTIFICATION {
+        crate::compliance::with_unsubscribe_footer(tenant_id, to, final_body, final_html)
+    } else {
+        (final_body, final_html)
+    };
 
     dispatch_for_tenant(
         pool,

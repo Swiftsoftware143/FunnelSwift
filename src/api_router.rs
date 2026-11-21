@@ -238,6 +238,13 @@ pub fn create_router(
         // price it prints is the one this install sells, so it has to be able to READ them. This is
         // the anonymous, minimal twin of the console's `/api/v1/plans` — name/slug/price only.
         .route("/api/v1/public/plans", get(plan_handler::public_plans))
+        // The opt-out page every notification mail links to (kanban B214). Public by design: the
+        // token in the path IS the credential, so the recipient can click it from a mail client
+        // that holds no session.
+        .route(
+            "/api/public/unsubscribe/:token",
+            get(crate::compliance::show_unsubscribe).post(crate::compliance::one_click),
+        )
         .route("/api/v1/auth/forgot-password", post(forgot_password))
         .route("/api/v1/auth/reset-password", post(reset_password))
         .route("/api/v1/auth/me", get(me))

@@ -27,6 +27,8 @@ mod branding;
 mod card_blocks;
 mod card_types;
 mod commission;
+// Email compliance: the do-not-mail list + the public one-click opt-out (kanban B214).
+mod compliance;
 mod coreswift;
 mod credential_watch;
 mod db;

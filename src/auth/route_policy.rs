@@ -218,6 +218,9 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // tenant owns (measured 2026-10-30 — the page claimed its prices were the install's, and they
     // were hand-authored HTML).
     "/api/v1/public/plans",
+    // The opt-out page a notification mail links to (kanban B214, 2026-11-21). Public on purpose:
+    // the HMAC token in the path is the credential, and a mail client holds no session.
+    "/api/public/unsubscribe/:token",
     // A visitor who is NOT signed in files a help request (2026-11-06). The login page's own
     // "still locked out?" sentence named a support address whose domain publishes no mail
     // exchanger, so a locked-out customer's message bounced; the form now files the message into
@@ -522,7 +525,11 @@ mod tests {
             // from the session like every other console read, so it belongs in `private`; the
             // census simply was not moved with it, which left this guard red for every later run.
             // 2026-11-18: +1 more, private — `POST /api/v1/team/members/:id/reissue` (9542e7b).
-            (239, 239, 213, 24, 3, 186, 26),
+            // 2026-11-21: +1 mounted API route, public — `GET|POST /api/public/unsubscribe/:token`
+            // (kanban B214, the email opt-out page). The token in the path is the credential, so it
+            // belongs in `public`: 240 mounts, 240 unique, 214 on the API surface, 25 public, 3
+            // internal, 186 private, 26 served.
+            (240, 240, 214, 25, 3, 186, 26),
             "the census in the module docs no longer matches the router"
         );
     }
