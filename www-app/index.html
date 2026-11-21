@@ -6060,6 +6060,30 @@ function EPRFIELDS(){
   }
   box.innerHTML=h;
 }
+/* === Your mail — did it leave (2026-11-21) =====================================================
+   Reads GET /api/v1/settings/mail-log (settings_handler::mail_log). The server decides the scope:
+   rows addressed to this workspace's own users and leads, minus any address that also belongs to
+   another workspace. Nothing is computed here beyond rendering. */
+function MHLOAD(){
+  var box=$("mh-body"); if(!box) return;
+  api("/api/v1/settings/mail-log").then(function(d){
+    var s=(d&&d.sends)||[];
+    var failed=(d&&d.failed)||0;
+    var head='<div style="margin-bottom:8px;padding:8px 10px;border-radius:6px;background:'+(failed>0?'#fef2f2':'#f0fdf4')+';color:'+(failed>0?'#b91c1c':'#15803d')+'">'
+      +(failed>0?('\u274c '+failed+' message'+(failed===1?' was':'s were')+' refused in the last 30 days \u2014 those recipients received nothing.')
+                :('\u2705 No message was refused in the last 30 days.'))
+      +' <span style="color:#475569">\u00b7 '+((d&&d.sent)||0)+' delivered \u00b7 '+((d&&d.withheld)||0)+' not sent (reserved test address)</span></div>';
+    if(!s.length){ box.innerHTML=head+'<div>No mail has been triggered by this workspace yet.</div>'; return; }
+    var rows=s.slice(0,12).map(function(r){
+      var col=r.status==="failed"?"#b91c1c":(r.status==="sent"?"#15803d":"#92400e");
+      return '<tr><td style="padding:3px 6px;white-space:nowrap">'+X(String(r.at||"").replace("T"," ").slice(0,16))+'</td>'
+        +'<td style="padding:3px 6px">'+X(r.to||"")+'</td>'
+        +'<td style="padding:3px 6px">'+X(r.subject||"")+'</td>'
+        +'<td style="padding:3px 6px;color:'+col+'">'+X(r.status||"")+(r.detail?'<div style="color:#64748b;font-size:11px">'+X(r.detail)+'</div>':'')+'</td></tr>';
+    }).join("");
+    box.innerHTML=head+'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="text-align:left;padding:3px 6px">When</th><th style="text-align:left;padding:3px 6px">To</th><th style="text-align:left;padding:3px 6px">Subject</th><th style="text-align:left;padding:3px 6px">Result</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }).catch(function(e){ box.innerHTML='<span style="color:#b91c1c">'+X((e&&e.message)||"Could not read the mail history")+'</span>'; });
+}
 function EPLOAD(){
   api("/api/v1/settings/email-config").then(function(d){
     LEPSTATE.own=(d&&d.own&&typeof d.own==="object")?d.own:null;
@@ -6430,6 +6454,17 @@ function LM(){
     epRow.appendChild(El("span",{id:"lep-msg",style:"font-size:11px;color:#64748b"}));
     epDiv.appendChild(epRow);
     EPLOAD();
+
+    /* Your mail — did it leave (2026-11-21). GET /api/v1/settings/mail-log answers from the
+       install's `email_send_log`, scoped ON THE SERVER to recipients that are this workspace's own
+       people or leads and to no other workspace's, so a customer can answer "did my customer get
+       that email?" without opening a support request. */
+    var mhDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
+    mhDiv.innerHTML='<strong style="font-size:13px">Your mail — did it leave?</strong>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">Every message this workspace triggered in the last 30 days — confirmations to your leads and to your own team — and what happened to each one. If a send was refused, the reason is shown: that is the difference between "the customer ignored it" and "the customer never got it".</p>'
+      +'<div id="mh-body" style="font-size:12px;color:#64748b">Checking…</div>';
+    list.appendChild(mhDiv);
+    MHLOAD();
 
     /* API keys (kanban t_7863696b) — the workspace's durable credential for external callers. The
        key is stored sealed and shown masked; View asks for the account password before revealing;

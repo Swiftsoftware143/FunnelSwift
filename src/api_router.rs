@@ -742,6 +742,10 @@ pub fn create_router(
             "/api/v1/settings",
             get(settings_handler::get_settings).put(settings_handler::update_settings),
         )
+        // The workspace's OWN mail trail: whether the mail it triggered actually left. Scoped to
+        // recipients that are this workspace's people or leads, and to no other workspace's — the
+        // log itself carries no tenant column (see `settings_handler::mail_log`).
+        .route("/api/v1/settings/mail-log", get(settings_handler::mail_log))
         // (kanban t_0aaf0bc5) — the retired `target_software` resource (Integrations -> Integration
         // Targets, and the super-admin "Lead Routing" view) used to be registered here as:
         //     GET|POST /api/v1/target-software   (routing_handler)

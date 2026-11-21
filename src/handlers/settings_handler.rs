@@ -2,13 +2,14 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
 use crate::models::setting::*;
 use crate::state::AppState;
+use sqlx::Row;
 
 pub async fn get_settings(
     auth: AuthUser,
@@ -395,4 +396,95 @@ pub async fn test_email_config(
             "detail": e,
         }))),
     }
+}
+
+/// `GET /api/v1/settings/mail-log` — whether this workspace's own mail actually left.
+///
+/// `email_send_log` (migration 109) records the outcome of every send funnel: `sent`, `failed`
+/// (the provider refused it — a bad key, a bounce, a paused mailer) or `withheld` (a reserved
+/// test address, deliberately not sent). It carries NO tenant column, so this route scopes by
+/// RECIPIENT: rows addressed to this workspace's own people (`users.email`) or its own leads
+/// (`leads.email`). A recipient that belongs to ANY OTHER workspace is excluded outright, so a
+/// shared address can never make one tenant's mail visible in another tenant's console.
+///
+/// Before this route a workspace had no way to answer the one question every support thread
+/// starts with — "did my customer actually get the email?" — from its own console.
+pub async fn mail_log(auth: AuthUser, State(state): State<AppState>) -> AppResult<Json<Value>> {
+    let tenant_id: Uuid = auth
+        .tenant_id
+        .parse()
+        .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+
+    const SCOPED: &str = r#"
+        WITH mine AS (
+            SELECT lower(email) AS addr FROM users WHERE tenant_id = $1 AND email <> ''
+            UNION
+            SELECT lower(email) FROM leads
+             WHERE tenant_id = $1 AND email IS NOT NULL AND email <> ''
+        ), theirs AS (
+            SELECT lower(email) AS addr FROM users WHERE tenant_id <> $1 AND email <> ''
+            UNION
+            SELECT lower(email) FROM leads
+             WHERE tenant_id <> $1 AND email IS NOT NULL AND email <> ''
+        ), scoped AS (
+            SELECT l.created_at, l.to_email, COALESCE(l.subject, '') AS subject, l.status,
+                   COALESCE(l.detail, '') AS detail
+              FROM email_send_log l
+              JOIN mine m ON lower(l.to_email) = m.addr
+             WHERE NOT EXISTS (SELECT 1 FROM theirs t WHERE t.addr = lower(l.to_email))
+        )
+    "#;
+
+    let counts: Vec<(String, i64)> = sqlx::query_as(&format!(
+        "{SCOPED} SELECT status, count(*) AS n FROM scoped \
+          WHERE created_at > now() - interval '30 days' GROUP BY status"
+    ))
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let rows = sqlx::query(&format!(
+        "{SCOPED} SELECT created_at, to_email, subject, status, detail FROM scoped \
+          ORDER BY created_at DESC LIMIT 25"
+    ))
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut sent = 0i64;
+    let mut failed = 0i64;
+    let mut withheld = 0i64;
+    for (status, n) in &counts {
+        match status.as_str() {
+            "sent" => sent += n,
+            "failed" => failed += n,
+            "withheld" => withheld += n,
+            _ => {}
+        }
+    }
+
+    let sends: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "at": r
+                    .try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default(),
+                "to": r.try_get::<String, _>("to_email").unwrap_or_default(),
+                "subject": r.try_get::<String, _>("subject").unwrap_or_default(),
+                "status": r.try_get::<String, _>("status").unwrap_or_default(),
+                "detail": r.try_get::<String, _>("detail").unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "window_days": 30,
+        "sent": sent,
+        "failed": failed,
+        "withheld": withheld,
+        "total": sent + failed + withheld,
+        "sends": sends,
+    })))
 }
