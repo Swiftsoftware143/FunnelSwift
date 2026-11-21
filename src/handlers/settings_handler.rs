@@ -415,7 +415,12 @@ pub async fn mail_log(auth: AuthUser, State(state): State<AppState>) -> AppResul
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    const SCOPED: &str = r#"
+    // The scope expression, emitted as ONE literal through a macro so both statements below are
+    // compile-time-built (`concat!`) rather than run-time `format!` — the fleet gate forbids building
+    // SQL at run time, and it is right to: nothing here is dynamic, so nothing should look dynamic.
+    macro_rules! scoped_mail {
+        () => {
+            r#"
         WITH mine AS (
             SELECT lower(email) AS addr FROM users WHERE tenant_id = $1 AND email <> ''
             UNION
@@ -433,18 +438,22 @@ pub async fn mail_log(auth: AuthUser, State(state): State<AppState>) -> AppResul
               JOIN mine m ON lower(l.to_email) = m.addr
              WHERE NOT EXISTS (SELECT 1 FROM theirs t WHERE t.addr = lower(l.to_email))
         )
-    "#;
+    "#
+        };
+    }
 
-    let counts: Vec<(String, i64)> = sqlx::query_as(&format!(
-        "{SCOPED} SELECT status, count(*) AS n FROM scoped \
+    let counts: Vec<(String, i64)> = sqlx::query_as(concat!(
+        scoped_mail!(),
+        " SELECT status, count(*) AS n FROM scoped \
           WHERE created_at > now() - interval '30 days' GROUP BY status"
     ))
     .bind(tenant_id)
     .fetch_all(&state.pool)
     .await?;
 
-    let rows = sqlx::query(&format!(
-        "{SCOPED} SELECT created_at, to_email, subject, status, detail FROM scoped \
+    let rows = sqlx::query(concat!(
+        scoped_mail!(),
+        " SELECT created_at, to_email, subject, status, detail FROM scoped \
           ORDER BY created_at DESC LIMIT 25"
     ))
     .bind(tenant_id)
