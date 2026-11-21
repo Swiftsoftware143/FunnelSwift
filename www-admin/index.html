@@ -4485,12 +4485,12 @@ function bindApiKeys() { /* actions are window-level handlers so the table rows 
 // endpoint, shows the prefix of the key that authorises it (never the secret), and hands over a
 // paste-ready client config. Creating, revealing and rotating a key stays on the API Keys screen, so
 // there is exactly ONE writer of a key value.
-// What the server ACTUALLY answers for funnelswift today — measured live with a real workspace key
-// (tools/list on https://hooks.swiftsoftware.net/mcp, 2026-11-19): SIX entities, each with three
-// tools — `<key>_summary` (how many exist in this workspace), `<key>_search` (text search, newest
-// first, q + limit 1-200) and `<key>_list_tenants` (platform administrators only). The server's
-// source registry carries more entity specs than the deployed build serves, so this table names the
-// six the live server answers and says so; it must never list a tool the endpoint would refuse.
+// What the server ACTUALLY answers for funnelswift today — measured live with a real key
+// (tools/list on the MCP endpoint, 2026-11-21): 60 tools across TWENTY entity groups, each group
+// carrying three tools — `<key>_summary` (how many exist in this workspace), `<key>_search` (text
+// search, newest first, q + limit 1-200) and `<key>_list_tenants` (platform administrators only).
+// The build that first shipped this screen served six; the fleet server has since grown to twenty,
+// so this table names what the live server answers today, and never a tool it would refuse.
 const MCP_ENDPOINT = 'https://hooks.swiftsoftware.net/mcp';
 const MCP_ENTITIES = [
   ['Leads', 'funnelswift'],
@@ -4499,6 +4499,20 @@ const MCP_ENTITIES = [
   ['Lead events', 'funnelswift_lead_events'],
   ['Affiliate products', 'funnelswift_affiliate_products'],
   ['Webhooks', 'funnelswift_webhooks'],
+  ['Team', 'funnelswift_team'],
+  ['Activity', 'funnelswift_activity'],
+  ['Support requests', 'funnelswift_support_requests'],
+  ['Plan requests', 'funnelswift_plan_requests'],
+  ['Tag rules', 'funnelswift_tag_rules'],
+  ['Tag groups', 'funnelswift_tag_groups'],
+  ['Tag changes', 'funnelswift_tag_changes'],
+  ['Affiliates', 'funnelswift_affiliates'],
+  ['Campaigns', 'funnelswift_campaigns'],
+  ['QR codes', 'funnelswift_qr_codes'],
+  ['Webhook deliveries', 'funnelswift_webhook_deliveries'],
+  ['Checkout sessions', 'funnelswift_checkout_sessions'],
+  ['Portfolio companies', 'funnelswift_portfolio'],
+  ['Subscriptions', 'funnelswift_subscriptions'],
 ];
 function mcpConfigText() {
   return JSON.stringify({ mcpServers: { funnelswift: { type: 'http', url: MCP_ENDPOINT,
@@ -4550,7 +4564,7 @@ async function renderMcp() {
     </div>
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:4px">What it can do</div>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Six kinds of record, each with two read-only tools. <code>_summary</code> answers how many this workspace holds; <code>_search</code> finds them by text — a <code>q</code> filter, newest first, up to 200 rows. Each entity also has a <code>_list_tenants</code> tool that only a platform administrator's key may call. Every tool is scoped to the workspace that owns the key, so a client can only ever read this account. The list below is what the live server answers for FunnelSwift today.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Twenty kinds of record, each with two read-only tools. <code>_summary</code> answers how many this workspace holds; <code>_search</code> finds them by text — a <code>q</code> filter, newest first, up to 200 rows. Each entity also has a <code>_list_tenants</code> tool that only a platform administrator's key may call. Every tool is scoped to the workspace that owns the key, so a client can only ever read this account. The list below is what the live server answers for FunnelSwift today.</p>
       <div class="table-wrap"><table class="table"><thead><tr><th>What</th><th>Tools</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
   </div>`;
