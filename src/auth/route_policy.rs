@@ -536,7 +536,12 @@ mod tests {
             // `GET /api/v1/settings/suppressions.csv`, `DELETE /api/v1/settings/suppressions/:id`).
             // They take the tenant from the session, so they belong in `private`: 243 mounts, 243
             // unique, 217 on the API surface, 25 public, 3 internal, 189 private, 26 served.
-            (243, 243, 217, 25, 3, 189, 26),
+            // 2026-11-21: +1 more, private — `GET /api/v1/settings/mail-log` (b5664fd, "a workspace
+            // can see whether its own mail actually left"). Session-scoped like every other console
+            // read, so `private`: 244 mounts, 244 unique, 218 on the API surface, 25 public,
+            // 3 internal, 190 private, 26 served. (That commit left this pin behind, so the suite
+            // was red at HEAD for every run in between.)
+            (244, 244, 218, 25, 3, 190, 26),
             "the census in the module docs no longer matches the router"
         );
     }

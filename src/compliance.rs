@@ -10,8 +10,9 @@
 //!
 //!  * `transactional` — credentials, password resets, security notices. Exempt from opt-out by
 //!    law and NOT gated here: somebody who unsubscribed from notices must still be able to sign in.
-//!  * `notification` — new-lead alerts, plan-ceiling notices, plan-request updates, support
-//!    replies. Gated, and every one carries the opt-out footer.
+//!  * `notification` — new-lead alerts, plan-ceiling notices, plan-request updates. Gated, and
+//!    every one carries the opt-out footer. A SUPPORT REPLY is not here: it answers a question the
+//!    person asked, so withholding it would leave a customer unanswered (see the template list).
 //!
 //! Suppression is scoped to the ACCOUNT (tenant), never global: one workspace's opt-out must never
 //! silence another workspace's mail to the same person.
@@ -48,7 +49,12 @@ use crate::email::APP_URL;
 const NOTIFICATION_TEMPLATES: &[&str] = &[
     "new_lead",
     "plan_request_update",
-    "support_reply",
+    // `support_reply` is DELIBERATELY absent (2026-11-21): it is the ANSWER to a question the person
+    // asked us, not a notice we chose to send. Gating it meant a customer who had once unsubscribed
+    // from notices stopped receiving answers to their own support tickets — they write in, we reply,
+    // and the reply is withheld at the sender with nothing in their inbox. A reply to a person's own
+    // request is a relationship/transactional message in law and in sense; the sibling apps agree
+    // (ADASwift's `support_request_receipt`, WorkflowSwift's single `workflow_notify` notification).
     "plan_ceiling",
 ];
 
@@ -545,7 +551,10 @@ mod tests {
     #[test]
     fn classes_are_safe_by_default() {
         assert_eq!(class_of("new_lead"), NOTIFICATION);
-        assert_eq!(class_of("support_reply"), NOTIFICATION);
+        // A support reply answers the person's OWN question, so an opt-out from notices must never
+        // withhold it (2026-11-21). Pinned because the consequence is silent: the customer simply
+        // never hears back and nobody sees an error.
+        assert_eq!(class_of("support_reply"), TRANSACTIONAL);
         // credentials, welcome, resets AND any future template stay unstoppable
         assert_eq!(class_of("credentials"), TRANSACTIONAL);
         assert_eq!(class_of("password_reset"), TRANSACTIONAL);

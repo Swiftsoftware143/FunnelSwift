@@ -575,9 +575,22 @@ pub async fn admin_update(
             };
             // A reserved/harness recipient is a NON-SEND: the funnel withholds it (no provider
             // request) and records `withheld`. Reporting that as "the customer was emailed" is the
-            // exact misreport this fleet has retracted twice, so ask the same predicate the funnel
-            // uses and keep `notified` false when it fires.
+            // exact misreport this fleet has retracted twice, so ask the same predicates the funnel
+            // asks and keep `notified` false when either fires.
+            //
+            // TWO predicates, not one (2026-11-21): a support reply is `transactional`, so the
+            // do-not-mail list no longer stops it from a preference opt-out — but an `all` row (a hard
+            // bounce, a spam complaint) still does, by design. Today the reply was withheld and the
+            // operator's screen still answered `notified: true` with an empty detail, because only the
+            // harness arm was checked. Both reasons are now reported for what they are.
             let reserved = crate::security::probe_addr::harness_domain(&requested_by).is_some();
+            let blocked_by_list = crate::compliance::suppression(
+                &state.pool,
+                tenant_id.unwrap_or_default(),
+                &requested_by,
+                crate::compliance::class_of("support_reply"),
+            )
+            .await;
             // The row's own id IS the reference the visitor was handed when they filed, and the
             // one `POST /api/v1/public/support-answer` accepts. A contact-page reader gets it
             // quoted in the mail so the answer stays reachable without an account.
@@ -601,6 +614,13 @@ pub async fn admin_update(
                         "the requesting address is a reserved/harness address, so the notice was \
                          withheld and no email was sent"
                             .to_string();
+                }
+                Ok(()) if blocked_by_list.is_some() => {
+                    notify_detail = format!(
+                        "the answer was saved, but no email went out: this address is on the \
+                         do-not-mail list ({})",
+                        blocked_by_list.unwrap_or_else(|| "no reason recorded".to_string())
+                    );
                 }
                 Ok(()) => notified = true,
                 Err(e) => {
