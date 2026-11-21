@@ -42,6 +42,29 @@ use crate::state::AppState;
 /// ever reached the route unread; do not read it as the limit a customer can upload.
 const IMAGE_BODY_LIMIT_BYTES: usize = 3 * 1024 * 1024;
 
+/// `GET /` — the tenant's card when the request arrives on an address the tenant owns, else the
+/// service line every other host (and the uptime watchdog) has always read. See
+/// [`kinetic_handler::card_for_host`] for which hosts qualify.
+async fn root_or_card(
+    axum::extract::Host(host): axum::extract::Host,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
+    headers: axum::http::HeaderMap,
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(slug) = kinetic_handler::card_for_host(&state, &host).await {
+        return kinetic_handler::render_card(
+            axum::extract::Path(slug),
+            axum::extract::Host(host),
+            axum::extract::OriginalUri(uri),
+            headers,
+            axum::extract::State(state),
+        )
+        .await;
+    }
+    axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"})).into_response()
+}
+
 /// `GET /api/health` (and `/api/v1/health`) — liveness + the schema gate (kanban t_c3823fd1).
 ///
 /// Answers 503 when the migration run at boot failed in a way that leaves the service serving on
@@ -201,13 +224,8 @@ pub fn create_router(
         // only remaining claim it worked. Real click tracking is POST /card/:id/track with
         // event_type=click, which the card page's own inline tracker calls and which writes
         // kinetic_card_events. See src/handlers/card_analytics_handler.rs.
-        // Default
-        .route(
-            "/",
-            get(|| async {
-                axum::Json(serde_json::json!({"status": "ok", "service": "funnelswift"}))
-            }),
-        )
+        // Default — a tenant's own address shows that tenant's card (see root_or_card).
+        .route("/", get(root_or_card))
         .route("/api/health", get(health))
         .route("/api/v1/health", get(health))
         .route("/api/v1/auth/register", post(register))

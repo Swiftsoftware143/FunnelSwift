@@ -61,6 +61,75 @@ fn resolve_canonical_url(host: &str, prefix: &str, slug: &str) -> String {
     format!("https://{}/{}/{}", host_clean, prefix, slug)
 }
 
+/// The card a tenant's OWN address must show when a visitor asks for its ROOT.
+///
+/// A `*.kntcrd.com` subdomain and a workspace's custom domain are the tenant's own front door,
+/// and `sites/kntcrd.conf` documents exactly that ("Wildcard subdomains → the FunnelSwift
+/// backend, which renders the tenant's card"). Before this, `GET /` answered the service line
+/// (`{"service":"funnelswift","status":"ok"}`) on EVERY host: measured live 2026-11-21,
+/// `https://zaarhub.kntcrd.com/` returned 39 bytes of JSON while the same card answered 200 at
+/// `/k/zaarhub`, so a customer who shares the bare address their settings page gave them shows
+/// their audience a machine payload instead of their card. The panel's own preview link builds
+/// `/k/<slug>`, which is why it never caught this.
+///
+/// Only a host a TENANT has claimed resolves. The fleet's own names (`funnelswift.net`,
+/// `app.`/`admin.`/`www.`), any bare IP or `localhost`, and every unclaimed host keep the service
+/// line untouched, so the uptime watchdog and the health route behave exactly as before.
+pub async fn card_for_host(state: &AppState, raw_host: &str) -> Option<String> {
+    let host = raw_host
+        .split(':')
+        .next()
+        .unwrap_or(raw_host)
+        .trim()
+        .trim_end_matches('.')
+        .to_lowercase();
+    if host.is_empty()
+        || host == "localhost"
+        || host.parse::<std::net::IpAddr>().is_ok()
+        || host == "funnelswift.net"
+        || host.ends_with(".funnelswift.net")
+    {
+        return None;
+    }
+    let claim: Option<(uuid::Uuid, String)> = match host.strip_suffix(".kntcrd.com") {
+        Some(sub) if !sub.is_empty() && sub != "www" => sqlx::query_as(
+            "SELECT tenant_id, lower(value #>> '{}') FROM tenant_settings \
+             WHERE key = 'subdomain' AND lower(value #>> '{}') = $1 LIMIT 1",
+        )
+        .bind(sub)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten(),
+        Some(_) => None,
+        None => sqlx::query_as(
+            "SELECT tenant_id, lower(value #>> '{}') FROM tenant_settings \
+             WHERE key = 'custom_domain' \
+               AND (lower(value #>> '{}') = $1 OR lower(value #>> '{}') = $2) LIMIT 1",
+        )
+        .bind(&host)
+        .bind(format!("www.{host}"))
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten(),
+    };
+    let (tenant_id, claimed) = claim?;
+    // The card whose own address matches the claimed name wins (a subdomain is named after its
+    // card); otherwise the workspace's newest active card is what its front door stands for.
+    sqlx::query_scalar(
+        "SELECT slug FROM kinetic_cards \
+         WHERE tenant_id = $1 AND is_active \
+         ORDER BY (lower(slug) = $2) DESC, created_at DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(&claimed)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+}
+
 /// Map URL prefix to branded CTA label + card type label
 fn cta_for_prefix(prefix: &str) -> (&'static str, &'static str) {
     match prefix {
