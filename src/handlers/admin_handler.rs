@@ -208,9 +208,12 @@ pub async fn portfolio_sync(
     }
     raw_user_insert?;
 
-    // Create portfolio company record
+    // Create portfolio company record. `account_tenant_id` is the COMPANY'S OWN account (kanban
+    // t_4a9454c1) — the account the Portfolio screen's Open button enters, distinct from
+    // `tenant_id` (the row's owning scope). This door mints that account two statements above, so
+    // both columns carry it; a re-sync never clears a link an earlier run established.
     sqlx::query(
-        "INSERT INTO portfolio_companies (id, tenant_id, name, slug, email, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET name = $3, email = $5, description = $6, updated_at = NOW()"
+        "INSERT INTO portfolio_companies (id, tenant_id, account_tenant_id, name, slug, email, description, created_at, updated_at) VALUES ($1, $2, $2, $3, $4, $5, $6, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET name = $3, email = $5, description = $6, account_tenant_id = COALESCE(portfolio_companies.account_tenant_id, EXCLUDED.account_tenant_id), updated_at = NOW()"
     )
     .bind(sync_id)
     .bind(tenant_id)
@@ -567,12 +570,14 @@ pub async fn admin_stats(
     // four workspaces carry no harness tag yet their owner sits on a reserved/probe domain). Both
     // arms are applied here, using the list's own owner ordering, so the number and the rows cannot
     // drift apart again.
-    let counted: Vec<(String, i64)> = sqlx::query_as(
+    let counted: Vec<(String, i64, bool)> = sqlx::query_as(
         "SELECT COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
            ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
                     u.created_at ASC \
            LIMIT 1), '') AS owner_email, \
-                (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count \
+                (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count, \
+                EXISTS (SELECT 1 FROM portfolio_companies pc \
+                         WHERE pc.account_tenant_id = t.id) AS is_portfolio \
          FROM tenants t \
          WHERE $1::bool OR COALESCE(t.probe_harness, '') = '' OR t.probe_harness ~* '^CNRY'",
     )
@@ -582,14 +587,21 @@ pub async fn admin_stats(
     let counts_as_customer = |include_probe: bool, owner: &str| {
         include_probe || !crate::coreswift::is_reserved_test_email(owner)
     };
+    // THE DASHBOARD COUNTS CUSTOMERS (kanban t_4a9454c1): a portfolio company's account is not a
+    // customer and is held out of the Accounts list, so it is held out of this count too — the
+    // number above the list can never include a row the list refuses to show.
     let total_tenants: i64 = counted
         .iter()
-        .filter(|(owner, _)| counts_as_customer(include_probe, owner))
+        .filter(|(owner, _, is_portfolio)| {
+            !*is_portfolio && counts_as_customer(include_probe, owner)
+        })
         .count() as i64;
     let total_users: i64 = counted
         .iter()
-        .filter(|(owner, _)| counts_as_customer(include_probe, owner))
-        .map(|(_, n)| *n)
+        .filter(|(owner, _, is_portfolio)| {
+            !*is_portfolio && counts_as_customer(include_probe, owner)
+        })
+        .map(|(_, n, _)| *n)
         .sum();
     let total_affiliates: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM affiliates")
         .fetch_one(&state.pool)

@@ -562,7 +562,7 @@ function renderShell() {
       ${nav}
       ${wsSwitcherHtml()}
       <div class="nav-footer">
-        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - tenants, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
+        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - accounts, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
         <div style="display:flex;gap:12px;padding:8px 0 10px;border-top:1px solid var(--border);margin-top:8px">
           <a href="https://swiftsoftware.net/updates" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">📰 Updates</a>
           <a href="https://swiftsoftware.net/funnelswift-roadmap" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">🗺️ Roadmap</a>
@@ -690,7 +690,7 @@ function buildNav() {
     // Submit Feedback queue (kanban B209, t_2b4e36f9): the platform-only reader of GET /api/v1/feedback.
     // Admin-only, because the route answers 403 to anything but the platform operator.
     sections.push(`<button type="button" class="nav-item ${STATE.view==='feedback'?'active':''}" data-view="feedback" aria-label="Feedback"><span class="icon">💬</span><span class="nav-text">Feedback</span></button>`);
-    sections.push(`<button type="button" class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants" aria-label="Tenants"><span class="icon">🏢</span><span class="nav-text">Tenants</span></button>`);
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='tenants'?'active':''}" data-view="tenants" aria-label="Accounts"><span class="icon">🏢</span><span class="nav-text">Accounts</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='settings'?'active':''}" data-view="settings" aria-label="System Settings"><span class="icon">⚡</span><span class="nav-text">System Settings</span></button>`);
     sections.push(`<button type="button" class="nav-item ${STATE.view==='planAdmin'?'active':''}" data-view="planAdmin" aria-label="Plans &amp; Features"><span class="icon">🎚️</span><span class="nav-text">Plans &amp; Features</span></button>`);
   }
@@ -1491,6 +1491,12 @@ window._navTo = function(view) { STATE.view = view; renderApp(); };
 window._toast = showToast;
 
 // ── PORTFOLIO COMPANIES ──
+// Your own companies, kept apart from customers (David, 2026-11-20). Every row carries TWO account
+// references and they are NOT interchangeable: `tenant_id` is the account that OWNS the row (this
+// one, shared by all of them) and `account_tenant_id` is the COMPANY'S OWN account. Open must use
+// the second — opening the first re-enters the account the operator is already in, which looks
+// like a button that does nothing. A company with no account (or no usable login in it) says
+// "No account" instead of offering a dead control.
 async function renderPortfolio() {
   let items = [];
   try { items = await api('/portfolio-companies'); } catch(e) { items = []; }
@@ -1501,15 +1507,22 @@ async function renderPortfolio() {
       <h1 style="font-size:22px;font-weight:700">Portfolio Companies</h1>
       <button class="btn btn-primary btn-sm" id="add-portfolio-btn">+ Add Company</button>
     </div>
+    <p style="font-size:12px;color:var(--muted);margin:-8px 0 16px">Your own businesses — not customers. <strong>Open</strong> enters that company's own account. These accounts are left out of the Accounts list unless you tick “Include portfolio companies” there.</p>
     ${items.length === 0 ? `<div class="empty"><div class="icon">🏢</div><div class="title">No companies yet</div><div class="desc">Add your first portfolio company</div></div>` : `
     <div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th>Company</th><th>Email</th><th>Description</th><th>Added</th><th>Actions</th></tr></thead>
-      <tbody>${items.map(c=>`<tr>
+      <thead><tr><th>Company</th><th>Account</th><th>Email</th><th>Description</th><th>Added</th><th>Actions</th></tr></thead>
+      <tbody>${items.map(c=>`<tr data-portfolio-row="${x(String(c.id||''))}">
         <td><strong>${x(c.name)}</strong>${c.slug?`<div style="font-size:11px;color:var(--muted)">${x(c.slug)}</div>`:''}</td>
+        <td>${c.has_account
+          ? `<span class="badge badge-green" title="This company has its own account — Open enters it">${x(c.account_name||'own account')}</span>`
+          : `<span class="badge badge-yellow" title="This company has no account here yet, so there is nothing to open">No account</span>`}</td>
         <td>${c.email?`<a href="mailto:${x(c.email)}" style="color:var(--primary)">${x(c.email)}</a>`:'-'}</td>
         <td>${c.description?x(c.description):'<span style="color:var(--muted)">-</span>'}</td>
         <td>${formatDate(c.created_at)}</td>
         <td>
+          ${c.has_account
+            ? `<button class="btn btn-primary btn-xs" data-ops="portfolio-open" onclick="window._impersonate('${x(String(c.account_tenant_id||''))}')">Open</button> `
+            : `<button class="btn btn-ghost btn-xs" disabled title="This company has no account yet">No account</button> `}
           <button class="btn btn-secondary btn-xs" onclick="window._editPortfolio('${c.id}')">Edit</button>
           <button class="btn btn-danger btn-xs" onclick="window._deletePortfolio('${c.id}')">Delete</button>
         </td>
@@ -4533,7 +4546,7 @@ async function renderSuperAdmin() {
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚙️ Super Admin Dashboard</h1>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-value">${stats.total_tenants||0}</div><div class="stat-label">Total Tenants</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.total_tenants||0}</div><div class="stat-label">Total Customer Accounts</div></div>
       <div class="stat-card"><div class="stat-value">${stats.total_users||0}</div><div class="stat-label">Total Users</div></div>
       <div class="stat-card"><div class="stat-value">${stats.total_affiliates||0}</div><div class="stat-label">Total Affiliates</div></div>
       <div class="stat-card"><div class="stat-value">${stats.total_plans||0}</div><div class="stat-label">Active Plans</div></div>
@@ -4555,7 +4568,7 @@ async function renderSuperAdmin() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
         <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('systemTags')"><div style="font-size:24px">🔖</div><div style="font-weight:600;margin-top:4px">System Tags</div><div style="font-size:12px;color:var(--muted)">Manage system-wide tags</div></div>
         <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tagGroups')"><div style="font-size:24px">📁</div><div style="font-weight:600;margin-top:4px">Tag Groups</div><div style="font-size:12px;color:var(--muted)">Configure tag groups</div></div>
-        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tenants')"><div style="font-size:24px">🏢</div><div style="font-weight:600;margin-top:4px">Tenants</div><div style="font-size:12px;color:var(--muted)">Manage tenants</div></div>
+        <div class="card" style="text-align:center;cursor:pointer" onclick="window._navTo('tenants')"><div style="font-size:24px">🏢</div><div style="font-weight:600;margin-top:4px">Accounts</div><div style="font-size:12px;color:var(--muted)">Manage customer accounts</div></div>
       </div>
     </div>
   </div>`;
@@ -4936,6 +4949,12 @@ let TENANT_PLAN_ROWS = [];
 // could not show at all. The switch below asks for them; the probe badge and the select-probes button
 // already know how to render a row that carries the tag.
 let TENANT_SHOW_PROBES = false;
+// Show the owner's own companies in this customer list (kanban t_4a9454c1). They are NOT customers:
+// they live on the Portfolio Companies screen, and `GET /api/v1/tenants` holds every account listed
+// there back unless `?include_portfolio=1` is asked for. Off by default, so the names the operator
+// scrolls past are paying customers, not his own businesses; ticking it lists the whole platform and
+// every portfolio row is badged.
+let TENANT_SHOW_PORTFOLIO = false;
 // The hunt for dead credentials (2026-10-27). A workspace whose credentials mail went out and whose
 // owner never came back sits in the list beside daily users and is invisible, because the list is
 // sorted by creation date. This flag filters WHAT IS DRAWN only: the bulk delete still acts on the
@@ -4973,7 +4992,15 @@ async function renderTenants() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
 
   let items = [];
-  try { items = await api('/tenants' + (TENANT_SHOW_PROBES ? '?include_probe=1' : '')); } catch(e) { items = []; }
+  // Both visibility switches are sent together, so what the screen draws and what it says it is
+  // hiding always come from ONE listing shape.
+  const tenantQuery = () => {
+    const q = [];
+    if (TENANT_SHOW_PROBES) q.push('include_probe=1');
+    if (TENANT_SHOW_PORTFOLIO) q.push('include_portfolio=1');
+    return '/tenants' + (q.length ? '?' + q.join('&') : '');
+  };
+  try { items = await api(tenantQuery()); } catch(e) { items = []; }
   if (!Array.isArray(items)) items = items.data || items.tenants || [];
   // HIDDEN PROBES (cron 2026-10-27). The list holds probe workspaces back unless `?include_probe=1`
   // is asked for, which is right — but nothing on this screen said they EXISTED, so an operator
@@ -4985,7 +5012,7 @@ async function renderTenants() {
   let hiddenProbes = 0;
   if (!TENANT_SHOW_PROBES) {
     try {
-      const withP = await api('/tenants?include_probe=1');
+      const withP = await api('/tenants?include_probe=1' + (TENANT_SHOW_PORTFOLIO ? '&include_portfolio=1' : ''));
       const arrP = Array.isArray(withP) ? withP : (withP.data || withP.tenants || []);
       const seen = new Set((Array.isArray(items) ? items : []).map(t => String(t && t.id)));
       hiddenProbes = (Array.isArray(arrP) ? arrP : []).filter(t => !seen.has(String(t && t.id))).length;
@@ -5001,46 +5028,50 @@ async function renderTenants() {
   catch(e) { TENANT_PLAN_ROWS = []; }
 
   return `<div>
-    <div class="card-header" style="padding:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
-      <h1 style="font-size:22px;font-weight:700;margin:0">🏢 Tenants</h1>
-      <div style="display:flex;gap:8px;align-items:center">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Only the workspaces where no sign-in has ever been recorded — the ones whose credentials mail went out and whose owner never came back.">
+    <div class="card-header" style="padding:0;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <h1 style="font-size:22px;font-weight:700;margin:0">🏢 Accounts</h1>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Only the accounts where no sign-in has ever been recorded — the ones whose credentials mail went out and whose owner never came back.">
           <input type="checkbox" id="tnOnlyNever"${TENANT_ONLY_NEVER ? ' checked' : ''}> Only never signed in
         </label>
-        <button class="btn btn-secondary btn-xs" id="tnHidden" style="${hiddenProbes ? '' : 'display:none'}" title="Probe workspaces a test harness minted. They are not customers, so the list holds them back — this says how many are being held and shows them in one press.">${hiddenProbes} test workspace${hiddenProbes===1?'':'s'} hidden — show</button>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Probe workspaces a harness minted. Hidden by default: they are not customers. Ticking this lists them so they can be reviewed, selected and cleared.">
-          <input type="checkbox" id="tnShowProbes"${TENANT_SHOW_PROBES ? ' checked' : ''}> Show probe workspaces
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Your own companies are not customers. They live on the Portfolio Companies screen and are left out here; tick this to see the whole platform in one table — every portfolio account is then badged portfolio.">
+          <input type="checkbox" id="tnShowPortfolio"${TENANT_SHOW_PORTFOLIO ? ' checked' : ''}> Include portfolio companies
         </label>
-        <button class="btn btn-secondary btn-sm" id="tnProbes" data-tenants="select-probes" disabled>Select probes (0)</button>
+        <button class="btn btn-secondary btn-xs" id="tnHidden" style="${hiddenProbes ? '' : 'display:none'}" title="Test accounts a harness minted. They are not customers, so the list holds them back — this says how many are being held and shows them in one press.">${hiddenProbes} test account${hiddenProbes===1?'':'s'} hidden — show</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-right:4px" title="Test accounts a harness minted. Hidden by default: they are not customers. Ticking this lists them so they can be reviewed, selected and cleared.">
+          <input type="checkbox" id="tnShowProbes"${TENANT_SHOW_PROBES ? ' checked' : ''}> Show test accounts
+        </label>
+        <button class="btn btn-secondary btn-sm" id="tnProbes" data-tenants="select-probes" disabled>Select tests (0)</button>
         <button class="btn btn-danger btn-sm" id="tnDel" disabled>Delete selected</button>
       </div>
     </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Customers on the platform. Your own businesses are <strong>not</strong> here — they live on <strong>Portfolio Companies</strong>, unless you tick “Include portfolio companies”. A workspace is something inside an account, not the account itself.</p>
     ${TENANT_RESEND_MSG?'<div class="card" style="border-left:4px solid #b45309;padding:12px 14px;margin-bottom:14px;font-size:13px">'+TENANT_RESEND_MSG+'</div>':''}<div class="card"><div class="table-wrap"><table class="table">
-      <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th title="When anyone in this workspace last signed in. 'not recorded' means the app has no sign-in for it — the column started empty, so an older workspace can read that way even if its owner has used it.">Last sign-in</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
-      <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}">
-        <td><input type="checkbox" class="tn-chk" aria-label="Select ${x(t.name||t.company_name||'this workspace')}" value="${t.id}"></td>
-        <td><strong>${x(t.name||t.company_name)}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}${t.owner_credentials_undelivered?'<div style="margin-top:4px"><span class="badge badge-yellow" title="The first password we minted for this owner was never delivered - a provider refusal, or a reserved test address withheld at source. Nobody has ever read it, so this workspace cannot be signed into until you send a new one.">password never delivered</span></div>':''}${(t.user_count||0)===0?'<div style="margin-top:4px"><span class="badge badge-red" title="This workspace exists but nobody can sign in to it: it has no login at all. Press Create login to mint the owner account and email its details.">no login yet</span></div>':''}</td>
+      <thead><tr><th style="width:34px"><input type="checkbox" id="tnAll" title="Select all"></th><th>Name</th><th>Owner</th><th>Slug</th><th>Plan</th><th title="When anyone in this account last signed in. 'not recorded' means the app has no sign-in for it — the column started empty, so an older account can read that way even if its owner has used it.">Last sign-in</th><th>Status</th><th>Users</th><th>Created</th><th></th></tr></thead>
+      <tbody>${items.map(t=>`<tr data-probe="${(!isFleetFixture(t) && probeBadgeFor(t, String(t.owner_email||t.email||''))) ? '1' : ''}" data-portfolio="${t.is_portfolio ? '1' : ''}">
+        <td><input type="checkbox" class="tn-chk" aria-label="Select ${x(t.name||t.company_name||'this account')}" value="${t.id}"></td>
+        <td><strong>${x(t.name||t.company_name)}</strong>${t.is_portfolio?' <span class="badge badge-muted" title="One of your own companies, not a customer — it lives on Portfolio Companies">portfolio</span>':''}</td>
+        <td style="font-size:12px;color:var(--muted)">${(()=>{const oe=String(t.owner_email||t.email||'');if(!oe) return '\u2014'+probeBadgeFor(t,'');return x(oe)+probeBadgeFor(t,oe);})()}${t.owner_credentials_undelivered?'<div style="margin-top:4px"><span class="badge badge-yellow" title="The first password we minted for this owner was never delivered - a provider refusal, or a reserved test address withheld at source. Nobody has ever read it, so this account cannot be signed into until you send a new one.">password never delivered</span></div>':''}${(t.user_count||0)===0?'<div style="margin-top:4px"><span class="badge badge-red" title="This account exists but nobody can sign in to it: it has no login at all. Press Create login to mint the owner account and email its details.">no login yet</span></div>':''}</td>
         <td><code>${x(t.slug||t.tenant_slug)}</code></td>
         <td>${tenantPlanCell(t)}</td>
-        <td style="font-size:12px">${t.last_sign_in ? x(new Date(asUtc(t.last_sign_in)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '<span style="color:var(--muted)" title="No sign-in recorded for this workspace. The app only began recording sign-ins on 27 Oct 2026, so this can read that way for a workspace whose owner has in fact used it.">not recorded</span>'}</td>
+        <td style="font-size:12px">${t.last_sign_in ? x(new Date(asUtc(t.last_sign_in)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '<span style="color:var(--muted)" title="No sign-in recorded for this account. The app only began recording sign-ins on 27 Oct 2026, so this can read that way for an account whose owner has in fact used it.">not recorded</span>'}</td>
         <td><span class="badge ${t.status==='active'?'badge-green':'badge-yellow'}">${x(t.status||'active')}</span></td>
-        <td><button class="btn btn-secondary btn-xs tu-open" data-tenant="${x(t.id)}" data-name="${x(t.name||t.company_name||'')}" title="See this workspace's people, and add one">${t.user_count||0} user${(t.user_count||0)===1?'':'s'}</button></td>
+        <td><button class="btn btn-secondary btn-xs tu-open" data-tenant="${x(t.id)}" data-name="${x(t.name||t.company_name||'')}" title="See this account's people, and add one">${t.user_count||0} user${(t.user_count||0)===1?'':'s'}</button></td>
         <td>${formatDate(t.created_at)}</td>
-        <td>${(t.user_count||0)===0?`<button class="btn btn-primary btn-xs tn-owner" data-tenant="${x(t.id)}" data-email="${x(t.owner_email||t.email||'')}" data-name="${x(t.name||t.company_name||'')}" title="Create the first login for this workspace and email the details to its owner">Create login</button> ` : ''}${t.owner_credentials_undelivered && t.owner_user_id ? `<button class="btn btn-primary btn-xs tn-resend" data-user="${x(t.owner_user_id)}" data-email="${x(t.owner_email||'')}" title="Mint a brand-new password for the owner and email it">Send login</button> ` : ''}${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
+        <td>${(t.user_count||0)===0?`<button class="btn btn-primary btn-xs tn-owner" data-tenant="${x(t.id)}" data-email="${x(t.owner_email||t.email||'')}" data-name="${x(t.name||t.company_name||'')}" title="Create the first login for this account and email the details to its owner">Create login</button> ` : ''}${t.owner_credentials_undelivered && t.owner_user_id ? `<button class="btn btn-primary btn-xs tn-resend" data-user="${x(t.owner_user_id)}" data-email="${x(t.owner_email||'')}" title="Mint a brand-new password for the owner and email it">Send login</button> ` : ''}${isSuperAdmin()?`<button class="btn btn-secondary btn-xs" onclick="window._impersonate('${t.id}')">Impersonate</button>`:''}</td>
       </tr>`).join('')}</tbody>
     </table></div></div>
     ${TENANT_USER_TENANT ? `<div class="card" id="tenant-users-panel" style="margin-top:16px">
       <div class="card-header" style="padding:0;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-        <h2 style="font-size:16px;font-weight:700;margin:0">👥 People in ${x(TENANT_USER_TENANT_NAME||'this workspace')}</h2>
+        <h2 style="font-size:16px;font-weight:700;margin:0">👥 People in ${x(TENANT_USER_TENANT_NAME||'this account')}</h2>
         <div style="display:flex;gap:8px;align-items:center">
           <a class="btn btn-secondary btn-sm" id="tu-guide" href="/admin-guide.html#teammates" target="_blank" rel="noopener" title="What each role can do, and what happens when you add a teammate">📖 How roles work</a>
           <button class="btn btn-secondary btn-sm" id="tu-close">Close</button>
         </div>
       </div>
       ${TENANT_USERS === null ? '<div class="empty" style="padding:16px">Loading…</div>' : (TENANT_USERS.length === 0
-        ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this workspace yet.</div>'
-        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td>${u.last_login_at?x(formatDate(u.last_login_at)):'<span style="color:var(--muted)">never</span>'}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span>${u.password_undelivered?'<span class="badge badge-yellow" title="The credentials email carrying their first password never went out. Use Resend login to mint a new one.">first password not delivered</span>':''}</td><td><button class="btn btn-ghost tu-resend" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Email this teammate a fresh password and switch the old one off" style="font-size:12px;padding:2px 8px;margin-right:6px">Resend login</button><button class="btn btn-ghost tu-remove" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Remove this teammate from the workspace" style="font-size:12px;padding:2px 8px">Remove</button></td></tr>`).join('')}</tbody></table></div>`)}
+        ? '<div style="color:var(--muted);font-size:13px;margin-bottom:10px">Nobody in this account yet.</div>'
+        : `<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>${TENANT_USERS.map(u=>`<tr><td>${x(u.name||u.first_name||'—')}</td><td>${x(u.email)}</td><td><select class="input tu-role-sel" data-user="${x(u.id)}" data-current="${x(u.role)}" title="Change this teammate's role" style="font-size:12px;padding:2px 6px">${['user','company_admin','admin','business_user'].includes(u.role)?'':`<option value="${x(u.role)}" selected>${x(roleLabel(u.role))}</option>`}${['user','company_admin','admin','business_user'].map(r=>`<option value="${r}"${r===u.role?' selected':''}>${x(roleLabel(r))}</option>`).join('')}</select></td><td>${u.last_login_at?x(formatDate(u.last_login_at)):'<span style="color:var(--muted)">never</span>'}</td><td><span class="badge ${u.is_active?'badge-green':'badge-yellow'}">${u.is_active?'active':'disabled'}</span>${u.password_undelivered?'<span class="badge badge-yellow" title="The credentials email carrying their first password never went out. Use Resend login to mint a new one.">first password not delivered</span>':''}</td><td><button class="btn btn-ghost tu-resend" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Email this teammate a fresh password and switch the old one off" style="font-size:12px;padding:2px 8px;margin-right:6px">Resend login</button><button class="btn btn-ghost tu-remove" data-user="${x(u.id)}" data-email="${x(u.email)}" title="Remove this teammate from the account" style="font-size:12px;padding:2px 8px">Remove</button></td></tr>`).join('')}</tbody></table></div>`)}
       <div style="display:flex;gap:8px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:160px"><label style="font-size:12px;color:var(--muted)">Name</label><input aria-label="Name" class="input" id="tu-name" placeholder="Their name"></div>
         <div style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--muted)">Email</label><input aria-label="Email" class="input" id="tu-email" placeholder="them@company.com"></div>
@@ -5091,7 +5122,7 @@ function bindTenantOwnerCreate() {
   document.querySelectorAll('.tn-owner').forEach(btn => btn.addEventListener('click', async () => {
     const tid = btn.getAttribute('data-tenant');
     const mail = btn.getAttribute('data-email') || '';
-    const label = btn.getAttribute('data-name') || 'this workspace';
+    const label = btn.getAttribute('data-name') || 'this account';
     if (!tid) return;
     let address = mail;
     if (!address) {
@@ -5145,6 +5176,10 @@ function bindTenants() {
   // the state the screen shipped in.
   const sp = document.getElementById('tnShowProbes');
   if (sp) sp.addEventListener('change', () => { TENANT_SHOW_PROBES = !!sp.checked; renderApp(); });
+  // The portfolio switch (kanban t_4a9454c1): the same re-render asks the API for the rows it holds
+  // back, so the badge, the count and the rows all come from one listing.
+  const pf = document.getElementById('tnShowPortfolio');
+  if (pf) pf.addEventListener('change', () => { TENANT_SHOW_PORTFOLIO = !!pf.checked; renderApp(); });
   // The count beside it is only a promise if pressing it works: it flips the SAME switch, so the
   // number the operator read and the rows that appear come from one listing.
   const hp = document.getElementById('tnHidden');
@@ -5153,7 +5188,7 @@ function bindTenants() {
   if (on) on.addEventListener('change', () => { TENANT_ONLY_NEVER = !!on.checked; renderApp(); });
   const pb = document.getElementById('tnProbes');
   if (pb) {
-    pb.textContent = 'Select probes (' + probeBoxes().length + ')';
+    pb.textContent = 'Select tests (' + probeBoxes().length + ')';
     pb.disabled = probeBoxes().length === 0;
     pb.addEventListener('click', () => {
       boxes().forEach(b => { b.checked = false; });
@@ -5171,7 +5206,7 @@ function bindTenants() {
     const slug = sel.value;
     const prev = sel.getAttribute('data-current') || '';
     if (slug === prev) return;
-    if (!slug) { sel.value = prev; showToast('A workspace keeps its plan once it has one - pick a plan', 'info'); return; }
+    if (!slug) { sel.value = prev; showToast('An account keeps its plan once it has one - pick a plan', 'info'); return; }
     const plan = TENANT_PLAN_ROWS.find(p => p.slug === slug);
     if (!plan) { sel.value = prev; showToast('That plan is not in the catalogue', 'error'); return; }
     sel.disabled = true;
@@ -5188,13 +5223,13 @@ function bindTenants() {
   if (del) del.addEventListener('click', async () => {
     const ids = boxes().filter(b => b.checked).map(b => b.value).filter(Boolean);
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} tenant(s)? This cannot be undone.`)) return;
+    if (!confirm(`Delete ${ids.length} account(s)? This cannot be undone.`)) return;
     del.disabled = true;
     try {
       const r = await api('/tenants/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) });
       const n = r && typeof r.deleted === 'number' ? r.deleted : 0;
       const refused = (r && r.failed) || [];
-      showToast(`${n} tenant(s) deleted` + (refused.length ? ` — ${refused.length} refused or not found` : ''),
+      showToast(`${n} account(s) deleted` + (refused.length ? ` — ${refused.length} refused or not found` : ''),
                 refused.length ? 'error' : 'success');
       if (refused.length && refused[0] && refused[0].error) showToast(refused[0].error, 'error');
     } catch (e) {
@@ -5394,10 +5429,10 @@ async function renderSettings() {
           <label for="ps-alert-email" style="font-weight:600;display:block;margin-bottom:4px">Email me when a customer signs up, asks to buy, or needs an answer</label>
           <input aria-label="Email me when a customer signs up, asks to buy, or needs an answer" id="ps-alert-email" class="input" type="email" autocomplete="off" placeholder="you@yourcompany.com" value="${esc(alertEmail)}" style="max-width:420px">
           <div style="color:var(--muted);font-size:13px;margin-top:6px">
-            Three things reach this address the moment they happen: a new workspace signs up, a
+            Three things reach this address the moment they happen: a new account signs up, a
             customer asks to buy a plan (while the installation cannot take a card, that ask is how a
             sale reaches you), and a customer writes to support. Each one is also recorded in its own
-            list — Tenants, Plan requests and Support requests — so leaving the address empty only
+            list — Accounts, Plan requests and Support requests — so leaving the address empty only
             stops the emails, never the records.
           </div>
         </div>
@@ -5423,7 +5458,7 @@ async function renderSettings() {
       <div class="card-header"><span class="card-title">What is not here, and why</span></div>
       <div style="padding:16px 18px;color:var(--muted);font-size:13px">
         Plan pricing and gated features live under <strong>Plans</strong>; per-customer controls under
-        <strong>Tenants</strong>. A per-user workspace cap is not offered because one account owns
+        <strong>Accounts</strong>. A per-user workspace cap is not offered because one account owns
         exactly one workspace in this app, so a cap has nothing it could admit or refuse.
       </div>
     </div>
@@ -6328,7 +6363,7 @@ async function renderPlanAdmin() {
   if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
   let plans = [], tenants = [];
   try { const r = await api('/admin/plans'); plans = r.plans || r.data || (Array.isArray(r) ? r : []); } catch (e) { plans = []; }
-  try { const t = await api('/tenants'); tenants = Array.isArray(t) ? t : (t.tenants || t.data || []); } catch (e) { tenants = []; }
+  try { const t = await api('/tenants?include_portfolio=1'); tenants = Array.isArray(t) ? t : (t.tenants || t.data || []); } catch (e) { tenants = []; }
   STATE.data.planAdminPlans = plans;
   STATE.data.planAdminTenants = tenants;
   // Disambiguate the tenant picker (2026-11-02): four live workspaces are all named
@@ -7685,7 +7720,7 @@ window.appGuidePages = {
   "systemTags": { title: "System Tags", desc: "The tags owned by the platform and the other SwiftSoftware apps — the ones that drive cross-app provisioning. These are shared, not per-tenant.", actions: ["See which system tags exist", "See the product and plan each points at"] },
   "mobileInterest": { title: "Mobile App Interest", desc: "Everyone who asked to be told when the mobile app ships, newest first. The list is filled by the Notify Me form on the public download page, so these addresses are not customers and belong to no workspace. Copy all emails takes the whole list at once, ready to paste into a message when the app is released. Platform administrators only.", actions: ["Read who asked, and on which platform", "Copy every address to tell them the app is out"] },
   "tagGroups": { title: "Tag Groups", desc: "Group related tags so a rule or an audience can target several at once.", actions: ["Create a group", "Add tags to it", "Use the group in a rule or campaign"] },
-  "tenants": { title: "Workspaces", desc: "Every workspace on this install. The row is a workspace (its name, plan and status), not a login — view them per workspace, assign plans and manage accounts. A workspace whose owner never received the first password we made for them carries a 'password never delivered' note under the owner's address, with a 'Send login' button: it makes a new password, emails it and signs that workspace out of its old sessions, and when the address is a test address that can never receive mail it shows the password on screen so you can pass it on.", actions: ["Search for a workspace", "Change a workspace's plan", "Open a workspace's accounts", "Give a workspace owner a login when their first password never arrived"] },
+  "tenants": { title: "Accounts", desc: "Every customer account on this install. Your own businesses are NOT here — they live on Portfolio Companies, each with an Open button that enters that company's own account (tick 'Include portfolio companies' here to see the whole platform in one table; those rows are badged portfolio). The row is an account (its name, plan and status), not a login — view each one's people, assign plans and manage accounts. An account whose owner never received the first password we made for them carries a 'password never delivered' note under the owner's address, with a 'Send login' button: it makes a new password, emails it and signs that account out of its old sessions, and when the address is a test address that can never receive mail it shows the password on screen so you can pass it on.", actions: ["Search for an account", "Change an account's plan", "Open an account's people", "Give an account owner a login when their first password never arrived"] },
   "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
   "planRequests": { title: "Plan Requests", desc: "A workspace that wants a paid plan asks here — its own Upgrade screen files the request because this install cannot take a card. Nothing is charged. Move a request to contacted, done or declined, and the customer sees that state the next time their screen loads.", actions: ["See every request and the workspace it came from", "Mark a request contacted, done or declined", "The number on the label is how many are still waiting"] },
   "supportRequests": { title: "Support Requests", desc: "A customer asks for help from the Support screen in their own console, and answers here. Saving a written answer emails it to the person who asked and also leaves it on their request, so they can read it again; a save that could not be emailed says so instead of pretending it went out. The number on the label, and the red card on the dashboard, count the requests still waiting on an answer.", actions: ["Read every request with the workspace it came from", "Write the answer and mark it answered", "Close a request that needs no answer", "The number on the label is how many are still waiting"] },

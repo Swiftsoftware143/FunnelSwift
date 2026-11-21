@@ -172,11 +172,16 @@ async fn mirror_tenant(
 }
 
 /// The company row both fallback arms write, sharing the resolved slug with the mirror parent.
+/// `account_tenant_id` is the COMPANY'S OWN account (kanban t_4a9454c1): this door mirrors that
+/// tenant into `tenants` immediately before, so it is the same id as `tenant_id` here. The DO
+/// UPDATE arm never clears a link an earlier run established.
 const SQL_COMPANY_UPSERT: &str =
-    "INSERT INTO portfolio_companies (id, tenant_id, name, slug, email) \
-     VALUES ($1, $2, $3, $4, $5) \
+    "INSERT INTO portfolio_companies (id, tenant_id, account_tenant_id, name, slug, email) \
+     VALUES ($1, $2, $2, $3, $4, $5) \
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug, \
-     email = EXCLUDED.email, updated_at = NOW()";
+     email = EXCLUDED.email, \
+     account_tenant_id = COALESCE(portfolio_companies.account_tenant_id, EXCLUDED.account_tenant_id), \
+     updated_at = NOW()";
 
 /// What the provisioning half of a sync did, so the caller can see which rows changed and the
 /// welcome-mail arm can send exactly once (only when the owner user was actually created).
@@ -563,11 +568,13 @@ async fn adopt_existing_company(
     mirror_tenant(&mut tx, found.tenant_id, name, &tenant_slug, email).await?;
 
     // 3. Refresh + re-point the company row. The pre-fix link may point at a shared/admin workspace;
-    //    the company's OWN tenant is the correct scoping parent.
+    //    the company's OWN tenant is the correct scoping parent. `account_tenant_id` is filled by the
+    //    same resolved tenant and never cleared (kanban t_4a9454c1).
     match (found.company_id, payload_pid) {
         (Some(cid), _) => {
             sqlx::query(
-                "UPDATE portfolio_companies SET name = $1, slug = $2, email = $3, tenant_id = $4, updated_at = NOW() WHERE id = $5",
+                "UPDATE portfolio_companies SET name = $1, slug = $2, email = $3, tenant_id = $4, \
+                 account_tenant_id = COALESCE(account_tenant_id, $4), updated_at = NOW() WHERE id = $5",
             )
             .bind(name)
             .bind(&tenant_slug)

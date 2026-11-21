@@ -127,6 +127,15 @@ pub async fn list_tenants(
         .get("include_probe")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    // PORTFOLIO COMPANIES ARE NOT CUSTOMERS (David, 2026-11-20; kanban t_4a9454c1). The owner's own
+    // businesses live on their own Portfolio screen and are held OUT of this customer list by
+    // default; `?include_portfolio=1` asks for the whole platform in one table, and every such row
+    // still says which it is. Judged on DATA (`portfolio_companies.account_tenant_id`), never on a
+    // name, so a customer who happens to be called "giraudy" is never hidden.
+    let include_portfolio = params
+        .get("include_portfolio")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     // NOTE: tenants never had status/is_visible/plan_id columns, so the old query referenced
     // columns that do not exist and then swallowed the resulting error with
     // `.unwrap_or_default()` — every caller silently received `[]` (126 rows in the DB, empty
@@ -157,6 +166,9 @@ pub async fn list_tenants(
             // action always describe ONE person.
             Option<Uuid>,
             bool,
+            // Is this row one of the owner's own businesses, and which one? (kanban t_4a9454c1)
+            bool,
+            Option<String>,
         ),
     >(
         r#"SELECT t.id, t.name, t.slug, t.created_at, p.name AS plan_name, p.slug AS plan_slug, t.email, t.status,
@@ -174,7 +186,12 @@ pub async fn list_tenants(
                   COALESCE((SELECT u.password_undelivered FROM users u WHERE u.tenant_id = t.id
                    ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
                             u.created_at ASC
-                   LIMIT 1), false) AS owner_credentials_undelivered
+                   LIMIT 1), false) AS owner_credentials_undelivered,
+                  EXISTS (SELECT 1 FROM portfolio_companies pc
+                           WHERE pc.account_tenant_id = t.id) AS is_portfolio,
+                  (SELECT pc.name FROM portfolio_companies pc
+                    WHERE pc.account_tenant_id = t.id
+                    ORDER BY lower(pc.name) LIMIT 1) AS portfolio_company
            FROM tenants t
            LEFT JOIN LATERAL (
                SELECT plan_id FROM tenant_plan_subscriptions s
@@ -220,6 +237,14 @@ pub async fn list_tenants(
                 .map(crate::coreswift::is_reserved_test_email)
                 .unwrap_or(false);
         if reserved_owner && !include_probe {
+            continue;
+        }
+        // THE CUSTOMER LIST HOLDS CUSTOMERS (kanban t_4a9454c1). A portfolio company's account is
+        // held back next to the probe filter, so each account appears on exactly one screen — the
+        // Portfolio list by default, or this one when the operator ticks "Include portfolio
+        // companies". Nothing is deleted; the row is still reachable and still badged when shown.
+        let is_portfolio = r.14;
+        if is_portfolio && !include_portfolio {
             continue;
         }
         let plan_assigned = r.4.is_some();
@@ -268,7 +293,12 @@ pub async fn list_tenants(
             // first password and the credentials mail never went out (provider refusal, or a
             // reserved address withheld at source). Nobody has ever read it, so the account cannot
             // be signed into without help.
-            "owner_credentials_undelivered": r.13
+            "owner_credentials_undelivered": r.13,
+            // true => this account belongs to one of the owner's own companies (kanban
+            // t_4a9454c1). Only reachable with `?include_portfolio=1`; the console badges it so a
+            // portfolio account can never be mistaken for a customer.
+            "is_portfolio": is_portfolio,
+            "portfolio_company": r.15,
         }));
     }
     Ok(Json(json!(tenants)))
@@ -792,8 +822,8 @@ pub(crate) async fn portfolio_registry_hit(
 ) -> Result<Option<String>, AppError> {
     let row: Option<(String,)> = sqlx::query_as(
         "SELECT COALESCE(name, '') FROM portfolio_companies \
-          WHERE tenant_id = $1 OR lower(name) = lower($2) OR lower(slug) = lower($3) \
-          ORDER BY (tenant_id = $1) DESC LIMIT 1",
+          WHERE tenant_id = $1 OR account_tenant_id = $1 OR lower(name) = lower($2) OR lower(slug) = lower($3) \
+          ORDER BY (tenant_id = $1 OR account_tenant_id = $1) DESC LIMIT 1",
     )
     .bind(tenant_id)
     .bind(name)

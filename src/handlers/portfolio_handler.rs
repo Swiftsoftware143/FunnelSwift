@@ -16,6 +16,7 @@ use crate::state::AppState;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PortfolioCompany {
     pub id: Uuid,
+    /// The account whose Portfolio screen lists this company (the owner's, shared by all of them).
     pub tenant_id: Uuid,
     pub name: String,
     pub slug: String,
@@ -27,6 +28,19 @@ pub struct PortfolioCompany {
     pub settings: Value,
     pub created_at: String,
     pub updated_at: String,
+    // PORTFOLIO IS NOT A CUSTOMER LIST (David, 2026-11-20; kanban t_4a9454c1). A portfolio row
+    // carries TWO account references and they are NOT interchangeable:
+    //   * `tenant_id`         — the account that OWNS the row (the operator's; every portfolio row
+    //                            written by the user-facing door shares it). Used for SCOPING only.
+    //   * `account_tenant_id` — the COMPANY'S OWN account. THIS is the one the console opens.
+    // Opening `tenant_id` looks like a button that does nothing, because it re-enters the account
+    // the operator is already in.
+    pub account_tenant_id: Option<Uuid>,
+    pub account_name: Option<String>,
+    pub account_slug: Option<String>,
+    /// True only when the company has its own account AND a usable login inside it. False renders
+    /// as "No account" instead of a button that cannot work.
+    pub has_account: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +61,10 @@ pub struct UpdatePortfolioCompanyRequest {
     pub settings: Option<Value>,
 }
 
+// One read shape for every consumer (list, single read, edit prefill), so the two account
+// references and `has_account` can never disagree between screens. The SELECT is repeated as a
+// literal at each call site because the pre-build gate (rule 5d) refuses run-time-built SQL —
+// keep the three in sync if a column is added.
 fn row_to_portfolio_company(row: &sqlx::postgres::PgRow) -> Result<PortfolioCompany, sqlx::Error> {
     Ok(PortfolioCompany {
         id: row.try_get("id")?,
@@ -62,6 +80,10 @@ fn row_to_portfolio_company(row: &sqlx::postgres::PgRow) -> Result<PortfolioComp
         updated_at: row
             .try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at")?
             .to_rfc3339(),
+        account_tenant_id: row.try_get("account_tenant_id")?,
+        account_name: row.try_get("account_name")?,
+        account_slug: row.try_get("account_slug")?,
+        has_account: row.try_get("has_account")?,
     })
 }
 
@@ -75,9 +97,20 @@ pub async fn list_portfolio_companies(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let rows = sqlx::query(
-        "SELECT id, tenant_id, name, slug, email, description, settings, created_at, updated_at FROM portfolio_companies WHERE tenant_id = $1 ORDER BY name",
+        "SELECT pc.id, pc.tenant_id, pc.name, pc.slug, pc.email, pc.description, pc.settings, \
+                pc.created_at, pc.updated_at, pc.account_tenant_id, \
+                t.name AS account_name, t.slug AS account_slug, \
+                (pc.account_tenant_id IS NOT NULL AND EXISTS (SELECT 1 FROM users u \
+                     WHERE u.tenant_id = pc.account_tenant_id AND u.is_active AND u.closed_at IS NULL)) AS has_account \
+           FROM portfolio_companies pc LEFT JOIN tenants t ON t.id = pc.account_tenant_id \
+          WHERE ($2::bool OR pc.tenant_id = $1) ORDER BY pc.name",
     )
     .bind(tenant_id)
+    // THE PLATFORM ADMIN SEES THE WHOLE PORTFOLIO (kanban t_4a9454c1). A row's `tenant_id` is the
+    // account that OWNS it, and every row the sync doors wrote carries each company's OWN tenant —
+    // so scoping the operator's Portfolio screen to his own tenant made it answer 0 rows while 5
+    // companies existed. A customer still sees only the rows written from their own account.
+    .bind(auth.is_admin)
     .fetch_all(&state.pool)
     .await?;
 
@@ -111,11 +144,24 @@ pub async fn create_portfolio_company(
     let settings = req.settings.unwrap_or(json!({}));
     let now = chrono::Utc::now();
 
+    // A company added here may already exist as an account on this install (synced earlier, or
+    // signed up directly). Link it by EXACT slug — the same authoritative match the migration
+    // backfill uses — and never the caller's own account, which every portfolio row in this
+    // account shares. No match = NULL, which the console renders as "No account".
+    let account_tenant_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM tenants WHERE lower(slug) = lower($1) AND id <> $2 LIMIT 1",
+    )
+    .bind(&req.slug)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
     sqlx::query(
-        "INSERT INTO portfolio_companies (id, tenant_id, name, slug, email, description, settings, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO portfolio_companies (id, tenant_id, account_tenant_id, name, slug, email, description, settings, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(company_id)
     .bind(tenant_id)
+    .bind(account_tenant_id)
     .bind(&req.name)
     .bind(&req.slug)
     .bind(&req.email)
@@ -143,10 +189,17 @@ pub async fn get_portfolio_company(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
     let row = sqlx::query(
-        "SELECT id, tenant_id, name, slug, email, description, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
+        "SELECT pc.id, pc.tenant_id, pc.name, pc.slug, pc.email, pc.description, pc.settings, \
+                pc.created_at, pc.updated_at, pc.account_tenant_id, \
+                t.name AS account_name, t.slug AS account_slug, \
+                (pc.account_tenant_id IS NOT NULL AND EXISTS (SELECT 1 FROM users u \
+                     WHERE u.tenant_id = pc.account_tenant_id AND u.is_active AND u.closed_at IS NULL)) AS has_account \
+           FROM portfolio_companies pc LEFT JOIN tenants t ON t.id = pc.account_tenant_id \
+          WHERE pc.id = $1 AND ($3::bool OR pc.tenant_id = $2)",
     )
     .bind(id)
     .bind(tenant_id)
+    .bind(auth.is_admin)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Portfolio company not found".into()))?;
@@ -169,7 +222,13 @@ pub async fn update_portfolio_company(
 
     // Fetch existing
     let row = sqlx::query(
-        "SELECT id, tenant_id, name, slug, email, description, settings, created_at, updated_at FROM portfolio_companies WHERE id = $1 AND tenant_id = $2",
+        "SELECT pc.id, pc.tenant_id, pc.name, pc.slug, pc.email, pc.description, pc.settings, \
+                pc.created_at, pc.updated_at, pc.account_tenant_id, \
+                t.name AS account_name, t.slug AS account_slug, \
+                (pc.account_tenant_id IS NOT NULL AND EXISTS (SELECT 1 FROM users u \
+                     WHERE u.tenant_id = pc.account_tenant_id AND u.is_active AND u.closed_at IS NULL)) AS has_account \
+           FROM portfolio_companies pc LEFT JOIN tenants t ON t.id = pc.account_tenant_id \
+          WHERE pc.id = $1 AND pc.tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
@@ -193,7 +252,7 @@ pub async fn update_portfolio_company(
     let description = req.description.or(current.description);
 
     sqlx::query(
-        "UPDATE portfolio_companies SET name = $1, slug = $2, settings = $3, email = $4, description = $5, updated_at = $6 WHERE id = $7 AND tenant_id = $8",
+        "UPDATE portfolio_companies SET name = $1, slug = $2, settings = $3, email = $4, description = $5, updated_at = $6 WHERE id = $7 AND ($9::bool OR tenant_id = $8)",
     )
     .bind(&name)
     .bind(&slug)
@@ -203,6 +262,7 @@ pub async fn update_portfolio_company(
     .bind(now)
     .bind(id)
     .bind(tenant_id)
+    .bind(auth.is_admin)
     .execute(&state.pool)
     .await?;
 
@@ -221,11 +281,14 @@ pub async fn delete_portfolio_company(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
-    let result = sqlx::query("DELETE FROM portfolio_companies WHERE id = $1 AND tenant_id = $2")
-        .bind(id)
-        .bind(tenant_id)
-        .execute(&state.pool)
-        .await?;
+    let result = sqlx::query(
+        "DELETE FROM portfolio_companies WHERE id = $1 AND ($3::bool OR tenant_id = $2)",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(auth.is_admin)
+    .execute(&state.pool)
+    .await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Portfolio company not found".into()));
     }
