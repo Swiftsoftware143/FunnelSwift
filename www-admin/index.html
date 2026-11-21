@@ -8,6 +8,44 @@
   <script src="/chart.umd.min.js"></script>
 <style>
 :root{--primary:#6366f1;--primary-dark:#4f46e5;--bg:#f1f5f9;--surface:#fff;--text:#1e293b;--muted:#64748b;--border:#e2e8f0;--danger:#ef4444;--success:#10b981;--warning:#f59e0b}
+/* ── NIGHT MODE (David, 2026-11-21: "so it doesn't always have to be so black" — and this app was the
+   opposite problem, light only). One attribute on <html> swaps the palette, because every surface here
+   is already painted from these six variables. The light values above stay the default, so nobody's
+   current look changes until they ask for it. */
+html[data-theme="dark"]{
+  --primary:#818cf8;--primary-dark:#6366f1;
+  --bg:#0f1117;--surface:#1a1d27;--text:#e8eaed;--muted:#9aa0a6;
+  --border:#2d3148;--danger:#f87171;--success:#34d399;--warning:#fbbf24;
+  color-scheme:dark;
+}
+html[data-theme="light"]{color-scheme:light}
+html[data-theme="dark"] body{background:var(--bg);color:var(--text)}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea,
+html[data-theme="dark"] table,html[data-theme="dark"] .card,html[data-theme="dark"] .panel{color-scheme:dark}
+html[data-theme="dark"] .nav-item:hover,
+html[data-theme="dark"] .nav-user:hover,
+html[data-theme="dark"] .nav-guide:hover{background:#232633;color:var(--text)}
+html[data-theme="dark"] .table td{border-bottom-color:var(--border)}
+html[data-theme="dark"] .table tr:hover td{background:#20232e}
+html[data-theme="dark"] .nav-item .badge{background:#2d3148;color:var(--muted)}
+html[data-theme="dark"] .btn-secondary:hover{background:#2d3148}
+html[data-theme="dark"] .card,html[data-theme="dark"] .modal,html[data-theme="dark"] input,
+html[data-theme="dark"] select,html[data-theme="dark"] textarea{background-color:var(--surface);color:var(--text)}
+html[data-theme="dark"] .tag-amber{background:#3a2f10;color:#fbbf24}
+/* The sign-in screen is built from Tailwind utilities (bg-gray-50, bg-white, text-gray-*), which no
+   CSS variable reaches — measured 2026-11-21: the card went dark while the PAGE behind it stayed
+   white, which looks like a dark sticker on a light page. These rules cover the utility classes the
+   login and shell markup actually use. */
+html[data-theme="dark"] .bg-gray-50{background:#0f1117 !important}
+html[data-theme="dark"] .bg-white{background:#1a1d27 !important}
+html[data-theme="dark"] .bg-gray-100{background:#222532 !important}
+html[data-theme="dark"] .text-gray-900,html[data-theme="dark"] .text-gray-800{color:#e8eaed !important}
+html[data-theme="dark"] .text-gray-700,html[data-theme="dark"] .text-gray-600,html[data-theme="dark"] .text-gray-500{color:#9aa0a6 !important}
+html[data-theme="dark"] .border-gray-200,html[data-theme="dark"] .border-gray-300{border-color:#2d3148 !important}
+html[data-theme="dark"] .divide-gray-200 > * + *{border-color:#2d3148 !important}
+html[data-theme="dark"] #login-error{background:#3b1414 !important;color:#fca5a5 !important}
+html[data-theme="dark"] .tag-purple{background:#2a2350;color:#c4b5fd}
+
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);margin:0;color:var(--text)}
 .sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);min-height:100vh;padding:12px;display:flex;flex-direction:column;flex-shrink:0;position:fixed;left:0;top:0;bottom:0;z-index:100;overflow-y:auto}
 .main{margin-left:240px;padding:24px;min-height:100vh;min-width:0;overflow-wrap:anywhere}
@@ -128,6 +166,9 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .plan-features li .cross{color:var(--muted)}
 </style>
 <link rel="stylesheet" href="/tw.css">
+<script id="theme-boot">/* Night/day applied before first paint. */
+(function(){try{var t=localStorage.getItem('fs_theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+</script>
 </head>
 <body>
 <div id="app"></div>
@@ -562,7 +603,7 @@ function renderShell() {
       ${nav}
       ${wsSwitcherHtml()}
       <div class="nav-footer">
-        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - accounts, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}
+        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - accounts, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}<a class="nav-guide" id="fsThemeToggle" onclick="fsThemeToggle()" title="Switch day / night mode" style="cursor:pointer">🌙 <span id="fsThemeLabel">Night mode</span></a>
         <div style="display:flex;gap:12px;padding:8px 0 10px;border-top:1px solid var(--border);margin-top:8px">
           <a href="https://swiftsoftware.net/updates" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">📰 Updates</a>
           <a href="https://swiftsoftware.net/funnelswift-roadmap" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">🗺️ Roadmap</a>
@@ -7666,7 +7707,23 @@ function paintPaymentHealth() {
   }));
 }
 
-/* ── Bridge for the CLASSIC <script> blocks that follow ────────────────────────────────────────
+/* ── Bridge for the CLASSIC <script>
+// ── NIGHT / DAY MODE ─────────────────────────────────────────────────────────────────────────────
+// This console is light-first, so the switch ADDS the dark palette rather than replacing a dark one.
+// The choice is remembered per browser and applied in <head> before paint (no flash of the wrong theme).
+function fsThemeApply(name) {
+  var t = (name === 'dark') ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('fs_theme', t); } catch (e) {}
+  var b = document.getElementById('fsThemeToggle');
+  if (b) { b.title = (t === 'dark') ? 'Switch to day mode' : 'Switch to night mode'; }
+  var lab = document.getElementById('fsThemeLabel');
+  if (lab) lab.textContent = (t === 'dark') ? 'Day mode' : 'Night mode';
+}
+function fsThemeToggle() {
+  fsThemeApply(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+}
+ blocks that follow ────────────────────────────────────────
    Everything above this line runs in a `type="module"` block, and a module's bindings are NOT
    globals. The "Submit Feedback" button, the operator's Feedback tab and the inline-guide kick
    below all live in plain <script> blocks, so `x`, `STATE`, `api`, `renderApp`, `showToast` and
