@@ -54,6 +54,9 @@
 <meta name="twitter:description" content="Capture every lead, online or offline, and keep them in one place.">
 <meta name="twitter:image" content="https://funnelswift.net/assets/og-funnelswift.png">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
+<script>/* NIGHT MODE boot (2026-11-21). Runs before first paint so a night-mode visitor never
+   sees a white flash: the stored choice wins, the operating system decides when nothing is stored. */
+(function(){try{var t=localStorage.getItem('fs_theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;min-height:100vh;background:#f1f5f9}
@@ -161,6 +164,82 @@ tr:hover{background:#f8fafc}
   .main{min-width:0;width:100%;flex:1 1 auto}
 }
 .nav-accordion.open .nav-acc-body{max-height:300px}
+/* ── NIGHT MODE (David, 2026-11-21: "make sure all the apps have night and day mode").
+   The operator console got its switch this morning; THIS is the customer console and it was
+   light-only. One attribute on <html> swaps the light half of the page; the sidebar is already
+   dark, so it stays as it is and only the content area changes. Light stays the default, so
+   nobody's current look moves until they ask for it. */
+html[data-theme="dark"]{color-scheme:dark}
+html[data-theme="light"]{color-scheme:light}
+html[data-theme="dark"] body{background:#0f1117;color:#e8eaed}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{color-scheme:dark}
+html[data-theme="dark"] .header{background:#1a1d27;border-bottom-color:#2d3148}
+html[data-theme="dark"] .header h1{color:#e8eaed}
+html[data-theme="dark"] .ct{color:#e8eaed}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .it,
+html[data-theme="dark"] .modal{background:#1a1d27;border-color:#2d3148}
+html[data-theme="dark"] .card h3,
+html[data-theme="dark"] .card .val,
+html[data-theme="dark"] .cc h3,
+html[data-theme="dark"] .modal h3{color:#e8eaed}
+html[data-theme="dark"] .it:hover{box-shadow:0 4px 12px rgba(0,0,0,.6)}
+html[data-theme="dark"] table{color:#e8eaed}
+html[data-theme="dark"] th{background:#222532;color:#9aa0a6;border-bottom-color:#2d3148}
+html[data-theme="dark"] td{border-bottom-color:#262a38}
+html[data-theme="dark"] tr:hover{background:#20232e}
+html[data-theme="dark"] .fld label{color:#9aa0a6}
+html[data-theme="dark"] .fld input,
+html[data-theme="dark"] .fld select,
+html[data-theme="dark"] .fld textarea,
+html[data-theme="dark"] .cfk,
+html[data-theme="dark"] .cfv{background:#1a1d27;border-color:#2d3148;color:#e8eaed}
+html[data-theme="dark"] .pf-av{background:#2d3148}
+html[data-theme="dark"] .loading{color:#9aa0a6}
+html[data-theme="dark"] .mf{border-top-color:#2d3148}
+html[data-theme="dark"] .section-label{border-bottom-color:#2d3148}
+html[data-theme="dark"] .msg.mi{background:#172554;color:#bfdbfe}
+html[data-theme="dark"] .msg.me{background:#3b1414;color:#fca5a5}
+html[data-theme="dark"] .msg.ms,
+html[data-theme="dark"] .msg.mk{background:#052e16;color:#86efac}
+html[data-theme="dark"] .btn-r:hover{background:#3b1414;color:#fca5a5}
+html[data-theme="dark"] .btn-o{color:#a5b4fc;border-color:#6366f1}
+/* The panels are ALSO built with inline styles, which no class rule reaches. These attribute
+   matches cover the light values the render functions actually emit (counted in the file, not
+   guessed): white cards, the pale table/hero fills, and the grey/red/amber text tints. */
+html[data-theme="dark"] [style*="background:#fff"]{background:#1a1d27!important}
+html[data-theme="dark"] [style*="background:#f8fafc"]{background:#151823!important}
+html[data-theme="dark"] [style*="background:#f1f5f9"]{background:#151823!important}
+html[data-theme="dark"] [style*="background:#eff6ff"]{background:#152337!important}
+html[data-theme="dark"] [style*="background:#eef2ff"]{background:#1c1f3a!important}
+html[data-theme="dark"] [style*="background:#dbeafe"]{background:#172554!important}
+html[data-theme="dark"] [style*="background:#dcfce7"]{background:#052e16!important}
+html[data-theme="dark"] [style*="background:#fee2e2"]{background:#3b1414!important}
+html[data-theme="dark"] [style*="color:#1e1b4b"]{color:#e8eaed!important}
+html[data-theme="dark"] [style*="color:#0f172a"]{color:#e8eaed!important}
+html[data-theme="dark"] [style*="color:#1e293b"]{color:#e8eaed!important}
+html[data-theme="dark"] [style*="color:#334155"]{color:#cbd5e1!important}
+html[data-theme="dark"] [style*="color:#475569"]{color:#cbd5e1!important}
+html[data-theme="dark"] [style*="color:#64748b"]{color:#9aa0a6!important}
+html[data-theme="dark"] [style*="color:#6b7280"]{color:#9aa0a6!important}
+html[data-theme="dark"] [style*="color:#b91c1c"]{color:#fca5a5!important}
+html[data-theme="dark"] [style*="color:#991b1b"]{color:#fca5a5!important}
+html[data-theme="dark"] [style*="color:#dc2626"]{color:#f87171!important}
+html[data-theme="dark"] [style*="color:#b45309"]{color:#fbbf24!important}
+html[data-theme="dark"] [style*="color:#92400e"]{color:#fbbf24!important}
+html[data-theme="dark"] [style*="color:#166534"]{color:#86efac!important}
+html[data-theme="dark"] [style*="color:#2563eb"]{color:#93c5fd!important}
+html[data-theme="dark"] [style*="color:#4338ca"]{color:#a5b4fc!important}
+html[data-theme="dark"] [style*="color:#3730a3"]{color:#c7d2fe!important}
+html[data-theme="dark"] [style*="color:#4f46e5"]{color:#a5b4fc!important}
+html[data-theme="dark"] [style*="color:#1d4ed8"]{color:#93c5fd!important}
+html[data-theme="dark"] [style*="color:#1e40af"]{color:#93c5fd!important}
+html[data-theme="dark"] [style*="color:#0f766e"]{color:#5eead4!important}
+html[data-theme="dark"] [style*="border:1px solid #e2e8f0"]{border-color:#2d3148!important}
+html[data-theme="dark"] [style*="border:1px solid #d1d5db"]{border-color:#2d3148!important}
+html[data-theme="dark"] [style*="border-bottom:1px solid #e2e8f0"]{border-bottom-color:#2d3148!important}
+html[data-theme="dark"] [style*="border-top:1px solid #e2e8f0"]{border-top-color:#2d3148!important}
+html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!important}
 </style>
 </head>
 <body>
@@ -280,6 +359,8 @@ tr:hover{background:#f8fafc}
          re-rendered the dashboard with the session intact. `/logout.html` is the real page (it clears
          ws_fs_token and lands on /login); measured live: /logout -> 200 text/html 241888 B (the
          shell), /logout.html -> 200 238 B "Signing out…". -->
+    <a id="fsThemeToggle" onclick="fsThemeToggle()" title="Switch day / night mode" style="color:#94a3b8;font-size:12px;cursor:pointer;user-select:none"><span id="fsThemeIcon">🌙</span> <span id="fsThemeLabel">Night mode</span></a>
+    <span style="color:#334155;font-size:12px"> &middot; </span>
     <a href="/logout.html" style="color:#94a3b8;font-size:12px">Sign Out</a>
   </div>
 </div>
@@ -302,6 +383,20 @@ tr:hover{background:#f8fafc}
 /* No inline onclick escaping — zero-bug approach */
 
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
+/* NIGHT MODE (2026-11-21). The switch sits in the sidebar footer beside Sign Out and always
+   names the action it will take, so nobody has to guess which half is on. */
+function fsThemeApply(name){
+  var t=(name==='dark')?'dark':'light';
+  try{document.documentElement.setAttribute('data-theme',t);}catch(e){}
+  try{localStorage.setItem('fs_theme',t);}catch(e){}
+  var lab=document.getElementById('fsThemeLabel');
+  if(lab) lab.textContent=(t==='dark')?'Day mode':'Night mode';
+  var ico=document.getElementById('fsThemeIcon');
+  if(ico) ico.textContent=(t==='dark')?'☀️':'🌙';
+}
+function fsThemeToggle(){fsThemeApply(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
+document.addEventListener('DOMContentLoaded',function(){try{fsThemeApply(document.documentElement.getAttribute('data-theme')||'light');}catch(e){}});
+
 
 /* SESSION HANDOFF TO THE MAIL CLIENT (2026-11-20). The Inbox card's sentence promises "the same
    account — there is nothing to sign in to twice", and the door dropped the customer on a login form

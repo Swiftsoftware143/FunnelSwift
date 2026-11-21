@@ -7922,5 +7922,10 @@ window._feedbackStatus = async function (id, status) {
     setTimeout(sync, 400);
   })();
 </script>
+
+
+<script>/* themeSyncOnLoad: after a reload the switch must describe what it will DO, so the icon
+   and label are refreshed from the stored choice (the boot script already set the attribute). */
+document.addEventListener('DOMContentLoaded',function(){try{fsThemeApply(document.documentElement.getAttribute('data-theme')||'light');}catch(e){}});</script>
 </body>
 </html>

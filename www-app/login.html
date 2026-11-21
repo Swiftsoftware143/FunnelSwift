@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Login — FunnelSwift</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
+<script>/* NIGHT MODE (2026-11-21): the console's switch stores the choice on this origin, so the
+   sign-in card opens in the same half the customer chose. Runs before first paint - no white flash. */
+(function(){try{var t=localStorage.getItem('fs_theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#1e1b4b,#312e81);display:flex;justify-content:center;align-items:center;min-height:100vh}
@@ -23,6 +26,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
 .lk a{color:#4f46e5}
 .sup{margin-top:12px;font-size:12px;line-height:1.55;color:#6b7280}
 .sup a{color:#4f46e5}
+/* NIGHT MODE (2026-11-21): the page behind the card was already a dark gradient, so only the
+   card, its fields and its links need the dark half. */
+html[data-theme="dark"]{color-scheme:dark}
+html[data-theme="light"]{color-scheme:light}
+html[data-theme="dark"] body{background:linear-gradient(135deg,#0b1020,#1e1b4b)}
+html[data-theme="dark"] .c{background:#1a1d27;box-shadow:0 12px 40px rgba(0,0,0,.7)}
+html[data-theme="dark"] .c h1{color:#e8eaed}
+html[data-theme="dark"] .c p.sub{color:#9aa0a6}
+html[data-theme="dark"] .c input{background:#151823;border-color:#2d3148;color:#e8eaed}
+html[data-theme="dark"] .c input:focus{border-color:#818cf8;box-shadow:0 0 0 2px rgba(129,140,248,.25)}
+html[data-theme="dark"] .lk{border-top-color:#2d3148}
+html[data-theme="dark"] .sup{color:#9aa0a6}
+html[data-theme="dark"] .msg.e{background:#3b1414;color:#fca5a5}
+html[data-theme="dark"] .msg.i{color:#a5b4fc}
+html[data-theme="dark"] .lk a,html[data-theme="dark"] .sup a{color:#a5b4fc}
+html[data-theme="dark"] [style*="color:#4f46e5"]{color:#a5b4fc!important}
+html[data-theme="dark"] [style*="color:#6b7280"]{color:#9aa0a6!important}
 </style>
 </head>
 <body>
