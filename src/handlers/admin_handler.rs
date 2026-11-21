@@ -478,6 +478,27 @@ pub async fn impersonate(
     )
     .map_err(|e| AppError::Internal(format!("JWT encode error: {}", e)))?;
 
+    // AUDIT (2026-11-20). The served console's Recent Activity has carried an `admin_impersonate`
+    // label ("🕵 Support signed in") since the feed shipped, but nothing in this app ever wrote
+    // that row — the label pointed at an action no door produced, so a customer's feed could
+    // never show that support had been inside their workspace. Impersonation is support access to
+    // a customer's data, so it is recorded on the TARGET workspace's feed with the ADMIN as the
+    // actor (the shape ADASwift uses). Best-effort by design (`activity::log` never propagates):
+    // a logging outage must not take the support tool down with it.
+    crate::activity::log(
+        &state.pool,
+        tid,
+        &auth.user_id,
+        "admin_impersonate",
+        "tenant",
+        Some(&tid.to_string()),
+        json!({
+            "support": auth.email.clone(),
+            "account": target.name.clone(),
+        }),
+    )
+    .await;
+
     Ok(Json(json!({
         "token": token,
         "impersonating": {
