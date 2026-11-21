@@ -316,7 +316,6 @@ html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!imp
        prefix (Reveal/Copy/Regenerate through the existing /api/v1/api-keys routes), the read-only
        tools the mcp server exposes for funnelswift, and a copy-paste client config. No audit block:
        the MCP audit log is a file owned by the mcp service and has no read API. -->
-  <a data-tab="mcp" onclick="S('mcp')">MCP</a>
   <a data-tab="settings" onclick="S('settings')">Settings</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <!-- cron 2026-11-06: GET|POST /api/v1/support-requests are live and tenant-scoped and NO console
@@ -347,6 +346,10 @@ html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!imp
        duplicate goes; the boot hash `#domains` is redirected to Settings in S() via MOVED. -->
   <a data-tab="seo" onclick="S('seo')">SEO</a>
   </div>
+  <!-- fleet MCP slot (docs/fleet-mcp-screen-design-spec.md §Placement, owner 2026-11-21):
+       the LAST item in the user menu, after Settings/Profile and after the platform-only group, so it
+       sits in the same slot for a customer and for an operator. Exactly ONE entry, labelled `MCP`. -->
+  <a data-tab="mcp" onclick="S('mcp')">MCP</a>
   <div style="margin-top:auto;padding:16px 20px;border-top:1px solid rgba(255,255,255,.1)">
     <a href="/guide.html" target="_blank" rel="noopener" style="color:#94a3b8;font-size:12px">User Guide</a>
     <span style="color:#334155;font-size:12px"> &middot; </span>
@@ -6206,6 +6209,7 @@ var MCP_SPECS=[
   ["funnelswift_portfolio","portfolio companies"],
   ["funnelswift_subscriptions","plan subscriptions"]
 ];
+var MCP_ENDPOINT='https://hooks.swiftsoftware.net/mcp';
 var MCP_CONFIG_TEXT='{\n'
  +'  "mcpServers": {\n'
  +'    "funnelswift": {\n'
@@ -6222,34 +6226,202 @@ function mcpToolsHtml(){
   return h;
 }
 function LMCP(){
-  $("ct").innerHTML='<div class="cc"><h3>MCP — connect your AI tools</h3>'
-    +'<p style="color:#64748b;font-size:12px;margin:6px 0 16px">Point any MCP client (Claude Code, Cursor, Hermes, or your own agent) at the endpoint below and it can read this workspace\'s FunnelSwift data. Read-only.</p>'
-    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
-    +'<strong style="font-size:13px">Endpoint</strong>'
-    +'<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">'
-    +'<code style="padding:6px 10px;background:#f1f5f9;border-radius:6px;font-size:12px">https://hooks.swiftsoftware.net/mcp</code>'
-    +'<button class="btn btn-sm" onclick="MCPCLIP(\'https://hooks.swiftsoftware.net/mcp\')">Copy</button>'
-    +'</div></div>'
-    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
-    +'<strong style="font-size:13px">Your token</strong>'
-    +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">The MCP server accepts this workspace\'s API key as a Bearer token. It is listed here by prefix only — the secret is never shown until you Reveal it, which asks for your account password. Treat it like a password: anyone holding it can read this workspace.</p>'
-    +'<div id="mcp-key-list" style="margin-bottom:8px"></div>'
-    +'<div id="mcp-key-out"></div>'
+  var email=(U&&(U.email||U.name))||'this account';
+  var ep=MCP_ENDPOINT;
+  var inner=''
+    +'<div style="font-size:11px;letter-spacing:.09em;color:#94a3b8;font-weight:700">FUNNELSWIFT AI › CONNECT</div>'
+    +'<h2 style="margin:6px 0 4px;font-size:22px">Connect AI with FunnelSwift</h2>'
+    +'<p style="color:#64748b;font-size:13px;margin:0 0 18px;max-width:70ch">Ask Claude or ChatGPT about your leads, funnels, campaigns and tags — and have it find things for you.</p>'
+
+    /* ── 1. CONNECT: client tabs + numbered steps ─────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'    <button class="btn btn-sm" id="mcpTabChatgpt" onclick="MCPCLIENT(\'chatgpt\')" style="font-weight:600">ChatGPT</button>'
+    +'    <button class="btn btn-sm" id="mcpTabClaude" onclick="MCPCLIENT(\'claude\')" style="font-weight:600">Claude</button>'
+    +'  </div>'
+    +'  <div style="font-size:11px;letter-spacing:.09em;color:#94a3b8;font-weight:700;margin-bottom:6px">CONNECT WITH YOUR API KEY</div>'
+    +'  <p style="color:#64748b;font-size:13px;margin:0 0 14px;max-width:70ch">For ChatGPT and Claude on the web. There is no app to install: you give your AI client this workspace\'s API key, so every answer is scoped to <strong>your</strong> data and nobody else\'s.</p>'
+    +'  <div id="mcpSteps"></div>'
+    +'  <p style="color:#94a3b8;font-size:11px;line-height:1.7;margin:10px 0 0">Connectors are available on paid ChatGPT and Claude plans. Be signed in to the same browser first. The key acts as the account that created it, so treat it like a password.</p>'
     +'</div>'
-    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
-    +'<strong style="font-size:13px">What it can read</strong>'
-    +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">These are the read-only tools this app exposes to a workspace credential — the real tool names, each scoped to this workspace.</p>'
-    +'<ul style="font-size:12px;color:#334155;line-height:1.9;padding-left:18px;margin:0">'+mcpToolsHtml()+'</ul>'
-    +'<p style="font-size:11px;color:#94a3b8;margin:10px 0 0">Every tool is a SELECT. There is no write tool and no free-form SQL door, and operator-wide tools are refused for a workspace credential.</p>'
+
+    /* ── 2. The key ───────────────────────────────────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">Your workspace key</h3>'
+    +'  <p style="font-size:11px;color:#94a3b8;margin:0 0 10px">The MCP service accepts this workspace\'s API key as a Bearer token. It is listed by prefix only — the secret appears only after Reveal, which asks for your account password.</p>'
+    +'  <div id="mcp-key-list" style="margin-bottom:8px"></div>'
+    +'  <div id="mcp-key-out"></div>'
     +'</div>'
-    +'<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px">'
-    +'<strong style="font-size:13px">Connect</strong>'
-    +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">Paste this into your MCP client config (Claude Desktop / Cursor). Replace YOUR_API_KEY with this workspace\'s key.</p>'
-    +'<pre id="mcp-config" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin:0">'+X(MCP_CONFIG_TEXT)+'</pre>'
-    +'<button class="btn btn-sm" style="margin-top:8px" onclick="MCPCLIP(MCP_CONFIG_TEXT)">Copy config</button>'
+
+    /* ── 3. Ready to connect ──────────────────────────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    +'    <span style="width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block"></span>'
+    +'    <strong style="font-size:14px">Ready to connect</strong>'
+    +'    <span style="font-size:12px;color:#64748b">Your account: <strong>'+X(email)+'</strong> — the AI reads this account and no other.</span>'
+    +'  </div>'
+    +'  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
+    +'    <button class="btn btn-sm" onclick="MCPTEST()">Test connection</button>'
+    +'    <button class="btn btn-sm" onclick="MCPCLIP(MCP_CONFIG_TEXT)">Copy my setup</button>'
+    +'    <button class="btn btn-sm" onclick="var e=document.getElementById(\'mcp-advanced\');if(e){e.open=true;e.scrollIntoView({behavior:\'smooth\'});}">Advanced setup</button>'
+    +'  </div>'
+    +'  <div id="mcp-test-out" style="margin-top:10px"></div>'
     +'</div>'
+
+    /* ── 4. What can I ask FunnelSwift? ───────────────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">What can I ask FunnelSwift?</h3>'
+    +'  <p style="color:#64748b;font-size:12px;margin:0 0 12px">Every line below is a question your data can answer today. Press Copy and paste it into the AI client.</p>'
+    +'  <div id="mcp-examples"></div>'
+    +'</div>'
+
+    /* ── 5. Don\'t know what to ask? ───────────────────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">Don\'t know what to ask?</h3>'
+    +'  <p style="color:#64748b;font-size:12px;margin:0 0 10px">Say what you are trying to do and we will suggest the questions that fit your goal.</p>'
+    +'  <div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'    <input id="mcp-goal" placeholder="I want to …" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">'
+    +'    <button class="btn btn-sm" onclick="MCPIDEAS()">Give me ideas</button>'
+    +'  </div>'
+    +'  <div id="mcp-ideas" style="margin-top:10px"></div>'
+    +'</div>'
+
+    /* ── 6. What it can read ──────────────────────────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">What the AI can read</h3>'
+    +'  <p style="color:#64748b;font-size:12px;margin:0 0 10px">These are the real tools this app exposes to a workspace key — each one scoped to this workspace.</p>'
+    +'  <details id="mcp-advanced"><summary style="cursor:pointer;font-weight:600;font-size:13px">Show all '+MCP_SPECS.length+' data areas</summary>'
+    +'    <ul style="font-size:12px;color:#334155;line-height:1.9;padding-left:18px;margin:10px 0 0">'+mcpToolsHtml()+'</ul>'
+    +'  </details>'
+    +'</div>'
+
+    /* ── 7. What it will not do ───────────────────────────────────────────── */
+    +'<div class="cc" style="margin-bottom:12px">'
+    +'  <h3 style="margin:0 0 8px;font-size:15px">What it will not do</h3>'
+    +'  <ul style="font-size:12px;color:#334155;line-height:1.9;padding-left:18px;margin:0">'
+    +'    <li>It cannot change anything — every tool is a read-only SELECT. No write tool, no free-form SQL.</li>'
+    +'    <li>It cannot see another workspace. The scope is this account\'s rows, enforced in the query, not in the prompt.</li>'
+    +'    <li>It cannot use operator tools: your key is refused anything that spans accounts.</li>'
+    +'    <li>It has no consent screen — the key <em>is</em> the connection. Revoke it here and the AI loses access immediately.</li>'
+    +'  </ul>'
+    +'</div>'
+
+    /* ── 8. Developer drawer: the copy-paste config ───────────────────────── */
+    +'<div class="cc">'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">Developer setup</h3>'
+    +'  <p style="color:#64748b;font-size:12px;margin:0 0 10px">Paste this into an MCP client config (Claude Desktop, Cursor, Hermes) and replace YOUR_API_KEY with this workspace\'s key.</p>'
+    +'  <pre id="mcp-config" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin:0">'+X(MCP_CONFIG_TEXT)+'</pre>'
+    +'  <button class="btn btn-sm" style="margin-top:8px" onclick="MCPCLIP(MCP_CONFIG_TEXT)">Copy config</button>'
     +'</div>';
+
+  $("ct").innerHTML='<div class="cc" style="padding-bottom:0;background:transparent;border:0;box-shadow:none">'+inner+'</div>';
+  MCPCLIENT('chatgpt');
+  MCPEXAMPLES();
   MCPTLOAD();
+}
+
+/* The client tabs: the same six steps, with the client\'s own wording for where Connectors live. */
+var MCP_CLIENT='chatgpt';
+function MCPCLIENT(which){
+  MCP_CLIENT=which||'chatgpt';
+  var a=$("mcpTabChatgpt"), b=$("mcpTabClaude");
+  if(a&&b){
+    var on="font-weight:700;background:#6366f1;color:#fff;border-color:#6366f1";
+    var off="font-weight:600";
+    a.setAttribute("style", on.indexOf("x")>=0 ? off : off);
+    if(MCP_CLIENT==='chatgpt'){ a.setAttribute("style","font-weight:700"); b.setAttribute("style","font-weight:600"); }
+    else { b.setAttribute("style","font-weight:700"); a.setAttribute("style","font-weight:600"); }
+  }
+  var where = MCP_CLIENT==='chatgpt'
+    ? 'In ChatGPT, open <strong>Settings → Connectors</strong> and switch on <strong>Developer mode</strong>.'
+    : 'In Claude, open <strong>Settings → Connectors</strong> and press <strong>Add custom connector</strong>.';
+  var addr='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 2px">'
+    +'<code style="padding:7px 10px;background:#f1f5f9;border-radius:6px;font-size:12px">'+X(MCP_ENDPOINT)+'</code>'
+    +'<button class="btn btn-sm" onclick="MCPCLIP(MCP_ENDPOINT)">Copy</button></div>';
+  function step(n,head,body,extra){
+    return '<div style="display:flex;gap:12px;margin-bottom:13px">'
+      +'<div style="flex:0 0 26px;height:26px;border-radius:50%;background:#6366f1;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">'+n+'</div>'
+      +'<div style="flex:1"><div style="font-weight:600;margin-bottom:2px">'+head+'</div>'
+      +'<div style="color:#64748b;font-size:12px">'+body+'</div>'+(extra||'')+'</div></div>';
+  }
+  var h=''
+    +step(1,'Open it on a computer, not your phone','The phone apps cannot add a custom connector.')
+    +step(2,'Find Connectors in settings',where)
+    +step(3,'Add a custom connector','Press <strong>+</strong> and name it <strong>FunnelSwift</strong>.')
+    +step(4,'Paste this address into the URL box',addr)
+    +step(5,'Choose <strong>API key / Bearer token</strong> where it asks how to sign in','Paste the key from the card below. Never choose OAuth — this service does not offer it.')
+    +step(6,'Press Create, then test the connection','The client lists the tools immediately: lead summaries, funnel searches, tag history and the rest.');
+  $("mcpSteps").innerHTML=h;
+}
+
+/* Example questions, grouped by the product\'s real verbs, two columns, each line copyable. */
+var MCP_EXAMPLES=[
+  ['Find','How many leads did I capture this week?','Show me my 10 newest leads and which form they came from','Which funnel produced the most leads last month?','Find every lead tagged as a customer','Which Kinetic Card got the most scans?'],
+  ['Understand','Which of my campaigns is running right now?','What is my lead count by tag?','Show me the tag changes made in the last 30 days','Which affiliate brought me the most leads?','Do I have any open support requests?']
+];
+function MCPEXAMPLES(){
+  var box=$("mcp-examples"); if(!box) return;
+  function card(q){
+    return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 11px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:7px;background:#fff">'
+      +'<span style="font-size:13px">'+X(q)+'</span>'
+      +'<button class="btn btn-sm" onclick="MCPCLIP('+JSON.stringify(q).replace(/"/g,'&quot;')+')">Copy</button></div>';
+  }
+  var h='';
+  MCP_EXAMPLES.forEach(function(g){
+    var items=g.slice(1);
+    var left=items.filter(function(_,i){return i%2===0}).map(card).join('');
+    var right=items.filter(function(_,i){return i%2===1}).map(card).join('');
+    h+='<div style="font-size:11px;letter-spacing:.09em;color:#94a3b8;font-weight:700;margin:14px 0 8px">'+g[0].toUpperCase()+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div>'+left+'</div><div>'+right+'</div></div>';
+  });
+  box.innerHTML=h;
+}
+function MCPIDEAS(){
+  var g=($("mcp-goal")&&$("mcp-goal").value||'').toLowerCase();
+  var base=[
+    'Which of my funnels captured the most leads in the last 30 days, and where did those visitors come from?',
+    'Show me my five newest leads with their tag and the form they came from.',
+    'Which tags have grown fastest this month?',
+    'Which affiliate brought me the most leads, and what did they promote?',
+    'Do I have any support requests still open?'
+  ];
+  var pick=base;
+  if(/lead|forma|capture/.test(g)) pick=[base[1],base[0],base[3],base[2]];
+  else if(/tag/.test(g)) pick=[base[2],base[1],base[0],base[4]];
+  else if(/affiliate|referr/.test(g)) pick=[base[3],base[0],base[1],base[2]];
+  else if(/support|ticket|help/.test(g)) pick=[base[4],base[1],base[0],base[2]];
+  var box=$("mcp-ideas"); if(!box) return;
+  box.innerHTML=pick.map(function(q){
+    return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 11px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:7px;background:#fff">'
+      +'<span style="font-size:13px">'+X(q)+'</span>'
+      +'<button class="btn btn-sm" onclick="MCPCLIP('+JSON.stringify(q).replace(/"/g,'&quot;')+')">Copy</button></div>';
+  }).join('');
+}
+
+/* Test connection — says exactly what it measured. The browser cannot call the MCP service (it sends
+   no CORS header for this origin), so the honest check is the credential this workspace will present:
+   it must exist, be active, and be un-revoked. That is read from the app\'s own /api/v1/api-keys. */
+function MCPTEST(){
+  var out=$("mcp-test-out"); if(!out) return;
+  out.innerHTML='<span style="font-size:12px;color:#64748b">Checking…</span>';
+  api("/api/v1/api-keys").then(function(d){
+    var ks=((d&&d.api_keys)||[]).filter(function(k){return !k.revoked_at});
+    if(!ks.length){
+      out.innerHTML='<div style="border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:8px;padding:10px;font-size:12px">'
+        +'<strong>No active key.</strong> Create one on the Settings screen, then run this check again.</div>';
+      return;
+    }
+    var k=ks[0];
+    out.innerHTML='<div style="border:1px solid #bbf7d0;background:#f0fdf4;color:#14532d;border-radius:8px;padding:10px;font-size:12px">'
+      +'<strong>✅ Key check passed.</strong> Your workspace key <strong>'+X(k.name||'API key')+'</strong> '
+      +'<code style="font-size:11px">'+X(k.key_prefix)+'…</code> is active and was created '+TSFMT(k.created_at)+'.'
+      +'<br><span style="color:#166534">The AI client presents it as a Bearer token to <code>'+X(MCP_ENDPOINT)+'</code>; '
+      +'the service then reads this workspace\'s rows only. This panel cannot call the AI service from your browser, '
+      +'so the connection itself is confirmed by the client on first connect — the tool list appears immediately when it works.</span></div>';
+  }).catch(function(e){
+    out.innerHTML='<div style="border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:8px;padding:10px;font-size:12px">'
+      +X((e&&e.message)||'Could not read your keys.')+'</div>';
+  });
 }
 /* The token block reads the same GET /api/v1/api-keys the Settings screen reads; Reveal/Copy/
    Regenerate call the app's existing reveal/regenerate routes (password-gated reveal, atomic
