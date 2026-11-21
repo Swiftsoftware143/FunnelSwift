@@ -2,7 +2,7 @@
 //!
 //! Every name-bearing column in this database is `varchar(255)` — `users.name`, `users.username`,
 //! `users.company`, `tenants.name`, `tenants.slug` — and the public signup DERIVES two of them from
-//! the typed name (`tenants.name = "<name>'s Workspace"`, `tenants.slug = "<name>-<8 hex>"`). Before
+//! the typed name (`tenants.name = "<name>'s Account"`, `tenants.slug = "<name>-<8 hex>"`). Before
 //! this module there was no length check anywhere in the request path, so a name the DB could not
 //! store reached the INSERT and came back as the raw `sqlx` error:
 //!
@@ -15,15 +15,15 @@
 //! perfectly ordinary way to hit it.
 //!
 //! The cap is the STORAGE limit, not a product decision: 255 minus the widest suffix this app
-//! appends to a name (`"'s Workspace"`, 12 characters — hence 243). Anything that fit before still
+//! appends to a name (`"'s Account"`, 10 characters — hence 245). Anything that fit before still
 //! fits, and nothing that used to work is now refused. Call it BEFORE the write, exactly like
 //! [`crate::security::email_addr::normalize`], and let the handler map the reason to a 422.
 
 /// `users.name` / `tenants.name` / `tenants.slug` are all `varchar(255)`.
 const COLUMN_CHARS: usize = 255;
 
-/// The suffix the public signup appends to a name to name the workspace (`"{}'s Workspace"`).
-const WORKSPACE_SUFFIX_CHARS: usize = "'s Workspace".len();
+/// The suffix the public signup appends to a name to name the workspace (`"{}'s Account"`).
+const WORKSPACE_SUFFIX_CHARS: usize = "'s Account".len();
 
 /// Longest name whose DERIVED workspace name still fits its column.
 pub const MAX_NAME_CHARS: usize = COLUMN_CHARS - WORKSPACE_SUFFIX_CHARS;
@@ -108,7 +108,7 @@ mod tests {
         // appends, is still storable.
         let name = "n".repeat(MAX_NAME_CHARS);
         assert!(normalize(&name).is_ok());
-        assert!(format!("{name}'s Workspace").chars().count() <= COLUMN_CHARS);
+        assert!(format!("{name}'s Account").chars().count() <= COLUMN_CHARS);
     }
 
     #[test]

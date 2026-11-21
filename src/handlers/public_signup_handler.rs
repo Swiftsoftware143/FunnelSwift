@@ -436,7 +436,7 @@ pub async fn public_signup(
     let email =
         crate::security::email_addr::normalize(&email).map_err(AppError::UnprocessableEntity)?;
     // ── VALIDATE THE WRITE ─────────────────────────────────────────────────────────────────────
-    // `tenants.name` is derived as `"<name>'s Workspace"` and `tenants.slug` as `"<name>-<8 hex>"`,
+    // `tenants.name` is derived as `"<name>'s Account"` and `tenants.slug` as `"<name>-<8 hex>"`,
     // and both columns are `varchar(255)` — so a 254-character name made the FIRST statement of the
     // signup transaction the one the database refused. Measured live 2026-10-16: 200 characters
     // created the account, 254 answered `500 {"error":"Database error"}` with no account and no hint
@@ -456,7 +456,7 @@ pub async fn public_signup(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| format!("{name}'s Workspace"));
+        .unwrap_or_else(|| format!("{name}'s Account"));
     crate::security::display_name::check_len(
         &workspace_name,
         crate::security::display_name::MAX_NAME_CHARS,

@@ -134,7 +134,7 @@ pub async fn register(
     // through it — the native app's fallback, an integration, a harness that does not send
     // `tenant_name` — landed in the operator's tenant list as an identical "My Workspace" row under a
     // `default-…` slug, indistinguishable from the next one. The PUBLIC signup
-    // (`handlers::public_signup_handler`) has always derived "<name>'s Workspace" from the person's
+    // (`handlers::public_signup_handler`) has always derived "<name>'s Account" from the person's
     // own name; this door now does the same, and `display_name::normalize` above has already refused
     // an empty name, so the fallback only covers a whitespace-only `tenant_name`.
     let tenant_id = Uuid::new_v4();
@@ -144,7 +144,7 @@ pub async fn register(
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| format!("{}'s Workspace", req.name.trim()));
+        .unwrap_or_else(|| format!("{}'s Account", req.name.trim()));
     let tenant_slug = format!(
         "{}-{}",
         crate::security::display_name::slugify(&workspace_name),
