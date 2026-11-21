@@ -1683,6 +1683,23 @@ pub async fn send_new_lead_email(
     lead_phone: Option<&str>,
     funnel_name: &str,
 ) -> Result<(), String> {
+    // A PROBE VISITOR MUST NEVER RING THE OWNER (2026-11-21, test-mail-hygiene 2c). This arm was
+    // the last mail path in the app with no requester gate: the RECIPIENT is honoured correctly
+    // (a reserved owner address is withheld by `dispatch_for_tenant`), but the TRIGGER is the
+    // visitor who submitted the form, and a fleet probe submits one per walk. Measured live:
+    // "New lead on ZZ Probe Funnel Capture" was delivered to the operator's own mailbox because a
+    // probe capture ran against the operator's own workspace — where the owner address is real and
+    // nothing withheld it. Gate on the REQUESTER (the visitor), never on the route: the same public
+    // form serves real customers, so the predicate is the only thing that can tell them apart.
+    // Returns BEFORE any dispatch, so no `email_send_log` row is written for a probe capture at all.
+    if let Some(reason) = crate::security::probe_addr::synthetic_requester(lead_email, lead_name) {
+        tracing::info!(
+            reason = %reason,
+            funnel = %funnel_name,
+            "lead notification WITHHELD — the visitor is a synthetic identity"
+        );
+        return Ok(());
+    }
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", owner_name);
     vars.insert("lead_name", lead_name);
