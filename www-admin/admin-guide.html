@@ -464,6 +464,37 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         </ul>
       </div>
 
+      <!-- ============ DO NOT MAIL ============ -->
+      <h2 id="do-not-mail">📭 Do not mail &mdash; people who asked us to stop</h2>
+      <div class="card">
+        <h3>Every notice carries a working opt-out</h3>
+        <p>Notice mail &mdash; a new-lead alert, a plan-request update, a reply to a support question, the
+        plan-ceiling notice &mdash; ends with an <strong>Unsubscribe</strong> link. Clicking it records that
+        address for that workspace and stops any further notice from it (kanban B214). Account mail is
+        never stopped: sign-in details, password resets and receipts still go out, because the person may
+        need them to get back in.</p>
+        <ul>
+          <li><strong>The page it opens:</strong> <code>GET|POST /api/v1/public/unsubscribe/:token</code> &mdash;
+            public on purpose, because the recipient has no session, and the signed token in the link is
+            the credential. It can only ever name one address, one workspace and one class, it records the
+            opt-out on the click itself, and a second click changes nothing.</li>
+          <li><strong>Where the list is:</strong> <code>email_suppressions</code>, keyed by workspace,
+            address and class, so one workspace's opt-out never silences another's mail to the same
+            person. The sender consults it inside the one send path every message passes through, before
+            anything is queued &mdash; a suppressed send writes a visible row in the mail log saying why,
+            it does not bounce.</li>
+          <li><strong>Your own screen:</strong> the <strong>Do not mail</strong> card on the Email Branding
+            screen lists who is on the list, lets you add an address yourself (a request made by phone, or
+            an address that keeps bouncing), allow one again, and download the whole list as a spreadsheet
+            file &mdash; <code>GET|POST /api/v1/settings/suppressions</code>,
+            <code>DELETE /api/v1/settings/suppressions/:id</code>,
+            <code>GET /api/v1/settings/suppressions.csv</code>, all scoped to the signed-in workspace.</li>
+          <li><strong>If the list cannot be read, mail still goes out.</strong> The check fails open by
+            design: a database problem is logged and the message is sent, because a silent mailing freeze
+            is worse than one extra notice.</li>
+        </ul>
+      </div>
+
       <!-- ============ MY ACCOUNT ============ -->
       <h2 id="my-account">👤 My Account — the operator's own profile</h2>
       <div class="card">

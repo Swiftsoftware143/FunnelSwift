@@ -301,6 +301,22 @@ pub fn create_router(
                 .delete(branding_handler::delete_logo)
                 .layer(axum::extract::DefaultBodyLimit::max(IMAGE_BODY_LIMIT_BYTES)),
         )
+        // The operator's do-not-mail list (2026-11-21). The public opt-out page records a refusal;
+        // these are the three operator doors onto the same table — read it, add an address that asked
+        // by phone or that hard-bounced, and undo one. All authenticated and scoped to the CALLER's
+        // own tenant inside the handlers, so one workspace never sees another's list.
+        .route(
+            "/api/v1/settings/suppressions",
+            get(crate::compliance::list_suppressions).post(crate::compliance::add_suppression),
+        )
+        .route(
+            "/api/v1/settings/suppressions.csv",
+            get(crate::compliance::suppressions_csv),
+        )
+        .route(
+            "/api/v1/settings/suppressions/:id",
+            delete(crate::compliance::remove_suppression),
+        )
         .route(
             "/api/v1/branding/logo/:tenant_id",
             get(branding_handler::get_logo),

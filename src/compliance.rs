@@ -335,6 +335,187 @@ pub fn public_router() -> Router<crate::state::AppState> {
     )
 }
 
+// ── the operator's own view of the list (2026-11-21) ─────────────────────────────────────────────
+//
+// The public page records a refusal; without a screen the one person who owns the sending domain
+// could not SEE who asked to stop, could not add an address that asked by phone or that bounced, and
+// could not undo a wrong opt-out. IncentiveSwift has had this surface since the compliance work
+// landed there; FunnelSwift had the table and the gate but no door. Every route below is scoped to
+// the CALLER's own tenant, so one workspace can never read or edit another's list.
+
+/// One row of the operator's do-not-mail list.
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct SuppressionRow {
+    pub id: Uuid,
+    pub address: String,
+    pub mail_class: String,
+    pub reason: String,
+    pub source: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn caller_tenant(auth: &crate::auth::middleware::AuthUser) -> Result<Uuid, (StatusCode, String)> {
+    auth.tenant_id
+        .parse::<Uuid>()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid tenant".to_string()))
+}
+
+/// `GET /api/v1/settings/suppressions` — who has asked this workspace to stop mailing them.
+pub async fn list_suppressions(
+    auth: crate::auth::middleware::AuthUser,
+    State(state): State<crate::state::AppState>,
+) -> Response {
+    let Ok(tenant_id) = caller_tenant(&auth) else {
+        return (StatusCode::BAD_REQUEST, "invalid tenant").into_response();
+    };
+    match sqlx::query_as::<_, SuppressionRow>(
+        "SELECT id, address, mail_class, reason, source, created_at
+           FROM email_suppressions WHERE tenant_id = $1
+          ORDER BY created_at DESC LIMIT 500",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await
+    {
+        Ok(rows) => axum::Json(serde_json::json!({ "suppressions": rows })).into_response(),
+        Err(e) => {
+            tracing::warn!("could not list suppressions: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "could not read the list").into_response()
+        }
+    }
+}
+
+/// `POST /api/v1/settings/suppressions` — add an address by hand (a request made by phone, or an
+/// address the operator watched hard-bounce). `mail_class` is `all` for a blanket stop and
+/// `notification` for notice mail only.
+pub async fn add_suppression(
+    auth: crate::auth::middleware::AuthUser,
+    State(state): State<crate::state::AppState>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Response {
+    let Ok(tenant_id) = caller_tenant(&auth) else {
+        return (StatusCode::BAD_REQUEST, "invalid tenant").into_response();
+    };
+    let address = body
+        .get("address")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if !address.contains('@') || address.len() < 5 || address.len() > 254 {
+        return (StatusCode::BAD_REQUEST, "a full email address is required").into_response();
+    }
+    let mail_class = match body.get("mail_class").and_then(|v| v.as_str()) {
+        Some("all") => "all",
+        Some(NOTIFICATION) | None => NOTIFICATION,
+        Some(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "mail_class is 'all' or 'notification'",
+            )
+                .into_response()
+        }
+    };
+    let reason = body
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "added by the operator".to_string());
+    match suppress(
+        &state.pool,
+        tenant_id,
+        &address,
+        mail_class,
+        &reason,
+        "operator",
+    )
+    .await
+    {
+        Ok(()) => axum::Json(serde_json::json!({
+            "address": normalise(&address), "mail_class": mail_class, "suppressed": true
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("could not record a suppression: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "could not record").into_response()
+        }
+    }
+}
+
+/// `DELETE /api/v1/settings/suppressions/:id` — undo one (a wrong address, or a person who asked to
+/// start receiving notices again). Scoped by tenant, so an id from another workspace answers a plain
+/// 404 rather than a 403 that would confirm the row exists.
+pub async fn remove_suppression(
+    auth: crate::auth::middleware::AuthUser,
+    State(state): State<crate::state::AppState>,
+    Path(id): Path<Uuid>,
+) -> Response {
+    let Ok(tenant_id) = caller_tenant(&auth) else {
+        return (StatusCode::BAD_REQUEST, "invalid tenant").into_response();
+    };
+    match sqlx::query("DELETE FROM email_suppressions WHERE id = $1 AND tenant_id = $2")
+        .bind(id)
+        .bind(tenant_id)
+        .execute(&state.pool)
+        .await
+    {
+        Ok(r) if r.rows_affected() == 1 => StatusCode::NO_CONTENT.into_response(),
+        Ok(_) => (StatusCode::NOT_FOUND, "no such entry").into_response(),
+        Err(e) => {
+            tracing::warn!("could not remove a suppression: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "could not remove").into_response()
+        }
+    }
+}
+
+/// `GET /api/v1/settings/suppressions.csv` — the same list as a file the operator can keep.
+pub async fn suppressions_csv(
+    auth: crate::auth::middleware::AuthUser,
+    State(state): State<crate::state::AppState>,
+) -> Response {
+    let Ok(tenant_id) = caller_tenant(&auth) else {
+        return (StatusCode::BAD_REQUEST, "invalid tenant").into_response();
+    };
+    let rows = sqlx::query_as::<_, SuppressionRow>(
+        "SELECT id, address, mail_class, reason, source, created_at
+           FROM email_suppressions WHERE tenant_id = $1
+          ORDER BY created_at DESC LIMIT 5000",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await;
+    let Ok(rows) = rows else {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "could not read the list").into_response();
+    };
+    let mut out = String::from("address,class,reason,source,added\n");
+    for r in rows {
+        // Quote every field and double any quote inside it, so a reason containing a comma or a
+        // quote cannot break the row structure a spreadsheet reads.
+        let q = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+        out.push_str(&format!(
+            "{},{},{},{},{}\n",
+            q(&r.address),
+            q(&r.mail_class),
+            q(&r.reason),
+            q(&r.source),
+            q(&r.created_at.to_rfc3339())
+        ));
+    }
+    (
+        StatusCode::OK,
+        [
+            ("content-type", "text/csv; charset=utf-8"),
+            (
+                "content-disposition",
+                "attachment; filename=\"do-not-mail.csv\"",
+            ),
+        ],
+        out,
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -492,8 +492,10 @@ mod tests {
     /// RE-MEASURED 2026-11-18 (fleet cron): `POST /api/v1/team/members/:id/reissue` (commit
     /// 9542e7b, "a workspace can send a teammate's login details again") landed without moving this
     /// tuple, so `cargo test` was RED on HEAD for every later run. It is a console write that takes
-    /// the tenant from the session, so it belongs in `private`: 239 mounts, 239 unique, 213 on the
-    /// API surface, 24 public, 3 internal, 186 private, 26 served.
+    /// the tenant from the session, so it belongs in `private`. RE-MEASURED 2026-11-21 (cron
+    /// `default`): the opt-out page (public) and three operator doors onto the do-not-mail list
+    /// (private) — 243 mounts, 243 unique, 217 on the API surface, 25 public, 3 internal,
+    /// 189 private, 26 served.
     #[test]
     fn the_census_shape_is_what_the_docs_say() {
         let mounted = mounted_routes();
@@ -529,7 +531,12 @@ mod tests {
             // (kanban B214, the email opt-out page). The token in the path is the credential, so it
             // belongs in `public`: 240 mounts, 240 unique, 214 on the API surface, 25 public, 3
             // internal, 186 private, 26 served.
-            (240, 240, 214, 25, 3, 186, 26),
+            // 2026-11-21 (cron `default`): +3 mounted API routes, all PRIVATE — the operator's
+            // do-not-mail doors (`GET|POST /api/v1/settings/suppressions`,
+            // `GET /api/v1/settings/suppressions.csv`, `DELETE /api/v1/settings/suppressions/:id`).
+            // They take the tenant from the session, so they belong in `private`: 243 mounts, 243
+            // unique, 217 on the API surface, 25 public, 3 internal, 189 private, 26 served.
+            (243, 243, 217, 25, 3, 189, 26),
             "the census in the module docs no longer matches the router"
         );
     }

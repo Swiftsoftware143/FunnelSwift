@@ -5778,6 +5778,37 @@ async function renderEmailBranding() {
         <div id="brand-preview-msg" style="font-size:12px;margin-top:8px;color:#64748b"></div>
       </div>
     </div>
+    <div class="card" style="margin-top:20px" data-ops="email-do-not-mail">
+      <div class="card-header">
+        <span class="card-title">Do not mail</span>
+        <span class="badge" id="dnm-count">0</span>
+      </div>
+      <div style="padding:16px">
+        <div style="font-size:12px;color:#64748b;margin-bottom:12px">
+          People who asked this workspace to stop sending notices. Every notice email carries an
+          unsubscribe link and a click records the address here; add one yourself for a request made
+          by phone, or for an address that keeps bouncing. Account mail — sign-in details, password
+          resets, receipts — is never stopped, because they may need it to get back in.
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+          <div class="form-group" style="margin:0"><label class="form-label">Email address</label>
+            <input class="input" id="dnm-address" placeholder="person@example.com" maxlength="254" aria-label="Address to stop mailing"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">Stop</label>
+            <select class="input" id="dnm-class" aria-label="What to stop">
+              <option value="notification">Notices only</option>
+              <option value="all">Everything</option>
+            </select></div>
+        </div>
+        <div class="form-group" style="margin:10px 0 0"><label class="form-label">Why (optional)</label>
+          <input class="input" id="dnm-reason" placeholder="e.g. asked by phone on 21 Nov" maxlength="200" aria-label="Why this address is on the list"></div>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn btn-primary btn-sm" id="dnm-add">Add address</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="dnm-export">Download the list (CSV)</button>
+          <span id="dnm-msg" style="font-size:12px;color:#64748b"></span>
+        </div>
+        <div id="dnm-list" style="margin-top:14px;font-size:13px;color:#64748b">Loading…</div>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -5803,7 +5834,98 @@ function bindEmailBranding() {
   document.getElementById('brand-logo-remove')?.addEventListener('click', removeBrandLogo);
   document.getElementById('brand-preview-send')?.addEventListener('click', sendBrandPreview);
   document.getElementById('brand-exact')?.addEventListener('click', showExactEmail);
+  document.getElementById('dnm-add')?.addEventListener('click', window._dnmAdd);
+  document.getElementById('dnm-export')?.addEventListener('click', window._dnmExport);
+  window._dnmLoad();
 }
+
+/* ── the operator's do-not-mail list (2026-11-21) ──────────────────────────────────────────────
+   The public opt-out page records a refusal; without this screen the one person who owns the
+   sending domain could not see who asked to stop, add an address that asked by phone or that keeps
+   bouncing, allow one again, or keep the list as a file. All four doors are the app's own
+   /settings/suppressions routes, scoped server-side to this workspace. */
+function dnmRender(rows) {
+  const box = document.getElementById('dnm-list');
+  const count = document.getElementById('dnm-count');
+  if (count) count.textContent = String(rows.length);
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '<p style="margin:0">Nobody has opted out. When someone clicks the unsubscribe link in a notice, their address appears here.</p>';
+    return;
+  }
+  box.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#94a3b8;font-size:11px;text-transform:uppercase"><th style="padding:6px 4px">Address</th><th style="padding:6px 4px">Stopped</th><th style="padding:6px 4px">Why</th><th style="padding:6px 4px">Added</th><th></th></tr></thead><tbody>' +
+    rows.map(function(r) {
+      return '<tr style="border-top:1px solid var(--border)">' +
+        '<td style="padding:6px 4px">' + x(r.address) + '</td>' +
+        '<td style="padding:6px 4px">' + (r.mail_class === 'all' ? 'Everything' : 'Notices') + '</td>' +
+        '<td style="padding:6px 4px">' + x(r.reason || '') + '</td>' +
+        '<td style="padding:6px 4px">' + x(String(r.created_at || '').slice(0, 10)) + ' · ' + x(r.source || '') + '</td>' +
+        '<td style="padding:6px 4px;text-align:right"><button type="button" class="btn btn-secondary btn-sm" onclick="window._dnmRemove(\'' + r.id + '\')">Allow again</button></td>' +
+      '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+window._dnmLoad = async function() {
+  const box = document.getElementById('dnm-list');
+  try {
+    const r = await api('/settings/suppressions');
+    dnmRender((r && r.suppressions) || []);
+  } catch (e) {
+    if (box) box.innerHTML = '<p style="margin:0;color:#b91c1c">Could not read the list: ' + x(e.message || '') + '</p>';
+  }
+};
+
+window._dnmRemove = async function(id) {
+  try {
+    await api('/settings/suppressions/' + encodeURIComponent(id), { method: 'DELETE' });
+    await window._dnmLoad();
+    showToast('That address can receive notices again', 'success', false);
+  } catch (e) {
+    showToast(e.message || 'Could not remove it', 'error', false);
+  }
+};
+
+window._dnmAdd = async function() {
+  const a = document.getElementById('dnm-address');
+  const c = document.getElementById('dnm-class');
+  const rsn = document.getElementById('dnm-reason');
+  const msg = document.getElementById('dnm-msg');
+  const address = ((a && a.value) || '').trim();
+  if (!address || address.indexOf('@') < 1) {
+    if (msg) { msg.textContent = 'Type the full email address first.'; msg.style.color = '#b91c1c'; }
+    return;
+  }
+  try {
+    await api('/settings/suppressions', {
+      method: 'POST',
+      body: JSON.stringify({ address: address, mail_class: (c && c.value) || 'notification', reason: (rsn && rsn.value) || '' })
+    });
+    if (a) a.value = '';
+    if (rsn) rsn.value = '';
+    if (msg) { msg.textContent = 'Added — that address will not receive notices.'; msg.style.color = '#166534'; }
+    await window._dnmLoad();
+  } catch (e) {
+    if (msg) { msg.textContent = e.message || 'Could not add it'; msg.style.color = '#b91c1c'; }
+  }
+};
+
+window._dnmExport = async function() {
+  try {
+    const res = await fetch(API_BASE + '/settings/suppressions.csv', { headers: TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {} });
+    if (!res.ok) throw new Error('Could not build the file');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'do-not-mail.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
+  } catch (e) {
+    showToast(e.message || 'Could not build the file', 'error', false);
+  }
+};
 
 window._brandPreview = function() {
   const box = document.getElementById('brand-preview');
