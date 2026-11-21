@@ -4486,7 +4486,7 @@ function bindApiKeys() { /* actions are window-level handlers so the table rows 
 // paste-ready client config. Creating, revealing and rotating a key stays on the API Keys screen, so
 // there is exactly ONE writer of a key value.
 // What the server ACTUALLY answers for funnelswift today — measured live with a real key
-// (tools/list on the MCP endpoint, 2026-11-21): 60 tools across TWENTY entity groups, each group
+// (tools/list on the MCP endpoint, 2026-11-21): 69 tools across TWENTY-THREE entity groups, each group
 // carrying three tools — `<key>_summary` (how many exist in this workspace), `<key>_search` (text
 // search, newest first, q + limit 1-200) and `<key>_list_tenants` (platform administrators only).
 // The build that first shipped this screen served six; the fleet server has since grown to twenty,
@@ -4513,6 +4513,9 @@ const MCP_ENTITIES = [
   ['Checkout sessions', 'funnelswift_checkout_sessions'],
   ['Portfolio companies', 'funnelswift_portfolio'],
   ['Subscriptions', 'funnelswift_subscriptions'],
+  ['Funnels', 'funnelswift_funnels'],
+  ['Card stats', 'funnelswift_card_stats'],
+  ['Sending domains', 'funnelswift_email_domains'],
 ];
 function mcpConfigText() {
   return JSON.stringify({ mcpServers: { funnelswift: { type: 'http', url: MCP_ENDPOINT,
