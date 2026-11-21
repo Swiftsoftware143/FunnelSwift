@@ -4541,7 +4541,7 @@ async function renderMcp() {
       : `<p style="font-size:13px;color:var(--muted);margin:0">No active API key on this workspace yet. Create one on <b>API Keys</b>, then come back — the MCP server accepts that key as a Bearer token.</p>`);
   const rows = MCP_ENTITIES.map(p => `<tr>
       <td><strong>${x(p[0])}</strong></td>
-      <td><code style="font-size:11px">${x(p[1])}_summary</code> &middot; <code style="font-size:11px">${x(p[1])}_search</code></td>
+      <td><code style="font-size:11px">${x(p[1])}_summary</code> &middot; <code style="font-size:11px">${x(p[1])}_search</code> &middot; <code style="font-size:11px">${x(p[1])}_list_tenants</code> <span style="font-size:10px;color:var(--muted)">(platform admin)</span></td>
     </tr>`).join('');
   return `<div>
     <h1 style="font-size:22px;font-weight:700">🤖 AI Tools (MCP)</h1>
