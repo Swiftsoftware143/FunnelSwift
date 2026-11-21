@@ -38,8 +38,10 @@ pub const NOTIFICATION: &str = "notification";
 /// Mail that may not (credentials, resets, security notices).
 pub const TRANSACTIONAL: &str = "transactional";
 
-/// Where the customer-facing pages live for this app.
-const APP_URL: &str = "https://app.funnelswift.com";
+// Where the customer-facing pages live for this app — taken from the app's own constant so the
+// opt-out link can never point at a host this install does not serve (a `.com` for a `.net` app is
+// a dead link in every message).
+use crate::email::APP_URL;
 
 /// The template types that count as notification mail. Everything else is transactional, so a
 /// template added later is safe by default — it is never silently stoppable.
@@ -370,8 +372,20 @@ mod tests {
     }
 
     #[test]
+    fn the_opt_out_link_points_at_the_apps_own_host() {
+        // A `.com` for a `.net` install is a dead link in every message. The link is built from
+        // `crate::email::APP_URL`, the app's own served host, and this pins that.
+        std::env::set_var("UNSUBSCRIBE_SECRET", "unsubscribe-test-secret");
+        let url = unsubscribe_url(T, "a@b.com", NOTIFICATION).expect("url");
+        assert!(
+            url.starts_with("https://app.funnelswift.net/api/public/unsubscribe/"),
+            "{url}"
+        );
+    }
+
+    #[test]
     fn the_footer_only_applies_to_notification_mail_and_carries_the_link() {
-        std::env::set_var("UNSUBSCRIBE_SECRET", "footer-secret");
+        std::env::set_var("UNSUBSCRIBE_SECRET", "unsubscribe-test-secret");
         let (t, h) = with_unsubscribe_footer(
             T,
             "a@b.com",
