@@ -434,9 +434,13 @@ pub async fn impersonate(
         ));
     }
 
-    // Get a user for this tenant to use as the impersonated identity
+    // Get a user for this tenant to use as the impersonated identity.
+    // The column list must cover EVERY non-Option field of `User` (auth/models.rs): the model
+    // carries migration 132's `closed_at`, so leaving it out made this route answer 500
+    // "Database error: no column found for name: closed_at" and the operator could not
+    // impersonate any workspace (measured live 2026-11-20).
     let target_user = sqlx::query_as::<_, crate::auth::models::User>(
-        "SELECT id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at FROM users WHERE tenant_id = $1 AND is_active = true LIMIT 1"
+        "SELECT id, tenant_id, email, password_hash, name, role, is_active, created_at, updated_at, closed_at FROM users WHERE tenant_id = $1 AND is_active = true LIMIT 1"
     )
     .bind(tid)
     .fetch_optional(&state.pool)
