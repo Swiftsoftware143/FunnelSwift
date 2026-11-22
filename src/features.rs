@@ -330,6 +330,92 @@ fn check_numeric_limit(limit: i32, usage: i64, label: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// The sentence a REACHED cap adds: which plan raises it, to what, and for how much.
+///
+/// Kept pure so the wording is unit-testable without a database. `-1` is the fleet's unlimited
+/// sentinel, so it is spelled out rather than printed as a number.
+fn cap_sentence(name: &str, next: i32, price: f64, cycle: &str) -> String {
+    let raised = if next == -1 {
+        "unlimited".to_string()
+    } else {
+        next.to_string()
+    };
+    if price > 0.0 {
+        format!(
+            "{name} (${price:.2}/{cycle}) raises it to {raised} — open Upgrade and request that plan."
+        )
+    } else {
+        format!("The {name} plan raises it to {raised} — open Upgrade to switch to it.")
+    }
+}
+
+/// The cheapest ACTIVE plan whose ceiling for `feature_key` is higher than the cap just hit.
+///
+/// `cheapest_plan_with` answers "which plan INCLUDES this at all" (used by `not_included`). A cap
+/// that was REACHED needs a different question: the plan must raise the number, not merely grant
+/// the feature, and `-1` (unlimited) always raises it. Equal prices prefer the larger ceiling, so
+/// two plans at the same price answer with the one that grants more.
+async fn plan_raising_cap(
+    state: &AppState,
+    feature_key: &str,
+    current: i32,
+    side: Option<&str>,
+) -> Option<(String, i32, f64, String)> {
+    let column = limit_column(feature_key)?;
+    let rows: Vec<Value> = sqlx::query_scalar("SELECT to_jsonb(p) FROM plans p")
+        .fetch_all(&state.pool)
+        .await
+        .ok()?;
+    let mut best: Option<(String, i32, f64, String)> = None;
+    for row in rows {
+        if !row
+            .get("is_active")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Some(raw) = row.get(column).and_then(Value::as_i64) else {
+            continue;
+        };
+        // Stay on the customer's own product side. A Capture workspace hitting its tag cap must be
+        // pointed at a Capture (or a both-sides Suite/Agency) plan: sending it to a KINETIC plan
+        // would answer "your tags are capped" with a different product, which reads as a mistake.
+        // An unknown side filters nothing, so a row without the column still gets an answer.
+        if let Some(wanted) = side {
+            let plan_side = row.get("side").and_then(Value::as_str).unwrap_or("");
+            if plan_side != wanted && plan_side != "both" {
+                continue;
+            }
+        }
+        let next = raw as i32;
+        if next != -1 && next <= current {
+            continue;
+        }
+        let name = row
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_string();
+        let price = row.get("price").and_then(Value::as_f64).unwrap_or(0.0);
+        let cycle = row
+            .get("billing_cycle")
+            .and_then(Value::as_str)
+            .unwrap_or("month")
+            .to_string();
+        let better = match &best {
+            None => true,
+            Some((_, best_next, best_price, _)) => {
+                price < *best_price || (price == *best_price && next > *best_next)
+            }
+        };
+        if better {
+            best = Some((name, next, price, cycle));
+        }
+    }
+    best
+}
+
 pub async fn enforce_feature_limit(
     state: &AppState,
     tenant_id: Uuid,
@@ -347,7 +433,34 @@ pub async fn enforce_feature_limit(
         Some(0) => Err(not_included(state, tenant_id, feature_key, label).await),
         Some(limit) => {
             let usage = get_usage_count(state, tenant_id, feature_key).await;
-            check_numeric_limit(limit, usage, label)
+            match check_numeric_limit(limit, usage, label) {
+                Ok(()) => Ok(()),
+                // A cap was REACHED (`limit > 0`; the 0 case returned above through
+                // `not_included`). The bare sentence named no plan and no price, so it now carries
+                // the cheapest plan that raises the ceiling, with the new number and its price —
+                // the same "which plan to request" answer `not_included` already gives.
+                Err(AppError::UpgradeRequired(msg)) if limit > 0 => {
+                    let tenant_side = effective_plan(state, tenant_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|p| {
+                            p.row
+                                .get("side")
+                                .and_then(Value::as_str)
+                                .map(str::to_string)
+                        });
+                    match plan_raising_cap(state, feature_key, limit, tenant_side.as_deref()).await
+                    {
+                        Some((name, next, price, cycle)) => Err(AppError::UpgradeRequired(
+                            format!("{msg} {}", cap_sentence(&name, next, price, &cycle)),
+                        )),
+                        // No plan raises it: keep the honest sentence rather than invent one.
+                        None => Err(AppError::UpgradeRequired(msg)),
+                    }
+                }
+                Err(e) => Err(e),
+            }
         }
     }
 }
@@ -1020,6 +1133,24 @@ pub async fn enforce_template_access(
 #[cfg(test)]
 mod resolution_rules {
     use super::*;
+
+    #[test]
+    fn a_reached_cap_names_the_plan_that_raises_it() {
+        // A priced plan: the sentence carries the new ceiling and the price, so a customer on the
+        // free tier can request the right plan without comparing six of them by hand.
+        let paid = cap_sentence("Capture Starter", 5, 9.0, "month");
+        assert!(paid.contains("Capture Starter"), "{paid}");
+        assert!(paid.contains("$9.00/month"), "{paid}");
+        assert!(paid.contains("raises it to 5"), "{paid}");
+        // `-1` is the unlimited sentinel and must never be printed as a number.
+        let unlimited = cap_sentence("Kinetic Pro", -1, 9.0, "month");
+        assert!(unlimited.contains("unlimited"), "{unlimited}");
+        assert!(!unlimited.contains("-1"), "{unlimited}");
+        // A free plan that raises a cap (no price) still names itself and promises no charge.
+        let free = cap_sentence("Kinetic Free", 20, 0.0, "month");
+        assert!(free.contains("Kinetic Free"), "{free}");
+        assert!(!free.contains('$'), "{free}");
+    }
 
     #[test]
     fn a_present_jsonb_key_beats_the_column_both_ways() {

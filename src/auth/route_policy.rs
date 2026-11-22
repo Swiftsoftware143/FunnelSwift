@@ -546,7 +546,13 @@ mod tests {
             // read, so `private`: 244 mounts, 244 unique, 218 on the API surface, 25 public,
             // 3 internal, 190 private, 26 served. (That commit left this pin behind, so the suite
             // was red at HEAD for every run in between.)
-            (244, 244, 218, 25, 3, 190, 26),
+            // 2026-11-22: +2 mounted API routes, one PUBLIC and one PRIVATE — the mail provider's
+            // delivery-events receiver `POST /api/v1/webhooks/mailgun/events/:token` (the URL token
+            // is the credential, so `public`) and the operator's read of that URL,
+            // `GET /api/v1/settings/do-not-mail/webhook` (session-scoped, so `private`). The commit
+            // that added them left this pin behind, so the suite was red at HEAD: 246 mounts, 246
+            // unique, 220 on the API surface, 26 public, 3 internal, 191 private, 26 served.
+            (246, 246, 220, 26, 3, 191, 26),
             "the census in the module docs no longer matches the router"
         );
     }
