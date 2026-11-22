@@ -56,7 +56,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
 <script>/* NIGHT MODE boot (2026-11-21). Runs before first paint so a night-mode visitor never
    sees a white flash: the stored choice wins, the operating system decides when nothing is stored. */
-(function(){try{var t=localStorage.getItem('fs_theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+(function(){try{var t=null;try{var m=document.cookie.match(/(?:^|;\s*)fs_theme=(dark|light)/);if(m)t=m[1];}catch(e){}if(t!=='dark'&&t!=='light'){try{t=localStorage.getItem('fs_theme');}catch(e){}}if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',(t==='dark')?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;min-height:100vh;background:#f1f5f9}
@@ -388,10 +388,18 @@ html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!imp
 var T=localStorage.getItem("ws_fs_token")||"", U=null;
 /* NIGHT MODE (2026-11-21). The switch sits in the sidebar footer beside Sign Out and always
    names the action it will take, so nobody has to guess which half is on. */
+/* ONE CHOICE, THREE HOSTS (2026-11-22). fs_theme was per-origin localStorage, so a choice made
+   on app.funnelswift.net died at admin.funnelswift.net. The cookie on .funnelswift.net is the
+   shared record; the host-only twin is dropped first so it cannot shadow the shared one. */
+function fsThemeCookie(v){
+  try{document.cookie='fs_theme=;path=/;max-age=0';}catch(e){}
+  try{document.cookie='fs_theme='+v+';domain=.funnelswift.net;path=/;max-age=31536000;SameSite=Lax';}catch(e){}
+}
 function fsThemeApply(name){
   var t=(name==='dark')?'dark':'light';
   try{document.documentElement.setAttribute('data-theme',t);}catch(e){}
   try{localStorage.setItem('fs_theme',t);}catch(e){}
+  fsThemeCookie(t);
   var lab=document.getElementById('fsThemeLabel');
   if(lab) lab.textContent=(t==='dark')?'Day mode':'Night mode';
   var ico=document.getElementById('fsThemeIcon');
