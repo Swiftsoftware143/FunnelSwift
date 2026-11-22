@@ -240,6 +240,11 @@ pub const PUBLIC_ROUTES: &[&str] = &[
     // is stored as nothing. Narrow by construction: ONE handler, which resolves the domain from
     // the recipient address and refuses anything it cannot match.
     "/api/v1/webhooks/mailgun/inbound",
+    // The provider's DELIVERY events (2026-11-22): a hard bounce, a spam complaint and a list
+    // unsubscribe, posted with no session like every provider webhook. The credential is a secret
+    // this app generates and carries IN THE PATH (`mailgun_events_token`), compared in constant
+    // time before anything is written; a wrong token is a 403 and records nothing.
+    "/api/v1/webhooks/mailgun/events/:token",
     // The OTHER receiver a domain can choose (measured live 2026-11-14: the console hands a
     // SendGrid-hosted customer this URL, and the router existed but was never mounted, so it
     // answered 404). SendGrid signs nothing — the unguessable per-domain `inbound_token` in the

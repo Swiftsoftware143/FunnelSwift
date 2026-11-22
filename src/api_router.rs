@@ -317,6 +317,13 @@ pub fn create_router(
             "/api/v1/settings/suppressions/:id",
             delete(crate::compliance::remove_suppression),
         )
+        // The mail-provider DELIVERY-EVENTS endpoint's URL (2026-11-22). The provider posts events
+        // (hard bounces, complaints, list unsubscribes) to the public route below; this is the
+        // authenticated door the operator reads the URL from, to paste into the provider once.
+        .route(
+            "/api/v1/settings/do-not-mail/webhook",
+            get(crate::compliance_events::webhook_url),
+        )
         .route(
             "/api/v1/branding/logo/:tenant_id",
             get(branding_handler::get_logo),
@@ -1391,6 +1398,17 @@ pub fn create_router(
             "/api/v1/webhooks/mailgun/inbound",
             post(crate::private_email::webhook_handler::inbound_webhook)
                 .layer(axum::extract::DefaultBodyLimit::max(25 * 1024 * 1024)),
+        )
+        // The mail provider's DELIVERY events (2026-11-22): hard bounces, complaints and list
+        // unsubscribes. Anonymous for the same reason as the inbound route — the provider posts
+        // with no session — and the credential is the secret carried IN THE PATH, compared in
+        // constant time inside the handler (see `compliance_events`). Before this route existed
+        // the account had no webhook registered on any domain, so a hard-bounced address stayed
+        // unsuppressed and the next notice mailed it again.
+        .route(
+            "/api/v1/webhooks/mailgun/events/:token",
+            post(crate::compliance_events::events_webhook)
+                .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024)),
         )
         // SendGrid Inbound Parse — the OTHER receiver a domain can pick. Measured 2026-11-14: the
         // handler and its named router existed and the console handed a SendGrid-hosted customer a
