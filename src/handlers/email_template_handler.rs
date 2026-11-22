@@ -847,7 +847,7 @@ pub async fn admin_send_reset(
         })));
     }
 
-    match crate::email::send_reset_email(
+    match crate::email::send_reset_email_outcome(
         &state.pool,
         tenant_id,
         &target_email,
@@ -856,9 +856,21 @@ pub async fn admin_send_reset(
     )
     .await
     {
-        Ok(()) => Ok(Json(serde_json::json!({
+        Ok(crate::email::SendOutcome::Queued) => Ok(Json(serde_json::json!({
             "sent": true,
             "message": format!("A one-hour reset link is on its way to {target_email}."),
+        }))),
+        // The funnel deliberately withheld this message (2026-11-22): the address is on the
+        // workspace's do-not-mail list — an opt-out, or a hard bounce / spam complaint, which stops
+        // every class — so no provider request was made. Answering `sent: true` here told an
+        // operator on the phone that a link was on its way to a mailbox that will never receive it.
+        Ok(crate::email::SendOutcome::Withheld { code, reason }) => Ok(Json(serde_json::json!({
+            "sent": false,
+            "withheld": true,
+            "reason": code,
+            "message": format!(
+                "Nothing was sent: {reason}. Clear that on this workspace's do-not-mail list and try again, or give the customer sign-in help another way."
+            ),
         }))),
         Err(e) => Ok(Json(serde_json::json!({
             "sent": false,

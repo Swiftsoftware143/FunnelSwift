@@ -119,17 +119,35 @@ fn render(template: &str, vars: &std::collections::HashMap<&str, &str>) -> Strin
     result
 }
 
-/// Send an already-rendered email through the tenant's DB-configured provider.
+/// What the one send funnel actually did with a message.
+///
+/// `Ok(())` is not the same claim as "the message went out": the funnel deliberately WITHHOLDS a
+/// message for a fleet-harness recipient, for an address on the workspace's do-not-mail list, and
+/// (in `deliver`) for a reserved address — recording the non-send and answering `Ok` so the caller
+/// does not retry. A caller that shows a human "it is on its way" therefore has to ask WHICH
+/// happened, not whether the call errored. This type is that answer (2026-11-22; the same shape
+/// ADASwift shipped for its Discover blast and plan notice).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendOutcome {
+    /// Handed to the provider (accepted by it, or queued by it). The only arm that may be reported
+    /// to a person as "sent".
+    Queued,
+    /// Deliberately not attempted, with the reason and a machine-readable code.
+    Withheld { code: &'static str, reason: String },
+}
+
+/// Send an already-rendered email through the tenant's DB-configured provider, reporting whether it
+/// was actually handed over.
 /// Graceful degradation: unconfigured logs a warning and skips (never panics, never
 /// silently uses a server-wide env credential).
-async fn dispatch_for_tenant(
+async fn dispatch_for_tenant_outcome(
     pool: &PgPool,
     tenant_id: Option<Uuid>,
     to: &str,
     subject: &str,
     body: Option<&str>,
     html: Option<&str>,
-) -> Result<(), String> {
+) -> Result<SendOutcome, String> {
     let Some(cfg) = crate::email_provider::resolve(pool, tenant_id).await else {
         tracing::warn!(
             tenant = ?tenant_id,
@@ -159,7 +177,8 @@ async fn dispatch_for_tenant(
     // `deliver` answers Ok(()) for a reserved/harness recipient — it deliberately attempts nothing —
     // so Ok alone is not a delivery. Recording that as accepted is the misreport this line exists to
     // prevent; the withheld case is recorded as the non-send it is (2026-10-14, same class fixed on
-    // ADASwift and MissedCall the same day).
+    // ADASwift and MissedCall the same day). It is ALSO returned as `Withheld` since 2026-11-22, so
+    // the caller can stop reporting a non-send as a send.
     match (&outcome, crate::security::probe_addr::harness_domain(to)) {
         (Ok(()), Some(domain)) => {
             tracing::info!(to = %to, domain = %domain, "send withheld — recording a non-send");
@@ -169,21 +188,38 @@ async fn dispatch_for_tenant(
             // that suppress at a handler level already pass a meaningful kind ("signup credentials
             // email"), so the fan-out path was the odd one out. `subject` is now the kind, and the
             // history reads "<the subject> (withheld)".
-            record_withheld(
-                pool,
-                subject,
-                to,
-                &format!("'{domain}' is a fleet-harness / reserved address"),
-            )
-            .await;
+            let reason = format!("'{domain}' is a fleet-harness / reserved address");
+            record_withheld(pool, subject, to, &reason).await;
+            Ok(SendOutcome::Withheld {
+                code: "suppressed",
+                reason,
+            })
         }
-        (Ok(()), None) => record_last_send(pool, to, subject, true, "").await,
+        (Ok(()), None) => {
+            record_last_send(pool, to, subject, true, "").await;
+            Ok(SendOutcome::Queued)
+        }
         (Err(e), _) => {
             tracing::warn!(provider = %cfg.provider, to = %to, "email send failed: {e}");
             record_last_send(pool, to, subject, false, e).await;
+            Err(e.clone())
         }
     }
-    outcome
+}
+
+/// The old contract: "nothing went wrong". A thin wrapper over
+/// [`dispatch_for_tenant_outcome`], so every existing caller is behaviourally unchanged.
+async fn dispatch_for_tenant(
+    pool: &PgPool,
+    tenant_id: Option<Uuid>,
+    to: &str,
+    subject: &str,
+    body: Option<&str>,
+    html: Option<&str>,
+) -> Result<(), String> {
+    dispatch_for_tenant_outcome(pool, tenant_id, to, subject, body, html)
+        .await
+        .map(|_| ())
 }
 
 /// The operator's view of the LAST transactional send this installation attempted.
@@ -447,6 +483,21 @@ pub async fn send_template_email_for_tenant(
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
 ) -> Result<(), String> {
+    send_template_email_for_tenant_outcome(pool, tenant_id, aid, to, template_type, vars)
+        .await
+        .map(|_| ())
+}
+
+/// [`send_template_email_for_tenant`], answering WHICH thing happened — the only form a caller may
+/// use when it then tells a human "it is on its way".
+pub async fn send_template_email_for_tenant_outcome(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    aid: Uuid,
+    to: &str,
+    template_type: &str,
+    vars: &std::collections::HashMap<&str, &str>,
+) -> Result<SendOutcome, String> {
     let mail_class = crate::compliance::class_of(template_type);
     let (final_subject, final_body, final_html) =
         render_template(pool, aid, template_type, vars).await;
@@ -454,20 +505,22 @@ pub async fn send_template_email_for_tenant(
     // The do-not-mail gate (kanban B214). AFTER the render, so the recorded non-send carries the
     // real subject; BEFORE dispatch, so no provider request is made at all. Transactional mail is
     // never gated: somebody who opted out of notices must still be able to receive a reset link.
+    // A hard bounce or a spam complaint is recorded in class `all`, which stops every class — that
+    // is harm control, not preference (see `blocking_classes`). Since 2026-11-22 the withheld arm
+    // answers `Withheld` instead of a bare `Ok`, because a caller reporting "sent" here was
+    // measured lying to the operator about a customer's sign-in help.
     if let Some(reason) = crate::compliance::gate(pool, tenant_id, to, mail_class).await {
         tracing::info!(
             to = %to,
             reason = %reason,
             "send withheld — recipient is on this workspace's do-not-mail list"
         );
-        record_withheld(
-            pool,
-            &final_subject,
-            to,
-            &format!("recipient is on the do-not-mail list ({reason})"),
-        )
-        .await;
-        return Ok(());
+        let detail = format!("recipient is on the do-not-mail list ({reason})");
+        record_withheld(pool, &final_subject, to, &detail).await;
+        return Ok(SendOutcome::Withheld {
+            code: "do_not_mail",
+            reason: detail,
+        });
     }
 
     // Notification mail carries a working opt-out link for THIS recipient.
@@ -477,7 +530,7 @@ pub async fn send_template_email_for_tenant(
         (final_body, final_html)
     };
 
-    dispatch_for_tenant(
+    dispatch_for_tenant_outcome(
         pool,
         Some(tenant_id),
         to,
@@ -1050,10 +1103,26 @@ pub async fn send_reset_email(
     token: &str,
     name: &str,
 ) -> Result<(), String> {
+    send_reset_email_outcome(pool, tenant_id, to, token, name)
+        .await
+        .map(|_| ())
+}
+
+/// [`send_reset_email`], answering whether the message was actually handed to the provider.
+///
+/// The operator's "send sign-in help" route shows a person "it is on its way" on this mail, so it
+/// must not read a withheld non-send as a send (2026-11-22).
+pub async fn send_reset_email_outcome(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    to: &str,
+    token: &str,
+    name: &str,
+) -> Result<SendOutcome, String> {
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("token", token);
-    send_template_email_for_tenant(
+    send_template_email_for_tenant_outcome(
         pool,
         tenant_id,
         tenant_id,
