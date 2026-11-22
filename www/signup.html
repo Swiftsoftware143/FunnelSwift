@@ -9,8 +9,9 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='fav' x1='0%25' y1='100%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%232563EB'/%3E%3Cstop offset='100%25' stop-color='%2306B6D4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%230F172A'/%3E%3Cpath d='M 23 8 A 7 7 0 0 1 23 24' fill='none' stroke='url(%23fav)' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M 12 22 L 20 10 L 16 16 L 22 16 L 13 24 L 15 19 Z' fill='url(%23fav)'/%3E%3C/svg%3E">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#2563eb,#1d4ed8);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.signup-card{background:#fff;border-radius:16px;padding:40px;width:420px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#2563eb,#1d4ed8);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.navx-crumb,.navx-rel{align-self:stretch}
+    .signup-card{background:#fff;border-radius:16px;padding:40px;width:420px;max-width:100%;flex:0 0 auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
 .signup-card .emoji{font-size:40px;text-align:center;margin-bottom:8px}
 .signup-card h1{font-size:24px;font-weight:700;text-align:center;color:#1e293b;margin-bottom:4px}
 .signup-card p.sub{text-align:center;color:#64748b;font-size:14px;margin-bottom:24px}
@@ -18,6 +19,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .form-group label{display:block;font-size:12px;font-weight:500;color:#374151;margin-bottom:4px}
 .form-group input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;outline:none}
 .form-group input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+@media(max-width:480px){.signup-card{padding:26px 22px;border-radius:14px}.signup-card h1{font-size:21px}.signup-card p.sub{margin-bottom:18px}}
 .btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:15px;font-weight:600;color:#fff;background:#2563eb;cursor:pointer;transition:opacity .15s}
 .btn:hover{opacity:.9}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -32,8 +34,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .plan-badge{display:none;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:500;text-align:center;margin-bottom:16px;line-height:1.5}
 .plan-badge.show{display:block}
 </style>
+<!-- Day/night (fleet standard). Boot runs before first paint so a night visitor never sees a white
+     flash; the choice is shared with the marketing home through localStorage['fs_theme'] + cookie. -->
+<script id="fs-theme-boot">(function(){try{var t=null;try{var m=document.cookie.match(/(?:^|;\s*)fs_theme=([^;]+)/);if(m)t=m[1];}catch(e){}if(t!=='dark'&&t!=='light'){try{t=localStorage.getItem('fs_theme');}catch(e){}}if(t!=='dark'&&t!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches){t='dark';}document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+<style id="fs-theme">
+  html[data-theme="light"]{color-scheme:light}
+  html[data-theme="dark"]{color-scheme:dark}
+  #fs-theme-toggle{position:fixed;top:14px;right:14px;z-index:50;background:rgba(255,255,255,.14);color:#fff;
+    border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:7px 12px;
+    font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer}
+  #fs-theme-toggle:hover{background:rgba(255,255,255,.24)}
+  html[data-theme="dark"] body{background:linear-gradient(135deg,#0f172e,#0b1220)}
+  html[data-theme="dark"] .signup-card{background:#1a1d27;box-shadow:0 20px 60px rgba(0,0,0,.55);
+    border:1px solid #2d3148}
+  html[data-theme="dark"] .signup-card h1{color:#f3f4f6}
+  html[data-theme="dark"] .signup-card p.sub{color:#9aa0a6}
+  html[data-theme="dark"] .form-group label{color:#c3c8d1}
+  html[data-theme="dark"] .form-group input{background:#222532;color:#e8eaed;border-color:#2d3148}
+  html[data-theme="dark"] .form-group input::placeholder{color:#7b8191}
+  html[data-theme="dark"] .loading{color:#9aa0a6}
+  html[data-theme="dark"] .login-link{color:#9aa0a6}
+  html[data-theme="dark"] .login-link a{color:#93c5fd}
+  html[data-theme="dark"] .ref-badge{background:#26264a;color:#c7d2fe}
+  html[data-theme="dark"] .plan-badge{background:#123027;color:#6ee7b7;border-color:#1f5c4a}
+  html[data-theme="dark"] .navx-crumb{color:#c3c8d1}
+  html[data-theme="dark"] .navx-crumb a{color:#93c5fd}
+</style>
 </head>
 <body>
+<button id="fs-theme-toggle" type="button" title="Switch between day and night">🌙 Night</button>
+
 <nav class="navx-crumb" aria-label="Breadcrumb"><a href="/">Home</a><span class="navx-sep" aria-hidden="true">&rsaquo;</span><span aria-current="page">Sign up</span></nav><script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://funnelswift.net/"},{"@type":"ListItem","position":2,"name":"Sign up","item":"https://funnelswift.net/signup.html"}]}</script><style id="navx-style">.navx-crumb{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;font-size:.82rem;max-width:1100px;margin:0 auto;padding:14px 18px 0;line-height:1.4}.navx-crumb a{text-decoration:underline;text-underline-offset:2px}.navx-crumb .navx-sep{opacity:.55}.navx-crumb [aria-current]{opacity:.75}.navx-rel{max-width:1100px;margin:34px auto 18px;padding:16px 18px;border:1px solid rgba(128,128,128,.45);border-radius:10px;background:rgba(128,128,128,.08);color:inherit}.navx-rel h2{font-size:1rem;margin:0 0 .6rem;letter-spacing:.01em}.navx-rel ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.45rem 1.4rem}.navx-rel a{text-decoration:underline;text-underline-offset:2px;font-size:.93rem}</style>
 
 
@@ -257,5 +287,24 @@ try{
 
 
 <section class="navx-rel" aria-labelledby="navx-rel-h"><h2 id="navx-rel-h">Keep exploring FunnelSwift</h2><ul><li><a href="/kinetic.html">Kinetic bio-links</a></li><li><a href="/download-app.html">Mobile app</a></li><li><a href="/guide.html">Guide</a></li><li><a href="/guide-affiliate.html">Affiliate guide</a></li></ul></section>
+<script id="fs-theme-toggle-js">
+(function(){
+  var b=document.getElementById('fs-theme-toggle');
+  if(!b) return;
+  var label=function(){
+    var d=document.documentElement.getAttribute('data-theme')==='dark';
+    b.textContent=d?'☀️ Day':'🌙 Night';
+    b.setAttribute('aria-label',d?'Switch to day mode':'Switch to night mode');
+  };
+  b.addEventListener('click',function(){
+    var next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    try{localStorage.setItem('fs_theme',next);}catch(e){}
+    try{document.cookie='fs_theme='+next+';path=/;max-age=31536000;SameSite=Lax';}catch(e){}
+    label();
+  });
+  label();
+})();
+</script>
 </body>
 </html>
