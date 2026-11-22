@@ -7,6 +7,24 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="/favicon.ico">
 <meta name="description" content="Your business mail: inbox, folders, labels and compose, with the same login as your FunnelSwift account.">
+<script>
+/* Day/night — the fleet choice, fourth host (2026-11-22). The console, the sign-in page and the
+   admin console share one choice through the `fs_theme` cookie on .funnelswift.net; this client is
+   served from inbox.funnelswift.net and was the one surface left permanently light. It reads the
+   SAME cookie first (so a choice made in the console arrives here), falls back to this origin's
+   localStorage, then to the OS preference — exactly the order www-app/index.html uses. */
+(function () {
+  try {
+    var t = null;
+    try { var m = document.cookie.match(/(?:^|;\s*)fs_theme=(dark|light)/); if (m) t = m[1]; } catch (e) {}
+    if (t !== 'dark' && t !== 'light') { try { t = localStorage.getItem('fs_theme'); } catch (e) {} }
+    if (t !== 'dark' && t !== 'light') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', (t === 'dark') ? 'dark' : 'light');
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
 <style>
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
@@ -95,10 +113,74 @@
     #cSigWrap,#sPreview{max-height:150px}
     #cBody{min-height:110px}
   }
+  /* ── Night mode (2026-11-22) ─────────────────────────────────────────────────────────────────
+     Same tokens the console uses, re-pointed: every surface below is the light palette with its
+     ink/panel/line roles inverted. Kept to the elements this client actually renders — the
+     hardcoded light values above (buttons, rows, chips, badges, modals) are overridden one by one
+     because they are literal colours rather than tokens. */
+  html[data-theme="dark"]{
+    --bg:#0b1220; --panel:#111a2b; --ink:#e5e7eb; --muted:#94a3b8; --line:#22304a;
+    --accent:#818cf8; --accent-soft:#1d2b4d; --danger:#f87171; --warn:#fbbf24;
+    color-scheme:dark;
+  }
+  html[data-theme="dark"] .btn{background:#16233a;color:var(--ink);border-color:var(--line)}
+  html[data-theme="dark"] .btn:hover{background:#1d2b48}
+  html[data-theme="dark"] .btn-primary{background:var(--accent);border-color:var(--accent);color:#0b1220}
+  html[data-theme="dark"] .btn-primary:hover{background:var(--accent);filter:brightness(1.06)}
+  html[data-theme="dark"] .btn-ghost{color:var(--muted)}
+  html[data-theme="dark"] .btn-ghost:hover{background:#1b2740;color:var(--ink)}
+  html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#0f1a2c;color:var(--ink);border-color:var(--line)}
+  html[data-theme="dark"] .folder:hover{background:#182642}
+  html[data-theme="dark"] .folder.active{color:#c7d2fe}
+  html[data-theme="dark"] .row:hover{background:#16233a}
+  html[data-theme="dark"] .row.unread{background:#131f34}
+  html[data-theme="dark"] .row.unread .subj{color:#f1f5f9}
+  html[data-theme="dark"] .row.sel{background:var(--accent-soft)}
+  html[data-theme="dark"] .chip{background:#1e2a4a;color:#c7d2fe}
+  html[data-theme="dark"] .chip.ticket{background:#0f2e1d;color:#86efac}
+  html[data-theme="dark"] .chip.draft{background:#3a2a07;color:#fcd34d}
+  html[data-theme="dark"] .badge.ticket{background:#0f2e1d;color:#86efac}
+  html[data-theme="dark"] .badge.open{background:#3a2a07;color:#fcd34d}
+  html[data-theme="dark"] .meter{background:#24304a}
+  html[data-theme="dark"] .modal{background:#111a2b;color:var(--ink)}
+  html[data-theme="dark"] .card{background:#111a2b}
+  html[data-theme="dark"] .rec code{background:#182642}
+  html[data-theme="dark"] .sw.on{border-color:#e5e7eb}
+  html[data-theme="dark"] .ok{color:#86efac}
+  html[data-theme="dark"] .modal-foot{background:#111a2b}
+  .theme-toggle{position:fixed;right:16px;bottom:14px;z-index:60;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:7px 12px;font-size:12px;box-shadow:0 4px 16px rgba(15,23,42,.12)}
+  .theme-toggle:hover{filter:brightness(1.02)}
 </style>
 </head>
 <body>
+<button id="fsTheme" class="theme-toggle" type="button" title="Switch between day and night colours"><span id="fsThemeIcon">🌙</span> <span id="fsThemeLabel">Night mode</span></button>
 <div id="app"><div class="empty">Loading FunnelSwift Mail…</div></div>
-<script src="/mail.js?v=20261120a"></script>
+<script>
+/* The switch always names the action it will take (the console's wording). It writes the SAME
+   `fs_theme` cookie on .funnelswift.net that the console, sign-in page and admin console share, so
+   the choice made here is the choice everywhere — and vice versa. */
+(function () {
+  function cookie(v) {
+    try { document.cookie = 'fs_theme=;path=/;max-age=0'; } catch (e) {}
+    try { document.cookie = 'fs_theme=' + v + ';domain=.funnelswift.net;path=/;max-age=31536000;SameSite=Lax'; } catch (e) {}
+  }
+  function apply(t) {
+    t = (t === 'dark') ? 'dark' : 'light';
+    try { document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    try { localStorage.setItem('fs_theme', t); } catch (e) {}
+    cookie(t);
+    var l = document.getElementById('fsThemeLabel'), i = document.getElementById('fsThemeIcon');
+    if (l) l.textContent = (t === 'dark') ? 'Day mode' : 'Night mode';
+    if (i) i.textContent = (t === 'dark') ? '☀️' : '🌙';
+  }
+  window.fsMailThemeApply = apply;
+  var btn = document.getElementById('fsTheme');
+  if (btn) btn.addEventListener('click', function () {
+    apply(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+  apply(document.documentElement.getAttribute('data-theme') || 'light');
+})();
+</script>
+<script src="/mail.js?v=20261122a"></script>
 </body>
 </html>
