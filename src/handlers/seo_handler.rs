@@ -16,11 +16,25 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
     let base = "https://funnelswift.net";
     let mut urls = Vec::new();
 
-    // Static pages
+    // Static pages. This file is the one `robots.txt` points a crawler at, so every page the
+    // marketing site actually serves has to be in it. Measured live 2026-11-22: the dynamic
+    // sitemap carried only the home page, /kinetic, /download-app and /guide, while the served
+    // site also has /pricing (the page the business sells from), the two guide pages and the four
+    // legal pages — the hand-written www/sitemap.xml lists all eleven, but nothing points a
+    // crawler at THAT file, so Google was being told about four pages and none of the prices.
+    // The list below mirrors www/sitemap.xml; /pricing leads the commercial pages because it is
+    // the one a searcher for "digital business card" should land on.
     urls.push(xml_url(base, "", "weekly", "1.0", None));
     urls.push(xml_url(base, "/kinetic", "weekly", "0.9", None));
+    urls.push(xml_url(base, "/pricing", "weekly", "0.9", None));
     urls.push(xml_url(base, "/download-app", "monthly", "0.8", None));
     urls.push(xml_url(base, "/guide", "monthly", "0.7", None));
+    urls.push(xml_url(base, "/guide-admin", "monthly", "0.7", None));
+    urls.push(xml_url(base, "/guide-affiliate", "monthly", "0.7", None));
+    urls.push(xml_url(base, "/terms", "yearly", "0.3", None));
+    urls.push(xml_url(base, "/privacy", "yearly", "0.3", None));
+    urls.push(xml_url(base, "/refunds", "yearly", "0.3", None));
+    urls.push(xml_url(base, "/cookies", "yearly", "0.3", None));
 
     // Public kinetic cards
     if let Ok(rows) = sqlx::query(
