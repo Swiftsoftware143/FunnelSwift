@@ -777,13 +777,6 @@ pub async fn submit_funnel_lead(
             .unwrap_or("Funnel visitor")
             .to_string()
     });
-    // The plan's lead ceiling binds this public door too — but the READER here is the customer's
-    // own prospect, not the account holder, so the refusal must never carry the owner's "Upgrade to
-    // increase your limit" sentence (measured live 2026-11-06: it did, and this page prints the
-    // server's message verbatim). `enforce_public_lead_limit` answers a neutral sentence instead;
-    // the owner's own doors keep the upsell.
-    crate::features::enforce_public_lead_limit(&state, tenant_id, "max_leads").await?;
-
     // THE PHONE (migration 117). Optional everywhere: a funnel only shows the field when its owner
     // asked for one, and a visitor who leaves it blank is still a complete lead. A value that is not
     // a phone number is DROPPED, not refused — this is a public capture door and the lead is the
@@ -810,6 +803,53 @@ pub async fn submit_funnel_lead(
         "funnel_id": funnel_id.to_string(),
         "funnel_slug": slug,
     });
+
+    // ONE LEAD PER PERSON PER FUNNEL PAGE (2026-11-21). A visitor who presses the button twice, or a
+    // browser/network that retries, used to leave TWO identical rows and mail the owner twice —
+    // measured live: two submissions one second apart produced two `leads` rows for one address.
+    // A repeat from the SAME funnel page refreshes the row that already exists (a new name/phone
+    // wins, an absent phone keeps the stored one) and does NOT fire a second `lead.created`, a
+    // second activity entry or a second owner notification: it is the same capture. A DIFFERENT
+    // funnel page for the same address is a separate capture and still writes its own row, so
+    // per-funnel attribution is unchanged.
+    let existing_lead: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM leads \
+          WHERE tenant_id = $1 AND lower(email) = lower($2) \
+            AND custom_fields->>'funnel_id' = $3 \
+          ORDER BY created_at ASC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(email.as_deref().unwrap_or(""))
+    .bind(funnel_id.to_string())
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some(existing_id) = existing_lead {
+        sqlx::query(
+            "UPDATE leads SET name = $2, phone = COALESCE($3, phone), updated_at = NOW() \
+              WHERE id = $1",
+        )
+        .bind(existing_id)
+        .bind(&name)
+        .bind(&phone)
+        .execute(&state.pool)
+        .await?;
+        tracing::info!(
+            tenant = %tenant_id,
+            funnel = %funnel_id,
+            "repeat funnel submission refreshed the existing lead"
+        );
+        return Ok((StatusCode::CREATED, Json(json!({ "status": "ok" }))));
+    }
+
+    // The plan's lead ceiling binds this public door too — but the READER here is the customer's
+    // own prospect, not the account holder, so the refusal must never carry the owner's "Upgrade to
+    // increase your limit" sentence (measured live 2026-11-06: it did, and this page prints the
+    // server's message verbatim). `enforce_public_lead_limit` answers a neutral sentence instead;
+    // the owner's own doors keep the upsell. It sits AFTER the repeat check on purpose: a repeat
+    // submission refreshes a lead that already counts against the ceiling, so refusing it at the
+    // limit would be a refusal to update a record the workspace already owns.
+    crate::features::enforce_public_lead_limit(&state, tenant_id, "max_leads").await?;
 
     let lead_id = Uuid::new_v4();
     sqlx::query(
