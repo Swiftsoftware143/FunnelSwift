@@ -603,7 +603,7 @@ function renderShell() {
       ${nav}
       ${wsSwitcherHtml()}
       <div class="nav-footer">
-        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - accounts, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}<a class="nav-guide" id="fsThemeToggle" onclick="fsThemeToggle()" title="Switch day / night mode" style="cursor:pointer">🌙 <span id="fsThemeLabel">Night mode</span></a>
+        ${isSuperAdmin() ? '<!-- Admin Guide entry point (kanban t_ce486ac7): guide-admin.html was reachable only by typing its URL - no served page linked it. Offered on the same condition as the Super Admin block above, because the document is the Super Admin reference. --><a class="nav-guide" id="admin-guide-link" href="/admin-guide.html" target="_blank" rel="noopener" title="FunnelSwift Admin Guide - accounts, plans, template gating, system tags and bulk operations">📖 Admin Guide</a>' : ''}<a class="nav-guide" id="fsThemeToggle" onclick="fsThemeToggle()" title="${document.documentElement.getAttribute('data-theme')==='dark'?'Switch to day mode':'Switch to night mode'}" style="cursor:pointer">🌙 <span id="fsThemeLabel">${document.documentElement.getAttribute('data-theme')==='dark'?'Day mode':'Night mode'}</span></a>
         <div style="display:flex;gap:12px;padding:8px 0 10px;border-top:1px solid var(--border);margin-top:8px">
           <a href="https://swiftsoftware.net/updates" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">📰 Updates</a>
           <a href="https://swiftsoftware.net/funnelswift-roadmap" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);text-decoration:none">🗺️ Roadmap</a>
@@ -7846,7 +7846,9 @@ function paintPaymentHealth() {
   }));
 }
 
-/* ── Bridge for the CLASSIC <script>
+/* ── Bridge for the CLASSIC <script> blocks that follow — its paragraph continues after the
+   night/day block below, which a previous edit had left inside this comment. */
+
 // ── NIGHT / DAY MODE ─────────────────────────────────────────────────────────────────────────────
 // This console is light-first, so the switch ADDS the dark palette rather than replacing a dark one.
 // The choice is remembered per browser and applied in <head> before paint (no flash of the wrong theme).
@@ -7862,7 +7864,8 @@ function fsThemeApply(name) {
 function fsThemeToggle() {
   fsThemeApply(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 }
- blocks that follow ────────────────────────────────────────
+
+/* ── Bridge for the CLASSIC <script> blocks that follow ─────────────────────────────────────
    Everything above this line runs in a `type="module"` block, and a module's bindings are NOT
    globals. The "Submit Feedback" button, the operator's Feedback tab and the inline-guide kick
    below all live in plain <script> blocks, so `x`, `STATE`, `api`, `renderApp`, `showToast` and
@@ -7878,6 +7881,11 @@ window.api = api;
 window.renderApp = renderApp;
 window.showToast = showToast;
 window.x = x;
+// The day/night switch is an INLINE onclick on the sidebar item, and inline handlers run in
+// global scope, where a module binding does not exist (measured live 2026-11-22: pressing the
+// switch threw "fsThemeToggle is not a function"). Publish the pair beside the other bridges.
+window.fsThemeToggle = fsThemeToggle;
+window.fsThemeApply = fsThemeApply;
 
 </script>
 <script>
