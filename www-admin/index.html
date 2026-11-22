@@ -167,7 +167,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 </style>
 <link rel="stylesheet" href="/tw.css">
 <script id="theme-boot">/* Night/day applied before first paint. */
-(function(){try{var t=null;try{var m=document.cookie.match(/(?:^|;\s*)fs_theme=(dark|light)/);if(m)t=m[1];}catch(e){}if(t!=='dark'&&t!=='light'){try{t=localStorage.getItem('fs_theme');}catch(e){}}if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',(t==='dark')?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+(function(){try{var t=null;try{var m=document.cookie.match(/(?:^|;\s*)(?:ws_theme|fs_theme)=(dark|light)/);if(m)t=m[1];if(t!=='dark'&&t!=='light'){try{t=localStorage.getItem('ws_theme');}catch(e){}}}catch(e){}if(t!=='dark'&&t!=='light'){try{t=localStorage.getItem('fs_theme');}catch(e){}}if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',(t==='dark')?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
 </script>
 </head>
 <body>
@@ -7856,6 +7856,9 @@ function fsThemeApply(name) {
   var t = (name === 'dark') ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', t);
   try { localStorage.setItem('fs_theme', t); } catch (e) {}
+  // ONE choice across the domain (fleet standard): the guides and marketing pages read this
+  // cookie, and the boot above prefers it, so picking Night mode here is persisted everywhere.
+  try { document.cookie = 'ws_theme=' + t + ';domain=funnelswift.net;path=/;max-age=31536000;SameSite=Lax'; } catch (e) {}
   var b = document.getElementById('fsThemeToggle');
   if (b) { b.title = (t === 'dark') ? 'Switch to day mode' : 'Switch to night mode'; }
   var lab = document.getElementById('fsThemeLabel');
