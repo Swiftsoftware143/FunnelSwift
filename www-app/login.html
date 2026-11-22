@@ -43,9 +43,20 @@ html[data-theme="dark"] .msg.i{color:#a5b4fc}
 html[data-theme="dark"] .lk a,html[data-theme="dark"] .sup a{color:#a5b4fc}
 html[data-theme="dark"] [style*="color:#4f46e5"]{color:#a5b4fc!important}
 html[data-theme="dark"] [style*="color:#6b7280"]{color:#9aa0a6!important}
+/* FLEET DAY/NIGHT SWITCH (2026-11-22). The sign-in card already inherited the half the console
+   stored, but there was no control ON this page: a customer who landed here in the wrong half
+   could only fix it by signing in first. Same markup, labels and behaviour as every other app's
+   sign-in page; the choice is written back under `fs_theme`, the exact key the console's boot
+   reads, so the card and the console can never disagree. */
+.theme-toggle{position:fixed;left:16px;bottom:16px;z-index:30;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid #d1d5db;background:#fff;color:#1e1b4b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(16,24,40,.18)}
+.theme-toggle:hover{border-color:#4f46e5}
+html[data-theme="dark"] .theme-toggle{background:#1a1d27;color:#e8eaed;border-color:#2d3148;box-shadow:0 6px 20px rgba(0,0,0,.6)}
+html[data-theme="dark"] .theme-toggle:hover{border-color:#818cf8}
 </style>
 </head>
 <body>
+<button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle day/night mode"><span id="theme-toggle-icon" aria-hidden="true">🌙</span><span id="theme-toggle-label">Night mode</span></button>
+<script id="fleet-theme-toggle">(function(){var b=document.getElementById('theme-toggle');if(!b)return;function p(){var d=document.documentElement.getAttribute('data-theme')==='dark';var i=document.getElementById('theme-toggle-icon');var l=document.getElementById('theme-toggle-label');if(i)i.textContent=d?'☀️':'🌙';if(l)l.textContent=d?'Day mode':'Night mode';}b.addEventListener('click',function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('fs_theme',n);}catch(e){}try{document.cookie='fs_theme='+n+';path=/;max-age=31536000;SameSite=Lax';}catch(e){}p();});p();})();</script>
 <div class="c">
 <h1>FunnelSwift</h1>
 <p class="sub">Lead Generation &amp; Affiliate Marketing</p>
