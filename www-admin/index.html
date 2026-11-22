@@ -5809,6 +5809,17 @@ async function renderEmailBranding() {
           <button type="button" class="btn btn-secondary btn-sm" id="dnm-export">Download the list (CSV)</button>
           <span id="dnm-msg" style="font-size:12px;color:#64748b"></span>
         </div>
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:#64748b">
+          The mail provider tells this workspace when a message hard-bounces or is marked as spam, and
+          each of those addresses is added to the list above automatically. Paste this address into the
+          provider's webhook settings for the sending domain (events: permanent failures, complaints,
+          unsubscribes) — it is the only place that address is needed.
+          <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <code id="dnm-hook" style="font-size:11px;word-break:break-all;color:#334155">Reading…</code>
+            <button type="button" class="btn btn-secondary btn-sm" id="dnm-hook-copy">Copy</button>
+          </div>
+          <span id="dnm-hook-msg" style="font-size:12px"></span>
+        </div>
         <div id="dnm-list" style="margin-top:14px;font-size:13px;color:#64748b">Loading…</div>
       </div>
     </div>
@@ -5839,7 +5850,9 @@ function bindEmailBranding() {
   document.getElementById('brand-exact')?.addEventListener('click', showExactEmail);
   document.getElementById('dnm-add')?.addEventListener('click', window._dnmAdd);
   document.getElementById('dnm-export')?.addEventListener('click', window._dnmExport);
+  document.getElementById('dnm-hook-copy')?.addEventListener('click', window._dnmHookCopy);
   window._dnmLoad();
+  window._dnmHook();
 }
 
 /* ── the operator's do-not-mail list (2026-11-21) ──────────────────────────────────────────────
@@ -5927,6 +5940,34 @@ window._dnmExport = async function() {
     setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
   } catch (e) {
     showToast(e.message || 'Could not build the file', 'error', false);
+  }
+};
+
+/* The provider's delivery-events address (2026-11-22). A hard bounce or a spam complaint arrives
+   here and the address lands on the list above with no human in the loop; the operator only needs
+   this URL once, to paste into the provider. Read from the app, never composed in the page, so the
+   screen cannot show a URL the server would refuse. */
+window._dnmHook = async function() {
+  const code = document.getElementById('dnm-hook');
+  if (!code) return;
+  try {
+    const r = await api('/settings/do-not-mail/webhook');
+    code.textContent = (r && r.url) || '—';
+  } catch (e) {
+    code.textContent = 'Could not read the address: ' + (e.message || '');
+  }
+};
+
+window._dnmHookCopy = async function() {
+  const code = document.getElementById('dnm-hook');
+  const msg = document.getElementById('dnm-hook-msg');
+  const url = code ? code.textContent : '';
+  if (!url || url === '—') return;
+  try {
+    await navigator.clipboard.writeText(url);
+    if (msg) { msg.textContent = 'Copied.'; msg.style.color = '#166534'; }
+  } catch (e) {
+    if (msg) { msg.textContent = 'Select the address and copy it.'; msg.style.color = '#64748b'; }
   }
 };
 
