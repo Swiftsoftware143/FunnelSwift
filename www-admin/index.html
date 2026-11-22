@@ -3704,7 +3704,11 @@ async function bindEmailProvider() {
                 + sm.window_days + ' days \u2014 those customers received nothing.'
               : '\u2705 No email was refused in the last ' + sm.window_days + ' days.')
           + ' <span style="color:#475569">\u00b7 ' + sm.sent + ' sent \u00b7 ' + sm.withheld
-          + ' not sent (reserved/test addresses)</span>'
+          + ' not sent (reserved/test addresses)'
+          + ((sm.opt_out > 0)
+              ? ' \u00b7 ' + sm.opt_out + ' not sent (customer on the do-not-mail list \u2014 listed below)'
+              : '')
+          + '</span>'
           + (sm.last_refused ? '<div style="margin-top:4px">Last refusal: ' + x(sm.last_refused.to || '')
               + ' \u2014 ' + x(String(sm.last_refused.detail || '')) + '</div>' : '')
           + '</div>';
@@ -3712,8 +3716,15 @@ async function bindEmailProvider() {
           hist.innerHTML = sumLine + '<div style="color:#64748b;font-size:12px">No email attempts recorded yet.</div>';
         } else {
           const colour = st => st === 'sent' ? '#15803d' : st === 'withheld' ? '#b45309' : '#b91c1c';
-          const word = st => st === 'sent' ? 'sent' : st === 'withheld' ? 'not sent (reserved address)' : 'REFUSED';
-          hist.innerHTML = sumLine + '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ' real attempts \u2014 reserved/test addresses are not listed)</div>'
+          /* A withheld row is one of TWO different things and the word must say which: a reserved
+             test address (a probe, nothing to act on) or a recipient who asked not to be mailed
+             (the do-not-mail gate, which names itself in the reason). Telling the operator a
+             customer's opt-out was "a reserved address" is how a real request gets missed. */
+          const word = (st, detail) => st === 'sent' ? 'sent'
+            : st === 'withheld' ? (/do-not-mail list/i.test(String(detail || ''))
+                ? 'not sent (do-not-mail)' : 'not sent (reserved address)')
+            : 'REFUSED';
+          hist.innerHTML = sumLine + '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Recent sends (last ' + rows.length + ' rows \u2014 reserved test addresses are not listed; a customer\u2019s opt-out is)</div>'
             + '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748b">'
             + '<th style="padding:2px 6px">When</th><th style="padding:2px 6px">To</th><th style="padding:2px 6px">Subject</th>'
             + '<th style="padding:2px 6px">Result</th><th style="padding:2px 6px">Reason</th><th style="padding:2px 6px">Sign-in help</th></tr></thead><tbody>'
@@ -3721,7 +3732,7 @@ async function bindEmailProvider() {
               + '<td style="padding:2px 6px;color:#64748b">' + x(r.at ? new Date(r.at).toLocaleString() : '') + '</td>'
               + '<td style="padding:2px 6px">' + x(r.to || '') + '</td>'
               + '<td style="padding:2px 6px">' + x(r.subject || '') + '</td>'
-              + '<td style="padding:2px 6px;color:' + colour(r.status) + '">' + x(word(r.status)) + '</td>'
+              + '<td style="padding:2px 6px;color:' + colour(r.status) + '">' + x(word(r.status, r.detail)) + '</td>'
               + '<td style="padding:2px 6px;color:#b91c1c">' + x(r.detail || '') + '</td>'
               + '<td style="padding:2px 6px"><button type="button" data-reset="' + x(r.to || '') + '" style="font-size:11px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer">Send reset</button></td></tr>').join('')
             + '</tbody></table>';

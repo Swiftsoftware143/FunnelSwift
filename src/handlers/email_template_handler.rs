@@ -375,7 +375,8 @@ pub async fn email_log(
     use sqlx::Row;
     let rows = sqlx::query(
         "SELECT to_email, subject, status, detail, created_at FROM email_send_log \
-         WHERE status <> 'withheld' ORDER BY created_at DESC LIMIT 50",
+         WHERE status <> 'withheld' OR detail LIKE '%do-not-mail list%' \
+         ORDER BY created_at DESC LIMIT 50",
     )
     .fetch_all(&state.pool)
     .await
@@ -401,8 +402,10 @@ pub async fn email_log(
     // from a list. `withheld` is separated from `refused` on purpose: a reserved/harness recipient
     // was never attempted and is not a delivery failure.
     let counts = sqlx::query(
-        "SELECT status, COUNT(*)::bigint AS n FROM email_send_log \
-         WHERE created_at > NOW() - INTERVAL '7 days' GROUP BY status",
+        "SELECT status, COUNT(*)::bigint AS n, \
+                COUNT(*) FILTER (WHERE COALESCE(detail, '') LIKE '%do-not-mail list%')::bigint AS opt_out \
+           FROM email_send_log \
+          WHERE created_at > NOW() - INTERVAL '7 days' GROUP BY status",
     )
     .fetch_all(&state.pool)
     .await
@@ -410,12 +413,23 @@ pub async fn email_log(
     let mut sent: i64 = 0;
     let mut withheld: i64 = 0;
     let mut refused: i64 = 0;
+    // A CUSTOMER'S OPT-OUT IS NOT A TEST ADDRESS (2026-11-22). Every `withheld` row used to be
+    // reported as "not sent (reserved/test addresses)", which is a lie the moment the do-not-mail
+    // gate holds a real customer's notice: the panel then tells the operator a person who asked us
+    // to stop was a probe, and nobody can see WHO stopped. The gate writes its reason into `detail`
+    // ("… do-not-mail list (<reason>) …"), so those rows are counted apart and listed (the query
+    // above keeps them) instead of being lumped with the probes.
+    let mut opt_out: i64 = 0;
     for r in counts.iter() {
         let status: String = r.get("status");
         let n: i64 = r.get("n");
+        let o: i64 = r.get("opt_out");
         match status.as_str() {
             "sent" => sent += n,
-            "withheld" => withheld += n,
+            "withheld" => {
+                withheld += n - o;
+                opt_out += o;
+            }
             _ => refused += n,
         }
     }
@@ -445,6 +459,7 @@ pub async fn email_log(
             "window_days": 7,
             "sent": sent,
             "withheld": withheld,
+            "opt_out": opt_out,
             "refused": refused,
             "last_refused": last_refused,
         }
