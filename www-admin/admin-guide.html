@@ -4,12 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FunnelSwift Admin Guide</title>
+<script id="ws-theme-boot">(function(){try{var t=null;try{var m=document.cookie.match(/(?:^|;\s*)ws_theme=([^;]+)/);if(m)t=m[1];}catch(e){}if(t!=='dark'&&t!=='light'){try{t=localStorage.getItem('ws_theme');}catch(e){}}if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.svg">
 <style>
   :root {
-    --indigo: #4f46e5; --indigo-light: #6366f1; --indigo-glow: rgba(79, 70, 229, 0.12);
+    --indigo: #4f46e5; --indigo-light: #A5B4FC; --indigo-glow: rgba(79, 70, 229, 0.12);
     --bg-dark: #0E0F12; --bg-card: #16181D; --bg-elevated: #1E2028; --border: #2A2D38;
-    --text-primary: #F1F5F9; --text-secondary: #94A3B8; --text-muted: #64748B;
+    --text-primary: #F1F5F9; --text-secondary: #B4BDCB; --text-muted: #9AA6B8;
     --success: #22C55E; --warning: #F97316; --danger: #EF4444; --info: #3B82F6;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -82,6 +83,36 @@
   pre { overflow-x: auto; max-width: 100%; }
   code { overflow-wrap: anywhere; }
 }
+</style>
+
+<style id="ws-theme-light">
+/* Day mode. The page shipped dark-only: its :root palette was the night palette and nothing read
+   the operator's day/night choice, so on a light desktop every other FunnelSwift surface went
+   white and this guide stayed near-black. Same tokens and same cookie key as www-app/guide.html,
+   so one switch moves the whole product. Contrast (WCAG AA, on --bg-card #fff): text-primary
+   16.1:1, secondary 7.5:1, muted 5.6:1, indigo-light 8.0:1, success 6.6:1, warning 5.0:1,
+   danger 6.4:1, info 6.3:1. */
+html[data-theme="light"]{
+  --indigo:#4f46e5; --indigo-light:#4338ca; --indigo-glow:rgba(67,56,202,0.10);
+  --bg-dark:#f6f7fb; --bg-card:#ffffff; --bg-elevated:#f2f4f9; --border:#dde1ea;
+  --text-primary:#16181d; --text-secondary:#4b5563; --text-muted:#5b6472;
+  --success:#166534; --warning:#92400e; --danger:#b91c1c; --info:#1d4ed8;
+  color-scheme:light;
+}
+html[data-theme="light"] body{background:var(--bg-dark);color:var(--text-primary)}
+html[data-theme="light"] ::-webkit-scrollbar-track{background:var(--bg-dark)}
+html[data-theme="light"] ::-webkit-scrollbar-thumb{background:#c9cfda}
+html[data-theme="light"] pre{background:var(--bg-elevated);color:var(--text-primary)}
+html[data-theme="light"] .topbar-badge{background:rgba(234,88,12,0.12);color:#b8450a}
+html[data-theme="light"] .badge-green{background:rgba(22,163,74,0.14);color:#166534}
+html[data-theme="light"] .badge-orange{background:rgba(234,88,12,0.12);color:#b8450a}
+html[data-theme="light"] .sidebar-overlay{background:rgba(15,17,23,0.35)}
+html[data-theme="light"] .mobile-menu-btn{box-shadow:0 1px 3px rgba(15,23,42,.10)}
+.ws-theme-toggle{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:inline-flex;
+  align-items:center;gap:6px;background:var(--bg-card);color:var(--text-primary);
+  border:1px solid var(--border);border-radius:999px;padding:7px 12px;cursor:pointer;
+  box-shadow:0 1px 3px rgba(0,0,0,.18);font:13px/1 system-ui,-apple-system,sans-serif}
+.ws-theme-toggle:hover{background:var(--bg-elevated)}
 </style>
 </head>
 <body>
@@ -1353,6 +1384,24 @@ function closeMobile() {
     document.getElementById('sidebarOverlay').classList.remove('open');
   }
 }
+</script>
+<script>
+function wsApplyTheme(n){var t=(n==='dark')?'dark':'light';document.documentElement.setAttribute('data-theme',t);
+try{localStorage.setItem('ws_theme',t);}catch(e){}
+try{document.cookie='ws_theme='+t+';domain=funnelswift.net;path=/;max-age=31536000;SameSite=Lax';}catch(e){}
+var l=document.getElementById('wsThemeLabel');if(l)l.textContent=(t==='dark')?'Day mode':'Night mode';
+var i=document.getElementById('wsThemeIcon');if(i)i.textContent=(t==='dark')?'\u2600\ufe0f':'\ud83c\udf19';}
+function wsToggleTheme(){wsApplyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
+function wsEnsureToggle(){if(document.getElementById('wsThemeToggle'))return;
+var b=document.createElement('button');b.type='button';b.id='wsThemeToggle';b.className='ws-theme-toggle';
+b.title='Switch day / night mode';b.setAttribute('aria-label','Switch day / night mode');b.onclick=wsToggleTheme;
+var i=document.createElement('span');i.id='wsThemeIcon';i.setAttribute('aria-hidden','true');
+i.textContent=(document.documentElement.getAttribute('data-theme')==='dark')?'\u2600\ufe0f':'\ud83c\udf19';
+var l=document.createElement('span');l.id='wsThemeLabel';
+l.textContent=(document.documentElement.getAttribute('data-theme')==='dark')?'Day mode':'Night mode';
+b.appendChild(i);b.appendChild(l);document.documentElement.appendChild(b);}
+document.addEventListener('DOMContentLoaded',function(){try{wsEnsureToggle();}catch(e){}});
+wsEnsureToggle();
 </script>
 </body>
 </html>
