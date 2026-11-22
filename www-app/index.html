@@ -64,15 +64,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;d
 .sidebar .brand{padding:0 20px 16px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:4px}
 .sidebar .brand h2{font-size:18px;color:#fff}
 .sidebar .brand p{font-size:11px;color:#a5b4fc}
-.sidebar .sec{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#6366f1;padding:8px 20px;margin-top:8px}
+.sidebar .sec{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#a5b4fc;padding:8px 20px;margin-top:8px}
 .sidebar a{display:block;padding:10px 20px;font-size:13px;color:#c7d2fe;text-decoration:none;cursor:pointer;transition:all .15s}
 .sidebar a:hover{background:rgba(99,102,241,.15);color:#fff}
-.sidebar a.active{background:rgba(99,102,241,.25);color:#fff;font-weight:600;border-right:3px solid #6366f1}
+.sidebar a.active{background:rgba(99,102,241,.25);color:#fff;font-weight:600;border-right:3px solid #4f46e5}
 .main{flex:1;display:flex;flex-direction:column}
 .header{background:#fff;padding:16px 24px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
 .header h1{font-size:20px;color:#1e1b4b}
 .badge{padding:4px 12px;border-radius:100px;font-size:11px;font-weight:600}
-.badge.bg{background:#6366f1;color:#fff}
+.badge.bg{background:#4f46e5;color:#fff}
 .badge.bb{background:#312e81;color:#c7d2fe}
 /* kanban t_ff948669 — the dashboard's `<div class="card">` tiles had NO rule here, so the four
    stats and the activity panel rendered as bare stacked text. `.card`/`.val` are used by the
@@ -91,10 +91,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;d
 .it:hover{box-shadow:0 4px 12px rgba(0,0,0,.08)}
 .grd{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
 .act{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
-.btn{padding:8px 14px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#6366f1;color:#fff;transition:opacity .15s}
+.btn{padding:8px 14px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#4f46e5;color:#fff;transition:opacity .15s}
 .btn:hover{opacity:.85}
 .btn-sm{padding:4px 10px;font-size:11px}
-.btn-o{background:transparent;color:#6366f1;border:1px solid #6366f1}
+.btn-o{background:transparent;color:#4f46e5;border:1px solid #4f46e5}
 .btn-r{background:transparent;color:#ef4444;border:1px solid #ef4444}
 .btn-r:hover{background:#fef2f2;color:#dc2626}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -107,7 +107,7 @@ tr:hover{background:#f8fafc}
 .fld textarea{resize:vertical}
 .tag{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;margin:1px 2px}
 .tags-inline{display:flex;flex-wrap:wrap;gap:4px;padding:8px 0}
-.section-label{font-size:10px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #6366f120}
+.section-label{font-size:10px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #4f46e520}
 .mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center}
 .help-panel{position:fixed;right:-380px;top:0;width:370px;max-width:calc(100vw-20px);height:100vh;background:#1e1b4b;color:#e2e8f0;z-index:1001;overflow-y:auto;transition:right .3s ease;box-shadow:-4px 0 24px rgba(0,0,0,.4);font-size:13px;padding:0}
 .help-panel.open{right:0}
@@ -118,7 +118,7 @@ tr:hover{background:#f8fafc}
 .help-body ul{margin:4px 0 12px 16px;padding:0}
 .help-body li{margin-bottom:6px}
 .help-body code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px;color:#a5b4fc}
-.help-fab{position:fixed;bottom:20px;right:20px;width:48px;height:48px;border-radius:50%;background:#6366f1;color:#fff;border:none;font-size:20px;cursor:pointer;z-index:1000;box-shadow:0 4px 16px rgba(99,102,241,.4);transition:all .2s;display:flex;align-items:center;justify-content:center}
+.help-fab{position:fixed;bottom:20px;right:20px;width:48px;height:48px;border-radius:50%;background:#4f46e5;color:#fff;border:none;font-size:20px;cursor:pointer;z-index:1000;box-shadow:0 4px 16px rgba(99,102,241,.4);transition:all .2s;display:flex;align-items:center;justify-content:center}
 .help-fab:hover{transform:scale(1.1);box-shadow:0 6px 24px rgba(99,102,241,.5)}
 .help-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:1000}
 .mo.sh{display:flex}
@@ -203,7 +203,7 @@ html[data-theme="dark"] .msg.me{background:#3b1414;color:#fca5a5}
 html[data-theme="dark"] .msg.ms,
 html[data-theme="dark"] .msg.mk{background:#052e16;color:#86efac}
 html[data-theme="dark"] .btn-r:hover{background:#3b1414;color:#fca5a5}
-html[data-theme="dark"] .btn-o{color:#a5b4fc;border-color:#6366f1}
+html[data-theme="dark"] .btn-o{color:#a5b4fc;border-color:#4f46e5}
 /* The panels are ALSO built with inline styles, which no class rule reaches. These attribute
    matches cover the light values the render functions actually emit (counted in the file, not
    guessed): white cards, the pale table/hero fills, and the grey/red/amber text tints. */
@@ -240,6 +240,60 @@ html[data-theme="dark"] [style*="border:1px solid #d1d5db"]{border-color:#2d3148
 html[data-theme="dark"] [style*="border-bottom:1px solid #e2e8f0"]{border-bottom-color:#2d3148!important}
 html[data-theme="dark"] [style*="border-top:1px solid #e2e8f0"]{border-top-color:#2d3148!important}
 html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!important}
+</style>
+<style id="fs-console-a11y-contrast">
+/* WCAG AA on the console's light ground (axe, measured live 2026-11-22 across all 34 tabs):
+   the muted grey #64748b read 4.34:1 on the #f1f5f9 card surface and the faint #94a3b8
+   read 2.34:1, the delete red #ef4444 3.43:1 and the success green #16a34a 3:1. Those are
+   inline styles generated by the console's own row builders, so the override has to beat
+   them with !important — and it is scoped to the LIGHT theme, because on the night palette
+   the same greys (on #1a1d27) are 6.56:1 and darkening them would break the dark console. */
+  /* The light cards sit on #f1f5f9 / #eef2ff, where the console's muted grey #64748b reads
+     4.34:1 and the faint #94a3b8 2.34:1; the delete red #ef4444 reads 3.43:1 and the success
+     green #16a34a 3:1. Scoped to .main so the always-dark rail (and the cookie banner's dark
+     ground) keep their own light-on-dark greys, and to the light theme so the night palette,
+     where those greys are already 6.56:1, is untouched. */
+  html:not([data-theme="dark"]) .main [style*="color:#64748b"],
+  html:not([data-theme="dark"]) .main [style*="color:#94a3b8"],
+  html:not([data-theme="dark"]) .main [style*="color:#6b7280"]{color:#475569 !important}
+  html:not([data-theme="dark"]) .main [style*="color:#ef4444"]{color:#b91c1c !important}
+  html:not([data-theme="dark"]) .main [style*="color:#16a34a"]{color:#166534 !important}
+  html:not([data-theme="dark"]) .btn-r{color:#b91c1c !important;border-color:#b91c1c !important}
+
+  /* round 2 (same measurement): the plan cards carry a per-plan accent colour from the
+     catalogue (#6366f1 on #eef2ff, 3.99:1 at 10px), the tag chips paint the tag's own colour as
+     text over a 12% tint of itself (1.79-4.35:1), the tab strip's inactive label and an amber
+     work-in-progress marker were also short. The chips keep their coloured ground and gain a
+     readable label; nothing else changes shape. */
+  html:not([data-theme="dark"]) .main [style*="color:#6366f1"]{color:#4f46e5 !important}
+  html:not([data-theme="dark"]) .main [style*="color:#dc2626"]{color:#b91c1c !important}
+  html:not([data-theme="dark"]) .main [style*="color:#f59e0b"]{color:#92400e !important}
+  html:not([data-theme="dark"]) .main .tag,
+  html:not([data-theme="dark"]) .main .tag span{color:#334155 !important}
+  html:not([data-theme="dark"]) .lc-tab{color:#475569 !important}
+  html:not([data-theme="dark"]) .main [style*="background:#6366f1"]{background:#4f46e5 !important}
+  html:not([data-theme="dark"]) .main .tag span{opacity:1 !important}
+  /* night pass (axe, measured live 2026-11-22): several widgets keep a LIGHT surface under the
+     night palette, so their light text lands on it (integration tiles #f5f3ff / #e2e8f0, the
+     plan-request marker #fef3c7, tag chips tinted from their own colour). The surfaces follow
+     the night palette here, and the brand grey used as TEXT on the dark ground is lifted. */
+  html[data-theme="dark"] .it{background:#1a1d27 !important;border-color:#2d3148 !important}
+  html[data-theme="dark"] .it h4,html[data-theme="dark"] .it p{color:#e8eaed !important}
+  html[data-theme="dark"] .it .badge{background:#2d3148 !important;color:#cbd5e1 !important}
+  html[data-theme="dark"] [data-plan-request-state]{background:#3a2f12 !important;color:#fbbf24 !important}
+  html[data-theme="dark"] .main .tag{background:#2d3148 !important;color:#e8eaed !important}
+  html[data-theme="dark"] .main .tag span{color:#e8eaed !important;opacity:1 !important}
+  html[data-theme="dark"] .lc-tab,html[data-theme="dark"] #lc-tab-tpl,html[data-theme="dark"] #lc-tab-my{color:#cbd5e1 !important}
+  html[data-theme="dark"] .section-label{color:#a5b4fc !important}
+  html[data-theme="dark"] .main [style*="color:#15803d"]{color:#4ade80 !important}
+  html[data-theme="dark"] .main [style*="color:#6366f1"]{color:#a5b4fc !important}
+  html[data-theme="dark"] .main [style*="background:#6366f1"]{background:#4f46e5 !important}
+  html[data-theme="dark"] .main [style*="background:#fef3c7"],
+  html[data-theme="dark"] .main [style*="background:#f0fdf4"],
+  html[data-theme="dark"] .main [style*="background:#eef2ff"],
+  html[data-theme="dark"] .main [style*="background:#f1f5f9"],
+  html[data-theme="dark"] .main [style*="background:#f8fafc"],
+  html[data-theme="dark"] .main [style*="background:#f5f3ff"]{background:#222532 !important;color:#e8eaed !important}
 </style>
 </head>
 <body>
@@ -368,7 +422,7 @@ html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!imp
   </div>
 </div>
 <div class="main">
-  <div class="header"><h1 id="pt">Dashboard</h1><div style="display:flex;gap:8px;align-items:center"><div style="position:relative"><button onclick="toggleWsMenu()" title="Workspaces" style="background:#fff;color:#1e1b4b;border:1px solid #e2e8f0;border-radius:100px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">🗂️ <span id="wsCurrentName">Workspace</span> <span style="font-size:10px">▾</span></button><div id="wsMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:1000;padding:4px 0"></div></div><button onclick="toggleHelp()" style="background:var(--primary, #6366f1);color:#fff;border:none;border-radius:100px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s" id="helpBtn">💡 Help</button></div></div>
+  <div class="header"><h1 id="pt">Dashboard</h1><div style="display:flex;gap:8px;align-items:center"><div style="position:relative"><button onclick="toggleWsMenu()" title="Workspaces" style="background:#fff;color:#1e1b4b;border:1px solid #e2e8f0;border-radius:100px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">🗂️ <span id="wsCurrentName">Workspace</span> <span style="font-size:10px">▾</span></button><div id="wsMenu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:1000;padding:4px 0"></div></div><button onclick="toggleHelp()" style="background:var(--primary, #4f46e5);color:#fff;border:none;border-radius:100px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s" id="helpBtn">💡 Help</button></div></div>
   <div class="ct" id="ct"><div class="loading">Loading...</div></div>
 </div>
 <div class="help-panel" id="helpPanel"><div class="help-header"><strong id="helpTitle">Quick Help</strong><button onclick="toggleHelp()" aria-label="Close help" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px">✕</button></div><div class="help-body" id="helpBody">Select a section for help tips.</div></div>
@@ -1594,7 +1648,7 @@ function D(){
     h+='<div><h3 style="margin:0 0 2px">Your plan request</h3><div style="font-size:16px;font-weight:700">'+X(q.plan_name||q.plan_slug||'')+(q.billing_cycle?' <span data-plan-request-term="'+X(q.billing_cycle)+'" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+(q.billing_cycle==='yearly'?'#dcfce7':'#f1f5f9')+';color:'+(q.billing_cycle==='yearly'?'#166534':'#475569')+'">'+X(q.billing_cycle==='yearly'?'Yearly':'Monthly')+'</span>':'')+'</div>';
     h+='<div style="color:#64748b;font-size:12px;margin-top:2px">Filed '+TSFMT(q.created_at,0)+'</div></div>';
     h+='<span data-plan-request-state="'+X(st)+'" style="background:'+chipBg+';color:'+chipFg+';padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">'+X(label)+'</span></div>';
-    if(q.reply){h+='<div style="margin-top:10px;background:#f8fafc;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;font-size:13px;color:#334155;white-space:pre-wrap"><strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'+X(q.reply)+'</div>';}
+    if(q.reply){h+='<div style="margin-top:10px;background:#f8fafc;border-left:3px solid #4f46e5;padding:8px 10px;border-radius:0 6px 6px 0;font-size:13px;color:#334155;white-space:pre-wrap"><strong style="display:block;font-size:11px;color:#64748b;margin-bottom:2px">Note from our team</strong>'+X(q.reply)+'</div>';}
     h+='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
     if(st==='open'||st==='contacted'){
       h+='<button class="btn" data-withdraw-plan-request="'+X(q.id)+'" onclick="withdrawPlanRequest(\''+X(q.id)+'\')">Withdraw this request</button>';
@@ -1737,7 +1791,7 @@ function D(){
     if(!a.length) h+='<p style="color:#64748b;font-size:13px">No recent activity.</p>';
     else{
       h+='<table><tr><th>Action</th><th>Description</th></tr>';
-      a.slice(0,10).forEach(function(r){h+='<tr><td style="color:#6366f1;font-weight:600">'+X(actLabel(r.action))+'</td><td>'+X(actDesc(r))+'</td></tr>';});
+      a.slice(0,10).forEach(function(r){h+='<tr><td style="color:#4f46e5;font-weight:600">'+X(actLabel(r.action))+'</td><td>'+X(actDesc(r))+'</td></tr>';});
       h+="</table>";
     }
     h+="</div>";
@@ -2258,7 +2312,7 @@ function RF(id,l){
     if(id){ mb.appendChild(El("div",{id:"tg-current",style:"font-size:11px;color:#64748b;margin-bottom:6px"})); TGCR(id,l.tags||[]);
       mb.appendChild(El("div",{id:"tg-prov",style:"font-size:11px;color:#475569;margin:0 0 8px 0;line-height:1.5"})); TGPV(id); }
     mb.appendChild(El("div",{},[El("label",{style:"font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:6px"},"Assign Tags"),El("div",{id:"tg-select",style:"display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow-y:auto;padding:6px;border:1px solid #e2e8f0;border-radius:6px;min-height:36px"},El("span",{style:"color:#94a3b8;font-size:11px"},"Loading tags..."))]));
-    api("/api/v1/tags").then(function(td){var all=Array.isArray(td)?td:(td&&td.data?td.data:[]);$("tg-select").innerHTML="";if(!all.length)$("tg-select").innerHTML='<span style="color:#94a3b8;font-size:11px">No tags available</span>';all.forEach(function(t){var tg=El("span",{style:"padding:3px 8px;border-radius:100px;font-size:10px;margin:2px;background:"+X(t.color||"#6366f1")+"20;color:"+X(t.color||"#6366f1")+";border:1px solid "+X(t.color||"#6366f1")+"40;cursor:pointer;user-select:none",onclick:function(){tg.classList.toggle("ts");if(tg.classList.contains("ts")){tg.style.background=t.color||"#6366f1";tg.style.color="#fff";tg.setAttribute("data-tid",t.id)}else{tg.style.background=(t.color||"#6366f1")+"20";tg.style.color=t.color||"#6366f1";tg.removeAttribute("data-tid")}}},t.name);$("tg-select").appendChild(tg)});});
+    api("/api/v1/tags").then(function(td){var all=Array.isArray(td)?td:(td&&td.data?td.data:[]);$("tg-select").innerHTML="";if(!all.length)$("tg-select").innerHTML='<span style="color:#94a3b8;font-size:11px">No tags available</span>';all.forEach(function(t){var tg=El("span",{style:"padding:3px 8px;border-radius:100px;font-size:10px;margin:2px;background:"+X(t.color||"#4f46e5")+"20;color:"+X(t.color||"#4f46e5")+";border:1px solid "+X(t.color||"#4f46e5")+"40;cursor:pointer;user-select:none",onclick:function(){tg.classList.toggle("ts");if(tg.classList.contains("ts")){tg.style.background=t.color||"#4f46e5";tg.style.color="#fff";tg.setAttribute("data-tid",t.id)}else{tg.style.background=(t.color||"#4f46e5")+"20";tg.style.color=t.color||"#4f46e5";tg.removeAttribute("data-tid")}}},t.name);$("tg-select").appendChild(tg)});});
     // Custom fields + Add button
     mb.appendChild(El("div",{style:"margin-top:12px"},[
       El("label",{style:"font-size:12px;font-weight:600;color:#475569;margin-bottom:8px;display:block"},"Custom Fields"),
@@ -2374,7 +2428,7 @@ function DL(id){if(confirm("Delete lead?")) api("/api/v1/leads/"+id,{method:"DEL
    inline delete: confirm, DELETE the tag, re-render My Tags. */
 function DT(id,name){if(confirm('Delete tag "'+name+'"? Leads carrying it lose the tag.')) api("/api/v1/tags/"+id,{method:"DELETE"}).then(function(){S("tags")}).catch(function(e){showMsg(e.message||"Delete failed","me")});}
 
-;(function(){var s=document.createElement("style");s.textContent=".lc-tab{display:inline-block;padding:8px 16px;font-size:13px;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:600}.lc-tab:hover{color:#6366f1}.lc-tab-a{color:#6366f1;border-bottom-color:#6366f1}.mc-tab{}.ts{outline:2px solid #6366f1 !important;outline-offset:1px}.kc-lock{position:absolute;top:2px;right:2px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1c1105;font-size:7px;font-weight:800;padding:1px 4px;border-radius:6px;line-height:1.5;letter-spacing:.3px;box-shadow:0 1px 3px rgba(0,0,0,.35);z-index:3;pointer-events:none}.kc-tpl-lock{font-size:8px;padding:2px 6px;border-radius:8px}.kc-locked{opacity:.62}.kc-locked:hover{opacity:.85}";document.head.appendChild(s);})();/* === KINETIC CARDS — Full: Templates, Preview, Themes, Domains === */
+;(function(){var s=document.createElement("style");s.textContent=".lc-tab{display:inline-block;padding:8px 16px;font-size:13px;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:600}.lc-tab:hover{color:#4f46e5}.lc-tab-a{color:#4f46e5;border-bottom-color:#4f46e5}.mc-tab{}.ts{outline:2px solid #4f46e5 !important;outline-offset:1px}.kc-lock{position:absolute;top:2px;right:2px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1c1105;font-size:7px;font-weight:800;padding:1px 4px;border-radius:6px;line-height:1.5;letter-spacing:.3px;box-shadow:0 1px 3px rgba(0,0,0,.35);z-index:3;pointer-events:none}.kc-tpl-lock{font-size:8px;padding:2px 6px;border-radius:8px}.kc-locked{opacity:.62}.kc-locked:hover{opacity:.85}";document.head.appendChild(s);})();/* === KINETIC CARDS — Full: Templates, Preview, Themes, Domains === */
 var KCB={cards:[],templates:[],themes:[],tab:"my"}; // Kinetic Card Binder state
 // The card editor's working copy of the card's `layout_blocks` (kanban t_114b706b). Module level on
 // purpose: the modal builder FILLS it and SC2 — the card modal's save function — SENDS it, and a
@@ -2711,7 +2765,7 @@ function LCT(){
 
   var grd=El("div",{"class":"grd"});
   filtered.forEach(function(t){
-    var tc=t.preview_colors||["#0f172a","#6366f1","#ffffff"];
+    var tc=t.preview_colors||["#0f172a","#4f46e5","#ffffff"];
     var tplLocked=KCPremium(t);
     var card=El("div",{"class":"it lc-tpl-card"+(tplLocked?" kc-locked":""),style:"position:relative;cursor:pointer;overflow:hidden;border:none;padding:0;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .2s"});
     if(tplLocked) card.appendChild(El("span",{"class":"kc-lock kc-tpl-lock"},"🔒 PRO"));
@@ -2806,7 +2860,7 @@ function LCT(){
    `#mc-vp`'s list (VIDEO_PROVIDERS) is a separate control and stays where it is. */
 var CARD_TYPES=[
   {v:"default",l:"Default",p:"Default",c:"#64748b"},
-  {v:"bio_link",l:"Bio Link",p:"Bio Links",c:"#6366f1"},
+  {v:"bio_link",l:"Bio Link",p:"Bio Links",c:"#4f46e5"},
   {v:"business_card",l:"Business Card",p:"Business Cards",c:"#0ea5e9"},
   {v:"mini_page",l:"Mini Page",p:"Mini Pages",c:"#8b5cf6"},
   {v:"mini_funnel",l:"Mini Funnel",p:"Mini Funnels",c:"#f59e0b"},
@@ -2978,7 +3032,7 @@ function MFC(data){
     if(MC_LISTS[can]) row.appendChild(mcListEditor(b,MC_LISTS[can]));
     if(!can) row.appendChild(El("p",{style:"font-size:9px;color:#94a3b8;margin:2px 0;line-height:1.4"},"The public renderer has no fields for this block type, so it is stored and carried through exactly as it is. Use Advanced (JSON) to edit it."));
     var det=El("details",{style:"margin-top:4px"});
-    det.appendChild(El("summary",{style:"font-size:10px;color:#6366f1;cursor:pointer"},"Advanced (JSON)"));
+    det.appendChild(El("summary",{style:"font-size:10px;color:#4f46e5;cursor:pointer"},"Advanced (JSON)"));
     var jt=El("textarea",{rows:"4",style:"width:100%;font-family:monospace;font-size:10px;border:1px solid #e2e8f0;border-radius:5px;box-sizing:border-box;margin-top:3px"});
     jt.value=JSON.stringify(b,null,1);
     var jmsg=El("span",{style:"font-size:9px;color:#64748b;display:block"});
@@ -3035,7 +3089,7 @@ function MFC(data){
   // Tab navigation
   var tabBar=El("div",{style:"display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid #e2e8f0"});
   var tabStyle="padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:#64748b";
-  var tabActive="color:#6366f1;border-bottom-color:#6366f1";
+  var tabActive="color:#4f46e5;border-bottom-color:#4f46e5";
 
   var tabs=["Info","Look & Feel","Social","Media","Blocks"];
   var tabEls=[];
@@ -3247,7 +3301,7 @@ function MFC(data){
       if(th.colors){
         // Use the gradient as a background style token
         var bk=th.colors.background||th.gradient||"#0f172a";
-        var ac=th.colors.accent||th.primary||"#6366f1";
+        var ac=th.colors.accent||th.primary||"#4f46e5";
         var tx=th.colors.text||"#ffffff";
         var bb=th.colors.button_bg||"rgba(255,255,255,0.15)";
         var bt=th.colors.button_text||"#ffffff";
@@ -3261,7 +3315,7 @@ function MFC(data){
         updatePreview();
       }
       document.querySelectorAll(".mc-theme-btn").forEach(function(el){el.style.borderColor="#e2e8f0";el.style.boxShadow="";});
-      thBtn.style.borderColor="#6366f1";
+      thBtn.style.borderColor="#4f46e5";
       thBtn.style.boxShadow="0 0 0 3px rgba(99,102,241,0.15)";
     }});
     var bgStr=th.colors?th.colors.background:(th.gradient||"linear-gradient(135deg,#000,#fff)");
@@ -3322,7 +3376,7 @@ function MFC(data){
   function mcPreviewBlocks(){
     var box=$("mc-blk-preview"); if(!box) return;
     if(!mcBlocks.length){ box.innerHTML='<p style="font-size:11px;color:#94a3b8;padding:8px;margin:0">No blocks yet — the page shows only your title, bio, avatar and CTA.</p>'; return; }
-    var body={blocks:mcBlocks,accent:getVal("mc-accent")||"#6366f1"};
+    var body={blocks:mcBlocks,accent:getVal("mc-accent")||"#4f46e5"};
     if(mb._cid) body.card_id=mb._cid;
     var sl=(getVal("mc-slug")||mb._slug_orig||"").trim();
     if(sl) body.slug=sl;
@@ -3576,13 +3630,13 @@ function LT(){
     else{
       var div=El("div",{"class":"tags-inline"});
       sys.forEach(function(t){
-        var chk=El("input",{type:"checkbox","class":"sys-tag-cb",value:t.id,style:"margin-right:4px;cursor:pointer"});
+        var chk=El("input",{"aria-label":"Select this tag",type:"checkbox","class":"sys-tag-cb",value:t.id,style:"margin-right:4px;cursor:pointer"});
         /* 2026-11-01: a customer's My Tags screen offered an editor for these, and the server
            answers `403 Only admins can modify system tags` to every one of them (measured live).
            The chip now explains instead of opening a form that cannot save; the operator's own
            System Tags screen (LST, gated on U.is_admin) keeps the real editor. */
         var sysEditable=!!(U&&U.is_admin);
-        var sp=El("span",{"class":"tag",title:sysEditable?"Shared with every workspace — a rename or recolour applies to all of them":(t.provisions_account?"Shared tag: applying it to a lead signs that lead up for "+String(t.source_app||"another Swift app")+"'s free plan":"Shared tag created by the administrator — it cannot be renamed from here"),style:"background:"+X(t.color||"#6366f1")+"20;color:"+X(t.color||"#6366f1")+";padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer",onclick:sysEditable?function(e){if(e.target.tagName!=="INPUT") MFT(t.id,true)}:function(){showMsg("This is a shared system tag — only a platform administrator can rename or recolour it.","mi")}}, X(t.name)+' <span style="font-size:10px;opacity:.7">system</span>');
+        var sp=El("span",{"class":"tag",title:sysEditable?"Shared with every workspace — a rename or recolour applies to all of them":(t.provisions_account?"Shared tag: applying it to a lead signs that lead up for "+String(t.source_app||"another Swift app")+"'s free plan":"Shared tag created by the administrator — it cannot be renamed from here"),style:"background:"+X(t.color||"#4f46e5")+"20;color:"+X(t.color||"#4f46e5")+";padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer",onclick:sysEditable?function(e){if(e.target.tagName!=="INPUT") MFT(t.id,true)}:function(){showMsg("This is a shared system tag — only a platform administrator can rename or recolour it.","mi")}}, X(t.name)+' <span style="font-size:10px;opacity:.7">system</span>');
         var row=El("span",{style:"display:inline-flex;align-items:center;margin:2px 4px"},[chk,sp]);
         div.appendChild(row);
       });
@@ -3597,7 +3651,7 @@ function LT(){
       tbl.innerHTML='<tr><th>Tag</th><th>Color</th><th>Group</th><th></th></tr>';
       cust.forEach(function(t){
         var tr=El("tr");
-        tr.innerHTML='<td><span class="tag" style="background:'+X(t.color||"#6366f1")+'20;color:'+X(t.color||"#6366f1")+';padding:2px 8px;border-radius:4px;font-size:11px">'+X(t.name)+'</span></td><td><span style="display:inline-block;width:14px;height:14px;background:'+X(t.color||"#6366f1")+';border-radius:3px;vertical-align:middle;margin-right:4px"></span> '+X(t.color||"#6366f1")+'</td><td>'+X(t.group_id||"None")+'</td><td></td>';
+        tr.innerHTML='<td><span class="tag" style="background:'+X(t.color||"#4f46e5")+'20;color:'+X(t.color||"#4f46e5")+';padding:2px 8px;border-radius:4px;font-size:11px">'+X(t.name)+'</span></td><td><span style="display:inline-block;width:14px;height:14px;background:'+X(t.color||"#4f46e5")+';border-radius:3px;vertical-align:middle;margin-right:4px"></span> '+X(t.color||"#4f46e5")+'</td><td>'+X(t.group_id||"None")+'</td><td></td>';
         var td=tr.querySelectorAll("td")[3];
         td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFT(t.id)}},"Edit"));
         td.appendChild(document.createTextNode(" "));
@@ -3647,12 +3701,12 @@ function LTR(){
       '<div style="flex:1 1 200px;min-width:180px"><label style="font-size:11px;color:#64748b;display:block">Rule name</label>'+
       '<input id="tr-name" placeholder="Qualified becomes Sold" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px"></div>'+
       '<div style="flex:1 1 160px;min-width:150px"><label style="font-size:11px;color:#64748b;display:block">When a lead gets</label>'+
-      '<select id="tr-trigger" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+opts()+'</select></div>'+
+      '<select id="tr-trigger" aria-label="When a lead gets this tag" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+opts()+'</select></div>'+
       '<div style="flex:1 1 170px;min-width:160px"><label style="font-size:11px;color:#64748b;display:block">Then</label>'+
-      '<select id="tr-action" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+
+      '<select id="tr-action" aria-label="Then do this" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+
       TR_ACTIONS.map(function(a){return '<option value="'+a[0]+'">'+a[1]+'</option>';}).join("")+'</select></div>'+
       '<div style="flex:1 1 160px;min-width:150px"><label style="font-size:11px;color:#64748b;display:block">This tag</label>'+
-      '<select id="tr-target" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+opts()+'</select></div>'));
+      '<select id="tr-target" aria-label="This tag" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px">'+opts()+'</select></div>'));
     var createBtn=El("button",{"class":"btn btn-primary btn-sm",style:"margin-top:10px",onclick:function(){createTagRule();}},"Create rule");
     box.appendChild(createBtn);
     box.appendChild(El("p",{style:"color:#94a3b8;font-size:11px;margin-top:8px"},
@@ -3845,7 +3899,7 @@ function LIC(){
     var rec=pkeys[p.key], connected=!!rec&&rec.is_active!==false;
     var native=(p.key==="coreswift"||p.key==="incentiveswift");
     var it=El("div",{"class":"it"});
-    if(p.key==="coreswift") it.style.cssText="grid-column:1/-1;border:2px solid #6366f1;background:#f5f3ff";
+    if(p.key==="coreswift") it.style.cssText="grid-column:1/-1;border:2px solid #4f46e5;background:#f5f3ff";
     // kanban t_c10c05b6 — a catalogue row flagged coming_soon has NO code path in this app that can
     // spend a key, so the card is informational: a badge, no key box, no Connect/Test. The API
     // refuses the key too (upsert_provider_key), so this is the honest rendering, not the only gate.
@@ -3874,7 +3928,7 @@ function LIC(){
     }
     it.innerHTML='<h4>'+X(p.name)+' '+(native?'<span class="badge bg">Native</span> ':'')+'<span class="badge '+(connected?"bg":"br")+'">'+(connected?"Connected":"Not connected")+'</span></h4>'
       +'<p>'+X(p.description||"")+'</p>'
-      +'<div id="li-cs-status" style="font-size:12px;color:#6366f1;margin:4px 0"></div>';
+      +'<div id="li-cs-status" style="font-size:12px;color:#4f46e5;margin:4px 0"></div>';
     if(p.key==="coreswift"){
       // kanban t_ff1f0d6b (2026-10-15). This cross-sell pointed at https://coreswiftcrm.com/pricing,
       // which answers **404** through the edge with a browser UA (measured: 404 Not Found, 564 B —
@@ -4577,7 +4631,7 @@ function LREF(){
       h+='<div id="lref-share" style="margin-bottom:10px">'
         +'<div style="font-size:13px">Your referral code: <code id="lref-code">'+X(d.affiliate_code)+'</code></div>'
         +'<div style="display:flex;gap:6px;margin-top:4px;max-width:620px">'
-        +'<input id="lref-link" readonly value="'+X(d.share_url)+'" style="flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#334155">'
+        +'<input id="lref-link" aria-label="Your referral link" readonly value="'+X(d.share_url)+'" style="flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;color:#334155">'
         +'<button class="btn btn-sm" id="lref-copy" type="button">Copy</button>'
         +'<a class="btn btn-sm btn-o" id="lref-open" style="text-decoration:none" href="'+X(d.share_url)+'" target="_blank" rel="noopener">Open</a>'
         +'</div>'
@@ -4694,7 +4748,7 @@ function LSEO(){
     var cur=schema["@type"]||"SoftwareApplication";
     h+='<div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;padding:14px"><label style="font-size:12px;font-weight:600;color:#475569">Schema Markup Type</label>';
     h+='<p style="font-size:10px;color:#94a3b8;margin-bottom:6px">Structured data injected into every public page.</p>';
-    h+='<select id="seo-schema_type" style="width:240px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">';
+    h+='<select id="seo-schema_type" aria-label="Schema type" style="width:240px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">';
     schemaTypes.forEach(function(t){ h+='<option value="'+t+'"'+(cur===t?" selected":"")+'>'+t+'</option>'; });
     h+='</select>';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">';
@@ -4704,8 +4758,8 @@ function LSEO(){
     h+='</div></div>';
     h+='<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn" onclick="SEOSave()">Save All</button><span id="seo-msg" class="msg"></span></div>';
     h+='<hr style="margin:20px 0;border-color:#e2e8f0"><h3 style="font-size:14px;margin-bottom:8px">Public pages</h3>';
-    h+='<p style="font-size:12px;color:#64748b"><a href="/api/v1/seo/sitemap.xml" target="_blank" style="color:#6366f1">View your sitemap</a> — generated from your cards and funnels</p>';
-    h+='<p style="font-size:12px;color:#64748b"><a href="/robots.txt" target="_blank" style="color:#6366f1">View crawl rules</a> — tells search engines what to index</p></div>';
+    h+='<p style="font-size:12px;color:#64748b"><a href="/api/v1/seo/sitemap.xml" target="_blank" style="color:#4f46e5">View your sitemap</a> — generated from your cards and funnels</p>';
+    h+='<p style="font-size:12px;color:#64748b"><a href="/robots.txt" target="_blank" style="color:#4f46e5">View crawl rules</a> — tells search engines what to index</p></div>';
     $("ct").innerHTML=h;
   }).catch(function(e){ $("ct").innerHTML='<div class="cc"><h3>SEO Settings</h3><p class="msg me">Failed to load SEO settings: '+X(e.message||e)+'</p></div>'; });
 }
@@ -4751,7 +4805,7 @@ function LPLL(){
       
       // Header row
       var hdr=El("div",{style:"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"});
-      hdr.innerHTML='<div><strong style="font-size:16px;color:#1e1b4b">'+X(p.name)+'</strong><span style="margin-left:10px;font-size:12px;color:#94a3b8">/'+X(p.slug)+'</span></div><div style="display:flex;gap:8px;align-items:center"><span style="font-size:13px;font-weight:700;color:#6366f1">$'+X(String(p.price||0))+'/mo</span>'+'</div>';
+      hdr.innerHTML='<div><strong style="font-size:16px;color:#1e1b4b">'+X(p.name)+'</strong><span style="margin-left:10px;font-size:12px;color:#94a3b8">/'+X(p.slug)+'</span></div><div style="display:flex;gap:8px;align-items:center"><span style="font-size:13px;font-weight:700;color:#4f46e5">$'+X(String(p.price||0))+'/mo</span>'+'</div>';
       card.appendChild(hdr);
 
       // Editable top-level fields
@@ -5383,7 +5437,7 @@ function LST(){
         var gn=gName[t.group_id]||(t.group_id?t.group_id.slice(0,8)+"...":"-");
         var tr=El("tr",{"class":"st-row"});
         tr.setAttribute("data-name",t.name||"");
-        tr.innerHTML='<td><span class="tag" style="background:'+X(t.color||"#6366f1")+'20;color:'+X(t.color||"#6366f1")+';padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600">'+X(t.name)+'</span></td><td><span style="display:inline-block;width:12px;height:12px;background:'+X(t.color||"#6366f1")+';border-radius:3px;vertical-align:middle;margin-right:4px"></span> '+X(t.color||"#6366f1")+'</td><td>'+X(gn)+'</td><td>'+(t.created_at?TSFMT(t.created_at,0):"-")+'</td><td></td>';
+        tr.innerHTML='<td><span class="tag" style="background:'+X(t.color||"#4f46e5")+'20;color:'+X(t.color||"#4f46e5")+';padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600">'+X(t.name)+'</span></td><td><span style="display:inline-block;width:12px;height:12px;background:'+X(t.color||"#4f46e5")+';border-radius:3px;vertical-align:middle;margin-right:4px"></span> '+X(t.color||"#4f46e5")+'</td><td>'+X(gn)+'</td><td>'+(t.created_at?TSFMT(t.created_at,0):"-")+'</td><td></td>';
         var td=tr.querySelectorAll("td")[4];
         td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFT(t.id,true)}},"Edit"));
         td.appendChild(document.createTextNode(" "));
@@ -5458,7 +5512,7 @@ function MFT(id,isSystem){
   api("/api/v1/tag-groups").then(function(gd){
     var groups=Array.isArray(gd)?gd:((gd&&gd.data)?gd.data:[]);
     if(id) api("/api/v1/tags/"+id).then(function(t){RFT(id,t,groups,isSystem)});
-    else RFT(null,{color:"#6366f1",is_system:!!isSystem},groups,isSystem);
+    else RFT(null,{color:"#4f46e5",is_system:!!isSystem},groups,isSystem);
   });
 }
 function RFT(id, t, groups, isSystem){
@@ -5480,7 +5534,7 @@ function RFT(id, t, groups, isSystem){
       fg.appendChild(El("option",{value:t.group_id,selected:"selected"},String(t.group_id).slice(0,8)+"… - not in this console's group list"));
     }
     mb.appendChild(ff("Tag Group", fg));
-    mb.appendChild(ff("Color", El("input",{id:"fc",type:"color",value:t.color||"#6366f1"})));
+    mb.appendChild(ff("Color", El("input",{id:"fc",type:"color",value:t.color||"#4f46e5"})));
     if(t.is_system||isSystem){
       var info=El("div",{style:"background:#fef3c7;padding:8px 12px;border-radius:6px;font-size:12px;color:#92400e;margin-top:8px"});
       info.textContent="⚠️ System tags are shared across all tenants. Editing may be restricted.";
@@ -5561,8 +5615,8 @@ function LLSR(stages){
   list.innerHTML="";
   stages.forEach(function(s,i){
     var row=El("div",{style:"display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:4px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px"});
-    row.appendChild(El("span",{style:"width:22px;text-align:center;font-weight:700;color:#6366f1;font-size:12px"},String(i+1)));
-    var inp=El("input",{value:s,style:"flex:1;padding:4px 8px;border:1px solid transparent;border-radius:4px;font-size:13px;background:transparent"});
+    row.appendChild(El("span",{style:"width:22px;text-align:center;font-weight:700;color:#4f46e5;font-size:12px"},String(i+1)));
+    var inp=El("input",{"aria-label":"Stage name",value:s,style:"flex:1;padding:4px 8px;border:1px solid transparent;border-radius:4px;font-size:13px;background:transparent"});
     inp.onchange=function(){
       window._lls_stages[i]=inp.value;
       var s2=LLSR(null);
@@ -6341,7 +6395,7 @@ function MCPCLIENT(which){
   MCP_CLIENT=which||'chatgpt';
   var a=$("mcpTabChatgpt"), b=$("mcpTabClaude");
   if(a&&b){
-    var on="font-weight:700;background:#6366f1;color:#fff;border-color:#6366f1";
+    var on="font-weight:700;background:#4f46e5;color:#fff;border-color:#4f46e5";
     var off="font-weight:600";
     a.setAttribute("style", on.indexOf("x")>=0 ? off : off);
     if(MCP_CLIENT==='chatgpt'){ a.setAttribute("style","font-weight:700"); b.setAttribute("style","font-weight:600"); }
@@ -6355,7 +6409,7 @@ function MCPCLIENT(which){
     +'<button class="btn btn-sm" onclick="MCPCLIP(MCP_ENDPOINT)">Copy</button></div>';
   function step(n,head,body,extra){
     return '<div style="display:flex;gap:12px;margin-bottom:13px">'
-      +'<div style="flex:0 0 26px;height:26px;border-radius:50%;background:#6366f1;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">'+n+'</div>'
+      +'<div style="flex:0 0 26px;height:26px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">'+n+'</div>'
       +'<div style="flex:1"><div style="font-weight:600;margin-bottom:2px">'+head+'</div>'
       +'<div style="color:#64748b;font-size:12px">'+body+'</div>'+(extra||'')+'</div></div>';
   }
@@ -6451,7 +6505,7 @@ function MCPTLOAD(){
     live.forEach(function(k){
       h+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">'
         +'<span style="font-size:12px"><strong>'+X(k.name||"API key")+'</strong> '
-        +'<code style="font-size:11px;color:#6366f1">'+X(k.key_prefix)+'&hellip;</code>'
+        +'<code style="font-size:11px;color:#4f46e5">'+X(k.key_prefix)+'&hellip;</code>'
         +'<br><span style="color:#94a3b8;font-size:11px">Created '+TSFMT(k.created_at)+'</span></span>'
         +'<span style="white-space:nowrap;font-size:11px">'
         +'<a href="#" data-mcp-view="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">Reveal</a>'
@@ -6513,7 +6567,7 @@ function LM(){
     var sdDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
     var sdHas=!!String(sd.value||'').trim();
     var sdLabel=sdHas?(X(sd.value)+'.kntcrd.com'):'Not set yet — until you choose one, your cards serve from kntcrd.com/k/your-slug';
-    sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><span id="lmsd-label" style="font-size:12px;color:#6366f1">'+sdLabel+'</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value||'')+'" placeholder="yourname" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="saveSubdomain()">Save</button></div></div>';
+    sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><span id="lmsd-label" style="font-size:12px;color:#4f46e5">'+sdLabel+'</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value||'')+'" placeholder="yourname" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="saveSubdomain()">Save</button></div></div>';
     list.appendChild(sdDiv);
     
     // Custom domain
@@ -6526,7 +6580,7 @@ function LM(){
     var lsDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
     lsDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Lead Pipeline Stages</strong><br><span style="font-size:11px;color:#94a3b8">Click to edit</span></div><button class="btn btn-sm" onclick="S(\'lead-stages\')">Edit</button></div>';
     var stagesDisp=Array.isArray(lsVal)?lsVal.join(" → "):String(lsVal);
-    lsDiv.appendChild(El("p",{style:"color:#6366f1;font-size:12px;margin-top:8px;font-weight:500"},stagesDisp));
+    lsDiv.appendChild(El("p",{style:"color:#4f46e5;font-size:12px;margin-top:8px;font-weight:500"},stagesDisp));
     list.appendChild(lsDiv);
 
     // Email branding (kanban t_c06a32eb). The document lives in tenant_settings under
@@ -6539,7 +6593,7 @@ function LM(){
     ebDiv.innerHTML='<strong style="font-size:13px">Email branding</strong>'
       +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">The logo and name every transactional email from this workspace carries — the sign-in details sent to a new user, and password resets.</p>'
       +'<div class="fld"><label style="font-size:12px">Brand display name</label><input id="lm-bn" value="'+X(br.brand_name||"")+'" placeholder="Your business name" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"></div>'
-      +'<div class="fld"><label style="font-size:12px">Brand colour</label><input id="lm-bc" type="color" value="'+X(color)+'" style="width:64px;height:30px;padding:1px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"></div>'
+      +'<div class="fld"><label style="font-size:12px">Brand colour</label><input id="lm-bc" aria-label="Brand colour" type="color" value="'+X(color)+'" style="width:64px;height:30px;padding:1px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"></div>'
       +'<div id="lm-logo-wrap"></div>';
     list.appendChild(ebDiv);
     // Everything below is APPENDED after the last markup write on this parent: a re-parse recreates
@@ -6548,7 +6602,7 @@ function LM(){
     var prev=El("img",{id:"lm-logo-prev",style:"max-height:44px;max-width:180px;display:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px;background:#fff"});
     if(br.logo_url){ prev.src=br.logo_url; prev.style.display="block"; }
     wrap.appendChild(prev);
-    wrap.appendChild(El("input",{id:"lm-logo",type:"file",accept:"image/png,image/jpeg,image/gif,image/webp",style:"font-size:12px;display:block;margin-top:8px"}));
+    wrap.appendChild(El("input",{id:"lm-logo","aria-label":"Email logo",type:"file",accept:"image/png,image/jpeg,image/gif,image/webp",style:"font-size:12px;display:block;margin-top:8px"}));
     var ebRow=El("div",{style:"display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"});
     ebRow.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){ULB();}},"Upload logo"));
     var ebRm=El("button",{"class":"btn btn-sm btn-o",onclick:function(){DLB();}},"Remove logo");
@@ -6619,7 +6673,7 @@ function LM(){
     epDiv.innerHTML='<strong style="font-size:13px">Email provider</strong>'
       +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">How this workspace\'s email is sent. Leave it on FunnelSwift\'s mail service, or connect your own provider and mail leaves through your own account. Your email branding above is applied either way. The saved key is stored encrypted and is never shown again — an empty key box keeps the one already saved.</p>'
       +'<p id="lep-status" style="font-size:12px;color:#334155;margin:0 0 10px">Checking…</p>'
-      +'<div class="fld"><label style="font-size:12px">Provider</label><select id="lep-provider" onchange="EPP(this.value)" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
+      +'<div class="fld"><label style="font-size:12px">Provider</label><select id="lep-provider" aria-label="Email provider" onchange="EPP(this.value)" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
       +'<option value="platform">FunnelSwift\'s mail service (nothing of your own)</option>'
       +'<option value="mailgun">Mailgun (my own account)</option>'
       +'<option value="sendgrid">SendGrid (my own account)</option>'
@@ -6686,7 +6740,7 @@ function AKLOAD(){
       var revoked=!!k.revoked_at;
       h+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9">'
         +'<span style="font-size:12px"><strong>'+X(k.name||"API key")+'</strong> '
-        +'<code style="font-size:11px;color:#6366f1">'+X(k.key_prefix)+'&hellip;</code>'
+        +'<code style="font-size:11px;color:#4f46e5">'+X(k.key_prefix)+'&hellip;</code>'
         +(revoked?' <span class="badge" style="background:#fee2e2;color:#991b1b">Revoked</span>':'')
         +'<br><span style="color:#94a3b8;font-size:11px">Created '+TSFMT(k.created_at)+'</span></span>'
         +'<span style="white-space:nowrap;font-size:11px">'
@@ -6826,7 +6880,7 @@ function TMLOAD(msg,kind){
     h+='<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">'
       +'<input id="tm-name" placeholder="Name" style="width:130px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
       +'<input id="tm-email" placeholder="name@their-domain.com" style="width:200px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
-      +'<select id="tm-role" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
+      +'<select id="tm-role" aria-label="Role in this workspace" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">'
       +'<option value="user">Member</option><option value="company_admin">Company admin</option><option value="business_user">Business user</option>'
       +'</select>'
       +'<button class="btn btn-sm" onclick="TMADD()">Add teammate</button>'
@@ -7943,7 +7997,7 @@ function showInboxRecords(id) {
 
   var fab = el('button',
     'position:fixed;right:20px;bottom:80px;z-index:1000;display:none;align-items:center;gap:8px;' +
-    'background:#6366f1;color:#fff;border:none;border-radius:24px;padding:11px 16px;font-size:13px;' +
+    'background:#4f46e5;color:#fff;border:none;border-radius:24px;padding:11px 16px;font-size:13px;' +
     'font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,.4);font-family:inherit');
   fab.id = 'fbFab';
   fab.type = 'button';
@@ -8014,11 +8068,11 @@ function showInboxRecords(id) {
     'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 20px;' +
     'border-top:1px solid #e5e7eb;flex-wrap:wrap');
   var links = el('div', 'font-size:12px');
-  var up = el('a', 'color:#6366f1;text-decoration:none;margin-right:14px', "What's new");
+  var up = el('a', 'color:#4f46e5;text-decoration:none;margin-right:14px', "What's new");
   up.href = 'https://swiftsoftware.net/updates';
   up.target = '_blank';
   up.rel = 'noopener';
-  var rm = el('a', 'color:#6366f1;text-decoration:none', 'Roadmap');
+  var rm = el('a', 'color:#4f46e5;text-decoration:none', 'Roadmap');
   rm.href = 'https://swiftsoftware.net/roadmap';
   rm.target = '_blank';
   rm.rel = 'noopener';
@@ -8031,7 +8085,7 @@ function showInboxRecords(id) {
     'font-size:13px;font-weight:600;cursor:pointer;color:#374151;font-family:inherit', 'Cancel');
   cancel.type = 'button';
   var send = el('button',
-    'background:#6366f1;border:1px solid #6366f1;border-radius:8px;padding:9px 14px;' +
+    'background:#4f46e5;border:1px solid #4f46e5;border-radius:8px;padding:9px 14px;' +
     'font-size:13px;font-weight:600;cursor:pointer;color:#fff;font-family:inherit', 'Send feedback');
   send.type = 'button';
   send.id = 'fbSend';
@@ -8048,9 +8102,9 @@ function showInboxRecords(id) {
   function paint() {
     kindBtns.forEach(function (b) {
       var on = b.getAttribute('data-fb-kind') === kind;
-      b.style.background = on ? '#6366f1' : '#fff';
+      b.style.background = on ? '#4f46e5' : '#fff';
       b.style.color = on ? '#fff' : '#374151';
-      b.style.borderColor = on ? '#6366f1' : '#d1d5db';
+      b.style.borderColor = on ? '#4f46e5' : '#d1d5db';
     });
   }
 
