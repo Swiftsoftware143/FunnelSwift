@@ -4759,6 +4759,13 @@ function LPLL(){
       topFields.appendChild(PFF("Name",p.id,"name",p.name));
       topFields.appendChild(PFF("Slug",p.id,"slug",p.slug));
       topFields.appendChild(PFF("Price ($)",p.id,"price",String(p.price||0),"number"));
+      /* THE OPERATOR'S ONE WAY TO START SELLING (2026-11-22). `plans.purchase_url` is a hosted
+         payment page (e.g. https://buy.stripe.com/...) that the till hands a buyer straight to, with
+         no provider key at all - but nothing in the product could SET it, so every paid plan
+         answered upgrade_path:"request" and the only way in was raw SQL. `PUT /api/v1/plans/{id}`
+         already refuses a malformed link AND a link that does not resolve, and an empty box stays
+         allowed (a plan sold another way carries no link). */
+      topFields.appendChild(PFF("Payment link (hosted page)",p.id,"purchase_url",p.purchase_url||""));
       // A NULL limit column means UNLIMITED, so the box is left EMPTY (cron 2026-10-13):
       // `String(p.max_leads||"0")` rendered NULL as 0, and this form sends every field it renders.
       topFields.appendChild(PFF("Max Leads",p.id,"max_leads",p.max_leads==null?"":String(p.max_leads),"number"));
