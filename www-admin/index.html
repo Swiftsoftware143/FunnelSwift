@@ -6823,6 +6823,7 @@ function bindPlanAdmin() {
         : (r && r.notify_reason === 'unchanged') ? ' The workspace was already on that plan, so no email was sent.'
         : (r && r.notify_reason === 'no_recipient') ? ' No customer email address was found, so nobody was told.'
         : (r && r.notify_reason === 'mail_failed') ? ' The customer could NOT be emailed — the plan is set, so tell them yourself.'
+        : (r && r.notify_reason === 'withheld') ? ' The plan is set, but the customer was NOT emailed — ' + (r.notify_detail || 'their address is on the do-not-mail list') + '. Tell them yourself.'
         : '';
       if (msg) msg.textContent = '✓ ' + (r.message || 'Plan assigned') + told;
       showToast(r.notified === true ? 'Plan assigned — customer emailed' : 'Plan assigned', 'success');
