@@ -724,6 +724,9 @@ function buildNav() {
     // API. This is that screen, and the count rides in the label so an ask is visible without
     // opening it.
     sections.push(`<button type="button" class="nav-item ${STATE.view==='planRequests'?'active':''}" data-view="planRequests" aria-label="Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}"><span class="icon">🙋</span><span class="nav-text">Plan Requests${PLAN_REQ_OPEN ? ' (' + PLAN_REQ_OPEN + ')' : ''}</span></button>`);
+    // 2026-11-23: the invoice book (GET|POST /api/v1/admin/invoices). With card payments off, a raised
+    // invoice is the record of what a customer owes; before this screen the only book was an inbox.
+    sections.push(`<button type="button" class="nav-item ${STATE.view==='invoices'?'active':''}" data-view="invoices" aria-label="Invoices"><span class="icon">🧾</span><span class="nav-text">Invoices</span></button>`);
     // cron 2026-11-06: the operator's queue for GET /api/v1/admin/support-requests. The tenant
     // console can now FILE a help request, and a row nobody can answer is a customer waiting on a
     // state no screen could move (the same defect the plan-request queue was built for).
@@ -932,6 +935,7 @@ const viewRenderers = {
   tagRules: renderTagRules,
   checkoutSessions: renderCheckoutSessions,
   planRequests: renderPlanRequests,
+  invoices: renderInvoices,
   supportRequests: renderSupportRequests,
   feedback: renderFeedback,
 };
@@ -1001,6 +1005,7 @@ function bindView(view) {
     case 'tagRules': bindTagRules(); break;
     case 'checkoutSessions': break;
     case 'planRequests': bindPlanRequests(); break;
+    case 'invoices': bindInvoices(); break;
     case 'supportRequests': bindSupportRequests(); break;
     case 'feedback': break;
     case 'cardAnalytics': bindCardAnalytics(); break;
@@ -7670,6 +7675,140 @@ async function renderPlanRequests() {
   </div>`;
 }
 
+
+// ═══ SIDEBAR VIEW: Invoices ═════════════════════════════════════════════════
+// 2026-11-23 — the money record this console never had. Card payments are off on this install, so a
+// workspace that wants a paid plan files a REQUEST (the queue next door), and the operator's
+// "How to pay" words say where to send the money. Nothing stored what a customer OWED or had PAID,
+// so the book was an inbox. `GET|POST /api/v1/admin/invoices` + `PUT /api/v1/admin/invoices/:id` are
+// that book; this is their screen. The customer reads the same rows on their own Upgrade screen.
+const INV_LABEL = { pending: 'Unpaid', paid: 'Paid', void: 'Cancelled' };
+const INV_BG = { pending: '#fef3c7', paid: '#dcfce7', void: '#f1f5f9' };
+const INV_FG = { pending: '#92400e', paid: '#166534', void: '#475569' };
+let INV_ROWS = [];
+
+function invChip(s) {
+  const k = String(s || 'pending');
+  return '<span data-invoice-state="' + x(k) + '" style="background:' + (INV_BG[k] || '#f1f5f9') +
+    ';color:' + (INV_FG[k] || '#334155') + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' +
+    x(INV_LABEL[k] || k) + '</span>';
+}
+
+function invAmountText(a) {
+  const v = String(a == null ? '' : a).trim();
+  if (!v) return '—';
+  const n = Number(v);
+  if (!isFinite(n)) return '$' + x(v);
+  return '$' + (Math.abs(n - Math.round(n)) < 0.005 ? String(Math.round(n)) : n.toFixed(2));
+}
+
+async function renderInvoices() {
+  if (!isSuperAdmin()) return `<div class="empty"><div class="icon">🔒</div><div class="title">Access Denied</div></div>`;
+  let err = '';
+  let tenants = [], plans = [];
+  try { const r = await api('/admin/invoices'); INV_ROWS = Array.isArray(r && r.invoices) ? r.invoices : []; }
+  catch (e) { INV_ROWS = []; err = (e && e.message) || 'Could not load the invoice book'; }
+  try { tenants = await api('/tenants'); if (!Array.isArray(tenants)) tenants = (tenants && tenants.tenants) || []; } catch (e) { tenants = []; }
+  try { const ps = await api('/plans'); plans = Array.isArray(ps) ? ps : ((ps && (ps.plans || ps.data)) || []); } catch (e) { plans = []; }
+
+  const unpaid = INV_ROWS.filter(v => String(v.status || 'pending') === 'pending');
+  const owed = unpaid.reduce((t, v) => t + (Number(v.amount) || 0), 0);
+
+  const tenantOpts = tenants
+    .filter(t => t && t.id)
+    .map(t => '<option value="' + x(t.id) + '">' + x(t.name || t.email || t.id) + '</option>').join('');
+  const planOpts = plans
+    .filter(pp => pp && pp.id)
+    .map(pp => '<option value="' + x(pp.id) + '">' + x(pp.name || pp.slug) + '</option>').join('');
+
+  const rowFor = (v) => {
+    const acts = ['pending', 'paid', 'void'].filter(st => st !== String(v.status || 'pending')).map(st =>
+      '<button class="btn" data-inv-id="' + x(v.id) + '" data-inv-set="' + st +
+      '" style="padding:3px 8px;font-size:11px;margin-left:4px">' +
+      (st === 'paid' ? 'Mark paid' : (st === 'void' ? 'Cancel' : 'Reopen')) + '</button>').join('');
+    return '<tr data-invoice-id="' + x(v.id) + '">' +
+      '<td><strong>' + x(v.tenant_name || v.tenant_id) + '</strong></td>' +
+      '<td>' + x(v.plan_name || v.note || 'One-off charge') + '</td>' +
+      '<td style="font-weight:700">' + invAmountText(v.amount) + '</td>' +
+      '<td>' + (v.due_date ? formatDate(v.due_date) : '—') + '</td>' +
+      '<td>' + invChip(v.status) +
+      (v.paid_at ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">paid ' + formatDate(v.paid_at) + '</div>' : '') + '</td>' +
+      '<td>' + formatDate(v.created_at) + '</td>' +
+      '<td style="text-align:right;white-space:nowrap">' + acts + '</td></tr>';
+  };
+
+  return `<div>
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:6px">Invoices</h1>
+    <!-- routes: GET|POST /api/v1/admin/invoices · PUT /api/v1/admin/invoices/:id -->
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">What each workspace owes and has paid while card payments are off. Raising an invoice charges nothing by itself — the customer sees it on their own Upgrade screen, and you settle it here when the money arrives.</div>
+    ${err ? '<div style="background:#fef2f2;border-left:4px solid #dc2626;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">' + x(err) + '</div>' : ''}
+    ${unpaid.length ? '<div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;color:#92400e"><strong>' + unpaid.length + '</strong> invoice' + (unpaid.length === 1 ? ' is' : 's are') + ' unpaid — ' + invAmountText(owed.toFixed(2)) + ' outstanding.</div>' : ''}
+    <div class="card" style="margin-bottom:18px">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:10px">Raise an invoice</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+        <label style="font-size:12px;color:var(--muted)">Workspace<select id="inv-tenant" aria-label="Workspace" class="input" style="width:100%"><option value="">Choose a workspace…</option>${tenantOpts}</select></label>
+        <label style="font-size:12px;color:var(--muted)">Plan (optional)<select id="inv-plan" aria-label="Plan" class="input" style="width:100%"><option value="">No plan — one-off charge</option>${planOpts}</select></label>
+        <label style="font-size:12px;color:var(--muted)">Amount<input id="inv-amount" aria-label="Amount" class="input" placeholder="49.00" style="width:100%"></label>
+        <label style="font-size:12px;color:var(--muted)">Due date<input id="inv-due" aria-label="Due date" type="date" class="input" style="width:100%"></label>
+        <label style="font-size:12px;color:var(--muted)">What it covers<input id="inv-note" aria-label="What it covers" class="input" placeholder="Optional note for the customer" style="width:100%"></label>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="inv-create">Raise invoice</button>
+        <span id="inv-msg" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+    <div class="card">
+      ${wiredTable(['Workspace', 'Covers', 'Amount', 'Due', 'Status', 'Raised', ''], INV_ROWS.map(rowFor), 'No invoice has been raised yet')}
+    </div>
+  </div>`;
+}
+
+function invSetMsg(text, isErr) {
+  const m = document.getElementById('inv-msg');
+  if (!m) return;
+  m.style.color = isErr ? '#dc2626' : '#16a34a';
+  m.textContent = text;
+}
+
+async function invCreateFromForm() {
+  const t = document.getElementById('inv-tenant');
+  const pl = document.getElementById('inv-plan');
+  const a = document.getElementById('inv-amount');
+  const d = document.getElementById('inv-due');
+  const n = document.getElementById('inv-note');
+  const body = {
+    tenant_id: t ? String(t.value || '') : '',
+    plan_id: pl ? String(pl.value || '') : '',
+    amount: a ? String(a.value || '').trim() : '',
+    due_date: d ? String(d.value || '') : '',
+    note: n ? String(n.value || '') : '',
+  };
+  if (!body.tenant_id) { invSetMsg('Choose the workspace this invoice is for.', true); return; }
+  if (!body.amount) { invSetMsg('Enter an amount above zero, for example 49.00.', true); return; }
+  invSetMsg('Raising…', false);
+  try {
+    await api('/admin/invoices', { method: 'POST', body: JSON.stringify(body) });
+    invSetMsg('Invoice raised — the customer sees it on their Upgrade screen.', false);
+    renderApp();
+  } catch (e) { invSetMsg((e && e.message) || 'That invoice could not be raised', true); }
+}
+
+async function invSetStatus(id, status) {
+  if (!id) return;
+  try {
+    await api('/admin/invoices/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ status: status }) });
+    renderApp();
+  } catch (e) { invSetMsg((e && e.message) || 'That status could not be saved', true); }
+}
+
+function bindInvoices() {
+  const mk = document.getElementById('inv-create');
+  if (mk) mk.addEventListener('click', invCreateFromForm);
+  document.querySelectorAll('[data-inv-set]').forEach(b => {
+    b.addEventListener('click', () => invSetStatus(b.getAttribute('data-inv-id'), b.getAttribute('data-inv-set')));
+  });
+}
+
 function planReqReplyValue(id) {
   const el = document.querySelector('input[data-pr-reply="' + id + '"]');
   return el ? String(el.value || '') : '';
@@ -8094,6 +8233,7 @@ window.appGuidePages = {
   "tagGroups": { title: "Tag Groups", desc: "Group related tags so a rule or an audience can target several at once.", actions: ["Create a group", "Add tags to it", "Use the group in a rule or campaign"] },
   "tenants": { title: "Accounts", desc: "Every customer account on this install. Your own businesses are NOT here — they live on Portfolio Companies, each with an Open button that enters that company's own account (tick 'Include portfolio companies' here to see the whole platform in one table; those rows are badged portfolio). The row is an account (its name, plan and status), not a login — view each one's people, assign plans and manage accounts. An account whose owner never received the first password we made for them carries a 'password never delivered' note under the owner's address, with a 'Send login' button: it makes a new password, emails it and signs that account out of its old sessions, and when the address is a test address that can never receive mail it shows the password on screen so you can pass it on.", actions: ["Search for an account", "Change an account's plan", "Open an account's people", "Give an account owner a login when their first password never arrived"] },
   "checkoutSessions": { title: "Checkout Sessions", desc: "Every payment session this workspace has started, with its provider, amount and status. Read-only history of what was attempted.", actions: ["See each session's status", "Match a session to a plan change"] },
+  "invoices": { title: "Invoices", desc: "What each workspace owes and has paid while card payments are off. Raising an invoice charges nothing by itself — the customer sees it on their own Upgrade screen. Mark it paid when the money arrives, or cancel it to take it off their list; the amount cannot be changed once it is raised.", actions: ["Raise an invoice for a workspace, with an optional plan, due date and note", "Mark an invoice paid — the customer then sees it settled with the date", "Cancel an invoice to withdraw it from the customer's list"] },
   "planRequests": { title: "Plan Requests", desc: "A workspace that wants a paid plan asks here — its own Upgrade screen files the request because this install cannot take a card. Nothing is charged. Move a request to contacted, done or declined, and the customer sees that state the next time their screen loads.", actions: ["See every request and the workspace it came from", "Mark a request contacted, done or declined", "The number on the label is how many are still waiting"] },
   "supportRequests": { title: "Support Requests", desc: "A customer asks for help from the Support screen in their own console, and answers here. Saving a written answer emails it to the person who asked and also leaves it on their request, so they can read it again; a save that could not be emailed says so instead of pretending it went out. The number on the label, and the red card on the dashboard, count the requests still waiting on an answer.", actions: ["Read every request with the workspace it came from", "Write the answer and mark it answered", "Close a request that needs no answer", "The number on the label is how many are still waiting"] },
   "feedback": { title: "Feedback", desc: "Everything customers told us through the Submit Feedback button — an idea, a bug or a complaint, with the account, person, app and screen it came from. Platform administrators only.", actions: ["Read each idea, bug or complaint", "See which screen and account it came from", "Follow up with the person who sent it"] },

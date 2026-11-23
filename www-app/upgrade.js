@@ -16,6 +16,12 @@ var PREQS = [];        // this workspace's plan requests, newest first
 var PREQ_OFFER = null; // {slug,name} — set when checkout refused, offered as a request button
 var PREQ_MSG = null;   // {ok,text}
 var HOWTOPAY = '';     // the operator's own words: where to send the money (2026-11-16)
+/* THE CUSTOMER'S OWN BILLS (2026-11-23). With no payment provider on this install a plan request is
+   the buying path, and an invoice the operator raises is the record of what this workspace owes and
+   has paid — `GET /api/v1/invoices` returns ONLY this workspace's rows (the tenant comes from the
+   token). Painted only when there is at least one: an empty book leaves the screen exactly as it
+   was, because a "no invoices" box on every install would be noise, not information. */
+var INVS = [];
 
 async function LPU(){
   $("pt").textContent="Upgrade Plan";
@@ -28,6 +34,7 @@ async function LPU(){
     renderUpgrade(plans);
     loadRequests();
     loadHowToPay();
+    loadInvoices();
   } catch(e) { $("ct").innerHTML='<div class="error">'+e.message+'</div>'; }
 }
 
@@ -95,6 +102,83 @@ function renderHowToPay(){
     + '<div style="font-weight:700;color:#1e3a8a;margin:0 0 6px;font-size:14px">How to pay now</div>'
     + '<div data-how-to-pay-text="1" style="white-space:pre-wrap;font-size:13.5px;line-height:1.5;color:#1e293b">'
     + esc(words) + '</div></div>';
+}
+
+/** Rough money text: `49.00` -> `$49`, `49.50` -> `$49.50`. The server sends the amount as text
+ *  (NUMERIC::text), so this never invents precision it was not given. */
+function invMoney(a){
+  var v = String(a == null ? '' : a).trim();
+  if(!v) return '\u2014';
+  var n = Number(v);
+  if(!isFinite(n)) return '$' + esc(v);
+  return '$' + (Math.abs(n - Math.round(n)) < 0.005 ? String(Math.round(n)) : n.toFixed(2));
+}
+
+function invDate(t){
+  var s = String(t == null ? '' : t).trim();
+  if(!s) return '';
+  if(s.length >= 10) return s.slice(0,10);
+  return s;
+}
+
+function invChip(status){
+  var s = String(status || 'pending');
+  var bg = s === 'paid' ? '#dcfce7' : (s === 'void' ? '#f1f5f9' : '#fef3c7');
+  var fg = s === 'paid' ? '#166534' : (s === 'void' ? '#475569' : '#92400e');
+  var label = s === 'paid' ? 'Paid' : (s === 'void' ? 'Cancelled' : 'Unpaid');
+  return '<span data-invoice-state="'+esc(s)+'" style="background:'+bg+';color:'+fg
+    + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+label+'</span>';
+}
+
+/** The workspace's own invoices, newest first. One row per bill: what it covers, what it is for,
+ *  when it is due and whether it has been settled. `data-invoices` is the marker the proof reads. */
+function renderInvoices(){
+  if(!INVS || !INVS.length) return '';
+  var h = '<div data-invoices="1" style="border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:16px">'
+    + '<div style="font-weight:700;color:#0f172a;margin:0 0 4px;font-size:14px">Your invoices</div>'
+    + '<div style="color:#64748b;font-size:12px;margin-bottom:10px">What this workspace has been billed and whether it has been paid.</div>'
+    + '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:520px;font-size:13px">'
+    + '<thead><tr style="text-align:left;color:#64748b;font-size:11px;text-transform:uppercase">'
+    + '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0">Raised</th>'
+    + '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0">Covers</th>'
+    + '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0">Amount</th>'
+    + '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0">Due</th>'
+    + '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0">Status</th>'
+    + '</tr></thead><tbody>';
+  INVS.forEach(function(v){
+    var covers = String(v.plan_name || v.note || 'Charges on this account');
+    h += '<tr data-invoice-id="'+esc(v.id)+'">'
+      + '<td style="padding:8px;border-bottom:1px solid #f1f5f9">'+esc(invDate(v.created_at))+'</td>'
+      + '<td style="padding:8px;border-bottom:1px solid #f1f5f9">'+esc(covers)+'</td>'
+      + '<td style="padding:8px;border-bottom:1px solid #f1f5f9;font-weight:700">'+invMoney(v.amount)+'</td>'
+      + '<td style="padding:8px;border-bottom:1px solid #f1f5f9">'+(v.due_date?esc(invDate(v.due_date)):'\u2014')+'</td>'
+      + '<td style="padding:8px;border-bottom:1px solid #f1f5f9">'+invChip(v.status)+(v.paid_at?' <span style="color:#64748b;font-size:11px">'+esc(invDate(v.paid_at))+'</span>':'')+'</td>'
+      + '</tr>';
+  });
+  h += '</tbody></table></div>';
+  // Where to send the money rides the same answer, so an unpaid bill always points at the operator's
+  // own words when he has written them, and says nothing when he has not.
+  var unpaid = INVS.some(function(v){ return String(v.status||'pending') === 'pending'; });
+  var words = String(HOWTOPAY || '').trim();
+  if(unpaid && words){
+    h += '<div style="margin-top:10px;font-size:12.5px;color:#1e3a8a;white-space:pre-wrap" data-invoice-pay="1">'+esc(words)+'</div>';
+  } else if(unpaid){
+    h += '<div style="margin-top:10px;font-size:12.5px;color:#64748b" data-invoice-pay="none">How to pay this bill is sent with the invoice — reply to that email and our team will confirm the details.</div>';
+  }
+  return h + '</div>';
+}
+
+async function loadInvoices(){
+  try {
+    var r = await fetch(window.location.origin+'/api/v1/invoices', {headers:{Authorization:'Bearer '+(T||'')}});
+    if(!r.ok){ INVS = []; }
+    else {
+      var d = await r.json();
+      INVS = Array.isArray(d && d.invoices) ? d.invoices : (Array.isArray(d && d.items) ? d.items : []);
+    }
+  } catch(e) { INVS = []; }
+  var box = document.getElementById('inv');
+  if(box) box.innerHTML = renderInvoices();
 }
 
 function renderRequests(){
@@ -371,7 +455,7 @@ function renderUpgrade(plans){
         + termButton('month','Monthly')
         + termButton('year','Yearly \u2014 2 months free')
         + '</div>';
-  html += '<div id="preq-admin"></div><div id="preq"></div>';
+  html += '<div id="preq-admin"></div><div id="preq"></div><div id="inv"></div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
   
   plans.forEach(function(p){
