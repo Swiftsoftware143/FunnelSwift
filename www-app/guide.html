@@ -188,6 +188,7 @@
       <a href="#kinetic-qr" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📱</span> QR Codes</a>
       <a href="#branding-badge" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Branding Badge</a>
       <a href="#email-branding" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎨</span> Email Branding</a>
+      <a href="#do-not-mail" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📭</span> Do not mail</a>
       <a href="#email-provider" class="nav-item" onclick="closeMobile()"><span class="nav-icon">✉️</span> Email Provider</a>
       <a href="#sharing-app" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📲</span> Sharing the App</a>
       <a href="#web-to-lead" class="section-title" onclick="closeMobile()">Web-to-Lead &amp; API</a>
@@ -585,6 +586,23 @@ GET /api/v1/kinetic/qr/{slug}?format=png&size=500</code></pre>
         default. Leaving every field empty sends no signature block at all.</p>
 
       <!-- ==================== EMAIL PROVIDER SECTION ==================== -->
+      <h2 id="do-not-mail">📭 Do not mail</h2>
+      <p>Separate from Email Branding: this is the list of addresses that must <strong>not</strong> be
+        sent notices, so the same person is never mailed twice after they asked you to stop. Open
+        <strong>Do not mail</strong> in the console sidebar to see it.</p>
+      <ul>
+        <li><strong>How addresses get here</strong> — an unsubscribe click in one of your notice emails,
+          a hard bounce, or a spam complaint adds the address by itself. You can also add one by hand for a
+          request that came in by phone; choose <strong>Notices only</strong> to stop marketing mail, or
+          <strong>Everything</strong> to stop all notice mail to that address.</li>
+        <li><strong>Allow again</strong> — each row has that button. It lifts the block and notices to
+          that address resume straight away, so a wrong address or a change of mind costs one click.</li>
+        <li><strong>Download the list (CSV)</strong> — the whole list with the address, what is stopped,
+          the reason, how it got there and when.</li>
+      </ul>
+      <p><strong>What is never stopped:</strong> account mail — sign-in details, password resets,
+        receipts and support replies. A blocked address can still get back into its account, which is why
+        the list covers notices and nothing else.</p>
       <h2 id="email-provider">✉️ Email Provider</h2>
       <p>By default every email FunnelSwift sends <em>for your workspace</em> leaves through FunnelSwift's
         own mail service. If you would rather it left through <strong>your own account</strong> — your
