@@ -552,7 +552,13 @@ mod tests {
             // `GET /api/v1/settings/do-not-mail/webhook` (session-scoped, so `private`). The commit
             // that added them left this pin behind, so the suite was red at HEAD: 246 mounts, 246
             // unique, 220 on the API surface, 26 public, 3 internal, 191 private, 26 served.
-            (246, 246, 220, 26, 3, 191, 26),
+            // 2026-11-23 (cron `default`): +3 mounted API routes, all PRIVATE — the operator's
+            // invoice ledger (`GET /api/v1/invoices` scoped to the caller's own workspace, plus the
+            // `/api/v1/admin/invoices` read+raise pair and `PUT /api/v1/admin/invoices/:id`). Every
+            // one takes its tenant from the session and the admin pair is operator-gated, so all
+            // three belong in `private`: 249 mounts, 249 unique, 223 on the API surface, 26 public,
+            // 3 internal, 194 private, 26 served.
+            (249, 249, 223, 26, 3, 194, 26),
             "the census in the module docs no longer matches the router"
         );
     }

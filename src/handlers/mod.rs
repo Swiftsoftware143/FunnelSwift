@@ -41,6 +41,10 @@ pub mod linkedin;
 // design — see its module docs and `auth::route_policy::PUBLIC_ROUTES`.
 pub mod mobile_notify_handler;
 pub mod ocr;
+// The operator's invoice ledger (migration 140, 2026-11-23). With no payment provider on this
+// install, a plan request is the buying path; this is the RECORD of what a customer owes and has
+// paid, so a workspace that asks to buy can be billed today with no card and no key.
+pub mod invoice_handler;
 pub mod plan_handler;
 // A workspace ASKS to be moved onto a paid plan when the install has no payment provider
 // (migration 112). The row is the record both sides read.

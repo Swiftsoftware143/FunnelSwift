@@ -19,8 +19,8 @@ use crate::handlers::{
     affiliate_referral_handler, affiliate_tracking_handler, api_keys, branding_handler,
     bulk_handler, campaigns_handler, checkout_handler, coreswift_integration_handler,
     coreswift_push, cross_app_webhook_handler, dashboard_handler, email_template_handler,
-    funnel_handler, incentiveswift_handler, insight_handler, kinetic_handler, lead_handler,
-    linkedin, mobile_notify_handler, ocr, plan_handler, plan_request_handler,
+    funnel_handler, incentiveswift_handler, insight_handler, invoice_handler, kinetic_handler,
+    lead_handler, linkedin, mobile_notify_handler, ocr, plan_handler, plan_request_handler,
     platform_settings_handler, portfolio_handler, product_category_handler, provider_keys_handler,
     public_signup_handler, qr_handler, seo_handler, settings_handler, site_handler,
     site_settings_handler, support_request_handler, tag_group_handler, tag_handler,
@@ -1068,6 +1068,19 @@ pub fn create_router(
         .route(
             "/api/v1/admin/plan-requests/:id",
             put(plan_request_handler::admin_update),
+        )
+        // INVOICES (2026-11-23). Card payments are off, so a plan request is the buying path and
+        // `admin/billing-settings` says how to send money — but nothing stored what a customer OWED
+        // or had PAID. The tenant door is scoped by the token; the `/api/v1/admin/` pair is gated to
+        // a platform operator by `auth::global_auth` AND states the predicate in each handler.
+        .route("/api/v1/invoices", get(invoice_handler::list_mine))
+        .route(
+            "/api/v1/admin/invoices",
+            get(invoice_handler::admin_list).post(invoice_handler::admin_create),
+        )
+        .route(
+            "/api/v1/admin/invoices/:id",
+            put(invoice_handler::admin_update),
         )
         // A workspace asks for HELP (migration 122, cron 2026-11-06). The fleet's other five apps
         // all give a signed-in customer an in-product way to reach the team; this one's refusals
