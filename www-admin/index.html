@@ -153,6 +153,21 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .toast-success{background:var(--success)}.toast-error{background:var(--danger)}.toast-info{background:var(--primary)}
 /* Responsive */
 @media(max-width:768px){.sidebar{width:60px!important}.sidebar .nav-text,.sidebar .nav-section-header,.sidebar .logo-area .title,.sidebar .badge,.sidebar .role-badge,.sidebar .section-divider-label{display:none}.sidebar .nav-item{justify-content:center;padding:10px}.sidebar .nav-item .icon{font-size:18px}.main{margin-left:60px!important}}
+/* Phone rail (cron 2026-11-23): below 768px the sidebar hid every .nav-text, leaving an emoji-only
+   strip with no tooltip — and two distinct screens share a glyph (🔑 Provider Keys / API Keys,
+   📊 Dashboard / Card Analytics), which a touch screen cannot tell apart because hover does not
+   exist there. The rail now carries a toggle: one tap widens it to the full 240px rail with every
+   label, and picking a section folds it back so the content is not covered. Desktop never sees it. */
+.sidebar .rail-toggle{display:none}
+@media(max-width:768px){
+  .sidebar .rail-toggle{display:flex;align-items:center;justify-content:center;width:100%;height:32px;margin:0 0 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--muted);font-size:15px;line-height:1;cursor:pointer}
+  .sidebar .rail-toggle:hover{color:var(--text)}
+  .sidebar.expanded{width:240px!important;box-shadow:0 12px 32px rgba(0,0,0,.28)}
+  .sidebar.expanded .nav-text,.sidebar.expanded .logo-area .title,.sidebar.expanded .role-badge{display:inline!important}
+  .sidebar.expanded .sidebar-section-label{display:block!important}
+  .sidebar.expanded .nav-item{justify-content:flex-start;padding:9px 10px}
+  .sidebar.expanded .badge{display:inline-block!important}
+}
 /* Plan card in upgrade */
 .plan-card{border:2px solid var(--border);border-radius:12px;padding:20px;text-align:center;transition:all .2s}
 .plan-card:hover{border-color:var(--primary);box-shadow:0 4px 12px rgba(99,102,241,.1)}
@@ -537,6 +552,12 @@ function renderApp() {
     return;
   }
   app.innerHTML = renderShell();
+  /* cron 2026-11-23 — below 768px the rail shows the glyph only, and two DIFFERENT screens share
+     one (🔑 Provider Keys / API Keys, 📊 Dashboard / Card Analytics); a touch screen has no hover
+     to ask. Each item gets a tooltip built from the aria-label it already carries, so the tooltip
+     and the accessible name can never disagree. Runs after every shell paint because the sidebar
+     is re-rendered on each view switch. */
+  nameRail();
   bindShell();
   renderView();
 }
@@ -596,6 +617,9 @@ function renderShell() {
 
   return `<div class="flex">
     <div class="sidebar">
+      <!-- Phone only (<=768px): the rail hides every label, so this opens the widened rail and names
+           itself for assistive tech. Hidden on desktop by .sidebar .rail-toggle{display:none}. -->
+      <button type="button" class="rail-toggle" id="fsRailToggle" aria-label="Show the menu labels" aria-expanded="false" title="Menu" onclick="fsRailToggle()">☰</button>
       <div class="logo-area">
         <span class="icon">🚀</span>
         <span class="title">FunnelSwift</span>
@@ -628,6 +652,40 @@ function renderShell() {
 }
 
 window._logout = doLogout;
+
+/* ── PHONE RAIL (cron 2026-11-23) ────────────────────────────────────────────────────────────
+   At <=768px the sidebar collapses to a 60px strip and every .nav-text is hidden, so the operator
+   gets 45 icons with no names and two glyphs that each stand for two different screens. The rail
+   toggle widens it to the full 240px list (labels, section headers, badges) and picking a section
+   folds it back so the content underneath is visible again. Desktop (>768px) never renders the
+   toggle — .sidebar .rail-toggle{display:none} outside the media query. */
+function nameRail() {
+  document.querySelectorAll('.sidebar .nav-item[aria-label]').forEach(function (el) {
+    if (!el.getAttribute('title')) el.setAttribute('title', el.getAttribute('aria-label'));
+  });
+}
+window.fsRailToggle = function () {
+  var sb = document.querySelector('.sidebar');
+  if (!sb) return;
+  var on = sb.classList.toggle('expanded');
+  var btn = document.getElementById('fsRailToggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    btn.setAttribute('aria-label', on ? 'Hide the menu labels' : 'Show the menu labels');
+    btn.innerHTML = on ? '✕' : '☰';
+  }
+};
+/* Picking a section closes the widened rail again (capture phase so it runs before the view swap). */
+document.addEventListener('click', function (ev) {
+  var sb = document.querySelector('.sidebar.expanded');
+  if (!sb) return;
+  var item = ev.target && ev.target.closest ? ev.target.closest('.nav-item') : null;
+  if (item && sb.contains(item)) {
+    sb.classList.remove('expanded');
+    var btn = document.getElementById('fsRailToggle');
+    if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.innerHTML = '☰'; }
+  }
+}, true);
 
 // ── NAVIGATION ──
 function buildNav() {
