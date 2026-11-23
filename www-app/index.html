@@ -371,6 +371,11 @@ html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!imp
        tools the mcp server exposes for funnelswift, and a copy-paste client config. No audit block:
        the MCP audit log is a file owned by the mcp service and has no read API. -->
   <a data-tab="settings" onclick="S('settings')">Settings</a>
+  <!-- cron 2026-11-23: GET|POST /api/v1/settings/suppressions, DELETE .../:id, the CSV twin
+       and GET /api/v1/settings/do-not-mail/webhook shipped 2026-11-21 with NO screen, so a
+       tenant could not see who asked to stop, block an address that asked by phone, or read
+       the provider's delivery-events address. A backend route with no UI is a defect. -->
+  <a data-tab="donotmail" onclick="S('donotmail')">Do not mail</a>
   <a data-tab="lead-stages" onclick="S('lead-stages')">Lead Stages</a>
   <!-- cron 2026-11-06: GET|POST /api/v1/support-requests are live and tenant-scoped and NO console
        called them, while this app's own checkout and plan refusals tell the customer to "contact
@@ -640,6 +645,7 @@ TI.funnels="Funnels";
 TI.campaigns="Campaigns";
 TI.scan="Card Scanner";
 TI.mcp="MCP";
+TI.donotmail="Do not mail";
 
 /* === CARD SCANNER (cron 2026-10-24) =========================================================
    `POST /api/v1/ocr/parse-card` is a SOLD, plan-gated, metered feature: `max_ocr_scans` is a
@@ -993,6 +999,8 @@ function S(t){
   if(typeof LINBOX==="function") L.inbox=LINBOX;
   /* Tag Automation's renderer lives in a later <script> block, same hazard as LWTL/LSUP. */
   if(typeof LTR==="function") L.tagrules=LTR;
+  /* Do not mail: same later-block hazard as LWTL/LSUP/LTR above. */
+  if(typeof LDNM==="function") L.donotmail=LDNM;
   if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
   else if(t!=="upgrade"&&t!=="funnels"){
     var tries=0;
@@ -1001,6 +1009,7 @@ function S(t){
       if(t==="wtl"&&typeof LWTL==="function"){ L.wtl=LWTL; LWTL(); return; }
       if(t==="support"&&typeof LSUP==="function"){ L.support=LSUP; LSUP(); return; }
       if(t==="tagrules"&&typeof LTR==="function"){ L.tagrules=LTR; LTR(); return; }
+      if(t==="donotmail"&&typeof LDNM==="function"){ L.donotmail=LDNM; LDNM(); return; }
       if(t==="workspaces"&&typeof LWSP==="function"){ L.workspaces=LWSP; LWSP(); return; }
       if(t==="inbox"&&typeof LINBOX==="function"){ L.inbox=LINBOX; LINBOX(); return; }
       if(++tries<8) setTimeout(waitForRenderer,300);
@@ -8205,5 +8214,122 @@ function showInboxRecords(id) {
 
 </script>
 <!--/B209-FEEDBACK-APP-->
+<script>
+
+/* === DO NOT MAIL (cron 2026-11-23) ============================================================
+   The compliance doors shipped 2026-11-21 with NO screen anywhere:
+     GET|POST /api/v1/settings/suppressions   (list, add by hand)
+     GET      /api/v1/settings/suppressions.csv
+     DELETE   /api/v1/settings/suppressions/:id
+     GET      /api/v1/settings/do-not-mail/webhook  (the provider's delivery-events URL)
+   So a tenant could not see who had asked to stop being mailed, could not add an address that
+   asked by phone or that the operator watched hard-bounce, and could not read the one URL the
+   mail provider has to post delivery events to. A backend route with no UI is a defect. */
+var DNM_NOTE="";
+function DNMSAY(t,ok){
+  var m=document.getElementById("dnm-msg"); if(!m) return;
+  m.style.display=t?"block":"none";
+  m.style.color=ok?"#166534":"#b91c1c";
+  m.textContent=t||"";
+}
+function DNMCLASS(c){
+  return c==="all"?"Everything":"Notices only";
+}
+function LDNM(){
+  return Promise.all([
+    api("/api/v1/settings/suppressions").then(function(d){return {ok:true,d:d};},function(e){return {ok:false,e:e};}),
+    api("/api/v1/settings/do-not-mail/webhook").then(function(d){return {ok:true,d:d};},function(e){return {ok:false,e:e};})
+  ]).then(function(res){
+    var list=res[0], hook=res[1];
+    var a=(list.ok&&list.d&&list.d.suppressions)||[];
+    var h='<div class="cc"><h3>Do not mail</h3>';
+    h+='<p style="color:#64748b;font-size:13px;max-width:80ch;margin:6px 0 14px">Addresses on this list are never mailed by this workspace &mdash; a person who unsubscribed, a mailbox that hard-bounced, or someone who asked you by phone. Anything the mail provider reports back (hard bounces, complaints, provider-level unsubscribes) is added here automatically once the delivery-events address below is registered with the provider.</p>';
+    h+='<div class="card" style="margin-bottom:14px"><h3>Stop mailing an address</h3>';
+    h+='<div class="fld"><label>Email address</label><input id="dnm-addr" maxlength="254" placeholder="person@company.com"></div>';
+    h+='<div class="fld"><label>What to stop</label><select id="dnm-class"><option value="notification">Notices about their workspace (plan changes, reminders)</option><option value="all">Everything, including marketing</option></select></div>';
+    h+='<div class="fld"><label>Why (optional)</label><input id="dnm-reason" maxlength="200" placeholder="Asked by phone on 12 Nov"></div>';
+    h+='<button class="btn" onclick="DNMADD()">Add to the list</button>';
+    h+='<span id="dnm-msg" style="display:none;margin-left:8px;font-size:12px"></span></div>';
+    if(!list.ok){
+      h+='<div class="card" style="border-left:3px solid #b91c1c"><p style="color:#b91c1c;font-size:13px;margin:0">The list could not be read just now, so this screen cannot say who is on it. Try again in a moment &mdash; nothing has been changed.</p></div>';
+    }else{
+      h+='<div class="card"><h3>On the list ('+a.length+')</h3>';
+      if(!a.length){
+        h+='<p style="color:#64748b;padding:12px 0 2px;font-size:13px">Nobody has asked this workspace to stop mailing them. An unsubscribe, a hard bounce or a complaint adds the address here by itself.</p>';
+      }else{
+        h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.04em">'
+          +'<th style="padding:8px 6px">Address</th><th style="padding:8px 6px">Stops</th><th style="padding:8px 6px">Why</th><th style="padding:8px 6px">Added</th><th style="padding:8px 6px"></th></tr></thead><tbody>';
+        a.forEach(function(r){
+          var src=r.source==="operator"?"added here":(r.source||"");
+          h+='<tr style="border-top:1px solid #e2e8f0">';
+          h+='<td style="padding:8px 6px;word-break:break-all"><strong>'+X(r.address)+'</strong></td>';
+          h+='<td style="padding:8px 6px">'+X(DNMCLASS(r.mail_class))+'</td>';
+          h+='<td style="padding:8px 6px;color:#475569">'+X(r.reason||"")+(src?' <span style="color:#94a3b8;font-size:11px">('+X(src)+')</span>':'')+'</td>';
+          h+='<td style="padding:8px 6px;color:#94a3b8;font-size:12px">'+X(TSFMT(r.created_at,0))+'</td>';
+          h+='<td style="padding:8px 6px;text-align:right"><button class="btn" style="background:#fff;color:#b91c1c;border:1px solid #fecaca" onclick="DNMDEL(\''+X(String(r.id))+'\',\''+X(r.address)+'\')">Allow again</button></td>';
+          h+='</tr>';
+        });
+        h+='</tbody></table></div>';
+        h+='<button class="btn" style="margin-top:12px;background:#fff;color:#334155;border:1px solid #e2e8f0" onclick="DNMCSV()">Download the list (CSV)</button>';
+      }
+      h+='</div>';
+    }
+    h+='<div class="card" style="margin-top:14px"><h3>Bounces and complaints report themselves</h3>';
+    if(hook.ok&&hook.d&&hook.d.url){
+      h+='<p style="color:#64748b;font-size:13px;margin:0 0 8px">Paste this address into your mail provider as the delivery-events webhook. It carries its own secret, so anyone else who posts to it is refused, and it is the only thing that has to be set up once.</p>';
+      h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code id="dnm-hook" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:12px;word-break:break-all;flex:1;min-width:240px">'+X(hook.d.url)+'</code>';
+      h+='<button class="btn" onclick="DNMCOPY()">Copy</button></div>';
+      h+='<p style="color:#94a3b8;font-size:11px;margin:8px 0 0">It reports: '+X(((hook.d.events||[]).join(", ")))+'.</p>';
+    }else{
+      h+='<p style="color:#b91c1c;font-size:13px;margin:0">The delivery-events address could not be read just now. Reload this screen to try again.</p>';
+    }
+    h+='</div></div>';
+    document.getElementById("ct").innerHTML=h;
+    if(DNM_NOTE){DNMSAY(DNM_NOTE,true);DNM_NOTE="";}
+  });
+}
+function DNMADD(){
+  var addr=(document.getElementById("dnm-addr").value||"").trim();
+  var cls=document.getElementById("dnm-class").value||"notification";
+  var reason=(document.getElementById("dnm-reason").value||"").trim();
+  if(addr.indexOf("@")<1){DNMSAY("Type a full email address, for example person@company.com.",false);return;}
+  DNMSAY("Adding...",true);
+  api("/api/v1/settings/suppressions",{method:"POST",body:JSON.stringify({address:addr,mail_class:cls,reason:reason})})
+    .then(function(){DNM_NOTE="Added "+addr+" to the do-not-mail list.";return LDNM();})
+    .then(function(){DNMSAY(DNM_NOTE,true);DNM_NOTE="";})
+    .catch(function(e){DNMSAY(e&&e.message?e.message:"That address could not be added.",false);});
+}
+function DNMDEL(id,addr){
+  if(!window.confirm("Start mailing "+addr+" again?"))return;
+  var hdr=T?{Authorization:"Bearer "+T}:{};
+  fetch("/api/v1/settings/suppressions/"+encodeURIComponent(id),{method:"DELETE",headers:hdr})
+    .then(function(r){
+      if(r.status===204){DNM_NOTE=addr+" can be mailed again.";return LDNM();}
+      if(r.status===404){DNM_NOTE="That entry was already gone; the list is unchanged.";return LDNM();}
+      return r.text().then(function(t){throw Error(t||("Could not undo it ("+r.status+")"));});
+    })
+    .then(function(){if(DNM_NOTE){DNMSAY(DNM_NOTE,true);DNM_NOTE="";}})
+    .catch(function(e){DNMSAY(e&&e.message?e.message:"Could not undo it.",false);});
+}
+function DNMCSV(){
+  var hdr=T?{Authorization:"Bearer "+T}:{};
+  fetch("/api/v1/settings/suppressions.csv",{headers:hdr})
+    .then(function(r){if(!r.ok)throw Error("The file could not be built ("+r.status+").");return r.blob();})
+    .then(function(b){
+      var u=URL.createObjectURL(b),a=document.createElement("a");
+      a.href=u;a.download="do-not-mail.csv";document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(u);},4000);
+    })
+    .catch(function(e){DNMSAY(e&&e.message?e.message:"The file could not be built.",false);});
+}
+function DNMCOPY(){
+  var el=document.getElementById("dnm-hook"); if(!el)return;
+  var t=el.textContent||"";
+  var done=function(){DNMSAY("The delivery-events address is on your clipboard.",true);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){DNMSAY("Copy failed \u2014 select the address and copy it by hand.",false);});return;}
+  try{var r=document.createRange();r.selectNodeContents(el);var s=window.getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("copy");done();}
+  catch(e){DNMSAY("Copy failed \u2014 select the address and copy it by hand.",false);}
+}
+</script>
 </body>
 </html>

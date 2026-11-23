@@ -232,11 +232,34 @@ pub async fn webhook_url(
     State(state): State<AppState>,
     auth: crate::auth::middleware::AuthUser,
 ) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
-    if auth.role != "admin" && auth.role != "company_admin" && !auth.is_admin {
-        return Err((
-            axum::http::StatusCode::FORBIDDEN,
-            "only a workspace administrator can read the mail-events URL".to_string(),
-        ));
+    // WHO may read it: the workspace's OWNER, not a role string (measured 2026-11-23). This check
+    // used to be `role == admin|company_admin`, but FunnelSwift's signup writes `role = "user"` for
+    // the very person who created the workspace — so the only human in a self-serve account was
+    // refused the one address he has to paste into the provider, and bounce/complaint suppression
+    // could never be switched on by the customer it protects. `is_workspace_owner` is the same rule
+    // the team doors and PATCH /api/v1/workspace use (creator, appointed company_admin, or the
+    // platform operator), so the answer here now matches every other "you own this workspace" door.
+    let tenant_uuid = Uuid::parse_str(&auth.tenant_id).map_err(|_| {
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            "invalid tenant".to_string(),
+        )
+    })?;
+    match crate::handlers::team_handler::is_workspace_owner(&state, &auth, tenant_uuid).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err((
+                axum::http::StatusCode::FORBIDDEN,
+                "only a workspace owner can read the mail-events URL".to_string(),
+            ))
+        }
+        Err(e) => {
+            tracing::warn!("could not check workspace ownership for the mail-events URL: {e}");
+            return Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "could not check who owns this workspace".to_string(),
+            ));
+        }
     }
     let token = token(&state.pool)
         .await
