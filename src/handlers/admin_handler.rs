@@ -1227,6 +1227,15 @@ pub async fn resend_tenant_user_credentials(
 /// (a super admin who demoted themselves would lose the console mid-session), and the LAST active
 /// admin of a workspace cannot be demoted (that leaves the workspace with nobody who can administer
 /// it). Both answer 400 with the reason, so the panel can print the sentence.
+///
+/// **The change takes effect NOW, not at the token's expiry (2026-11-23).** Tenant authority is
+/// decided from the token's `role` claim — the credential boundary only compares claims against the
+/// row for PLATFORM-admin authority — so before this the row moved and the person's open session
+/// kept every door their old role carried (measured live: a `company_admin` demoted to `user`
+/// through this route still changed a teammate's role with the token minted before the demotion).
+/// `users.sessions_valid_from` is the line the boundary refuses a session that predates, so moving
+/// it in the same statement ends the affected person's sessions; a promotion is the same fact from
+/// the other side — the new rights arrive at the next sign-in, and the answer says so.
 pub async fn set_tenant_user_role(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -1248,7 +1257,8 @@ pub async fn set_tenant_user_role(
 
     if current == role {
         return Ok(Json(json!({
-            "id": uid.to_string(), "email": email, "role": role, "changed": false
+            "id": uid.to_string(), "email": email, "role": role,
+            "changed": false, "sessions_revoked": false
         })));
     }
     if uid.to_string() == auth.user_id {
@@ -1269,13 +1279,18 @@ pub async fn set_tenant_user_role(
             ));
         }
     }
-    sqlx::query("UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2")
-        .bind(&role)
-        .bind(uid)
-        .execute(&state.pool)
-        .await?;
+    sqlx::query(
+        "UPDATE users SET role = $1, sessions_valid_from = NOW(), updated_at = NOW() WHERE id = $2",
+    )
+    .bind(&role)
+    .bind(uid)
+    .execute(&state.pool)
+    .await?;
     Ok(Json(json!({
-        "id": uid.to_string(), "email": email, "role": role, "changed": true
+        "id": uid.to_string(), "email": email, "role": role, "changed": true,
+        // The person's open sessions are ended, so the new role (or the loss of the old one) is
+        // real the moment they sign in again — the console states this from the SERVER's answer.
+        "sessions_revoked": true
     })))
 }
 
