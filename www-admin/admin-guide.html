@@ -514,13 +514,13 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             person. The sender consults it inside the one send path every message passes through, before
             anything is queued &mdash; a suppressed send writes a visible row in the mail log saying why,
             it does not bounce.</li>
-          <li><strong>Your own screen:</strong> the <strong>Do not mail</strong> card on the Email Branding
-            screen lists who is on the list, lets you add an address yourself (a request made by phone, or
+          <li><strong>Your own screen:</strong> the <strong>Do not mail</strong> tab in the sidebar (its owner
+            sees it in any role) lists who is on the list, lets you add an address yourself (a request made by phone, or
             an address that keeps bouncing), allow one again, and download the whole list as a spreadsheet
             file &mdash; <code>GET|POST /api/v1/settings/suppressions</code>,
             <code>DELETE /api/v1/settings/suppressions/:id</code>,
             <code>GET /api/v1/settings/suppressions.csv</code>, all scoped to the signed-in workspace.</li>
-          <li><strong>The provider's own events feed this list too.</strong> The Do not mail card shows a
+          <li><strong>The provider's own events feed this list too.</strong> The Do not mail tab shows a
             delivery-events address, read from the app and put on the clipboard with one button
             (<code>GET /api/v1/settings/do-not-mail/webhook</code>). Paste it once into the mail
             provider's webhook settings for the sending domain, with permanent failures, complaints and
