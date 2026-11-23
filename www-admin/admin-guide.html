@@ -530,7 +530,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             stopping <em>everything</em> to that address, account mail included &mdash; a mailbox that
             does not exist cannot receive a password reset either &mdash; where an Unsubscribe click
             records only the class it came from. Until the address is pasted, only the Unsubscribe link
-            records an opt-out.</li>
+            records an opt-out. The tab says whether those reports are actually arriving: <strong>Connected
+            &mdash; the provider's last report arrived</strong> with its date once one has landed, otherwise
+            <strong>Connected, waiting for its first report</strong>. A wrong address and a working one look
+            identical without that line, so check it once after pasting.</li>
           <li><strong>If the list cannot be read, mail still goes out.</strong> The check fails open by
             design: a database problem is logged and the message is sent, because a silent mailing freeze
             is worse than one extra notice.</li>

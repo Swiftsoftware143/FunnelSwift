@@ -5843,6 +5843,7 @@ function doNotMailCardHtml() {
             <button type="button" class="btn btn-secondary btn-sm" id="dnm-hook-copy">Copy</button>
           </div>
           <span id="dnm-hook-msg" style="font-size:12px"></span>
+          <div id="dnm-events-state" data-dnm-events="waiting" style="margin-top:6px;font-size:12px"></div>
         </div>
         <div id="dnm-list" style="margin-top:14px;font-size:13px;color:#64748b">Loading…</div>
       </div>
@@ -5994,11 +5995,27 @@ window._dnmExport = async function() {
 window._dnmHook = async function() {
   const code = document.getElementById('dnm-hook');
   if (!code) return;
+  /* WHETHER THE SAFETY NET IS ACTUALLY ON (2026-11-23). The address alone is a promise: nothing in
+     this console told the operator whether the provider had ever reported a bounce, complaint or
+     unsubscribe, so a pasted-but-wrong address looked exactly like a working one and the list only
+     filled by hand. The server answers WHEN the last report arrived; this renders it as a sentence. */
+  const state = document.getElementById('dnm-events-state');
+  const say = (text, colour) => { if (!state) return; state.textContent = text; state.style.color = colour; };
   try {
     const r = await api('/settings/do-not-mail/webhook');
     code.textContent = (r && r.url) || '—';
+    const at = r && r.last_event_at;
+    if (state) state.setAttribute('data-dnm-events', at ? 'connected' : 'waiting');
+    if (at) {
+      const stamp = String(at).slice(0, 16).replace('T', ' ');
+      say('\u2705 Connected \u2014 the provider\u2019s last report arrived ' + stamp + ' UTC. Hard bounces, spam complaints and unsubscribes have been adding themselves since then.', '#15803d');
+    } else {
+      say('Connected, waiting for its first report \u2014 nothing has arrived yet. Paste the address above into the provider\u2019s webhook settings once; until the first report lands, addresses reach this list only when you add them or someone clicks unsubscribe.', '#b45309');
+    }
   } catch (e) {
     code.textContent = 'Could not read the address: ' + (e.message || '');
+    if (state) state.setAttribute('data-dnm-events', 'unknown');
+    say('Could not read whether the provider\u2019s reports are arriving: ' + (e.message || 'unknown error'), '#b91c1c');
   }
 };
 
