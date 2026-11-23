@@ -529,6 +529,38 @@ pub async fn render_funnel(
         None => String::new(),
     };
 
+    // THE CUSTOMER'S NAME IN THE TAB AND IN THE SHARE CARD (cron 2026-11-23). A funnel link is the
+    // customer's page, but its <title> and its share card still advertised FunnelSwift: a branded
+    // workspace's visitor saw "— FunnelSwift" in the browser tab and, on Facebook/Slack/WhatsApp, the
+    // app's own card instead of the business's logo. Both now follow the SAME branding document the
+    // page header above already reads (`branding::load`), so there is still one source of truth. A
+    // workspace with nothing configured renders byte-for-byte as before — the repo's standing
+    // invariant for every branding surface.
+    let page_owner = branding
+        .as_ref()
+        .map(|b| b.brand_name.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let page_owner_html = page_owner
+        .clone()
+        .map(|n| html_escape(&n))
+        .unwrap_or_else(|| "FunnelSwift".to_string());
+    // The share image a scraper fetches: the workspace's own logo when it has one, otherwise this
+    // app's card (which is what every unbranded page keeps sending).
+    let share_image = branding
+        .as_ref()
+        .and_then(|b| b.resolve_logo_url(crate::email::APP_URL))
+        .map(|u| html_escape(&u))
+        .unwrap_or_else(|| "https://funnelswift.net/assets/og-funnelswift.png".to_string());
+    // Only a branded page names a site: an unbranded page keeps sending exactly the meta it sent
+    // before this change.
+    let site_name_meta = match &page_owner {
+        Some(n) => format!(
+            "<meta property=\"og:site_name\" content=\"{}\">\n",
+            html_escape(n)
+        ),
+        None => String::new(),
+    };
+
     // The CUSTOMER's words where they set them, a sensible default where they did not: every row
     // that existed before migration 111 keeps rendering, and it now renders a page that can take a
     // lead instead of "under construction". The RAW values are kept for the inline script (a JS
@@ -579,18 +611,21 @@ pub async fn render_funnel(
         // customer's page is no longer the one public URL in the estate with no share picture.
         seo_meta.push_str(&format!(
             "<meta name=\"description\" content=\"{desc}\">\n\
+             {site_name}\
              <meta property=\"og:title\" content=\"{title}\">\n\
              <meta property=\"og:description\" content=\"{desc}\">\n\
-             <meta property=\"og:image\" content=\"https://funnelswift.net/assets/og-funnelswift.png\">\n\
+             <meta property=\"og:image\" content=\"{image}\">\n\
              <meta property=\"og:image:width\" content=\"1200\">\n\
              <meta property=\"og:image:height\" content=\"630\">\n\
              <meta property=\"og:url\" content=\"https://funnelswift.net/funnel/{slug}\">\n\
              <meta name=\"twitter:title\" content=\"{title}\">\n\
              <meta name=\"twitter:description\" content=\"{desc}\">\n\
-             <meta name=\"twitter:image\" content=\"https://funnelswift.net/assets/og-funnelswift.png\">\n",
+             <meta name=\"twitter:image\" content=\"{image}\">\n",
             desc = html_escape(&og_desc),
             title = html_escape(&og_title),
             slug = html_escape(&slug),
+            site_name = site_name_meta,
+            image = share_image,
         ));
     }
 
@@ -633,7 +668,7 @@ pub async fn render_funnel(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{funnel_name} — FunnelSwift</title>
+<title>{funnel_name} — {page_owner_html}</title>
 {seo_meta}
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
