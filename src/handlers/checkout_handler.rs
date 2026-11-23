@@ -92,6 +92,22 @@ pub async fn upsert_payment_provider(
     let provider = payload["provider_type"]
         .as_str()
         .ok_or_else(|| AppError::Validation("provider_type required".into()))?;
+    // ONLY the arm this app can actually CHARGE with (2026-11-23). `create_checkout_session` /
+    // `resolve_plan_provider` accept the `stripe` arm alone (see the check further down: any other
+    // type is refused with `payment_provider_not_configured`), yet this route stored whatever string
+    // the operator typed — the Provider Keys screen offers a free-text box with Stripe merely
+    // suggested. A typed "square" or "paypal" therefore SAVED, painted a key badge, and could be
+    // marked active above a till that would refuse every buyer. The panel's own hint already says
+    // only Stripe can take a payment; this makes the server say it too, at the door, by name.
+    let provider_norm = provider.trim().to_ascii_lowercase();
+    if provider_norm != "stripe" {
+        return Err(AppError::Validation(format!(
+            "{provider} cannot take a payment on this installation: Stripe is the only provider the \
+             checkout can charge through, so a {provider} key saved here would look connected and \
+             still be refused at the till. Add a Stripe key."
+        )));
+    }
+    let provider = "stripe";
     let api_key_raw = payload["api_key"].as_str().unwrap_or("").trim().to_string();
     // Stripe signs each delivery with a webhook signing secret that is DIFFERENT from the API key.
     // Without it the receiver can verify nothing, so it is collected here and encrypted exactly like
