@@ -7151,7 +7151,7 @@ async function wiredInsights() {
 // READ-ONLY: one GET per window switch, nothing written. `days` is clamped server-side (1..365).
 // The panel is mounted only on the dashboard view, so no other screen pays for the request.
 async function wiredSourceInsights(win) {
-  const days = win || 30;
+  let days = win || 30;
   const body = wiredPanel('dashboard', '📈 Which channel converts',
     'Every lead in the window counted under the source it was captured with — give each channel its own card slug and this is the per-channel comparison.');
   if (!body) return;
@@ -7189,6 +7189,9 @@ async function wiredSourceInsights(win) {
       b.onclick = async () => {
         const n = Number(b.getAttribute('data-ins-win'));
         b.disabled = true;
+        // The stat label and the pressed button both read `days`, so it must move with the press;
+        // without this the panel re-read the 7-day numbers under a "last 30 days" heading.
+        days = n;
         try { const fresh = await api('/insights?days=' + n); await draw(fresh || {}); }
         catch (e) { wiredErr(body, e); }
       };
