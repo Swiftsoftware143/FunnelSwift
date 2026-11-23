@@ -653,6 +653,8 @@ function buildNav() {
     { id: 'workspaces', icon: '🏢', label: 'Workspaces' },
     { id: 'portfolio', icon: '🏢', label: 'Portfolio Companies' },
     { id: 'plans', icon: '💳', label: 'Plans' },
+    // Its own tab, as the admin guide says: the owner sees it in any role.
+    { id: 'doNotMail', icon: '🚫', label: 'Do not mail' },
     { id: 'leads', icon: '👥', label: 'Leads' },
     { id: 'tags', icon: '🏷️', label: 'Tags' },
   ];
@@ -923,6 +925,7 @@ const viewRenderers = {
   tagGroups: renderTagGroups,
   tenants: renderTenants,
   emailBranding: renderEmailBranding,
+  doNotMail: renderDoNotMail,
   leadCapture: renderLeadCapture,
   settings: renderSettings,
   siteSettings: renderSiteSettings,
@@ -992,6 +995,7 @@ function bindView(view) {
     case 'tenants': bindTenants(); break;
     case 'settings': bindSettings(); break;
     case 'emailBranding': bindEmailBranding(); break;
+    case 'doNotMail': bindDoNotMail(); break;
     case 'leadCapture': bindLeadCapture(); break;
     case 'siteSettings': bindSiteSettings(); break;
     case 'tagRules': bindTagRules(); break;
@@ -5792,7 +5796,16 @@ async function renderEmailBranding() {
         <div id="brand-preview-msg" style="font-size:12px;margin-top:8px;color:#64748b"></div>
       </div>
     </div>
-    <div class="card" style="margin-top:20px" data-ops="email-do-not-mail">
+    ${doNotMailCardHtml()}
+  </div>`;
+}
+
+/* Do not mail — its own screen (2026-11-23). The card below used to exist only inside Email
+   Branding, while the admin guide promises a sidebar tab, and every sibling app gives the list its
+   own entry: the person who owns the sending domain should not have to hunt through branding to see
+   who asked to stop. One builder, both homes, so the two can never drift. */
+function doNotMailCardHtml() {
+  return `<div class="card" style="margin-top:20px" data-ops="email-do-not-mail">
       <div class="card-header">
         <span class="card-title">Do not mail</span>
         <span class="badge" id="dnm-count">0</span>
@@ -5833,8 +5846,28 @@ async function renderEmailBranding() {
         </div>
         <div id="dnm-list" style="margin-top:14px;font-size:13px;color:#64748b">Loading…</div>
       </div>
+    </div>`;
+}
+
+async function renderDoNotMail() {
+  return `<div>
+    <div class="card-header" style="padding:0;margin-bottom:16px">
+      <h1 style="font-size:22px;font-weight:700">Do not mail</h1>
     </div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Who has asked this workspace to
+    stop sending notices, and the one address to paste into the mail provider so hard bounces and spam
+    complaints add themselves. Account mail (sign-in details, password resets, receipts) is never
+    stopped.</p>
+    ${doNotMailCardHtml()}
   </div>`;
+}
+
+function bindDoNotMail() {
+  document.getElementById('dnm-add')?.addEventListener('click', window._dnmAdd);
+  document.getElementById('dnm-export')?.addEventListener('click', window._dnmExport);
+  document.getElementById('dnm-hook-copy')?.addEventListener('click', window._dnmHookCopy);
+  window._dnmLoad();
+  window._dnmHook();
 }
 
 function bindEmailBranding() {
