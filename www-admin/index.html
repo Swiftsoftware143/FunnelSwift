@@ -5551,7 +5551,7 @@ function bindTenants() {
     sel.disabled = true;
     try {
       const r = await api('/admin/users/' + encodeURIComponent(uid) + '/role', { method: 'POST', body: JSON.stringify({ role }) });
-      TENANT_USERS_MSG = '<span style="color:#15803d">✅ ' + x((r && r.email) || 'That teammate') + ' is now ' + x(roleLabel((r && r.role) || role)) + '.</span>';
+      TENANT_USERS_MSG = '<span style="color:#15803d">✅ ' + x((r && r.email) || 'That teammate') + ' is now ' + x(roleLabel((r && r.role) || role)) + (r && r.sessions_revoked ? ' — their open sessions are ended, so ask them to sign in again and they will have the new role.' : '.') + '</span>';
       try {
         const l = await api('/admin/tenants/' + encodeURIComponent(TENANT_USER_TENANT) + '/users', { method: 'POST', body: '{}' });
         TENANT_USERS = Array.isArray(l) ? l : ((l && (l.users || l.data)) || []);
