@@ -21,6 +21,13 @@
 //!
 //! The amount is deliberately not editable on the update door: an invoice that has been sent can be
 //! settled or cancelled, never silently re-priced.
+//!
+//! A PAID INVOICE FOR A PLAN SEATS THE WORKSPACE ON THAT PLAN (2026-11-23). The tier moves through
+//! the one plan mover (`plan_handler::set_active_plan`) on the TRANSITION into `paid` only, never
+//! downward, and the customer is told through `notify_plan_change` — whose answer is reported back so
+//! the screen can say whether a notice actually went. Until that arm existed the money and the
+//! entitlement were two unrelated facts: the operator billed, the customer paid, the bill was marked
+//! paid, and the customer's dashboard still showed the old plan.
 
 use crate::auth::middleware::AuthUser;
 use crate::error::{AppError, AppResult};
@@ -308,6 +315,19 @@ pub async fn admin_update(
     let status = status_word(body.status.as_ref())
         .ok_or_else(|| AppError::BadRequest("A status is pending, paid or void".into()))?;
 
+    // READ THE ROW'S LIFE BEFORE THE WRITE (2026-11-23): the plan is applied only on the
+    // TRANSITION into `paid`, so the tier this invoice named and the status it held a moment ago
+    // decide whether the money loop closes. A repeat save of an already-paid bill must not mint a
+    // second subscription row or settle a referrer's commission twice.
+    let before: Option<(Uuid, Option<Uuid>, String)> =
+        sqlx::query_as("SELECT tenant_id, plan_id, status FROM invoices WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+    let Some((tenant_id, plan_id, old_status)) = before else {
+        return Err(AppError::NotFound("That invoice no longer exists".into()));
+    };
+
     // The join that names the plan/workspace has to be re-applied after the UPDATE, so the CTE
     // returns the row and the outer SELECT re-joins it (the same shape ADASwift's ledger uses).
     let row = sqlx::query(
@@ -333,7 +353,105 @@ pub async fn admin_update(
         return Err(AppError::NotFound("That invoice no longer exists".into()));
     };
     let item = row_to_json(&row);
-    Ok(Json(json!({ "item": &item, "invoice": &item })))
+
+    // CLOSING THE MONEY LOOP (2026-11-23). Until this arm a PAID invoice moved no tier: the
+    // operator raised the bill, the customer paid it, the operator marked it paid, and the
+    // workspace's plan stayed exactly where it was — money taken and nothing delivered, with the
+    // customer's own dashboard still showing the old plan. Payments on this installation are given
+    // BY HAND (it holds no payment provider), so this ledger is the till; a till that does not
+    // deliver the thing it billed for is a half-fix.
+    //
+    // The write is the ONE plan mover — `plan_handler::set_active_plan`, the same call the Tenants
+    // picker and the plan-request `done` arm make — so the previous subscription is deactivated, the
+    // movement is dated and a referrer is settled exactly once. The customer is then told through
+    // `notify_plan_change`, whose answer says plainly whether a mail actually went
+    // (`emailed` | `unchanged` | `no_recipient` | `withheld` | `mail_failed`) instead of assuming.
+    //
+    // Three guards, each deliberate:
+    //  * only on the TRANSITION into `paid` (read above), so a second save is not a second sale;
+    //  * NEVER DOWNWARD — a stale invoice for a cheaper tier cannot demote a workspace that has since
+    //    moved higher; tiers are compared on the catalogue price, and an equal-price move still goes
+    //    through because that is a product-side switch, not a downgrade;
+    //  * a plan that has since been deleted does not fail the operator's save — the status change is
+    //    the record — but the sentence comes back so the screen can say the tier did not move.
+    let mut plan_applied = false;
+    let mut plan_note: Option<String> = None;
+    let mut notify_reason: Option<&'static str> = None;
+    if status == "paid" && old_status != "paid" {
+        if let Some(plan_id) = plan_id {
+            let target: Option<(String, f64)> =
+                sqlx::query_as("SELECT slug, COALESCE(price, 0)::float8 FROM plans WHERE id = $1")
+                    .bind(plan_id)
+                    .fetch_optional(&state.db)
+                    .await?;
+            match target {
+                None => plan_note = Some("the plan on this invoice no longer exists".to_string()),
+                Some((slug, asked_price)) => {
+                    let current = crate::plan_movement::current_plan(&state.db, tenant_id).await;
+                    let current_slug = current.as_ref().map(|(s, _)| s.clone());
+                    let current_price = current.as_ref().map(|(_, p)| *p).unwrap_or(0.0);
+                    if current_slug.as_deref() == Some(slug.as_str()) {
+                        plan_note = Some(format!("the workspace is already on {slug}"));
+                    } else if current_slug.is_some() && current_price > asked_price + 0.001 {
+                        tracing::info!(
+                            invoice = %id, tenant = %tenant_id, held = ?current_slug, asked = %slug,
+                            "invoice paid: the workspace already holds a dearer plan - no change applied"
+                        );
+                        plan_note = Some(format!(
+                            "the workspace already holds a dearer plan, so it was left as it is (this invoice was for {slug})"
+                        ));
+                    } else {
+                        match crate::handlers::plan_handler::set_active_plan(
+                            &state.db, tenant_id, plan_id, None,
+                        )
+                        .await
+                        {
+                            Ok((_, moved_to)) => {
+                                plan_applied = true;
+                                let notice = crate::handlers::plan_handler::notify_plan_change(
+                                    &state.db,
+                                    tenant_id,
+                                    plan_id,
+                                    current_slug.as_deref(),
+                                )
+                                .await;
+                                notify_reason = Some(notice.reason);
+                                let said = match notice.reason {
+                                    "emailed" => "the customer has been emailed",
+                                    "withheld" => {
+                                        "no notice was sent — the customer's address is on the do-not-mail list"
+                                    }
+                                    "no_recipient" => "no notice was sent — the workspace has no address",
+                                    "mail_failed" => "the notice mail failed to send",
+                                    _ => "no notice was sent",
+                                };
+                                plan_note =
+                                    Some(format!("the workspace is now on {moved_to} — {said}"));
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    invoice = %id, tenant = %tenant_id, error = %e,
+                                    "invoice marked paid but the plan did not move"
+                                );
+                                plan_note =
+                                    Some("the plan could not be moved — see the log".to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            plan_note = Some("this invoice names no plan, so no tier was changed".to_string());
+        }
+    }
+
+    Ok(Json(json!({
+        "item": &item,
+        "invoice": &item,
+        "plan_applied": plan_applied,
+        "plan_note": plan_note,
+        "notify_reason": notify_reason,
+    })))
 }
 
 #[cfg(test)]

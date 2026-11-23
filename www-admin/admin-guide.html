@@ -378,6 +378,35 @@ html[data-theme="light"] .mobile-menu-btn{box-shadow:0 1px 3px rgba(15,23,42,.10
         </table>
       </div>
 
+      <!-- ============ INVOICES ============ -->
+      <h2 id="invoices">🧾 Invoices — billing a customer when card payments are off</h2>
+      <p>With no payment provider connected, a customer's <strong>Request this plan</strong> is the buying path. The
+      <strong>Invoices</strong> screen is where the money is recorded and where the sale is finished.</p>
+
+      <div class="card">
+        <h3>Raising a bill</h3>
+        <p>Pick the workspace, the plan it is for (optional — a setup fee or a one-off needs no plan), the amount,
+        an optional due date and a sentence for the customer. The bill appears on that customer's own Upgrade
+        screen, so they have something to point at rather than an email in your inbox. An amount of zero is
+        refused: an invoice for nothing is not a bill.</p>
+
+        <h3>Marking it paid finishes the sale</h3>
+        <p>When the money arrives, set the invoice to <strong>Paid</strong>. That does two things at once: it stamps
+        the payment, and it moves the workspace onto the plan the invoice was for — the same move the
+        <strong>Tenants</strong> picker and the <strong>Plan Requests</strong> queue make — then emails the customer
+        to say which plan they are on. The line under the button tells you exactly what happened, including when
+        the plan was left alone:</p>
+        <ul>
+          <li><strong>Already on that plan</strong> — nothing moved, nothing was re-charged.</li>
+          <li><strong>Holding a dearer plan</strong> — the workspace is left where it is, so an old bill can never
+          downgrade a customer who has since bought something bigger.</li>
+          <li><strong>No notice sent</strong> — the note says why: the customer's address is on your do-not-mail
+          list, or the workspace has no address on file.</li>
+        </ul>
+        <p>Only the move onto <strong>Paid</strong> changes a plan. Setting a bill back to <strong>Pending</strong> or
+        <strong>Void</strong> only clears the payment stamp — it never moves a workspace down.</p>
+      </div>
+
       <!-- ============ TEMPLATE GATING ============ -->
       <h2 id="template-gating">🔒 Template Gating</h2>
       <p>Control <strong>which templates</strong> each plan can access. Templates are gated per plan using an <code>allowed_template_ids</code> array on the plans table.</p>
@@ -710,8 +739,10 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         beside their open request, and inside the receipt email we send them. They also ride along on
         the receipt a new signup earns when they pick a paid plan at signup, so every door that files
         an ask carries the same words. Nothing is charged automatically: when the money arrives you
-        still move the workspace onto the plan yourself from the <strong>Plan Requests</strong> queue,
-        and marking the request done also sends the customer their confirmation. Leave the box empty
+        finish the sale yourself — raise the bill on the <strong>Invoices</strong> screen and mark it paid
+        (that moves the workspace onto the plan and tells the customer, see
+        <a href="#invoices">Invoices</a>), or move the workspace from the <strong>Plan Requests</strong> queue,
+        where marking the request done also sends the customer their confirmation. Leave the box empty
         and nothing is shown anywhere — the screen and the emails read exactly as they did before this
         field existed.</p>
 

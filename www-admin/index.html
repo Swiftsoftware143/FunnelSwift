@@ -7854,7 +7854,19 @@ async function invCreateFromForm() {
 async function invSetStatus(id, status) {
   if (!id) return;
   try {
-    await api('/admin/invoices/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ status: status }) });
+    const r = await api('/admin/invoices/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ status: status }) });
+    /* 2026-11-23 — marking a bill PAID also moves the workspace onto the plan it was for, and tells
+       the customer. The operator must SEE what happened: a paid bill that silently left the tier
+       alone is exactly how money got taken with nothing delivered. The server answers plan_applied
+       plus a plain-English note (already on it / dearer plan held / plan deleted / notice withheld). */
+    const note = r && r.plan_note ? String(r.plan_note) : '';
+    if (status === 'paid') {
+      if (r && r.plan_applied) invSetMsg('Invoice paid — ' + note + '.', false);
+      else if (note) invSetMsg('Invoice paid. The plan did not change: ' + note + '.', false);
+      else invSetMsg('Invoice paid.', false);
+    } else {
+      invSetMsg(status === 'void' ? 'Invoice voided.' : 'Invoice set back to pending.', false);
+    }
     renderApp();
   } catch (e) { invSetMsg((e && e.message) || 'That status could not be saved', true); }
 }
