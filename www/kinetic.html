@@ -722,8 +722,8 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  <input type="text" id="signupName" placeholder="John Smith" required maxlength="243" aria-label="Full name" autocomplete="name">
  </div>
  <div style="margin-bottom:14px">
- <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Workspace name</label>
- <input type="text" id="signupWorkspace" placeholder="Your company name" maxlength="255" aria-label="Workspace name" autocomplete="organization">
+ <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Workspace name <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0">(optional)</span></label>
+ <input type="text" id="signupWorkspace" placeholder="Your company or team — we'll name it for you" maxlength="255" aria-label="Workspace name" autocomplete="organization">
  </div>
  <div style="margin-bottom:14px">
  <label style="display:block;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Work email</label>
@@ -794,8 +794,9 @@ div.bg-slate-900 .text-slate-400 { color:#cbd5e1; }
  const ws = document.getElementById('signupWorkspace').value.trim();
  const email = document.getElementById('signupEmail').value.trim();
 
- if(!name || !email) return showError('All fields are required.');
- if(!ws) return showError('Please name your workspace.');
+ if(!name || !email) return showError('Please enter your name and work email.');
+ // The workspace name is OPTIONAL (2026-11-23): the signup model is NAME + EMAIL, and the server
+ // derives "<name>'s Account" when tenant_name is empty. An empty value is sent as "" on purpose.
 
  document.getElementById('signupBtnText').style.display = 'none';
  document.getElementById('signupBtnSpinner').style.display = 'inline-block';
