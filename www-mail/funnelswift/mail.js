@@ -189,6 +189,13 @@
   // ── Render ───────────────────────────────────────────────────────────────────────────────────
   function render() {
     var app = $('app');
+    // The inline guide follows the screen (`window.inlineGuidePage` is the widget's own hook). The
+    // path never changes on this host, so without this the panel would sit on the first screen for
+    // ever — the mail client is one page that re-renders itself.
+    if (typeof window.inlineGuidePage === 'function') {
+      window.inlineGuidePage(!S.token ? 'setup'
+        : (S.view === 'choose' ? 'choose' : (S.view === 'setup' ? 'setup' : 'mail')));
+    }
     if (!S.token) { app.innerHTML = setupPage(); bindSetup(); return; }
     if (S.view === 'setup') { app.innerHTML = setupPage(); bindSetup(); return; }
     if (S.view === 'choose') { app.innerHTML = chooserPage(); bindChooser(); return; }
@@ -309,7 +316,7 @@
       + '<div class="card"><h3>5. Create your mailboxes</h3>'
       + '<p style="color:var(--muted);margin-top:0">An address people can write to. Your 30 free days start at the first mailbox you create — not at signup, so the days you spend waiting on DNS cost you nothing:</p>'
       + '<ul style="margin:0 0 10px 18px;color:var(--muted)"><li><strong>info@</strong> — enquiries from the public</li>'
-      + '<li><strong>support@</strong> — customers who need help (this one also opens a ticket in your CRM)</li>'
+      + '<li><strong>support@</strong> — customers who need help</li>'
       + '<li>a personal one, such as your own name</li></ul>'
       + (signedIn && S.boxes.length
         ? '<div>' + S.boxes.map(function (b) {
@@ -724,7 +731,11 @@
 
   async function downloadAttachment(messageId, attachmentId, filename) {
     try {
-      var res = await fetch(API_BASE + '/private-email/messages/' + messageId
+      // `/api/v1`, hard-coded — this app mounts its mail backend ONLY at `/api/v1/private-email`
+      // (api_router.rs), while `API_BASE` is never defined in this client: the chip threw
+      // `ReferenceError: API_BASE is not defined` before any request, so no attachment could ever
+      // open (measured 2026-11-23 on inbox.funnelswift.net).
+      var res = await fetch('/api/v1/private-email/messages/' + messageId
         + '/attachments/' + attachmentId, {
         headers: S.token ? { Authorization: 'Bearer ' + S.token } : {}
       });
@@ -773,10 +784,12 @@
       + (S.counts.ai_summary ? '<button class="btn btn-ghost" data-act="summarize">Summarise</button>' : '')
       + '<select id="mAssign" style="width:auto">' + assignOpts + '</select>'
       + '</div>'
+      // No "Turn into a ticket" button on this app: the mail-to-queue bridge was deliberately left
+      // out of this port (src/private_email/mod.rs), so the button POSTed a route the server has
+      // never served and every press answered 404. The badge still reports a ticket when one exists.
       + (m.is_ticket
         ? '<div class="badge ticket"><span>In your CRM work queue as a ticket.</span></div>'
-        : '<div class="badge open"><span>In the inbox only — nobody is working this yet.</span>'
-          + '<button class="btn" data-act="ticket">Turn into a ticket</button></div>')
+        : '<div class="badge open"><span>In the inbox only — nobody is working this yet.</span></div>')
       + '<div id="mSummary"></div>'
       + '<div style="margin:6px 0 10px"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Labels</div><div id="mLabelBox"></div></div>'
       + '<div class="body">' + esc(m.body_plain || '(no text)') + '</div>'
