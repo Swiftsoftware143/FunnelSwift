@@ -80,8 +80,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <input type="text" id="signup-name" placeholder="Your name" required autocomplete="name" maxlength="243" aria-label="Full name">
 </div>
 <div class="form-group">
-<label>Workspace name</label>
-<input type="text" id="signup-workspace" placeholder="Your company name" autocomplete="organization" maxlength="255" aria-label="Workspace name">
+<label>Workspace name <span style="font-weight:400;color:#6b7280">(optional)</span></label>
+<input type="text" id="signup-workspace" placeholder="Your company or team — we'll name it for you" autocomplete="organization" maxlength="255" aria-label="Workspace name (optional)">
 </div>
 <div class="form-group">
 <label>Work email</label>
@@ -160,7 +160,10 @@ loading.style.display = 'block';
 var nameVal = document.getElementById('signup-name').value.trim();
 var wsVal = document.getElementById('signup-workspace').value.trim();
 if (!nameVal) { err.textContent = 'Please enter your name.'; err.classList.add('show'); btn.disabled = false; loading.style.display = 'none'; return; }
-if (!wsVal) { err.textContent = 'Please name your workspace — it becomes your address in FunnelSwift.'; err.classList.add('show'); btn.disabled = false; loading.style.display = 'none'; return; }
+// The workspace name is OPTIONAL (2026-11-23): NAME + EMAIL is the signup model, and the public
+// signup handler already derives "<name>'s Account" when `tenant_name` is empty, so a client-side
+// refusal here was the only thing standing between a visitor and an account. An empty value is sent
+// as an empty string and the server names the workspace from the person's own name.
 var body = {
   name: nameVal,
   email: document.getElementById('signup-email').value.trim(),
