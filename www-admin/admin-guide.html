@@ -520,6 +520,17 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
             file &mdash; <code>GET|POST /api/v1/settings/suppressions</code>,
             <code>DELETE /api/v1/settings/suppressions/:id</code>,
             <code>GET /api/v1/settings/suppressions.csv</code>, all scoped to the signed-in workspace.</li>
+          <li><strong>The provider's own events feed this list too.</strong> The Do not mail card shows a
+            delivery-events address, read from the app and put on the clipboard with one button
+            (<code>GET /api/v1/settings/do-not-mail/webhook</code>). Paste it once into the mail
+            provider's webhook settings for the sending domain, with permanent failures, complaints and
+            unsubscribes ticked. From then on a hard bounce, a spam complaint or a provider-side
+            unsubscribe arrives at <code>POST /api/v1/webhooks/mailgun/events/:token</code> by itself and
+            lands the address on this list with nobody watching an inbox. Those three are recorded as
+            stopping <em>everything</em> to that address, account mail included &mdash; a mailbox that
+            does not exist cannot receive a password reset either &mdash; where an Unsubscribe click
+            records only the class it came from. Until the address is pasted, only the Unsubscribe link
+            records an opt-out.</li>
           <li><strong>If the list cannot be read, mail still goes out.</strong> The check fails open by
             design: a database problem is logged and the message is sent, because a silent mailing freeze
             is worse than one extra notice.</li>
