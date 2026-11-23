@@ -7115,7 +7115,7 @@ function wiredTable(cols, rows, empty) {
 function mountWiredPanels(view) {
   try {
     switch (view) {
-      case 'dashboard': wiredInsights(); break;
+      case 'dashboard': wiredInsights(); wiredSourceInsights(); break;
       case 'affiliateProducts': wiredAffiliateProductSync(); break;
       case 'portfolio': wiredPortfolioSync(); break;
       case 'emailTemplates': wiredTemplateTypes(); break;
@@ -7138,6 +7138,65 @@ async function wiredInsights() {
       '<div class="stat-card"><div class="stat-value">' + x(d.leads_this_week || 0) + '</div><div class="stat-label">Leads this week</div></div>' +
       '<div class="stat-card"><div class="stat-value">' + x(d.conversion_rate || 0) + '%</div><div class="stat-label">Conversion rate</div></div>' +
       '</div>';
+  } catch (e) { wiredErr(body, e); }
+}
+
+// ── GET /api/v1/insights — the SOURCE comparison the guide promises ────────────────────────────
+// The endpoint answers per-source leads/converted/conversion_rate, a day-by-day trend and the
+// status mix for ONE window; the CUSTOMER console (app.funnelswift.net) already renders it and this
+// workspace-admin console never called it at all (measured 2026-11-23: the dashboard's own "Tenant
+// insights" panel read /dashboard/stats and repeated two figures). A workspace admin deciding which
+// channel to spend on had nowhere to see which channel actually converts.
+//
+// READ-ONLY: one GET per window switch, nothing written. `days` is clamped server-side (1..365).
+// The panel is mounted only on the dashboard view, so no other screen pays for the request.
+async function wiredSourceInsights(win) {
+  const days = win || 30;
+  const body = wiredPanel('dashboard', '📈 Which channel converts',
+    'Every lead in the window counted under the source it was captured with — give each channel its own card slug and this is the per-channel comparison.');
+  if (!body) return;
+  body.innerHTML = '<div class="empty" style="padding:14px">Reading your leads…</div>';
+  // The window switch is rendered by this panel and re-runs THIS function, so the panel replaces
+  // itself rather than stacking a second copy (a re-mount would append a new card to the view).
+  const draw = async (d) => {
+    const sources = (d && d.sources) || [];
+    const rows = sources.slice(0, 10).map(s =>
+      '<tr><td>' + x(s.source || '(direct)') + '</td>' +
+      '<td style="text-align:right">' + x(s.leads || 0) + '</td>' +
+      '<td style="text-align:right">' + x(s.converted || 0) + '</td>' +
+      '<td style="text-align:right">' + x((s.conversion_rate || 0) + '%') + '</td>' +
+      '<td style="text-align:right;color:var(--muted)">' + x(s.last_lead_at ? String(s.last_lead_at).slice(0, 10) : '—') + '</td></tr>').join('');
+    const statuses = (d && d.statuses) || [];
+    const chips = statuses.map(t => '<span class="badge" style="margin:2px 4px 2px 0">' +
+      x((t.status || '(unset)') + ': ' + (t.leads || 0)) + '</span>').join('');
+    const extra = sources.length > 10 ? '<p style="font-size:12px;color:var(--muted);margin-top:6px">+ ' + x(sources.length - 10) + ' more source(s) with fewer leads — narrow the window to see them here.</p>' : '';
+    body.innerHTML =
+      '<div style="display:flex;gap:6px;margin-bottom:12px" role="group" aria-label="Reporting window">' +
+        [7, 30, 90].map(n => '<button class="btn btn-sm' + (n === days ? ' btn-primary' : '') + '" data-ins-win="' + n + '">Last ' + n + ' days</button>').join('') +
+      '</div>' +
+      '<div class="stats-grid">' +
+        '<div class="stat-card"><div class="stat-value">' + x(d.window_leads || 0) + '</div><div class="stat-label">Leads in the last ' + x(days) + ' days</div></div>' +
+        '<div class="stat-card"><div class="stat-value">' + x(d.converted || 0) + '</div><div class="stat-label">Converted</div></div>' +
+        '<div class="stat-card"><div class="stat-value">' + x((d.conversion_rate || 0) + '%') + '</div><div class="stat-label">Conversion rate</div></div>' +
+        '<div class="stat-card"><div class="stat-value">' + x(d.total_leads || 0) + '</div><div class="stat-label">Leads all time</div></div>' +
+      '</div>' +
+      (rows
+        ? '<div class="table-wrap" style="margin-top:12px"><table class="table"><thead><tr><th>Source</th><th style="text-align:right">Leads</th><th style="text-align:right">Converted</th><th style="text-align:right">Rate</th><th style="text-align:right">Last lead</th></tr></thead><tbody>' + rows + '</tbody></table></div>' + extra
+        : '<div class="empty" style="padding:14px">No leads were captured in this window, so there is nothing to compare yet. A lead counts under the source recorded when it was captured; a lead with no source shows as (direct).</div>') +
+      (chips ? '<div style="margin-top:12px"><div style="font-size:12px;color:var(--muted);margin-bottom:4px">Where this window’s leads stand</div>' + chips + '</div>' : '');
+    // Bind the window switch AFTER the markup exists (the panel replaces its own body).
+    body.querySelectorAll('[data-ins-win]').forEach(b => {
+      b.onclick = async () => {
+        const n = Number(b.getAttribute('data-ins-win'));
+        b.disabled = true;
+        try { const fresh = await api('/insights?days=' + n); await draw(fresh || {}); }
+        catch (e) { wiredErr(body, e); }
+      };
+    });
+  };
+  try {
+    const d = await api('/insights?days=' + days);
+    await draw(d || {});
   } catch (e) { wiredErr(body, e); }
 }
 
@@ -7986,7 +8045,7 @@ window.appGuidePages = {
   "apiKeys": { title: "API Keys", desc: "This workspace's own key for the FunnelSwift API and MCP server. It is created with your account and never expires. The screen shows only the prefix; View asks for your account password, then shows the full key so you can copy it, and every view is recorded. Regenerate replaces the key in one step — the old one stops working the moment the new one starts — and Revoke retires it so the workspace can mint a fresh one.", actions: ["Press View, enter your account password, then Copy key", "Press Regenerate to replace a key you think has leaked", "Press Revoke to retire the key entirely"] },
   "mcp": { title: "AI Tools (MCP)", desc: "The fleet MCP server already answers this workspace's FunnelSwift data, and your workspace's own API key is the credential it accepts. This screen is read-only: it shows the endpoint, the prefix of the key that authorises it, and a paste-ready config for an MCP client such as Claude Code, Cursor or Hermes. Every tool is scoped to the workspace that owns the key, so a client can only ever read this account. The table lists each kind of record and the two tools it exposes — one that counts, one that searches.", actions: ["Copy the endpoint into your MCP client", "Copy the client config and replace YOUR_API_KEY with your workspace key from the API Keys screen", "Read the table to see which records an AI client can read"] },
   "team": { title: "Team", desc: "The people who can sign in to this workspace, and the seats your plan includes. The owner is marked so you can tell an owner from a member at a glance. Adding a teammate creates their own sign-in and emails them a temporary password they change after signing in; only the workspace owner or a company admin can add people, and a plan with every seat taken says so instead of offering a button that cannot work.", actions: ["Read how many seats your plan includes", "Check who is already in the workspace and their role", "Enter a name and email, choose a role, then press Add teammate"] },
-  "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data.", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Check My Account for your plan and profile"] },
+  "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data. Below them, Which channel converts measures the last 7, 30 or 90 days of your own leads: how many each traffic source brought in, how many of those became customers, the conversion rate for each, and where this window\u2019s leads sit in your stages. A lead counts under the source recorded when it was captured, so give each channel its own card slug and the comparison is per channel; a lead with no source shows as (direct).", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Read Which channel converts and switch the window to 7, 30 or 90 days", "Check My Account for your plan and profile"] },
   "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, the address you sign in with, your password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your sign-in email (we email a confirmation link)", "Change your password", "See the plan you are on", "Download a copy of everything this workspace holds, as one file you keep", "Close your account, with your password and the word CLOSE to confirm"] },
   "portfolio": { title: "Portfolio", desc: "The capture pages your account has published. Each card is a live page a visitor can open and claim.", actions: ["Open a card to edit its content and design", "Publish or unpublish a card", "Copy a card's public link"] },
   "plans": { title: "Upgrade", desc: "The plans available to this workspace and how to move to one. A plan is a bundle of limits and features (cards, templates, custom domains and more).", actions: ["Compare the plans", "Upgrade or change your plan"] },
