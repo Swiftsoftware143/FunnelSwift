@@ -614,6 +614,18 @@ PUT  /api/v1/admin/plans/:id/templates   — Set allowed templates</pre>
         owner marked, and <strong>+ Add a teammate</strong> (name, email, role). Adding someone
         creates their own sign-in and emails them a temporary password, which they change after
         signing in.</p>
+        <p>Each person's row also carries the three things an owner needs <em>after</em> somebody has
+        joined. <strong>Save role</strong> (a role picker on the row) moves a member to company admin
+        or stands an over-privileged colleague down without removing them and re-inviting them.
+        <strong>Send login details</strong> mints a fresh temporary password and emails it through the
+        same credentials mailer — the old password stops working at once, and their leads and history
+        stay theirs, so a person whose first message never arrived is reachable again without
+        deleting their account. <strong>Remove</strong> switches their sign-in off immediately and
+        frees the seat, leaving their leads in the workspace. The owner's row and your own row are
+        labelled instead of offering a press the server would refuse (the workspace keeps an owner,
+        and you cannot demote or remove yourself from here). When a teammate's address is a reserved
+        test address nothing is mailed and the temporary password is shown once for you to hand
+        over.</p>
         <p>Two things it will not do. It does not offer the platform <code>admin</code> role — a
         workspace owner handing that out would grant authority over every other customer, so the
         server refuses it and names the field. And it does not press into a plan that has no seat
