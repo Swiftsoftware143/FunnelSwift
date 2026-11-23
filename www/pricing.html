@@ -119,8 +119,8 @@
       <div class="card" data-plan="capture-free">
         <h3>Free</h3>
         <p class="who">Two free plans — pick the product you need and start today.</p>
-        
-        
+        <div class="price"><span class="amt" data-role="price">Free</span><span class="per" data-role="per"></span></div>
+        <div class="yr" data-role="yr"></div>
         <ul>
           <li class="head">Capture Free — lead capture</li>
           <li><span data-role="lim" data-limit="leads">100</span> leads</li>
@@ -139,8 +139,8 @@
       <div class="card" data-plan="capture-starter">
         <h3>Capture Starter</h3>
         <p class="who">For ad campaigns and lead gen — connect your CRM and automate.</p>
-        
-        
+        <div class="price"><span class="amt" data-role="price">$9</span><span class="per" data-role="per"> a month</span></div>
+        <div class="yr" data-role="yr">or $89 a year — save $19</div>
         <ul>
           <li><span data-role="lim" data-limit="leads">100</span> leads</li>
           <li><span data-role="lim" data-limit="tags">5</span> tags</li>
@@ -155,8 +155,8 @@
       <div class="card" data-plan="kinetic-pro">
         <h3>Kinetic Pro</h3>
         <p class="who">Fully branded, interactive digital business cards.</p>
-        
-        
+        <div class="price"><span class="amt" data-role="price">$9</span><span class="per" data-role="per"> a month</span></div>
+        <div class="yr" data-role="yr">or $89 a year — save $19</div>
         <ul>
           <li><span data-role="lim" data-limit="leads" data-word="unlimited">Unlimited</span> captured contacts and <span data-role="lim" data-limit="tags" data-word="unlimited">unlimited</span> tags</li>
           <li><span data-role="lim" data-limit="custom_domains">1</span> custom domain</li>
@@ -171,8 +171,8 @@
         <div class="badge">Most popular</div>
         <h3>Suite</h3>
         <p class="who">Kinetic Cards and lead capture in one platform.</p>
-        
-        
+        <div class="price"><span class="amt" data-role="price">$29</span><span class="per" data-role="per"> a month</span></div>
+        <div class="yr" data-role="yr">or $290 a year — save $58</div>
         <ul>
           <li>Everything in Capture Starter and Kinetic Pro</li>
           <li><span data-role="lim" data-limit="custom_domains">3</span> custom domains</li>
@@ -187,8 +187,8 @@
       <div class="card" data-plan="agency">
         <h3>Agency / Scale</h3>
         <p class="who">For agencies and marketing firms managing multiple clients.</p>
-        
-        
+        <div class="price"><span class="amt" data-role="price">$79</span><span class="per" data-role="per"> a month</span></div>
+        <div class="yr" data-role="yr">or $790 a year — save $158</div>
         <ul>
           <li>Everything in Suite</li>
           <li><span data-role="lim" data-limit="custom_domains">10</span> custom domains</li>
@@ -202,7 +202,7 @@
 
     </div>
 
-    <p class="note" id="limit-source" hidden>Allowance figures on the cards above are read live from this installation’s own plan records.</p>
+    <p class="note" id="limit-source" hidden>Allowance figures and prices on the cards above are read live from this installation’s own plan records — change a plan in the console and this page follows.</p>
 
     <div id="how-to-pay" hidden style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:12px;padding:18px 20px;margin:18px 0">
       <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:6px">How to pay for a paid plan</h3>
@@ -265,6 +265,41 @@
         var val = fmt(plan.limits[s.getAttribute('data-limit')]);
         if (val === null) continue;
         s.textContent = val;
+        painted++;
+      }
+      // PRICES (2026-11-23): the same feed carries each plan's real monthly price, so the cards
+      // state what a plan costs instead of leaving a page titled "Pricing" with no prices on it.
+      // The authored figure is the FALLBACK: if the read fails the page keeps what is written.
+      var money = function (n) {
+        n = Number(n);
+        if (!isFinite(n)) return null;
+        return '$' + (n % 1 === 0 ? String(n) : n.toFixed(2));
+      };
+      var cards = document.querySelectorAll('.card[data-plan]');
+      for (var ci = 0; ci < cards.length; ci++) {
+        var cel = cards[ci];
+        var cpl = byslug[cel.getAttribute('data-plan')];
+        if (!cpl) continue;
+        var amtEl = cel.querySelector('[data-role="price"]');
+        var perEl = cel.querySelector('[data-role="per"]');
+        var yrEl = cel.querySelector('[data-role="yr"]');
+        if (!amtEl) continue;
+        if (Number(cpl.price) === 0) {
+          amtEl.textContent = 'Free';
+          if (perEl) perEl.textContent = '';
+          if (yrEl) { yrEl.textContent = ''; yrEl.hidden = true; }
+          continue;
+        }
+        var m = money(cpl.price);
+        if (m === null) continue;
+        amtEl.textContent = m;
+        if (perEl) perEl.textContent = ' a month';
+        var ay = Number(cpl.annual_price);
+        if (yrEl && isFinite(ay) && ay > 0) {
+          var save = Math.round((Number(cpl.price) * 12 - ay) * 100) / 100;
+          yrEl.textContent = 'or ' + money(ay) + ' a year' + (save > 0 ? ' — save ' + money(save) : '');
+          yrEl.hidden = false;
+        }
         painted++;
       }
       var note = document.getElementById('limit-source');
