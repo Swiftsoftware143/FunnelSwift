@@ -1528,7 +1528,7 @@ var paintStart=function(){
   gs.innerHTML=h;
 };
 function D(){
-  $("ct").innerHTML='<div id="pl"></div><div id="gs"></div><div id="prq"></div><div id="ph"></div><div id="sr"></div><div id="da"></div>';
+  $("ct").innerHTML='<div id="pl"></div><div id="gs"></div><div id="prq"></div><div id="ph"></div><div id="inv"></div><div id="sr"></div><div id="da"></div>';
   /* kanban cron-1015 — this console's own help text promises "Your current plan is shown on the
      dashboard", and the dashboard showed only lead/card counts (the "Plans" tile is the tenant's
      own funnel-plan count, `d.plans_total`). The subscription plan is already in this page: the
@@ -1741,6 +1741,51 @@ function D(){
     }
     box.innerHTML=h+'</tbody></table></div></div>';
   }).catch(function(){ /* a failed read paints nothing — never an invented "no payments" */ });
+  /* ── INVOICES FROM OUR TEAM (2026-11-23) ─────────────────────────────────────────────────────
+     GET /api/v1/invoices is the workspace's own copy of the operator's invoice book (the server
+     scopes it to the caller's tenant, so it can only ever return our own rows). The operator's
+     console has raised invoices since 2026-11-23 and the Upgrade screen's help text already
+     promises "every bill appears here … an unpaid bill is marked Unpaid" — but no page a CUSTOMER
+     sees called the route, so a workspace that had been billed had nothing to look at and no way
+     to know a bill existed. Same honesty as the payment strip above: every value is the row's own,
+     an unknown status is printed rather than guessed at, and a FAILED read paints NOTHING so an
+     error is never dressed up as "no invoices". */
+  api("/api/v1/invoices").then(function(d){
+    var box=$("inv"); if(!box||!box.parentNode) return;
+    var rows=(d&&Array.isArray(d.invoices))?d.invoices:((d&&Array.isArray(d.items))?d.items:[]);
+    var invMoney=function(r){
+      var amt=(r&&r.amount);
+      if(amt===null||amt===undefined||amt==='') return '\u2014';
+      var n=Number(amt);
+      return isNaN(n)?String(amt):('$'+n.toFixed(2));
+    };
+    var h='<div class="card" data-invoices="1" style="margin-bottom:16px">';
+    h+='<h3 style="margin:0 0 2px">Invoices</h3>';
+    if(!rows.length){
+      h+='<p style="color:#64748b;font-size:13px;margin:0">Nothing has been billed on this workspace yet. When our team raises an invoice for a plan or a service it appears here with what it covers, the amount, the date it is due and whether it has been paid.</p>';
+      box.innerHTML=h+'</div>'; return;
+    }
+    h+='<p style="color:#64748b;font-size:13px;margin:0 0 10px">What our team has billed this workspace, newest first. Nothing here is charged automatically \u2014 a paid invoice stays as your record.</p>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>';
+    var cols=['Raised','Plan','Amount','Due','Status'];
+    for(var ci=0;ci<cols.length;ci++){h+='<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0;color:#475569;font-weight:600">'+cols[ci]+'</th>';}
+    h+='</tr></thead><tbody>';
+    for(var ri=0;ri<rows.length;ri++){
+      var r=rows[ri]||{};
+      var st=String(r.status||'').trim().toLowerCase();
+      var word=(st==='paid')?('Paid'+(r.paid_at?' '+TSFMT(r.paid_at,0):''))
+        :((st==='void')?'Cancelled':(st==='pending'?'Awaiting payment':(st?st.replace(/_/g,' '):'\u2014')));
+      var color=(st==='paid')?'#047857':((st==='pending')?'#b45309':((st==='void')?'#64748b':'#334155'));
+      h+='<tr data-invoice-row="'+X(r.id||'')+'">';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(r.created_at?TSFMT(r.created_at,0):'\u2014')+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(r.plan_name||'Your plan')+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(invMoney(r))+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">'+X(r.due_date?TSFMT(r.due_date,0):'\u2014')+'</td>';
+      h+='<td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;color:'+color+'">'+X(word)+'</td>';
+      h+='</tr>';
+    }
+    box.innerHTML=h+'</tbody></table></div></div>';
+  }).catch(function(){ /* a failed read paints nothing — never an invented "no invoices" */ });
   window.withdrawPlanRequest=function(id){
     if(!confirm('Withdraw your plan request? Nothing has been charged, and you can ask again later.')) return;
     fetch("/api/v1/plan-requests/"+encodeURIComponent(id),{method:"DELETE",headers:{"Authorization":"Bearer "+T}})
