@@ -8276,10 +8276,14 @@ function LDNM(){
     }
     h+='<div class="card" style="margin-top:14px"><h3>Bounces and complaints report themselves</h3>';
     if(hook.ok&&hook.d&&hook.d.url){
-      h+='<p style="color:#64748b;font-size:13px;margin:0 0 8px">Paste this address into your mail provider as the delivery-events webhook. It carries its own secret, so anyone else who posts to it is refused, and it is the only thing that has to be set up once.</p>';
-      h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code id="dnm-hook" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:12px;word-break:break-all;flex:1;min-width:240px">'+X(hook.d.url)+'</code>';
-      h+='<button class="btn" onclick="DNMCOPY()">Copy</button></div>';
-      h+='<p style="color:#94a3b8;font-size:11px;margin:8px 0 0">It reports: '+X(((hook.d.events||[]).join(", ")))+'.</p>';
+      var lastEv=(hook.d.last_event_at||null);
+      if(lastEv){
+        h+='<p style="font-size:13px;margin:0 0 8px"><strong>Connected.</strong> The mail service sends its problem reports here &mdash; the most recent arrived '+X(TSFMT(lastEv,0))+' &mdash; so a hard-bounced or complained address joins the list above by itself.';
+      }else{
+        h+='<p style="color:#64748b;font-size:13px;margin:0 0 8px"><strong>Connected, waiting for its first report.</strong> When a message hard-bounces or a recipient marks it as spam, the mail service tells this workspace and the address joins the list above. There is nothing to set up.';
+      }
+      h+='<p style="color:#94a3b8;font-size:11px;margin:0">For support, the address the mail service posts to is <code id="dnm-hook" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 6px;font-size:11px;word-break:break-all">'+X(hook.d.url)+'</code> <button class="btn" style="padding:2px 8px;font-size:11px" onclick="DNMCOPY()">Copy</button>. It reports: '+X(((hook.d.events||[]).join(", ")))+'.</p>';
+
     }else{
       h+='<p style="color:#b91c1c;font-size:13px;margin:0">The delivery-events address could not be read just now. Reload this screen to try again.</p>';
     }
