@@ -7744,6 +7744,12 @@ const INV_LABEL = { pending: 'Unpaid', paid: 'Paid', void: 'Cancelled' };
 const INV_BG = { pending: '#fef3c7', paid: '#dcfce7', void: '#f1f5f9' };
 const INV_FG = { pending: '#92400e', paid: '#166534', void: '#475569' };
 let INV_ROWS = [];
+/* The outcome line of the last invoice action. It lives in MODULE state, not just in the DOM, because
+   every status change ends with renderApp(), which repaints this screen and replaces #inv-msg — so a
+   message written before the repaint was wiped the instant it was set. Rendering it with the screen is
+   what makes the operator actually see what happened to the plan (2026-11-23). */
+let INV_MSG = null;
+
 
 function invChip(s) {
   const k = String(s || 'pending');
@@ -7812,7 +7818,7 @@ async function renderInvoices() {
       </div>
       <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-primary" id="inv-create">Raise invoice</button>
-        <span id="inv-msg" style="font-size:12px;color:var(--muted)"></span>
+        <span id="inv-msg" style="font-size:12px;color:${INV_MSG ? (INV_MSG.isErr ? '#dc2626' : '#16a34a') : 'var(--muted)'}">${INV_MSG ? x(INV_MSG.text) : ''}</span>
       </div>
     </div>
     <div class="card">
@@ -7822,10 +7828,11 @@ async function renderInvoices() {
 }
 
 function invSetMsg(text, isErr) {
+  INV_MSG = { text: String(text == null ? '' : text), isErr: !!isErr };
   const m = document.getElementById('inv-msg');
   if (!m) return;
   m.style.color = isErr ? '#dc2626' : '#16a34a';
-  m.textContent = text;
+  m.textContent = INV_MSG.text;
 }
 
 async function invCreateFromForm() {
