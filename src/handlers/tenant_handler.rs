@@ -766,7 +766,7 @@ pub async fn update_tenant(
             .await
             .map(|(slug, _)| slug);
         set_active_plan(&state.pool, id, plan_id, None).await?;
-        let (notified, notify_reason) = crate::handlers::plan_handler::notify_plan_change(
+        let notice = crate::handlers::plan_handler::notify_plan_change(
             &state.pool,
             id,
             plan_id,
@@ -775,8 +775,9 @@ pub async fn update_tenant(
         .await;
         return Ok(Json(json!({
             "message": "Tenant updated",
-            "notified": notified,
-            "notify_reason": notify_reason,
+            "notified": notice.notified,
+            "notify_reason": notice.reason,
+            "notify_detail": notice.detail,
         })));
     }
     Ok(Json(json!({"message": "Tenant updated"})))
@@ -989,7 +990,7 @@ pub async fn assign_plan(
         .await
         .map(|(slug, _)| slug);
     set_active_plan(&state.pool, id, plan_id, cycle).await?;
-    let (notified, notify_reason) = crate::handlers::plan_handler::notify_plan_change(
+    let notice = crate::handlers::plan_handler::notify_plan_change(
         &state.pool,
         id,
         plan_id,
@@ -998,8 +999,9 @@ pub async fn assign_plan(
     .await;
     Ok(Json(json!({
         "message": "Plan assigned",
-        "notified": notified,
-        "notify_reason": notify_reason,
+        "notified": notice.notified,
+        "notify_reason": notice.reason,
+        "notify_detail": notice.detail,
     })))
 }
 

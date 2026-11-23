@@ -1275,6 +1275,25 @@ pub(crate) async fn set_active_plan(
     Ok((subscription_id, new_plan_slug))
 }
 
+/// What the plan-change notice actually did. The reason vocabulary is the fleet's (the sibling
+/// apps' `PlanNotice`): `emailed` | `unchanged` | `no_recipient` | `withheld` | `mail_failed`,
+/// with `detail` carrying the plain-English cause when a send was withheld.
+pub(crate) struct PlanNotice {
+    pub notified: bool,
+    pub reason: &'static str,
+    pub detail: Option<String>,
+}
+
+impl PlanNotice {
+    fn plain(notified: bool, reason: &'static str) -> Self {
+        Self {
+            notified,
+            reason,
+            detail: None,
+        }
+    }
+}
+
 /// Tell the customer their workspace now sits on a different plan (2026-11-12).
 ///
 /// WHY THIS EXISTS. Self-serve checkout needs a payment provider, and this installation holds no
@@ -1283,20 +1302,26 @@ pub(crate) async fn set_active_plan(
 /// screen whose allowances had moved. A customer deserves the same confirmation a card payment
 /// sends — which plan they are on, that nothing was charged, and where to see what it includes.
 ///
-/// The mail goes through `email::send_template_email_for_tenant`, the app's one transactional
-/// funnel, so it inherits the workspace's own branding and the fleet's reserved-address gate (a
-/// probe/harness recipient is recorded `withheld` and never handed to a relay — no extra check
-/// needed here). Best effort by design: the plan is already written, so a mail failure is logged
-/// and never fails the assignment.
+/// The mail goes through `email::send_template_email_for_tenant_outcome`, the app's one
+/// transactional funnel, so it inherits the workspace's own branding and the fleet's
+/// reserved-address gate (a probe/harness recipient is recorded `withheld` and never handed to a
+/// relay — no extra check needed here). Best effort by design: the plan is already written, so a
+/// mail failure is logged and never fails the assignment.
 ///
-/// Returns `(emailed, reason)` with reason `emailed` | `unchanged` | `no_recipient` | `mail_failed`,
-/// so the operator's screen can say what happened instead of guessing.
+/// Answers a [`PlanNotice`] with reason `emailed` | `unchanged` | `no_recipient` | `withheld` |
+/// `mail_failed`, so the operator's screen can say what happened instead of guessing.
+///
+/// READ WHAT THE FUNNEL DID, NOT MERELY WHETHER IT ERRORED (2026-11-22). A withheld notice is `Ok`
+/// too: measured live on this binary, assigning a plan to a workspace whose address was on the
+/// do-not-mail list answered `notified:true / emailed` while `email_send_log` held `withheld —
+/// recipient is on the do-not-mail list … nothing was sent`. The operator was told a customer knew
+/// about a plan change that was never queued.
 pub(crate) async fn notify_plan_change(
     pool: &sqlx::PgPool,
     tenant_id: Uuid,
     plan_id: Uuid,
     previous_slug: Option<&str>,
-) -> (bool, &'static str) {
+) -> PlanNotice {
     let plan: Option<(String, String)> =
         sqlx::query_as("SELECT slug, name FROM plans WHERE id = $1")
             .bind(plan_id)
@@ -1304,11 +1329,11 @@ pub(crate) async fn notify_plan_change(
             .await
             .unwrap_or(None);
     let Some((slug, plan_name)) = plan else {
-        return (false, "unchanged");
+        return PlanNotice::plain(false, "unchanged");
     };
     // A second save of the same plan must not mail the customer again.
     if previous_slug == Some(slug.as_str()) {
-        return (false, "unchanged");
+        return PlanNotice::plain(false, "unchanged");
     }
     // The workspace's own admin is the person to tell: the tier change is about their allowances.
     let who: Option<(String, Option<String>)> = sqlx::query_as(
@@ -1321,18 +1346,18 @@ pub(crate) async fn notify_plan_change(
     .await
     .unwrap_or(None);
     let Some((email, name)) = who else {
-        return (false, "no_recipient");
+        return PlanNotice::plain(false, "no_recipient");
     };
     let to = email.trim();
     if to.is_empty() {
-        return (false, "no_recipient");
+        return PlanNotice::plain(false, "no_recipient");
     }
     let name = name.unwrap_or_default();
     let mut vars: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
     vars.insert("name", name.as_str());
     vars.insert("plan_name", plan_name.as_str());
     vars.insert("email", to);
-    match crate::email::send_template_email_for_tenant(
+    match crate::email::send_template_email_for_tenant_outcome(
         pool,
         tenant_id,
         tenant_id,
@@ -1342,19 +1367,35 @@ pub(crate) async fn notify_plan_change(
     )
     .await
     {
-        Ok(()) => {
+        Ok(crate::email::SendOutcome::Queued) => {
             tracing::info!(
                 tenant = %tenant_id, plan = %plan_name,
                 "plan change: the customer was told"
             );
-            (true, "emailed")
+            PlanNotice::plain(true, "emailed")
+        }
+        // The recipient is on the do-not-mail list (or is a reserved probe address): nothing was
+        // handed to a relay, so the operator must not be told the customer knows.
+        Ok(crate::email::SendOutcome::Withheld { code, reason }) => {
+            tracing::info!(
+                tenant = %tenant_id, plan = %plan_name, gate = %code, reason = %reason,
+                "plan change: the notice was WITHHELD — the customer was NOT told"
+            );
+            // `reason` is already a sentence the operator can read ("recipient is on the
+            // do-not-mail list (…)"), and the console supplies the "NOT emailed —" lead-in, so it
+            // is passed through rather than wrapped a second time.
+            PlanNotice {
+                notified: false,
+                reason: "withheld",
+                detail: Some(reason),
+            }
         }
         Err(e) => {
             tracing::warn!(
                 tenant = %tenant_id, plan = %plan_name, error = %e,
                 "plan change: the customer could not be told"
             );
-            (false, "mail_failed")
+            PlanNotice::plain(false, "mail_failed")
         }
     }
 }
@@ -1397,15 +1438,16 @@ pub async fn admin_assign_plan(
 
     // TELL THE CUSTOMER THEY WERE MOVED (2026-11-12). With no payment provider on this install the
     // operator's click IS the purchase, and it used to be silent. Best effort: the plan is written.
-    let (notified, notify_reason) =
+    let notice =
         notify_plan_change(&state.pool, tenant_id, plan_id, previous_slug.as_deref()).await;
 
     Ok(Json(json!({
         "message": "Plan assigned to tenant",
         "subscription_id": subscription_id,
         "plan_slug": new_plan_slug,
-        "notified": notified,
-        "notify_reason": notify_reason,
+        "notified": notice.notified,
+        "notify_reason": notice.reason,
+        "notify_detail": notice.detail,
     })))
 }
 
