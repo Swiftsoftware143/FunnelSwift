@@ -108,7 +108,7 @@
 <section class="head">
   <div class="container">
     <h1>Start free — upgrade inside the app</h1>
-    <p>Lead capture and Kinetic digital business cards run on one account. Start free — no card required. Every plan's price is on its own card below; the upgrade itself is one request away inside the app.</p>
+    <p>Lead capture and Kinetic digital business cards run on one account. Start free — no card required. Plans and upgrades are shown inside the app once you are signed in.</p>
   </div>
 </section>
 
@@ -119,7 +119,8 @@
       <div class="card" data-plan="capture-free">
         <h3>Free</h3>
         <p class="who">Two free plans — pick the product you need and start today.</p>
-        <p class="price" data-role="price" data-plan="capture-free"><span class="amt" data-role="price-amt">Free</span><span class="per" data-role="price-per"></span></p>
+        
+        
         <ul>
           <li class="head">Capture Free — lead capture</li>
           <li><span data-role="lim" data-limit="leads">100</span> leads</li>
@@ -138,7 +139,8 @@
       <div class="card" data-plan="capture-starter">
         <h3>Capture Starter</h3>
         <p class="who">For ad campaigns and lead gen — connect your CRM and automate.</p>
-        <p class="price" data-role="price" data-plan="capture-starter"><span class="amt" data-role="price-amt">$9</span><span class="per" data-role="price-per">/month</span></p>
+        
+        
         <ul>
           <li><span data-role="lim" data-limit="leads">100</span> leads</li>
           <li><span data-role="lim" data-limit="tags">5</span> tags</li>
@@ -153,7 +155,8 @@
       <div class="card" data-plan="kinetic-pro">
         <h3>Kinetic Pro</h3>
         <p class="who">Fully branded, interactive digital business cards.</p>
-        <p class="price" data-role="price" data-plan="kinetic-pro"><span class="amt" data-role="price-amt">$9</span><span class="per" data-role="price-per">/month</span></p>
+        
+        
         <ul>
           <li><span data-role="lim" data-limit="leads" data-word="unlimited">Unlimited</span> captured contacts and <span data-role="lim" data-limit="tags" data-word="unlimited">unlimited</span> tags</li>
           <li><span data-role="lim" data-limit="custom_domains">1</span> custom domain</li>
@@ -168,7 +171,8 @@
         <div class="badge">Most popular</div>
         <h3>Suite</h3>
         <p class="who">Kinetic Cards and lead capture in one platform.</p>
-        <p class="price" data-role="price" data-plan="suite"><span class="amt" data-role="price-amt">$29</span><span class="per" data-role="price-per">/month</span></p>
+        
+        
         <ul>
           <li>Everything in Capture Starter and Kinetic Pro</li>
           <li><span data-role="lim" data-limit="custom_domains">3</span> custom domains</li>
@@ -183,7 +187,8 @@
       <div class="card" data-plan="agency">
         <h3>Agency / Scale</h3>
         <p class="who">For agencies and marketing firms managing multiple clients.</p>
-        <p class="price" data-role="price" data-plan="agency"><span class="amt" data-role="price-amt">$79</span><span class="per" data-role="price-per">/month</span></p>
+        
+        
         <ul>
           <li>Everything in Suite</li>
           <li><span data-role="lim" data-limit="custom_domains">10</span> custom domains</li>
@@ -197,7 +202,7 @@
 
     </div>
 
-    <p class="note" id="limit-source" hidden>Allowance figures and prices on the cards above are read live from this installation’s own plan records — change a plan in the console and this page follows.</p>
+    <p class="note" id="limit-source" hidden>Allowance figures on the cards above are read live from this installation’s own plan records.</p>
 
     <div id="how-to-pay" hidden style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:12px;padding:18px 20px;margin:18px 0">
       <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:6px">How to pay for a paid plan</h3>
@@ -261,33 +266,6 @@
         if (val === null) continue;
         s.textContent = val;
         painted++;
-      }
-      // PRICE (2026-11-23): the cards authored NO price at all while this install publishes one
-      // (`price`/`annual_price` on this same payload) and the page still said "Prices in US dollars",
-      // so a visitor could not see what anything costs. Paint it from the same read; the authored
-      // figure stands if the read fails, exactly like the allowance figures above.
-      var prows = document.querySelectorAll('[data-role="price"]');
-      for (var j = 0; j < prows.length; j++) {
-        var pm = prows[j];
-        var pl = byslug[pm.getAttribute('data-plan')];
-        if (!pl) continue;
-        var pr = Number(pl.price);
-        if (!isFinite(pr)) continue;
-        var amtEl = pm.querySelector('[data-role="price-amt"]');
-        var perEl = pm.querySelector('[data-role="price-per"]');
-        if (pr <= 0) {
-          if (amtEl) amtEl.textContent = 'Free';
-          if (perEl) { perEl.textContent = ''; perEl.hidden = true; }
-          continue;
-        }
-        if (amtEl) amtEl.textContent = '$' + pr.toLocaleString('en-US');
-        if (perEl) {
-          var per = '/month';
-          var ann = Number(pl.annual_price);
-          if (isFinite(ann) && ann > 0) per += ' \u00b7 $' + ann.toLocaleString('en-US') + '/year';
-          perEl.textContent = per;
-          perEl.hidden = false;
-        }
       }
       var note = document.getElementById('limit-source');
       if (note && painted) note.hidden = false;
