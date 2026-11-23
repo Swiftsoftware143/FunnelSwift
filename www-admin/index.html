@@ -2378,7 +2378,7 @@ function bindTeam() {
         const r = await rawCall('/team/members/' + id, 'PATCH', { role: role });
         if (!r.res.ok) sayRow(r.data.message || (typeof r.data.error === 'string' ? r.data.error : '') || ('Could not change that role (' + r.res.status + ')'), true);
         else if (r.data.unchanged) sayRow('That person already has that role.', false);
-        else { sayRow('Role updated for ' + (r.data.email || 'that teammate') + '.'); setTimeout(renderApp, 900); }
+        else { sayRow('Role updated for ' + (r.data.email || 'that teammate') + (r.data.sessions_revoked ? ' \u2014 their open sessions are ended, so ask them to sign in again and they will have the new role.' : '.')); setTimeout(renderApp, 900); }
       } catch (e) {
         sayRow('Could not change that role: ' + (e.message || 'the request failed'), true);
       }

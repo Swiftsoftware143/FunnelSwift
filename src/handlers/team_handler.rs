@@ -422,8 +422,19 @@ pub async fn update_teammate_role(
         })));
     }
 
+    // BOTH DIRECTIONS TAKE EFFECT NOW, NOT AT THE TOKEN'S EXPIRY (2026-11-23).
+    // `users.sessions_valid_from` is the line the credential boundary refuses a session that
+    // predates (`auth::global_auth`, kanban t_80787a0f). Moving it in the same statement is what
+    // makes a DEMOTION real: authority on every tenant surface is decided from the token's `role`
+    // claim, and the boundary only compares claims against the row for PLATFORM-admin authority
+    // (`platform_admin_claim_outranks_row`) — so before this line a `company_admin` demoted to
+    // `user` kept every admin door their old token carried until that token expired (seven days
+    // on this app's mint). A PROMOTION is the same fact from the other side: the new rights live
+    // in the next sign-in, so the person is asked to sign in again rather than being told nothing
+    // changed. The floor-to-second rule in the boundary allows a token minted in the same second,
+    // so the very next login (which the person makes with the password they already know) works.
     sqlx::query(
-        "UPDATE users SET role = $1, updated_at = NOW() \
+        "UPDATE users SET role = $1, sessions_valid_from = NOW(), updated_at = NOW() \
           WHERE id = $2 AND tenant_id = $3 AND is_active = true",
     )
     .bind(&role)
@@ -439,6 +450,10 @@ pub async fn update_teammate_role(
         "previous": previous,
         "role": role,
         "seats": seats,
+        // The console states this from the SERVER's answer, never from the button's own text: the
+        // person's open sessions are ended, so the new role (or the loss of the old one) is real
+        // the moment they sign in again.
+        "sessions_revoked": true,
     })))
 }
 
