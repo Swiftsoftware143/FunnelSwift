@@ -2201,15 +2201,32 @@ function openPlanModal(id) {
 // workspace grow without the platform operator, and `GET /api/v1/team/members` answers the people
 // AND the seat allowance (`seats: {used, limit, best_limit}`) — both shipped with no screen, so the
 // only caller of the list was the lead owner picker and nobody could add a colleague at all.
+// Every role the API can hand back, spelled the way a person reads it. `owner` is not a stored
+// value — `GET /team/members` names the workspace's creator with it — but it reaches this table all
+// the same, and a role cell reading the raw word "owner" (or "team member", or "client admin") is a
+// database value shown to a customer. Anything genuinely unknown is title-cased rather than dropped.
 const TEAM_ROLE_LABEL = {
+  owner: 'Owner',
   user: 'Member',
+  member: 'Member',
   business_user: 'Business user',
   company_admin: 'Company admin',
+  client_admin: 'Client admin',
+  agency_admin: 'Agency admin',
+  team_member: 'Team member',
   admin: 'Platform admin',
 };
+// The three roles a workspace administrator may hand out. Anything else on an existing row is shown
+// as read-only, because a select that does not contain the value would paint "Member" over somebody
+// who is not one and the next Save would quietly change their access.
+const TEAM_ASSIGNABLE_ROLES = ['user', 'business_user', 'company_admin'];
 function teamRoleLabel(r) {
   const k = String(r || '').toLowerCase();
-  return TEAM_ROLE_LABEL[k] || (k ? k.replace(/_/g, ' ') : 'Member');
+  if (!k) return 'Member';
+  if (TEAM_ROLE_LABEL[k]) return TEAM_ROLE_LABEL[k];
+  return k.split(/[_\s]+/).filter(Boolean).map(function (w) {
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
 }
 // The seat sentence says what is TRUE for this install. `best_limit` is the largest seat count any
 // plan on this installation sells: when it is no bigger than what the workspace already has,
@@ -2249,14 +2266,22 @@ async function renderTeam() {
         } else {
           const cur = String(m.role || 'user');
           const opt = (v, l) => '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + l + '</option>';
-          bits.push('<td><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
-            + '<select class="input" data-team-role="' + id + '" aria-label="Role for ' + x(m.email || '') + '" style="width:auto;padding:4px 8px;font-size:12px">'
-            + opt('user', 'Member') + opt('business_user', 'Business user') + opt('company_admin', 'Company admin')
-            + '</select>'
-            + '<button class="btn btn-secondary btn-xs" type="button" data-team-role-save data-id="' + id + '">Save role</button>'
-            + '<button class="btn btn-secondary btn-xs" type="button" data-team-reissue data-id="' + id + '" data-email="' + x(m.email || '') + '" title="Generate a fresh temporary password and email it to this teammate — their leads stay theirs">Send login details</button>'
-            + '<button class="btn btn-secondary btn-xs" type="button" data-team-remove data-id="' + id + '" data-email="' + x(m.email || '') + '" title="Deactivate this login and free the seat; their leads stay in the workspace">Remove</button>'
-            + '</div></td>');
+          if (TEAM_ASSIGNABLE_ROLES.indexOf(cur) === -1) {
+            // A role this screen cannot hand out (a platform role on a customer row, or a value a
+            // later release adds): name it truthfully and leave the seat alone, rather than showing
+            // a select whose first option says "Member" about somebody who is not one.
+            bits.push('<td style="font-size:12px">' + x(teamRoleLabel(cur))
+              + ' <span style="color:var(--muted)">— set by the platform, not changed here</span></td>');
+          } else {
+            bits.push('<td><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
+              + '<select class="input" data-team-role="' + id + '" aria-label="Role for ' + x(m.email || '') + '" style="width:auto;padding:4px 8px;font-size:12px">'
+              + opt('user', 'Member') + opt('business_user', 'Business user') + opt('company_admin', 'Company admin')
+              + '</select>'
+              + '<button class="btn btn-secondary btn-xs" type="button" data-team-role-save data-id="' + id + '">Save role</button>'
+              + '<button class="btn btn-secondary btn-xs" type="button" data-team-reissue data-id="' + id + '" data-email="' + x(m.email || '') + '" title="Generate a fresh temporary password and email it to this teammate — their leads stay theirs">Send login details</button>'
+              + '<button class="btn btn-secondary btn-xs" type="button" data-team-remove data-id="' + id + '" data-email="' + x(m.email || '') + '" title="Deactivate this login and free the seat; their leads stay in the workspace">Remove</button>'
+              + '</div></td>');
+          }
         }
         return '<tr>' + bits.join('') + '</tr>';
       }).join('')
