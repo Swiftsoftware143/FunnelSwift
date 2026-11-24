@@ -97,6 +97,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;d
 .btn-o{background:transparent;color:#4f46e5;border:1px solid #4f46e5}
 .btn-r{background:transparent;color:#ef4444;border:1px solid #ef4444}
 .btn-r:hover{background:#fef2f2;color:#dc2626}
+/* DANGER ZONE — fleet standard §7 (David, 2026-11-24). The delete control sits on the OWNER's own
+   profile page, below a full-width divider, as the LAST block: red-outlined and tinted, with the
+   danger ALSO stated in words and carried by a warning icon, so colour is never the only signal. */
+.dz{border:2px solid #dc2626;background:#fef2f2;border-radius:12px;padding:18px;margin-top:18px}
+.dz h3{color:#b91c1c;font-size:15px;margin:0 0 6px;display:flex;align-items:center;gap:8px}
+.dz .dz-note{font-size:12px;color:#7f1d1d;margin:0 0 4px;max-width:640px}
+.dz .dz-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;border-top:1px solid #fecaca;padding-top:14px;margin-top:14px}
+.dz .dz-row:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.dz h4{font-size:13px;color:#7f1d1d;margin:0 0 4px}
+.dz p{font-size:12px;color:#7f1d1d;margin:0;max-width:520px}
+.btn-danger{background:#b91c1c;color:#fff;border:1px solid #b91c1c;font-weight:600}
+.btn-danger:hover{background:#991b1b;opacity:1}
+.btn-danger[disabled]{background:#fca5a5;border-color:#fca5a5;cursor:not-allowed;opacity:1}
+html[data-theme="dark"] .dz{background:#2a1113;border-color:#7f1d1d}
+html[data-theme="dark"] .dz h3,html[data-theme="dark"] .dz h4{color:#fca5a5}
+html[data-theme="dark"] .dz p,html[data-theme="dark"] .dz .dz-note{color:#fecaca}
+html[data-theme="dark"] .dz .dz-row{border-top-color:#7f1d1d}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:8px 12px;background:#f8fafc;color:#64748b;font-size:11px;font-weight:600;text-transform:uppercase;border-bottom:2px solid #e2e8f0}
 td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
@@ -5826,29 +5843,28 @@ h+='<div class="fld"><label for="pf-user">Username</label><input id="pf-user" ma
     h+='<p style="font-size:12px;color:#64748b;margin:0 0 8px">One file with everything this workspace holds: your profile, plan, leads, tags, funnels, cards, campaigns and requests. Passwords, API-key secrets and webhook signing secrets are never included — the file lists what it left out.</p>';
     h+='<button class="btn btn-sm" onclick="DLDATA()">Download my data</button>';
     h+='<span id="pf-dlmsg" class="msg" style="margin:6px 0 0"></span></div>';
-    h+='<div class="card" id="pf-close"><h3>Close my account</h3>';
-    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">This ends your sign-in and every API key, and you will not be able to sign in again. Your campaigns, leads and history are kept for our records and are not deleted, so support can help you if you close it by mistake.</p>';
-    h+='<div id="pf-ca-arm"><button class="btn btn-sm" onclick="CAARM()" style="background:#fff;color:#b91c1c;border:1px solid #fca5a5">Close my account</button></div>';
-    h+='<div id="pf-ca-form" style="display:none;border-top:1px solid #fecaca;margin-top:12px;padding-top:12px">';
-    h+='<div class="fld"><label for="pf-ca-pw">Your password (proves it is you)</label><input id="pf-ca-pw" type="password" autocomplete="current-password"></div>';
-    h+='<div class="fld"><label for="pf-ca-word">Type CLOSE to confirm</label><input id="pf-ca-word" autocomplete="off" placeholder="CLOSE"></div>';
-    h+='<button class="btn btn-sm" onclick="CADO()" style="background:#b91c1c;color:#fff">Close my account permanently</button>';
-    h+='<span id="pf-camsg" class="msg" style="margin-left:8px"></span></div></div>';
-    /* Delete my data (2026-11-24, fleet standard section 3-7). The other half of the exit door:
-       closing the account above is a STATE that keeps every row so support can undo it; this
-       DESTROYS the workspace. Invoices are kept for tax records and the card says so BEFORE the
-       button, because the customer deserves to know what survives. Two steps: the first reveals the
-       form, the second is the red button, and the SERVER re-checks the password and the word DELETE
-       (POST /api/v1/auth/erase-data). */
-    h+='<div class="card" id="pf-erase" style="margin-top:14px"><h3 style="color:#b91c1c">Delete my data</h3>';
-    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">This deletes this workspace and everything in it, permanently: campaigns, leads, tags, forms, cards, requests, history and every API key. Closing your account above keeps your data so support can help you; this destroys it and cannot be undone.</p>';
-    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">Your invoices are kept, with the workspace name attached, because tax law requires them. Operator accounts, impersonation sessions and the platform owner\'s own companies cannot be deleted from here.</p>';
-    h+='<div id="pf-er-arm"><button class="btn btn-sm" onclick="ERARM()" style="background:#fff;color:#b91c1c;border:1px solid #fca5a5">Delete my data</button></div>';
-    h+='<div id="pf-er-form" style="display:none;border-top:1px solid #fecaca;margin-top:12px;padding-top:12px">';
-    h+='<div class="fld"><label for="pf-er-pw">Your password (proves it is you)</label><input id="pf-er-pw" type="password" autocomplete="current-password"></div>';
-    h+='<div class="fld"><label for="pf-er-word">Type DELETE to confirm</label><input id="pf-er-word" autocomplete="off" placeholder="DELETE"></div>';
-    h+='<button class="btn btn-sm" onclick="ERDO()" style="background:#b91c1c;color:#fff">Delete this workspace and all its data</button>';
-    h+='<span id="pf-ermsg" class="msg" style="margin-left:8px"></span></div></div>';
+    /* DANGER ZONE (2026-11-24, fleet standard §7 — David's ruling). The exit doors belong on the
+       OWNER'S OWN profile screen, below a full-width divider, as the LAST block, visually marked
+       dangerous. Danger is carried by WORDS and an ICON as well as colour, so a colour-blind or
+       screen-reader user gets the same signal. Controls in this order: "Cancel plan" (neutral
+       secondary — access ends, data kept 30 days, restore by contacting support) then "Delete
+       account and data" (the ONLY filled red button on the page, and no undo).
+       Both open a confirmation DIALOG: the erasure dialog lists what is deleted and what is KEPT
+       (invoices, for tax) before the customer presses anything; both re-verify the password and
+       make the customer type the word. The browser disables the final button until both are
+       present, and the SERVER re-checks both (POST /auth/erase-data, /auth/close-account), so a
+       bare request cannot skip the dialog. Nothing is sent by revealing a card. */
+    h+='<div style="border-top:2px solid #e2e8f0;margin:28px 0 0"></div>';
+    h+='<div class="dz" id="pf-danger" role="region" aria-labelledby="pf-dz-h">';
+    h+='<h3 id="pf-dz-h"><span aria-hidden="true">\u26a0\ufe0f</span> Danger zone</h3>';
+    h+='<p class="dz-note"><strong>Warning:</strong> the two actions below either end your access or permanently destroy data. They are here, at the bottom of your profile, so you can only reach them deliberately. A platform operator account, or a company belonging to the platform owner, cannot be deleted from here.</p>';
+    h+='<div class="dz-row"><div><h4>Cancel plan</h4>';
+    h+='<p>Your plan ends now and your sign-in and API keys stop working. Your data is kept for 30 days, not deleted. You can restore this within 30 days by contacting support.</p></div>';
+    h+='<div><button class="btn btn-o" onclick="CPLAN()">Cancel plan</button></div></div>';
+    h+='<div class="dz-row"><div><h4>Delete account and data</h4>';
+    h+='<p>Permanently deletes this workspace and everything in it: leads, campaigns, tags, funnels, cards, forms, team members, inbox mail, uploads, history and every API key. <strong>Your invoices are kept</strong> because tax law requires them. There is no undo.</p></div>';
+    h+='<div><button class="btn btn-danger" onclick="EDDEL()">Delete account and data</button></div></div>';
+    h+='</div>';
     h+='</div>';
     $("ct").innerHTML=h;
   }).catch(function(e){
@@ -5963,73 +5979,114 @@ function DLDATA(){
     });
   }).catch(function(e){ if(m){m.className="msg me";m.textContent=e.message||"Could not build your copy.";} });
 }
-/* Close my account (2026-11-13). CAARM only reveals the form — nothing is sent until CADO, which
-   posts the bearer token, the password and the word CLOSE. The SERVER owns every rule (the word, the
-   password, an operator account cannot close itself); each refusal is printed in the card's own
-   message and never softened. Posted directly, not through api(), for the same reason CPF and LGA
-   are: api()'s 401/403 arms clear the token and bounce the page, so a refusal would look like an
-   expired session instead of the sentence the customer needs to read. */
-function CAARM(){
-  var a=$("pf-ca-arm"), f=$("pf-ca-form");
-  if(a) a.style.display="none";
-  if(f) f.style.display="block";
-  var p=$("pf-ca-pw"); if(p) p.focus();
+/* DANGER ZONE (2026-11-24, fleet standard §7 — David's ruling).
+   Both exit doors live on the OWNER'S OWN profile screen inside the red Danger zone block, and both
+   open a confirmation DIALOG. Nothing is sent until the dialog's final button is pressed, and that
+   button stays DISABLED until the password is present AND the typed word matches — the browser
+   removes the easy accident, and the SERVER owns the real rule (password re-verified, the word
+   re-checked, owner only, no API key, no impersonation, no operator account, no portfolio company).
+   Posted directly, not through api(), because api()'s 401/403 arms clear the token and bounce the
+   page, so a refusal would look like an expired session instead of the sentence the customer needs. */
+function dzSignOutTo(where){
+  T="";
+  try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(e){}
+  window.location.href=where;
 }
-function CADO(){
-  var pw=(($("pf-ca-pw")||{}).value||""), w=(($("pf-ca-word")||{}).value||"").trim();
-  if(!pw){ pfMsg("pf-camsg","Enter your password","me"); return; }
-  if(w.toUpperCase()!=="CLOSE"){ pfMsg("pf-camsg","Type CLOSE in the box to confirm","me"); return; }
-  if(!window.confirm("Close this account? You will be signed out and will not be able to sign in again.")) return;
-  pfMsg("pf-camsg","Closing your account\u2026","mi");
-  fetch("/api/v1/auth/close-account",{method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
-      body:JSON.stringify({password:pw,confirm:w})})
-    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
-      if(!r.ok) throw Error((d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Error "+r.status));
-      return d||{};})})
-    .then(function(d){
-      /* The server has already moved the session line, so this tab's bearer is dead: drop it here
-         rather than let the next call bounce the customer with an "expired" message. */
-      T="";
-      try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(e){}
-      pfMsg("pf-camsg",(d&&d.message)||"Your account is closed.","ms");
-      setTimeout(function(){ window.location.href="/login?closed=1"; },1200);
-    })
-    .catch(function(e){ pfMsg("pf-camsg",(e&&e.message)||"Could not close the account","me"); });
+/* One dialog body shared by both doors: the consequences, the password, and the word to type. */
+function dzBody(word, heading, lines, keepLine){
+  var h='<div style="font-size:13px;color:#334155;line-height:1.6;margin:0 0 12px">';
+  h+='<p style="margin:0 0 6px"><strong>'+X(heading)+'</strong></p><ul style="margin:0 0 10px 18px;padding:0">';
+  lines.forEach(function(t){ h+='<li style="margin:0 0 4px">'+X(t)+'</li>'; });
+  h+='</ul><p style="margin:0 0 12px;color:#7f1d1d"><strong>Kept:</strong> '+X(keepLine)+'</p></div>';
+  h+='<div class="fld"><label for="dz-pw">Your password (proves it is you)</label>'
+    +'<input id="dz-pw" type="password" autocomplete="current-password"></div>';
+  h+='<div class="fld"><label for="dz-word">Type '+word+' to confirm</label>'
+    +'<input id="dz-word" autocomplete="off" spellcheck="false" placeholder="'+word+'">'
+    +'<p style="font-size:11px;color:#64748b;margin:4px 0 0">The box is case-sensitive: type '+word+' exactly.</p></div>';
+  return h;
 }
-/* Delete my data (2026-11-24). ERARM only reveals the form; nothing is sent until ERDO, which posts
-   the bearer token, the password and the word DELETE. The SERVER owns every rule (the word, the
-   password, owner-only, no API key, no impersonation, no operator account, no portfolio company) and
-   each refusal is printed in the card's own message. Posted directly, not through api(), for the same
-   reason CADO is: api()'s 401/403 arms clear the token and bounce the page, so a refusal would look
-   like an expired session instead of the sentence the customer needs to read. */
-function ERARM(){
-  var a=$("pf-er-arm"), f=$("pf-er-form");
-  if(a) a.style.display="none";
-  if(f) f.style.display="block";
-  var p=$("pf-er-pw"); if(p) p.focus();
+/* Wire the two fields to the final button: disabled until password AND word are both present. */
+function dzWire(word, go){
+  function upd(){
+    var pw=(($("dz-pw")||{}).value||""), w=(($("dz-word")||{}).value||"").trim();
+    go.disabled = !(pw.length>0 && w===word);
+  }
+  var a=$("dz-pw"), b=$("dz-word");
+  if(a) a.addEventListener("input",upd);
+  if(b) b.addEventListener("input",upd);
+  upd();
 }
-function ERDO(){
-  var pw=(($("pf-er-pw")||{}).value||""), w=(($("pf-er-word")||{}).value||"").trim();
-  if(!pw){ pfMsg("pf-ermsg","Enter your password","me"); return; }
-  if(w.toUpperCase()!=="DELETE"){ pfMsg("pf-ermsg","Type DELETE in the box to confirm","me"); return; }
-  if(!window.confirm("Delete this workspace and every lead, campaign and tag in it? This cannot be undone.")) return;
-  pfMsg("pf-ermsg","Deleting the workspace\u2026","mi");
-  fetch("/api/v1/auth/erase-data",{method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
-      body:JSON.stringify({password:pw,confirm:w})})
-    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
-      if(!r.ok) throw Error((d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Error "+r.status));
-      return d||{};})})
-    .then(function(d){
-      /* The workspace and this session are gone server-side: drop the token here rather than let the
-         next call bounce the customer with an "expired" message. */
-      T="";
-      try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(e){}
-      pfMsg("pf-ermsg",(d&&d.message)||"Your workspace and its data have been deleted.","ms");
-      setTimeout(function(){ window.location.href="/login?erased=1"; },1600);
-    })
-    .catch(function(e){ pfMsg("pf-ermsg",(e&&e.message)||"Could not delete the workspace","me"); });
+/* CANCEL PLAN — access ends, data is KEPT for 30 days and support can restore it. */
+function CPLAN(){
+  O("Cancel your plan?", function(){
+    $("mb").innerHTML=dzBody("CLOSE","This will stop:",
+      ["Your sign-in, on every device",
+       "Every API key, so connected tools stop working",
+       "The plan's paid features, from today"],
+      "your data. Nothing is deleted for 30 days, so support can restore the account if you change your mind.");
+    var f=$("mf");
+    f.appendChild(El("button",{"class":"btn btn-o",onclick:C},"Keep my plan"));
+    var go=El("button",{"class":"btn btn-danger"},"Cancel plan");
+    f.appendChild(go);
+    dzWire("CLOSE", go);
+    go.onclick=function(){
+      var pw=(($("dz-pw")||{}).value||""), w=(($("dz-word")||{}).value||"").trim();
+      if(!pw||w!=="CLOSE"){ pfMsg("mm","Enter your password and type CLOSE","me"); return; }
+      go.disabled=true; go.textContent="Cancelling...";
+      fetch("/api/v1/auth/close-account",{method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+          body:JSON.stringify({password:pw,confirm:w})})
+        .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+          if(!r.ok) throw Error((d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Error "+r.status));
+          return d||{};})})
+        .then(function(){
+          /* The session line has already moved, so this tab's bearer is dead. */
+          dzSignOutTo("/logout.html?closed=1");
+        })
+        .catch(function(e){
+          go.disabled=false; go.textContent="Cancel plan";
+          pfMsg("mm",(e&&e.message)||"Could not cancel the plan","me");
+        });
+    };
+  });
+}
+/* DELETE ACCOUNT AND DATA — permanent. The dialog states what goes and what is KEPT (invoices, for
+   tax) BEFORE anything is pressed, so nobody discovers the exception afterwards. */
+function EDDEL(){
+  O("Delete account and data?", function(){
+    $("mb").innerHTML=dzBody("DELETE","This will delete:",
+      ["This workspace and every record in it: leads, campaigns, tags, tag rules, funnels, cards, QR codes, lead forms and webhooks",
+       "Your team members and their sign-ins, your inbox mail and its attachments",
+       "Your profile picture and logo, and your connected providers' stored settings and secrets",
+       "Every API key and every session, and the audit trail (one line recording that the deletion happened is kept)"],
+      "your invoices. Tax law requires us to keep them, so they stay, detached from your workspace name. Everything else above is destroyed and cannot be restored.");
+    var f=$("mf");
+    f.appendChild(El("button",{"class":"btn btn-o",onclick:C},"Cancel"));
+    var go=El("button",{"class":"btn btn-danger"},"Delete permanently");
+    f.appendChild(go);
+    dzWire("DELETE", go);
+    go.onclick=function(){
+      var pw=(($("dz-pw")||{}).value||""), w=(($("dz-word")||{}).value||"").trim();
+      if(!pw||w!=="DELETE"){ pfMsg("mm","Enter your password and type DELETE","me"); return; }
+      go.disabled=true; go.textContent="Deleting...";
+      fetch("/api/v1/auth/erase-data",{method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+          body:JSON.stringify({password:pw,confirm:w})})
+        .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+          if(!r.ok) throw Error((d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Error "+r.status));
+          return d||{};})})
+        .then(function(d){
+          /* The workspace and this session are gone server-side: drop the token, then land on the
+             plain page that states what happened and when. */
+          var at=(d&&d.erased_at)||new Date().toISOString();
+          dzSignOutTo("/logout.html?erased=1&at="+encodeURIComponent(at));
+        })
+        .catch(function(e){
+          go.disabled=false; go.textContent="Delete permanently";
+          pfMsg("mm",(e&&e.message)||"Could not delete the workspace","me");
+        });
+    };
+  });
 }
 function UPF(){
   var f=$("pf-file"), file=f&&f.files?f.files[0]:null;
