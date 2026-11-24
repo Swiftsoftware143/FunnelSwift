@@ -768,27 +768,28 @@ window.FunnelSwiftConfig = {
 
       <h2 id="mcp">🤖 MCP &mdash; connect your AI tools</h2>
       <p><strong>MCP</strong> is the open standard an AI client &mdash; Claude Code, Claude Desktop, Cursor,
-      Hermes, or your own agent &mdash; speaks to read your business data. FunnelSwift runs one on the fleet
-      server, so you do not install anything: you paste one endpoint and one key into the client and it can
-      read this workspace. It is <strong>read-only</strong> &mdash; every tool is a SELECT, there is no write
-      tool and no free-form SQL door, and operator-wide tools are refused for a workspace key, so an
-      assistant cannot change or delete anything.</p>
+      Hermes, or your own agent &mdash; speaks to read your business data. FunnelSwift serves its <strong>own</strong>
+      MCP door from inside this app, so you do not install anything: you paste one endpoint and one key into
+      the client and it can read this workspace. It is <strong>read-only</strong> &mdash; eleven tools, every
+      one a SELECT, with no write tool, no free-form SQL door and no operator tool, so an assistant cannot
+      change or delete anything.</p>
       <p><strong>Where it is in the console:</strong> <strong>MCP</strong> sits in the sidebar directly above
       <strong>Settings</strong>, labelled exactly <strong>MCP</strong>. The screen carries four things:</p>
       <ul>
-        <li><strong>The endpoint</strong> &mdash; <code>https://hooks.swiftsoftware.net/mcp</code>, with a
+        <li><strong>The endpoint</strong> &mdash; <code>https://app.funnelswift.net/mcp</code>, with a
         <strong>Copy</strong> button.</li>
         <li><strong>Your token</strong> &mdash; the same workspace key the API Keys screen shows, listed by its
         first characters only. <strong>Reveal</strong> asks for the password you sign in with before it shows
         the key, and every view is recorded; the secret is never on the screen until then. Press
         <strong>Regenerate</strong> on the <strong>API Keys</strong> screen when a key has been shared by
         mistake &mdash; it replaces the key at once and the old one stops working.</li>
-        <li><strong>The tools your key can call</strong> &mdash; one line per read-only tool, named exactly as
-        the client sees it: your leads, tags, Kinetic cards, lead events, affiliate products, webhooks, team
-        members, activity, support requests, plan requests, tag automation rules, tag groups, tag change
-        history, affiliates, campaigns, QR codes, webhook deliveries, checkout sessions, portfolio companies
-        and plan subscriptions. Each entity answers a summary or a search, and every answer holds only this
-        workspace&rsquo;s rows.</li>
+        <li><strong>The tools your key can call</strong> &mdash; eleven read-only tools, named exactly as the
+        client sees them: <code>list_funnels</code>, <code>list_pages</code>, <code>get_page</code>,
+        <code>page_stats</code>, <code>list_leads</code>, <code>lead_events</code>,
+        <code>list_form_submissions</code>, <code>list_tags</code>, <code>list_email_domains</code>,
+        <code>list_invoices</code> and <code>list_affiliate_products</code>. Every answer holds only this
+        workspace&rsquo;s rows: a page id from another workspace answers <em>not found</em>, exactly like an id
+        that does not exist. An empty list is a real answer, not a failure.</li>
         <li><strong>Connect</strong> &mdash; a ready-made client configuration block carrying this endpoint and
         a <code>Bearer</code> placeholder where your key goes; <strong>Copy config</strong> puts it on your
         clipboard.</li>
