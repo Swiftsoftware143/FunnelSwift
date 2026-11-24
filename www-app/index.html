@@ -8342,17 +8342,27 @@ function LDNM(){
       h+='</div>';
     }
     h+='<div class="card" style="margin-top:14px"><h3>Bounces and complaints report themselves</h3>';
-    if(hook.ok&&hook.d&&hook.d.url){
-      var lastEv=(hook.d.last_event_at||null);
-      if(lastEv){
-        h+='<p style="font-size:13px;margin:0 0 8px"><strong>Connected.</strong> The mail service sends its problem reports here &mdash; the most recent arrived '+X(TSFMT(lastEv,0))+' &mdash; so a hard-bounced or complained address joins the list above by itself.';
-      }else{
-        h+='<p style="color:#64748b;font-size:13px;margin:0 0 8px"><strong>Connected, waiting for its first report.</strong> When a message hard-bounces or a recipient marks it as spam, the mail service tells this workspace and the address joins the list above. There is nothing to set up.';
-      }
-      h+='<p style="color:#94a3b8;font-size:11px;margin:0">For support, the address the mail service posts to is <code id="dnm-hook" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 6px;font-size:11px;word-break:break-all">'+X(hook.d.url)+'</code> <button class="btn" style="padding:2px 8px;font-size:11px" onclick="DNMCOPY()">Copy</button>. It reports: '+X(((hook.d.events||[]).join(", ")))+'.</p>';
-
+    // The handler answers a STATUS to every member (operator|url|events|last_event_at) and withholds
+    // only the ADDRESS from a workspace member who is not the owner — so `url === null` is a
+    // legitimate answer, not a failed read. Measured live 2026-11-24 as a real non-owner member: this
+    // card painted a red "could not be read" fault on the Do not mail screen of a healthy workspace,
+    // pointing a customer at a server fault that does not exist. A red fault is now reserved for a
+    // read the server actually refused or that failed; the safety-net status is shown either way.
+    if(!hook.ok){
+      h+='<p style="color:#b91c1c;font-size:13px;margin:0">The mail-report status could not be read just now. Reload this screen to try again &mdash; nothing has been changed.</p>';
     }else{
-      h+='<p style="color:#b91c1c;font-size:13px;margin:0">The delivery-events address could not be read just now. Reload this screen to try again.</p>';
+      var hd=hook.d||{};
+      var lastEv=(hd.last_event_at||null);
+      if(lastEv){
+        h+='<p style="font-size:13px;margin:0 0 8px"><strong>Connected.</strong> The mail service sends its problem reports here &mdash; the most recent arrived '+X(TSFMT(lastEv,0))+' &mdash; so a hard-bounced or complained address joins the list above by itself.</p>';
+      }else{
+        h+='<p style="color:#64748b;font-size:13px;margin:0 0 8px"><strong>Connected, waiting for its first report.</strong> When a message hard-bounces or a recipient marks it as spam, the mail service tells this workspace and the address joins the list above. There is nothing to set up.</p>';
+      }
+      if(hd.url){
+        h+='<p style="color:#94a3b8;font-size:11px;margin:0">For support, the address the mail service posts to is <code id="dnm-hook" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 6px;font-size:11px;word-break:break-all">'+X(hd.url)+'</code> <button class="btn" style="padding:2px 8px;font-size:11px" onclick="DNMCOPY()">Copy</button>. It reports: '+X(((hd.events||[]).join(", ")))+'.</p>';
+      }else{
+        h+='<p style="color:#94a3b8;font-size:11px;margin:0">The exact address the mail service posts to is shown to the workspace owner only. Reports reach this list either way &mdash; nothing here needs setting up.</p>';
+      }
     }
     h+='</div></div>';
     document.getElementById("ct").innerHTML=h;
