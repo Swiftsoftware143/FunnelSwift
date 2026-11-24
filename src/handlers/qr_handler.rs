@@ -17,19 +17,30 @@ use uuid::Uuid;
 /// stays the canonical address.
 const CARD_ORIGIN: &str = "https://kntcrd.com";
 
+/// The public origin a FUNNEL page is published under — the same host `render_funnel` builds its
+/// canonical link from, so a printed QR opens exactly the page the console's "your page" link does.
+const FUNNEL_ORIGIN: &str = "https://funnelswift.net";
+
 /// The URL a QR code `id` should open, and whether the row is switched on. `None` when the row or
 /// its card is gone.
 async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<(String, bool)>> {
-    let row: Option<(String, Option<String>, bool)> = sqlx::query_as(
-        "SELECT c.slug, c.template_type, q.is_active \
-         FROM kinetic_qr_codes q JOIN kinetic_cards c ON c.id = q.card_id \
+    // Either end of the link, never both (migration 143's CHECK): a card code opens the card's
+    // canonical host, a funnel code opens the funnel's public page.
+    let row: Option<(Option<String>, Option<String>, Option<String>, bool)> = sqlx::query_as(
+        "SELECT c.slug, c.template_type, f.slug, q.is_active \
+         FROM kinetic_qr_codes q \
+         LEFT JOIN kinetic_cards c ON c.id = q.card_id \
+         LEFT JOIN funnels f ON f.id = q.funnel_id \
          WHERE q.id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
     .await?;
-    Ok(row.map(|(slug, template_type, is_active)| {
-        (
+    let Some((card_slug, template_type, funnel_slug, is_active)) = row else {
+        return Ok(None);
+    };
+    if let Some(slug) = card_slug {
+        return Ok(Some((
             format!(
                 "{}/{}/{}",
                 CARD_ORIGIN,
@@ -37,8 +48,9 @@ async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<(String, 
                 slug
             ),
             is_active,
-        )
-    }))
+        )));
+    }
+    Ok(funnel_slug.map(|slug| (format!("{FUNNEL_ORIGIN}/funnel/{slug}"), is_active)))
 }
 
 /// Build the SVG for `url`. A QR renderer failure is a 422: the only input is the URL we just
@@ -92,17 +104,23 @@ pub async fn list_qr_codes(
     // A QR code belongs to a kinetic CARD. The canonical model is `kinetic_qr_codes`
     // (migration 0015) — the table `features::count_usage` counts for the `max_qr_codes`
     // plan gate. Title/slug are the card's, which is what a QR's display name is.
+    // A code belongs to a kinetic CARD or a FUNNEL page (migration 143). `kind` says which end it
+    // opens so a client never has to infer it from two nullable ids.
     let rows: Vec<(
         Uuid,
-        Uuid,
+        Option<Uuid>,
+        Option<Uuid>,
         String,
         String,
         Option<String>,
         bool,
         chrono::DateTime<chrono::Utc>,
     )> = sqlx::query_as(
-        "SELECT q.id, q.card_id, q.name, COALESCE(c.title,''), c.slug, q.is_active, q.created_at \
-             FROM kinetic_qr_codes q LEFT JOIN kinetic_cards c ON c.id = q.card_id \
+        "SELECT q.id, q.card_id, q.funnel_id, q.name, COALESCE(c.title, f.name, ''), \
+                COALESCE(c.slug, f.slug), q.is_active, q.created_at \
+             FROM kinetic_qr_codes q \
+             LEFT JOIN kinetic_cards c ON c.id = q.card_id \
+             LEFT JOIN funnels f ON f.id = q.funnel_id \
              WHERE q.tenant_id = $1 ORDER BY q.created_at DESC",
     )
     .bind(tenant_id)
@@ -111,10 +129,12 @@ pub async fn list_qr_codes(
     let out: Vec<Value> = rows
         .into_iter()
         .map(
-            |(id, card_id, name, card_title, card_slug, is_active, created_at)| {
+            |(id, card_id, funnel_id, name, card_title, card_slug, is_active, created_at)| {
                 json!({
                     "id": id,
+                    "kind": if funnel_id.is_some() { "funnel" } else { "card" },
                     "card_id": card_id,
+                    "funnel_id": funnel_id,
                     "name": name,
                     "card_title": card_title,
                     "card_slug": card_slug,
@@ -141,6 +161,83 @@ pub async fn create_qr_code(
 ) -> AppResult<(StatusCode, Json<Value>)> {
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
     let user_id = Uuid::parse_str(&auth.user_id).unwrap_or_default();
+
+    // A FUNNEL page's code (migration 143). Same object, other end of the link: the tenant check
+    // keeps a caller from minting a code for another workspace's page (the FK is not tenant-aware),
+    // and the mint is idempotent per page so a second press costs no second slot.
+    if let Some(funnel_id) = payload["funnel_id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
+        let owned: Option<String> =
+            sqlx::query_scalar("SELECT name FROM funnels WHERE id = $1 AND tenant_id = $2")
+                .bind(funnel_id)
+                .bind(tenant_id)
+                .fetch_optional(&state.pool)
+                .await?;
+        let Some(funnel_name) = owned else {
+            return Err(AppError::NotFound("Funnel not found".into()));
+        };
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM kinetic_qr_codes WHERE funnel_id = $1 AND tenant_id = $2 LIMIT 1",
+        )
+        .bind(funnel_id)
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        if let Some(id) = existing {
+            sqlx::query(
+                "UPDATE kinetic_qr_codes SET is_active = true, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&state.pool)
+            .await?;
+            return Ok((
+                StatusCode::OK,
+                Json(json!({
+                    "id": id.to_string(),
+                    "existing": true,
+                    "kind": "funnel",
+                    "png_url": format!("/api/v1/kinetic/qr/{id}/png"),
+                    "svg_url": format!("/api/v1/kinetic/qr/{id}/svg"),
+                })),
+            ));
+        }
+        features::enforce_feature_limit(&state, tenant_id, "max_qr_codes", "QR codes").await?;
+        let id = Uuid::new_v4();
+        // name is varchar(100): truncate rather than let a long page name 500 on the insert.
+        let title: String = payload["title"]
+            .as_str()
+            .or_else(|| payload["name"].as_str())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| format!("{funnel_name} — funnel page"))
+            .chars()
+            .take(100)
+            .collect();
+        sqlx::query(
+            "INSERT INTO kinetic_qr_codes (id, user_id, tenant_id, funnel_id, name) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(tenant_id)
+        .bind(funnel_id)
+        .bind(&title)
+        .execute(&state.pool)
+        .await?;
+        return Ok((
+            StatusCode::CREATED,
+            Json(json!({
+                "id": id.to_string(),
+                "existing": false,
+                "kind": "funnel",
+                "png_url": format!("/api/v1/kinetic/qr/{id}/png"),
+                "svg_url": format!("/api/v1/kinetic/qr/{id}/svg"),
+            })),
+        ));
+    }
+
     // The card is the request's real argument: `kinetic_qr_codes.card_id` is NOT NULL and
     // FKs kinetic_cards, and the tenant check below keeps a caller from attaching a QR to
     // another workspace's card (the FK itself is not tenant-aware).

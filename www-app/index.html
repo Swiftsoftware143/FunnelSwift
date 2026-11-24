@@ -5117,6 +5117,37 @@ function fnShowLeads(f){
    WITHOUT its link changing: the link may be printed, in a paid ad, or in a chat nobody can
    edit. Paused keeps the page up and shows "This form is closed"; the server refuses
    submissions either way, so a cached copy of the open page cannot slip a lead through. */
+/* A QR CODE FOR THE FUNNEL PAGE (2026-11-24). Every plan carries a `max_qr_codes` allowance and
+   the dashboard counts it, but a code could only be minted for a kinetic CARD — and a workspace on
+   the default Capture Free plan holds no cards at all, so its allowance could never be spent. The
+   funnel is the one public page such a workspace can build, and a printed flyer, van or shop window
+   is where a local business finds its first leads. Same modal and same idempotent POST as the
+   card's (a second press returns the same code, never a second slot of the allowance).
+   routes: POST /api/v1/kinetic/qr {funnel_id} . GET /api/v1/kinetic/qr/:id/png|svg */
+function QRF(f){
+  O("QR code: "+(f.name||f.slug||"funnel"),function(){
+    var box=El("div",{style:"text-align:center;padding:12px;border:1px solid #e2e8f0;border-radius:10px;min-height:120px"});
+    box.innerHTML='<p style="font-size:12px;color:#64748b;margin:0">Preparing the code\u2026</p>';
+    $("mb").appendChild(box);
+    api("/api/v1/kinetic/qr",{method:"POST",body:JSON.stringify({funnel_id:f.id,title:(f.name||"Funnel")+" QR"})})
+    .then(function(row){
+      if(!row||!row.id) throw new Error("The server did not return a QR code.");
+      var png="/api/v1/kinetic/qr/"+encodeURIComponent(row.id)+"/png";
+      var svg="/api/v1/kinetic/qr/"+encodeURIComponent(row.id)+"/svg";
+      var page="https://funnelswift.net"+(f.public_path||("/funnel/"+(f.slug||"")));
+      box.innerHTML='<img alt="QR code for '+X(f.name||"this funnel page")+'" src="'+png+'" style="width:240px;height:240px;display:block;margin:0 auto">'
+        +'<p style="font-size:11px;color:#64748b;margin:6px 0 0">Scan to open <b>'+X(page)+'</b>. Put it on a flyer, a van or a shop window \u2014 every scan opens the page and counts as a view.</p>';
+      var fm=$("mf");
+      fm.appendChild(El("a",{"class":"btn","href":png,"download":(f.slug||"funnel")+"-qr.png",style:"text-decoration:none"},"Download PNG"));
+      fm.appendChild(El("a",{"class":"btn","href":svg,"download":(f.slug||"funnel")+"-qr.svg",style:"text-decoration:none"},"Download SVG"));
+      fm.appendChild(El("button",{"class":"btn",onclick:C},"Close"));
+    }).catch(function(e){
+      box.innerHTML='<p style="font-size:13px;color:#dc2626;margin:0">'+X((e&&e.message)||"Could not make a QR code for this page.")+'</p>'
+        +'<p style="font-size:11px;color:#64748b;margin:8px 0 0">Your plan sets how many QR codes a workspace holds; the refusal above names the one you have.</p>';
+      $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
+    });
+  });
+}
 function fnPause(f){
   var next=!f.is_active;
   api("/api/v1/funnels/"+f.id,{method:"PUT",body:JSON.stringify({is_active:next})})
@@ -5220,6 +5251,8 @@ function LAFN(){
       td.appendChild(document.createTextNode(" "));
       var cp=El("button",{"class":"btn btn-sm",onclick:function(){fnCopy(url,cp);}},"Copy link");
       td.appendChild(cp); td.appendChild(document.createTextNode(" "));
+      td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnQR(f);}},"QR code"));
+      td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnRename(f);}},"Rename"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnPause(f);}},f.is_active===false?"Resume":"Pause"));
