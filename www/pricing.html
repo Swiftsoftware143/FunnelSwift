@@ -119,8 +119,6 @@
       <div class="card" data-plan="capture-free">
         <h3>Free</h3>
         <p class="who">Two free plans — pick the product you need and start today.</p>
-        <div class="price"><span class="amt" data-role="amt">$0</span><span class="per">forever</span></div>
-        <div class="yr" data-role="yr">no card required</div>
         
         
         <ul>
@@ -141,8 +139,6 @@
       <div class="card" data-plan="capture-starter">
         <h3>Capture Starter</h3>
         <p class="who">For ad campaigns and lead gen — connect your CRM and automate.</p>
-        <div class="price"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
-        <div class="yr" data-role="yr">or $89 a year</div>
         
         
         <ul>
@@ -159,8 +155,6 @@
       <div class="card" data-plan="kinetic-pro">
         <h3>Kinetic Pro</h3>
         <p class="who">Fully branded, interactive digital business cards.</p>
-        <div class="price"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
-        <div class="yr" data-role="yr">or $89 a year</div>
         
         
         <ul>
@@ -177,8 +171,6 @@
         <div class="badge">Most popular</div>
         <h3>Suite</h3>
         <p class="who">Kinetic Cards and lead capture in one platform.</p>
-        <div class="price"><span class="amt" data-role="amt">$29</span><span class="per">/month</span></div>
-        <div class="yr" data-role="yr">or $290 a year</div>
         
         
         <ul>
@@ -195,8 +187,6 @@
       <div class="card" data-plan="agency">
         <h3>Agency / Scale</h3>
         <p class="who">For agencies and marketing firms managing multiple clients.</p>
-        <div class="price"><span class="amt" data-role="amt">$79</span><span class="per">/month</span></div>
-        <div class="yr" data-role="yr">or $790 a year</div>
         
         
         <ul>
@@ -279,31 +269,6 @@
       }
       var note = document.getElementById('limit-source');
       if (note && painted) note.hidden = false;
-      // PRICES (2026-11-24): the amount and the yearly line on each card come from the SAME live plan
-      // record, so a price the operator edits in the console is the price the page shows. The authored
-      // figure is the fallback, exactly like the allowance spans above.
-      function money(v) {
-        var n = Number(v);
-        if (!isFinite(n)) return null;
-        return n <= 0 ? '$0' : '$' + (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));
-      }
-      var amts = document.querySelectorAll('span[data-role="amt"]');
-      for (var k = 0; k < amts.length; k++) {
-        var el = amts[k];
-        var cardEl = el.closest('[data-plan]');
-        var planK = cardEl ? byslug[cardEl.getAttribute('data-plan')] : null;
-        if (!planK || planK.price === null || planK.price === undefined) continue;
-        var m = money(planK.price);
-        if (m === null) continue;
-        el.textContent = m;
-        var cardBox = el.closest('.card');
-        var yrEl = cardBox ? cardBox.querySelector('[data-role="yr"]') : null;
-        if (yrEl) {
-          var y = money(planK.annual_price);
-          if (y !== null && Number(planK.annual_price) > 0) yrEl.textContent = 'or ' + y + ' a year';
-          else if (Number(planK.price) <= 0) yrEl.textContent = 'no card required';
-        }
-      }
       // HOW TO PAY (2026-11-17): the operator's own payment details, published here so a VISITOR
       // — not only a signed-in buyer on the Upgrade screen — can see how this installation can
       // actually take the money while no card provider is configured. Empty/absent leaves the
