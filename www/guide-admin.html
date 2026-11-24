@@ -188,6 +188,63 @@
       </div>
 
       <!-- ============ PLANS ============ -->
+      <!-- ============ EXIT DOORS ============ -->
+      <h2 id="exit-doors">🚪 When a customer cancels or deletes their account</h2>
+
+      <div class="card">
+        <h3>Two controls, and they are not the same</h3>
+        <p>Every customer's own <strong>Profile</strong> screen ends with a red-outlined
+        <strong>Danger zone</strong>. It is the only place either door exists, and it holds two buttons, in
+        this order:</p>
+        <ul>
+          <li><strong>Cancel plan</strong> &mdash; the customer's access ends at once: their sign-in stops
+            working and every API key on the workspace is revoked. <strong>Nothing is deleted.</strong>
+            The workspace and its records are kept, and the customer receives a confirmation. You receive
+            an alert naming the customer, their address and the workspace, so a cancellation is never
+            silent. Reopening the account is a manual step for support: a closed account cannot ask for a
+            password reset, by design.</li>
+          <li><strong>Delete account and data</strong> &mdash; takes effect immediately and cannot be
+            undone. It destroys the workspace and every record in it: leads, campaigns, tags, funnels,
+            cards, forms, team members and their sign-ins, inbox mail and attachments, the profile picture
+            and logo, API keys and sessions. The audit trail goes too, apart from one line recording that
+            the deletion happened.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>What is kept: the invoices</h3>
+        <p>Invoices and payment receipts have to be kept for tax, so they are not deleted. They are
+        <strong>detached</strong> from the workspace and stay in the <strong>Invoices</strong> screen,
+        where the workspace column reads <em>Workspace erased</em> instead of an account name. Everything
+        else is destroyed. The customer's own confirmation dialog states this before they type anything,
+        so the exception is never a surprise afterwards.</p>
+      </div>
+
+      <div class="card">
+        <h3>Only a signed-in owner with the password</h3>
+        <p>Both buttons ask the customer to type their password again and to type the word
+        <strong>CLOSE</strong> (cancel) or <strong>DELETE</strong> (delete). The server checks both, so a
+        bare request cannot skip the dialog, and a teammate who does not own the workspace is refused.
+        <strong>No API key and no AI assistant or MCP tool can use either door</strong> &mdash; both
+        refuse even a valid key belonging to the workspace, so an agent asked to close an account cannot
+        do it. Two accounts are refused outright: a platform operator account, and the workspace that
+        belongs to the platform owner. Your own account is not a customer and cannot be ended from a
+        button.</p>
+      </div>
+
+      <div class="card">
+        <h3>What you will see afterwards</h3>
+        <ul>
+          <li><strong>After a cancel</strong> &mdash; the workspace still appears in Accounts with its
+            records intact; the person who cancelled cannot sign in until support reopens the account, and
+            the workspace's API keys no longer work.</li>
+          <li><strong>After a delete</strong> &mdash; the workspace and its people are gone from Accounts,
+            and only the detached invoices remain, marked <em>Workspace erased</em>. There is no undo and
+            support cannot restore it. The deletion is recorded for audit &mdash; who asked, when and how
+            many records were destroyed, never the password.</li>
+        </ul>
+      </div>
+
       <h2 id="plans">💳 Plans & Feature Toggles</h2>
       <p>Plans define what each tenant can access. Navigate to <code>/admin/plans</code> to manage them. Each plan has a set of feature toggles stored as JSONB:</p>
       <p><strong>Payment link (optional).</strong> Every plan in this console now carries a
