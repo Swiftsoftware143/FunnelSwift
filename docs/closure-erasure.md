@@ -13,7 +13,7 @@ data temporary.
 | | |
 |---|---|
 | Job | `ops/closure_erasure.py` (this repo — the canonical copy) |
-| Schedule | root's crontab, once a day at **06:47 off-peak**, via `/etc/cron.d/funnelswift-closure-erasure` |
+| Schedule | root's crontab, once a day at **06:47 off-peak** (`47 6 * * *`, installed 2026-11-24) |
 | Log | `/var/log/funnelswift-closure-erasure.log` (one line per workspace, plus a `SUMMARY` JSON line) |
 | Purge | `funnelswift_erase_tenant(tenant, NULL, 'closure-30d')` — migration 144 |
 | Census | `funnelswift_closures_due(30)` — migration 144, where every rule lives |
