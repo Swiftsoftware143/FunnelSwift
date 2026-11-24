@@ -44,6 +44,10 @@ mod image_store;
 // The CoreSwift visual field mapper's SOURCE describe endpoint (fleet-canonical generic module).
 mod integration_schema;
 mod login_throttle;
+// FunnelSwift's own MCP door (kanban t_aeefb4fb): POST /mcp, 11 read tools, api_keys credential.
+mod mcp;
+#[cfg(test)]
+mod mcp_guard;
 mod models;
 // Private inbox + workspaces, ported from ADASwift (kanban t_5592e079).
 mod module_registry;
@@ -228,8 +232,15 @@ async fn main() -> Result<()> {
         body_read_deadline.duration().as_secs()
     );
 
+    // FunnelSwift's own MCP door (kanban t_aeefb4fb). Built ONCE and before the listener: a bad
+    // registry or bad config refuses to boot instead of failing a customer's first call. The door
+    // resolves its own `api_keys` bearer on every request; it is NOT behind `require_auth`
+    // (that layer accepts session JWTs, which this door deliberately does not).
+    let mcp_door = mcp::build_door(app_state.pool.clone())
+        .map_err(|e| crate::error::AppError::Internal(format!("MCP door refused to start: {e}")))?;
+
     // Build router
-    let app = create_router(app_state, body_read_deadline);
+    let app = create_router(app_state, body_read_deadline, mcp_door);
 
     // Bind address comes from the deploy env, the same keys the rest of the fleet reads
     // (ADASwift/IncentiveSwift read HOST/PORT; /etc/swift/env/funnelswift.env supplies
@@ -255,7 +266,11 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn create_router(state: AppState, body_read_deadline: body_deadline::BodyReadDeadline) -> Router {
+fn create_router(
+    state: AppState,
+    body_read_deadline: body_deadline::BodyReadDeadline,
+    mcp_door: std::sync::Arc<mcp_door::Door>,
+) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -265,6 +280,9 @@ fn create_router(state: AppState, body_read_deadline: body_deadline::BodyReadDea
     let security_mw = axum::middleware::from_fn(app_middleware::security::security_headers);
 
     Router::new()
+        // The door carries its OWN credential boundary (the bearer must hash to a live
+        // `api_keys` row), so it is merged beside the app router, not under its auth layer.
+        .merge(mcp::router(mcp_door))
         .merge(api_router::create_router(state, body_read_deadline))
         .layer(security_mw)
         .layer(cors)

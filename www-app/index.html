@@ -6483,40 +6483,31 @@ function saveSubdomain(){
     })
     .catch(function(e){ showMsg((e&&e.message)||'That subdomain cannot be used','e'); });
 }
-/* === MCP (2026-11-13) — the fleet slot directly above Settings (docs/fleet-mcp-nav-convention.md)
-   Point any MCP client at https://hooks.swiftsoftware.net/mcp with THIS workspace's API key as the
-   Bearer token. Every tool a workspace credential can reach is read-only and tenant-scoped; there is
-   no write tool and no free-form SQL door, and operator-wide (admin) tools are refused for a
-   workspace credential. The tool list below is the REAL tool set the mcp server exposes for
-   funnelswift: each /opt/swift/mcp/src/main.rs AppSpec key yields <key>_summary and <key>_search
-   (the third, <key>_list_tenants, is admin-only and never offered here). */
+/* === MCP — the fleet slot directly above Settings (docs/fleet-mcp-nav-convention.md)
+   Point any MCP client at https://app.funnelswift.net/mcp with THIS workspace's API key as the
+   Bearer token. That address is FunnelSwift's OWN door (`src/mcp.rs`, built on the shared mcp-door
+   crate, kanban t_aeefb4fb): eleven READ-ONLY tools, each scoped inside its SQL to the workspace
+   that owns the key. There is no write tool, no free-form SQL door and no operator tool — a key
+   from another workspace gets not_found, exactly like a missing id. The list below is the door's
+   real registration list; `src/mcp_guard.rs` fails the test suite if the two drift. */
 var MCP_SPECS=[
-  ["funnelswift","leads"],
-  ["funnelswift_tags","tags"],
-  ["funnelswift_cards","kinetic cards"],
-  ["funnelswift_lead_events","lead events"],
-  ["funnelswift_affiliate_products","affiliate products"],
-  ["funnelswift_webhooks","webhooks"],
-  ["funnelswift_team","team members"],
-  ["funnelswift_activity","activity"],
-  ["funnelswift_support_requests","support requests"],
-  ["funnelswift_plan_requests","plan requests"],
-  ["funnelswift_tag_rules","tag automation rules"],
-  ["funnelswift_tag_groups","tag groups"],
-  ["funnelswift_tag_changes","tag change history"],
-  ["funnelswift_affiliates","affiliates"],
-  ["funnelswift_campaigns","campaigns"],
-  ["funnelswift_qr_codes","QR codes"],
-  ["funnelswift_webhook_deliveries","webhook deliveries"],
-  ["funnelswift_checkout_sessions","checkout sessions"],
-  ["funnelswift_portfolio","portfolio companies"],
-  ["funnelswift_subscriptions","plan subscriptions"]
+  ["list_funnels","funnels — name, slug, headline, views, live/idle"],
+  ["list_pages","landing pages — title, slug, template, block count, last edit"],
+  ["get_page","one landing page's settings (never its password hash or layout blob)"],
+  ["page_stats","per-page daily views, clicks, shares, QR scans, unique visitors"],
+  ["list_leads","leads — name, email, phone, stage, score"],
+  ["lead_events","what a lead did — event, page, time"],
+  ["list_form_submissions","capture-form submission log"],
+  ["list_tags","tags and the group each one sits in"],
+  ["list_email_domains","your sending domains and whether they are verified"],
+  ["list_invoices","your invoices — amount, status, due and paid dates"],
+  ["list_affiliate_products","affiliate products you can promote, and your commission"]
 ];
-var MCP_ENDPOINT='https://hooks.swiftsoftware.net/mcp';
+var MCP_ENDPOINT='https://app.funnelswift.net/mcp';
 var MCP_CONFIG_TEXT='{\n'
  +'  "mcpServers": {\n'
  +'    "funnelswift": {\n'
- +'      "url": "https://hooks.swiftsoftware.net/mcp",\n'
+ +'      "url": "'+MCP_ENDPOINT+'",\n'
  +'      "headers": { "Authorization": "Bearer YOUR_API_KEY" }\n'
  +'    }\n'
  +'  }\n'
@@ -6524,7 +6515,7 @@ var MCP_CONFIG_TEXT='{\n'
 function mcpToolsHtml(){
   var h="";
   MCP_SPECS.forEach(function(s){
-    h+='<li><code>'+s[0]+'_summary</code> / <code>'+s[0]+'_search</code> — '+s[1]+'</li>';
+    h+='<li><code>'+s[0]+'</code> — '+s[1]+'</li>';
   });
   return h;
 }
@@ -6653,7 +6644,7 @@ function MCPCLIENT(which){
     +step(3,'Add a custom connector','Press <strong>+</strong> and name it <strong>FunnelSwift</strong>.')
     +step(4,'Paste this address into the URL box',addr)
     +step(5,'Choose <strong>API key / Bearer token</strong> where it asks how to sign in','Paste the key from the card below. Never choose OAuth — this service does not offer it.')
-    +step(6,'Press Create, then test the connection','The client lists the tools immediately: lead summaries, funnel searches, tag history and the rest.');
+    +step(6,'Press Create, then test the connection','The client lists the tools immediately: your funnels, landing pages, page statistics, leads, lead events, tags, sending domains, invoices and affiliate products.');
   $("mcpSteps").innerHTML=h;
 }
 

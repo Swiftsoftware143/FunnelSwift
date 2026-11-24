@@ -116,8 +116,8 @@ mod tests {
     }
 
     /// §6.4 — no MCP tool may be able to close or erase. The console's MCP screen prints the real
-    /// tool list (`MCP_SPECS`), one per fleet AppSpec; the fleet MCP server carries the matching test
-    /// over its own catalogue.
+    /// tool list (`MCP_SPECS`) from the app's own door (`src/mcp.rs`); the door's registry test
+    /// (`mcp_guard`) carries the matching check over the real registration.
     #[test]
     fn no_mcp_tool_can_close_or_erase() {
         let start = SPA
@@ -126,8 +126,11 @@ mod tests {
         let rest = &SPA[start..];
         let end = rest.find("];").expect("unterminated MCP_SPECS");
         let list = &rest[..end];
+        // Per-app doors name their tools BARE (`list_funnels`, like CoreSwift's `list_objects`);
+        // the `<app>_summary/_search` spelling belonged to the retired cross-app hub list. Count
+        // entries, not a prefix, so this stays a truncation check and not a naming rule.
         assert!(
-            list.matches("[\"funnelswift").count() >= 10,
+            list.matches("[\"").count() >= 10,
             "the MCP tool list looks truncated — this test would pass on an empty list"
         );
         for word in ["close", "erase", "delete_account", "delete-account"] {
