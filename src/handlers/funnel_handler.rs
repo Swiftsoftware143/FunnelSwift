@@ -219,6 +219,9 @@ pub async fn create_funnel(
             "thank_you": page_copy[3],
             "ask_phone": ask_phone,
             "is_active": true,
+            // A brand-new page has no views yet; the key is shipped anyway so a client reads ONE
+            // funnel shape from every route (create, list, get) instead of special-casing this one.
+            "views": 0,
             "public_path": format!("/funnel/{slug}"),
             "message": "Funnel created"
         })),
