@@ -1,5 +1,13 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Signing out…</title><meta http-equiv="refresh" content="1;url=/login"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;color:#1e293b;background:#f8fafc}.wrap{max-width:640px;margin:40px auto;padding:0 20px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px}.card h1{font-size:20px;margin:0 0 10px}.card p{font-size:14px;line-height:1.6;margin:0 0 10px;color:#334155}.card .kept{color:#7f1d1d}@media (prefers-color-scheme:dark){body{background:#0f1117;color:#e8eaed}.card{background:#1a1d27;border-color:#2d3148}.card p{color:#c7cbd1}}</style></head>
+<html lang="en"><head><meta charset="UTF-8"><title>Signing out…</title><script>/* The old sign-out page used a <meta http-equiv="refresh"> to reach /login. A meta refresh is
+   QUEUED when it is parsed and cannot be relied on to be cancelled afterwards: measured in a real
+   browser (2026-11-24) the Danger-zone landing page removed the tag, drew "Your account and data
+   were deleted", and was still thrown to /login a second later, so the person who had just
+   deleted their account never got to read what happened. A timer that is never started for the
+   landing case cannot misfire. */
+(function(){var p=new URLSearchParams(location.search);
+ if(p.get('erased')==='1'||p.get('closed')==='1')return;
+ setTimeout(function(){location.replace('/login')},1200);})();</script><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;color:#1e293b;background:#f8fafc}.wrap{max-width:640px;margin:40px auto;padding:0 20px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px}.card h1{font-size:20px;margin:0 0 10px}.card p{font-size:14px;line-height:1.6;margin:0 0 10px;color:#334155}.card .kept{color:#7f1d1d}@media (prefers-color-scheme:dark){body{background:#0f1117;color:#e8eaed}.card{background:#1a1d27;border-color:#2d3148}.card p{color:#c7cbd1}}</style></head>
 <body>
 <nav class="navx-crumb" aria-label="Breadcrumb"><a href="/">Home</a><span class="navx-sep" aria-hidden="true">&rsaquo;</span><span aria-current="page">Signed out</span></nav><script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://funnelswift.net/"},{"@type":"ListItem","position":2,"name":"Signed out","item":"https://funnelswift.net/logout.html"}]}</script><style id="navx-style">.navx-crumb{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;font-size:.82rem;max-width:1100px;margin:0 auto;padding:14px 18px 0;line-height:1.4}.navx-crumb a{text-decoration:underline;text-underline-offset:2px}.navx-crumb .navx-sep{opacity:.55}.navx-crumb [aria-current]{opacity:.75}.navx-rel{max-width:1100px;margin:34px auto 18px;padding:16px 18px;border:1px solid rgba(128,128,128,.45);border-radius:10px;background:rgba(128,128,128,.08);color:inherit}.navx-rel h2{font-size:1rem;margin:0 0 .6rem;letter-spacing:.01em}.navx-rel ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.45rem 1.4rem}.navx-rel a{text-decoration:underline;text-underline-offset:2px;font-size:.93rem}</style><script>/* A sign-out ends EVERY session this console holds. The tenant console's "Login As" control
    (impersonateTenant() in index.html) parks the OPERATOR's own token under localStorage
@@ -23,8 +31,6 @@ localStorage.removeItem('ws_fs_original_token');</script>
   var q=new URLSearchParams(location.search);
   var erased=q.get('erased')==='1', closed=q.get('closed')==='1';
   if(!erased && !closed) return;
-  var meta=document.querySelector('meta[http-equiv="refresh"]');
-  if(meta) meta.remove();
   var box=document.getElementById('done');
   function when(iso){
     if(!iso) return '';
