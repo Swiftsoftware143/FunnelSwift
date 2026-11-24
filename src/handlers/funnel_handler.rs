@@ -647,6 +647,7 @@ pub async fn render_funnel(
     } else {
         format!(
             "<form id=\"fn-form\" novalidate>\n\
+<div class=\"hp\" aria-hidden=\"true\"><label for=\"fn-website\">Website</label><input id=\"fn-website\" name=\"website\" type=\"text\" tabindex=\"-1\" autocomplete=\"off\"></div>\n\
 <label for=\"fn-name-input\">Your name</label>\n\
 <input id=\"fn-name-input\" name=\"name\" autocomplete=\"name\" maxlength=\"120\" placeholder=\"Alex Doe\">\n\
 <label for=\"fn-email-input\">Email</label>\n\
@@ -682,6 +683,7 @@ input:focus{{outline:2px solid #818cf8;border-color:transparent}}
 button{{width:100%;margin-top:18px;padding:13px 16px;border:0;border-radius:9px;background:{accent};color:#fff;font-size:15px;font-weight:600;cursor:pointer}}
 button:disabled{{opacity:.6;cursor:default}}
 .err{{color:#fca5a5;font-size:13px;margin-top:10px;min-height:16px}}
+.hp{{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}}
 </style>
 {seo_scripts}
 </head>
@@ -721,7 +723,7 @@ button:disabled{{opacity:.6;cursor:default}}
     fetch('/funnel/' + encodeURIComponent(slug) + '/submit', {{
       method: 'POST',
       headers: {{ 'Content-Type': 'application/json' }},
-      body: JSON.stringify({{ name: name, email: email, phone: phone }})
+      body: JSON.stringify({{ name: name, email: email, phone: phone, website: (document.getElementById('fn-website') || {{}}).value || '' }})
     }}).then(function(r){{
       return r.json().then(function(j){{ return {{ ok: r.ok, j: j }}; }});
     }}).then(function(o){{
@@ -790,6 +792,23 @@ pub async fn submit_funnel_lead(
         return Err(AppError::Conflict(
             "This form is closed and is no longer accepting responses.".into(),
         ));
+    }
+    // A BOT THAT FILLS THE HIDDEN FIELD IS NOT A VISITOR (2026-11-24). The page renders one
+    // off-screen input (`website`) that no person can see or tab to; a scripted form filler sets it.
+    // Such a submission is answered with the SAME success a real visitor gets — a bot told it failed
+    // simply retries with a different payload — but nothing is written: no lead row, no
+    // `lead.created` webhook, no activity entry and no owner mail. This door is the app's only
+    // unauthenticated write, so it is the one place where junk costs a customer real money in a
+    // lead list they pay for. Checked BEFORE the field validation, because a bot's other fields are
+    // not worth interpreting.
+    if let Some(trap) = public_field(&body, "website") {
+        if !trap.trim().is_empty() {
+            tracing::info!(
+                funnel = %funnel_id,
+                "funnel submission DROPPED — the hidden bot-trap field was filled"
+            );
+            return Ok((StatusCode::CREATED, Json(json!({ "status": "ok" }))));
+        }
     }
 
     // The EMAIL is the point of the form — the page's own field is `required`, so the server must
