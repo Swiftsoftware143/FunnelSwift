@@ -188,6 +188,63 @@ mod tests {
         assert!(body.contains("eq_ignore_ascii_case(\"CLOSE\")"));
         assert!(body.contains("verify_password"));
         assert!(body.contains("super_admin"));
+        // A closure is a STATE that the timer must be able to see (standard §2, kanban t_d01b2a79).
+        assert!(
+            body.contains("closed_at = NOW()"),
+            "close_account no longer records closed_at — the 30-day erasure timer would have nothing to count from"
+        );
         assert!(HUMAN_ONLY_ROUTES.contains(&CLOSE));
+    }
+
+    /// The migration that owns the closure timer, and the runner cron calls.
+    const CLOSURE_MIGRATION: &str = include_str!("../../migrations/144_closure_erasure.sql");
+    const CLOSURE_JOB: &str = include_str!("../../ops/closure_erasure.py");
+
+    /// §2 — a cancellation must END in erasure, not merely in a lost password. The window, the clock
+    /// and the skip list live in ONE census; the runner may only call it. This test fails when a later
+    /// change reopens any of those decisions.
+    #[test]
+    fn closure_timer_erases_after_thirty_days_but_never_a_kept_workspace() {
+        // The window is a FLOOR in SQL: no argument can shorten the customer's restore window,
+        // and the clock is the LAST person's closure, never the first one's.
+        assert!(CLOSURE_MIGRATION.contains("GREATEST(coalesce(p_days, 30), 30)"));
+        assert!(CLOSURE_MIGRATION.contains("make_interval(days => v_days)"));
+        assert!(CLOSURE_MIGRATION.contains("max(u.closed_at)"));
+
+        // Every person in the workspace must be closed, and there must be at least one: a teammate
+        // still signed in is never erased under, and a workspace with no people records no closure.
+        assert!(CLOSURE_MIGRATION.contains("uu.users_total > 0"));
+        assert!(CLOSURE_MIGRATION.contains("uu.closed_users = uu.users_total"));
+
+        // The four classes the fleet keeps by rule — the operator, the fixtures/harness, the system
+        // seed, and anything the portfolio owns (registry first, name list as the fallback).
+        assert!(CLOSURE_MIGRATION.contains("'admin', 'super_admin'"));
+        assert!(CLOSURE_MIGRATION.contains("probe-canary-"));
+        assert!(CLOSURE_MIGRATION.contains("probe_harness"));
+        assert!(CLOSURE_MIGRATION.contains("portfolio_companies"));
+        assert!(CLOSURE_MIGRATION.contains("'%swiftimpact%'"));
+
+        // One purge, two doors: the timer calls the SAME function the Danger zone calls, and the
+        // audit row says which one it was.
+        assert!(CLOSURE_JOB.contains("funnelswift_erase_tenant"));
+        assert!(CLOSURE_JOB.contains("closure-{days}d"));
+        assert!(CLOSURE_MIGRATION.contains("ADD COLUMN IF NOT EXISTS reason"));
+        assert!(CLOSURE_MIGRATION.contains("'closure-Nd'"));
+
+        // An automatic erasure has no human actor.
+        assert!(CLOSURE_JOB.contains("NULL, "));
+
+        // Safe by default: a bare run (a manual poke, a typo, a copied command) must not destroy
+        // anything, and the job must refuse a database the operator did not name.
+        assert!(CLOSURE_JOB.contains("action=\"store_true\""));
+        assert!(CLOSURE_JOB.contains("EXPECTED_DB_DEFAULT = \"funnelswift\""));
+        assert!(CLOSURE_JOB.contains("current_database()"));
+
+        // The timer must never be reachable as a route: the standard forbids a key, an internal
+        // route or an MCP tool from erasing a workspace.
+        assert!(
+            !ROUTER.contains("closures_due") && !ROUTER.contains("closure_erasure"),
+            "the closure timer is mounted as a route — erasure must not be reachable over HTTP"
+        );
     }
 }

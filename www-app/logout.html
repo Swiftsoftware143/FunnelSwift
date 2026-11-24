@@ -48,7 +48,7 @@ localStorage.removeItem('ws_fs_original_token');</script>
     document.title='Your plan is cancelled';
     box.innerHTML='<h1>Your plan is cancelled</h1>'
       +'<p>Your access has ended and every session and API key on the account no longer works.'+when(q.get('at'))+'</p>'
-      +'<p>Your data has <strong>not</strong> been deleted. It is kept for 30 days, so you can restore this within 30 days by contacting support.</p>'
+      +'<p>Your data has <strong>not</strong> been deleted. It is kept for 30 days, so you can restore this within 30 days by contacting support. If nobody restores it, the workspace and its data are deleted automatically on day 30.</p>'
       +'<p>You can close this page.</p>';
   }
 })();</script>

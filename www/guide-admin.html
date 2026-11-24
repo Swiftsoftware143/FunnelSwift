@@ -198,11 +198,14 @@
         this order:</p>
         <ul>
           <li><strong>Cancel plan</strong> &mdash; the customer's access ends at once: their sign-in stops
-            working and every API key on the workspace is revoked. <strong>Nothing is deleted.</strong>
-            The workspace and its records are kept, and the customer receives a confirmation. You receive
-            an alert naming the customer, their address and the workspace, so a cancellation is never
-            silent. Reopening the account is a manual step for support: a closed account cannot ask for a
-            password reset, by design.</li>
+            working and every API key on the workspace is revoked. <strong>Nothing is deleted on the
+            day.</strong> The workspace and its records are kept for 30 days and then deleted
+            automatically by the app's daily closure job, under the same rule as the delete control
+            (invoices kept, detached). Until day 30 support can reopen the account: clear the closure
+            in the database (the exact command is in the app's operator notes,
+            <code>docs/closure-erasure.md</code>) and the customer can sign in again and reissue their
+            keys. The customer receives a confirmation and you receive an alert naming the customer,
+            their address and the workspace, so a cancellation is never silent.</li>
           <li><strong>Delete account and data</strong> &mdash; takes effect immediately and cannot be
             undone. It destroys the workspace and every record in it: leads, campaigns, tags, funnels,
             cards, forms, team members and their sign-ins, inbox mail and attachments, the profile picture
