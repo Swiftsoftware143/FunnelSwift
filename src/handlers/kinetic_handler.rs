@@ -2150,6 +2150,23 @@ pub async fn submit_lead(
         return Err(AppError::NotFound("Card not found".into()));
     };
 
+    // A BOT THAT FILLS THE HIDDEN FIELD IS NOT A VISITOR (2026-11-24). The card page renders one
+    // off-screen input (`website`) that no person can see or tab to; a scripted form filler sets it
+    // because it looks like a real contact field. Such a submission is answered with the SAME 201 a
+    // real visitor gets — a bot told it failed simply retries with a different payload — but nothing
+    // is written: no `leads` row, no `lead_events` row, no `lead.created` webhook, no activity entry
+    // and no owner mail. This is the same guard the funnel door (`/funnel/<slug>/submit`) carries;
+    // the card is this app's front door, so leaving it open made the protection half a fix. Checked
+    // BEFORE field validation, because a bot's other fields are not worth interpreting, and before
+    // the plan ceiling so junk can never consume a customer's allowance.
+    if card_lead_field(&body, "website").is_some() {
+        tracing::info!(
+            card = %card_id,
+            "card submission DROPPED — the hidden bot-trap field was filled"
+        );
+        return Ok((StatusCode::CREATED, Json(json!({ "status": "ok" }))));
+    }
+
     let email = card_lead_field(&body, "email");
     // An address no mail system could deliver is refused while the visitor is still on the page:
     // `leads.email` is what the customer's later mail steps send to, so a stored typo is a
