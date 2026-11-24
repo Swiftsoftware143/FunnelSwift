@@ -61,6 +61,11 @@ mod state;
 mod system_tenant;
 mod tag_logic;
 mod templates;
+// Source-level guard, test-only (never in the release binary): `tenant_id` is NULLABLE on eight
+// tables here, and `Row::get` on one of those NULLs PANICS (measured live 2026-11-24, kanban
+// t_b7c13d76). See the module for the census.
+#[cfg(test)]
+mod tenant_decode_guard;
 mod webhooks;
 mod workspaces;
 
