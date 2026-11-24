@@ -229,6 +229,37 @@ fn clean_lines(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// OCR puts a space around an address's punctuation, so a card that plainly reads
+/// `maria.gonzalez@acme-logistics.com` arrives as `maria. gonzalez@acme-logistics. com` — and the
+/// email pattern cannot match across those spaces, which is how the single most valuable field on a
+/// business card came back EMPTY on a clean, correctly-rendered card (measured live 2026-11-24:
+/// name, title, company and phone all extracted, `email: ""`).
+///
+/// The repair deletes a space ONLY where it touches `.` or `@`. That is the shape OCR actually
+/// produces, and it deliberately leaves a space between two ordinary words, so a label in front of
+/// the address is not glued into it (`Email maria@acme.com` still matches `maria@acme.com`, not
+/// `Emailmaria@acme.com`).
+fn repair_email_spacing(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = String::with_capacity(line.len());
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_whitespace() {
+            let prev = chars[..i]
+                .iter()
+                .rev()
+                .find(|c| !c.is_whitespace())
+                .copied();
+            let next = chars[i + 1..].iter().find(|c| !c.is_whitespace()).copied();
+            let touches_address = |c: Option<char>| matches!(c, Some('.') | Some('@'));
+            if touches_address(prev) || touches_address(next) {
+                continue;
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn find_email(lines: &[String]) -> String {
     let Some(re) = email_re() else {
         return String::new();
@@ -236,6 +267,16 @@ fn find_email(lines: &[String]) -> String {
     for line in lines {
         if let Some(m) = re.find(line) {
             return m.as_str().trim_end_matches(['.', ',', ';']).to_string();
+        }
+        // The line as read did not match; retry with OCR's punctuation spacing repaired. Only a
+        // line that carries an `@` can hold an address, so nothing else is rewritten.
+        if line.contains('@') {
+            let repaired = repair_email_spacing(line);
+            if repaired != *line {
+                if let Some(m) = re.find(&repaired) {
+                    return m.as_str().trim_end_matches(['.', ',', ';']).to_string();
+                }
+            }
         }
     }
     String::new()
@@ -699,6 +740,32 @@ mod tests {
         let body = card_response(&extract_card_fields("   \n\n,,,\n"));
         assert_eq!(body["parsed"], json!(false));
         assert_eq!(body["name"], json!(""));
+        assert_eq!(body["email"], json!(""));
+    }
+
+    /// Literal output captured from the live host Tesseract service for a rendered card whose
+    /// address it split around the punctuation (2026-11-24).
+    #[test]
+    fn ocr_spacing_inside_an_email_is_repaired() {
+        let text = "Maria Gonzalez\nSales Director\nAcme Logistics LLC\n\
+                    maria. gonzalez@acme-logistics. com\n+1 305 555 0142\n";
+        let f = extract_card_fields(text);
+        assert_eq!(f.email, "maria.gonzalez@acme-logistics.com");
+        assert_eq!(f.company, "Acme Logistics LLC");
+        assert_eq!(digits(&f.phone), "13055550142");
+    }
+
+    /// The repair must not glue a label sitting in front of the address into the local part.
+    #[test]
+    fn label_before_an_email_is_not_glued_into_it() {
+        let f = extract_card_fields("Email maria@acme.com\n");
+        assert_eq!(f.email, "maria@acme.com");
+    }
+
+    /// A card with no address must not gain a fabricated one from the repair.
+    #[test]
+    fn no_email_stays_empty_after_the_repair() {
+        let body = card_response(&extract_card_fields("Acme Logistics LLC. 305.555.0142\n"));
         assert_eq!(body["email"], json!(""));
     }
 
