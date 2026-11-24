@@ -106,7 +106,10 @@ async fn ensure_category_offered(
     category_id: Uuid,
 ) -> AppResult<()> {
     let offered: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM product_categories WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3)",
+        // The fleet catalogue's rows carry `tenant_id IS NULL` (measured 2026-11-24), so without the
+        // `IS NULL` arm a save that keeps an existing fleet category was refused "Unknown category"
+        // — a no-op edit the operator could not perform. Matches `list_categories`'s predicate now.
+        "SELECT id FROM product_categories WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3 OR tenant_id IS NULL)",
     )
     .bind(category_id)
     .bind(tenant_id)

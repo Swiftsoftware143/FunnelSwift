@@ -66,7 +66,13 @@ pub async fn list_categories(
         // represent the stored value, and make a save look like it clears it. The predicate below
         // mirrors the product list's own: the caller's categories plus the fleet's system-tenant ones.
         // Another REAL tenant's categories stay invisible, exactly as before.
-        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE (tenant_id = $1 OR tenant_id = $2) ORDER BY sort_order ASC, name ASC"
+        // MEASURED 2026-11-24: the fleet's catalogue rows carry `tenant_id IS NULL` (all 8: the
+        // per-app `<App> Plans` categories), NOT the system-tenant id — so `tenant_id = $1 OR
+        // tenant_id = $2` alone answered `[]` for a real admin while 15 of 20 products already
+        // carried one of those category ids. That left the Product screen's Category select empty,
+        // unable to represent the stored value. The predicate now also admits the fleet catalogue,
+        // the same `tenant_id IS NULL` arm the affiliate-products reader uses for its own rows.
+        "SELECT id, tenant_id, name, slug, description, COALESCE(sort_order, 0) AS sort_order, COALESCE(is_active, true) AS is_active, created_at FROM product_categories WHERE (tenant_id = $1 OR tenant_id = $2 OR tenant_id IS NULL) ORDER BY sort_order ASC, name ASC"
     )
     .bind(tenant_id)
     // $2 — the fleet's system tenant, bound (never a UUID literal in the SQL text).
