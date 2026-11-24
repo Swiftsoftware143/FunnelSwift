@@ -175,6 +175,7 @@
       <a href="#leads" class="section-title" onclick="closeMobile()">Lead Management</a>
       <a href="#dashboard" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📊</span> Dashboard</a>
       <a href="#leads" class="nav-item" onclick="closeMobile()"><span class="nav-icon">👤</span> Leads</a>
+      <a href="#lead-stages" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🎯</span> Lead Stages</a>
       <a href="#card-scanner" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📷</span> Card Scanner</a>
       <a href="#campaigns" class="nav-item" onclick="closeMobile()"><span class="nav-icon">📣</span> Campaigns</a>
       <a href="#tags" class="nav-item" onclick="closeMobile()"><span class="nav-icon">🏷️</span> Tags</a>
@@ -281,7 +282,8 @@
       <p>When a visitor fills in a public funnel page, FunnelSwift emails the workspace owner straight away with the visitor's name, email address and phone number. Press reply and your answer reaches the visitor, because the message is addressed to you and the visitor's address sits in the body. The lead appears on this screen at the same moment — the email is a heads-up, not the record. A funnel you have paused accepts no submissions, so it produces no email either. On a busy funnel that is a lot of mail, so <strong>Settings → Lead notifications</strong> carries a switch: untick it and no lead email is sent, while the lead still lands on this screen and your webhooks still fire.</p>
 
       <h3>Editing Leads</h3>
-      <p>Click any lead to view details. In edit mode, you can change any field, add custom fields, change tags, and update notes. Stage progression: <span class="badge badge-blue">New</span> → <span class="badge badge-indigo">Contacted</span> → <span class="badge badge-orange">Qualified</span> → <span class="badge badge-green">Converted</span> → <span class="badge badge-red">Lost</span>.</p>
+      <p>Click any lead to view details. In edit mode, you can change any field, add custom fields, change tags, and update notes. Stage progression: <span class="badge badge-blue">New</span> → <span class="badge badge-indigo">Contacted</span> → <span class="badge badge-orange">Qualified</span> → <span class="badge badge-orange">Proposal</span> → <span class="badge badge-indigo">Negotiation</span> → <span class="badge badge-green">Closed Won</span> → <span class="badge badge-red">Closed Lost</span>.</p>
+      <p>Those seven are the stages a new workspace starts with; rename, reorder, add or remove them on the <a href="#lead-stages">Lead Stages</a> tab. The stage matters beyond the Leads list: your dashboard's conversion rate is the share of leads sitting in <strong>Closed Won</strong>.</p>
 
       <h3>Removing several leads at once</h3>
       <p>Every row in the Leads table has a tick box, and there is a select-all box in the table header. Tick the leads you no longer need, then press <strong>Delete selected</strong>. The button stays greyed out until something is ticked and it tells you how many you are about to remove, then asks you to confirm by number.</p>
@@ -289,6 +291,14 @@
         <strong>There is no undo.</strong> A confirmed delete is permanent. Tick only what you mean to remove.
       </div>
       <p>Only the rows you can currently see can be ticked: if you change a filter or the search box, rows the filter hides are un-ticked for you, so you cannot delete something you stopped looking at. Deleting through this button removes the lead from your workspace only — leads already synced to CoreSwift CRM stay in the CRM.</p>
+
+      <h2 id="lead-stages">🎯 Lead Stages</h2>
+      <p>The <strong>Lead Stages</strong> tab is where you define the pipeline every lead in your workspace moves through. A new workspace starts with seven stages — New, Contacted, Qualified, Proposal, Negotiation, Closed Won and Closed Lost — and the table lists them in the order a lead is expected to travel.</p>
+      <p>Rename a stage by typing in its box, move one up or down with the arrows beside it, add a stage at the bottom, or delete one you do not use. Press <strong>Save Order</strong> when you are done: the order you save is the order the Leads screen groups and filters by, so the list reads the way your team actually works.</p>
+      <div class="alert alert-info">
+        <strong>Keep a stage named "Closed Won".</strong> Your dashboard's conversion rate is worked out from the stage name: it is the share of your leads whose stage is exactly <strong>Closed Won</strong>. Rename or remove that stage and the tile reads 0% however many deals you close — give your winning stage that name, or keep the one that ships with the workspace.
+      </div>
+      <p>Each lead carries exactly one stage, stored on the lead itself. <strong>Renaming a stage renames the list entry only</strong> — leads already sitting in it keep the old name until you move them, so name your stages before the team starts using them, or move the affected leads afterwards. Change a lead's stage from its own detail panel, or from the stage filter on the Leads screen.</p>
 
       <h2 id="card-scanner">📷 Card Scanner</h2>
       <p>The Card Scanner turns a photograph of a business card into a lead. Open <strong>Card Scanner</strong> in the sidebar, press <strong>Choose a photo</strong> and pick a picture of the card — JPG, PNG, GIF or WebP, up to 12&nbsp;MB. The picture is shrunk in your browser before it is sent, so a normal phone photo is fine.</p>
