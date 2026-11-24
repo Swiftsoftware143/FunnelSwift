@@ -273,30 +273,36 @@ pub async fn webhook_url(
             "invalid tenant".to_string(),
         )
     })?;
-    match crate::handlers::team_handler::is_workspace_owner(&state, &auth, tenant_uuid).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return Err((
-                axum::http::StatusCode::FORBIDDEN,
-                "only a workspace owner can read the mail-events URL".to_string(),
-            ))
-        }
-        Err(e) => {
-            tracing::warn!("could not check workspace ownership for the mail-events URL: {e}");
-            return Err((
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "could not check who owns this workspace".to_string(),
-            ));
-        }
-    }
-    let token = token(&state.pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let url = format!(
-        "{}/api/v1/webhooks/mailgun/events/{}",
-        crate::email::APP_URL.trim_end_matches('/'),
-        token
-    );
+    // WHO may READ THE ADDRESS: the workspace's own owner — a POST to that URL suppresses an
+    // address. WHO may read the STATUS: every member of the workspace, because the safety net that
+    // stops mail to a bounced address belongs to them, not to the address's keepers. Refusing the
+    // whole reply to a member made their screen paint a red "could not read whether the provider's
+    // reports are arriving" for a refusal that concerned only the address (same defect measured on
+    // the IncentiveSwift twin of this route, 2026-11-24), so the ownership answer now withholds the
+    // URL instead of the reply.
+    let is_owner =
+        match crate::handlers::team_handler::is_workspace_owner(&state, &auth, tenant_uuid).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("could not check workspace ownership for the mail-events URL: {e}");
+                return Err((
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "could not check who owns this workspace".to_string(),
+                ));
+            }
+        };
+    let url = if is_owner {
+        let token = token(&state.pool)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        Some(format!(
+            "{}/api/v1/webhooks/mailgun/events/{}",
+            crate::email::APP_URL.trim_end_matches('/'),
+            token
+        ))
+    } else {
+        None
+    };
     // WHEN the provider last reported something. The console shows this instead of asking a customer
     // to paste the address into a provider they do not control — measured 2026-11-23: no domain on
     // this account had a webhook registered, so the safety net was inert while the screen implied the
@@ -310,6 +316,7 @@ pub async fn webhook_url(
     .ok()
     .flatten();
     Ok(Json(json!({
+        "operator": is_owner,
         "url": url,
         "events": ["permanent_fail", "complained", "unsubscribed"],
         "last_event_at": last_event_at,
