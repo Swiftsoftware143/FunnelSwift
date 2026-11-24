@@ -212,7 +212,7 @@
 
     </div>
 
-    <p class="note" id="limit-source" hidden>Prices and allowance figures on the cards above are read live from this installation’s own plan records.</p>
+    <p class="note" id="limit-source" hidden>Prices and allowance figures on the cards above are read live from this installation’s own plan records. Prices are in US dollars; the yearly line is the total for twelve months.</p>
 
     <div id="how-to-pay" hidden style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:12px;padding:18px 20px;margin:18px 0">
       <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:6px">How to pay for a paid plan</h3>
@@ -291,6 +291,7 @@
         if (!isFinite(n)) return null;
         return '$' + (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));
       }
+      var note = document.getElementById('limit-source');
       var priced = 0;
       var amtEls = document.querySelectorAll('span[data-role="amt"]');
       for (var a = 0; a < amtEls.length; a++) {
