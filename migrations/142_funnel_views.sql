@@ -1,0 +1,15 @@
+-- Per-funnel page views (2026-11-24).
+--
+-- The Funnels screen could say how many LEADS a page captured but never how many people looked at
+-- it, so "which funnel is actually working" was a raw count with no denominator: ten leads is
+-- excellent from forty visits and poor from four thousand, and the operator could not tell which
+-- they had. This column is that denominator.
+--
+-- `render_funnel` increments it on every real page view (link-preview fetchers and crawlers are
+-- skipped — they are not visitors), and `list_funnels` divides the lead count by it. A PAUSED page
+-- still counts views: its link still works and people still open it; only the submission is
+-- refused, so counting the visits keeps the rate honest.
+--
+-- BIGINT, never reset: the row is the history of the page, and a counter that resets on an edit
+-- would silently rewrite the past.
+ALTER TABLE funnels ADD COLUMN IF NOT EXISTS views BIGINT NOT NULL DEFAULT 0;

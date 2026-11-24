@@ -572,7 +572,7 @@ var helpContent={
   "allcards":'<h4>All Cards</h4><p>Every Kinetic card in this workspace in one list. Open a card to edit it, copy its public link or QR code, or remove it.</p>',
   "sgroups":'<h4>System Tag Groups</h4><p>Groups an <strong>admin</strong> creates to organise the shared System Tags. Grouping changes how the tags are listed; it does not change what a tag does.</p>',
   "payouts":'<h4>Affiliate Payouts</h4><p>The payout history for your affiliate partners: what was earned and what has been paid out. <strong>Admin only.</strong></p>',
-  "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above \u2014 give it a name, and if you like the headline your visitors will read and the label on its button \u2014 then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads \u2014 anything you left blank when you created the funnel is set here.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Pause</strong> keeps the page and its link exactly where they are but stops it taking responses: a visitor sees \u201cThis form is closed\u201d, and a submission from a page that was already open is refused. Use it when a campaign ends or a list is full \u2014 <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
+  "funnels":'<h4>Funnels</h4><p>A funnel is a public page you send people to. Create one above \u2014 give it a name, and if you like the headline your visitors will read and the label on its button \u2014 then share its link \u2014 renaming the funnel keeps the same link, so anything already sent still works.</p><ul><li><strong>Edit page</strong> sets the headline, the subheadline, the button label and the thank-you message a visitor reads \u2014 anything you left blank when you created the funnel is set here.</li><li>Every visitor who submits the form becomes a lead in this workspace, and the Leads list names the funnel it came from.</li><li><strong>Leads &middot; views</strong> &mdash; the number of leads this page captured, then how many people opened it and what share of them left their details. A lead count alone cannot say whether a page is working: ten leads is excellent from forty visits and poor from four thousand. A link&rsquo;s share preview (WhatsApp, Slack, Facebook, Telegram) is not counted as a view, and neither is a crawler.</li><li><strong>Pause</strong> keeps the page and its link exactly where they are but stops it taking responses: a visitor sees \u201cThis form is closed\u201d, and a submission from a page that was already open is refused. Use it when a campaign ends or a list is full \u2014 <strong>Resume</strong> turns it back on.</li><li><strong>Delete</strong> retires the page \u2014 its link stops working.</li></ul>',
   "afleads":'<h4>Affiliate Leads</h4><p>The leads each affiliate has brought in, so you can see who is producing. <strong>Admin only.</strong></p>'
 ,
   "support":'<h4>Support</h4><p>Ask the team anything about this workspace and read the answer here. <strong>Send request</strong> files a subject and a message; the answer is written on the same request, so it is still here when you come back, and we also email it to the address you are signed in with so you are not left checking. A request that is still open can be answered by nobody but our team, and a second request with the same subject while the first is open is treated as the same ask, so a double press does not make two.</p>',
@@ -5205,7 +5205,7 @@ function LAFN(){
       return;
     }
     var tbl=El("table");
-    tbl.innerHTML='<tr><th>Funnel</th><th>Public link</th><th>Leads</th><th>Created</th><th></th></tr>';
+    tbl.innerHTML='<tr><th>Funnel</th><th>Public link</th><th>Leads · views</th><th>Created</th><th></th></tr>';
     FN.forEach(function(f){
       var url="https://funnelswift.net"+String(f.public_path||("/funnel/"+f.slug));
       var tr=El("tr");
@@ -5237,6 +5237,23 @@ function LAFN(){
           z.title="No leads from this page yet.";
           lc.appendChild(z);
         }
+        /* THE DENOMINATOR (2026-11-24). `list_funnels` now ships `views` — every real page view of
+           this funnel, counted by `render_funnel` (share-preview fetchers and crawlers are skipped).
+           A lead count alone cannot say whether a page is working: 10 leads is excellent from 40
+           visits and poor from 4,000, and the operator could not tell which they had. The rate is
+           printed to one decimal and only when there are views to divide by — "0%" from zero views
+           would be a claim about a page nobody saw. */
+        var v=Number(f.views||0);
+        var vt=El("div");
+        vt.style.cssText="font-size:11px;color:#94a3b8;margin-top:2px";
+        if(v>0){
+          var rate=Math.round((Number(f.lead_count||0)/v)*1000)/10;
+          if(rate>100)rate=100;
+          vt.textContent=v.toLocaleString()+" view"+(v===1?"":"s")+" \u00b7 "+rate+"% convert";
+        } else {
+          vt.textContent="no views yet";
+        }
+        lc.appendChild(vt);
       }
       tbl.appendChild(tr);
     });

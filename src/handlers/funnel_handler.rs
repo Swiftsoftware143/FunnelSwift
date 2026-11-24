@@ -5,7 +5,7 @@ use crate::state::AppState;
 use crate::templates::html_escape;
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header::USER_AGENT, HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -33,12 +33,14 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
         bool,
         bool,
         i64,
+        i64,
     )> = sqlx::query_as(
         "SELECT f.id, f.name, COALESCE(f.slug,''), f.created_at, f.headline, f.subheadline, f.cta_label, \
                 f.thank_you, f.is_active, f.ask_phone, \
                 (SELECT count(*) FROM leads l \
                   WHERE l.tenant_id = f.tenant_id \
-                    AND l.custom_fields->>'funnel_id' = f.id::text) \
+                    AND l.custom_fields->>'funnel_id' = f.id::text), \
+                f.views \
          FROM funnels f WHERE f.tenant_id = $1 ORDER BY f.created_at DESC",
     )
     .bind(tenant_id)
@@ -65,6 +67,7 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
                 is_active,
                 ask_phone,
                 lead_count,
+                views,
             )| {
                 json!({
                     "id": id.to_string(),
@@ -84,6 +87,11 @@ pub async fn list_funnels(auth: AuthUser, State(state): State<AppState>) -> AppR
                     // so the count is derived from the leads table rather than a second counter
                     // that could drift from the rows it claims to count. The row is the proof.
                     "lead_count": lead_count,
+                    // How many people have OPENED this page. The lead count above is the
+                    // numerator and this is the denominator, so the screen can show a conversion
+                    // rate instead of a bare number. Counted by `render_funnel` (link-preview
+                    // fetchers and crawlers are skipped); a paused page still counts views.
+                    "views": views,
                     // What the shared page says, so the editor opens on the CUSTOMER's words rather
                     // than empty boxes. NULL means "not set" and the renderer falls back.
                     "headline": headline,
@@ -241,15 +249,17 @@ pub async fn get_funnel(
         Option<String>,
         Option<String>,
         bool,
+        i64,
     )> = sqlx::query_as(
-        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you, ask_phone \
+        "SELECT id, name, COALESCE(slug,''), created_at, headline, subheadline, cta_label, thank_you, ask_phone, \
+                views \
          FROM funnels WHERE id = $1 AND tenant_id = $2",
     )
     .bind(id)
     .bind(tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (id, name, slug, created_at, headline, subheadline, cta_label, thank_you, ask_phone) =
+    let (id, name, slug, created_at, headline, subheadline, cta_label, thank_you, ask_phone, views) =
         row.ok_or_else(|| AppError::NotFound("Funnel not found".into()))?;
     Ok(Json(json!({
         "id": id.to_string(),
@@ -263,6 +273,8 @@ pub async fn get_funnel(
         "cta_label": cta_label,
         "thank_you": thank_you,
         "ask_phone": ask_phone,
+        // Views, the same number `list_funnels` ships — one funnel shape on the wire.
+        "views": views,
         // The page a customer shares: slug-only, no tenant in the path (see render_funnel).
         "public_path": format!("/funnel/{slug}"),
     })))
@@ -413,9 +425,49 @@ pub async fn delete_funnel(
     }
     Ok(Json(json!({"message": "Funnel deleted"})))
 }
+/// Is this request a PERSON opening the page, or a machine fetching it?
+///
+/// The view counter feeds a conversion rate (`leads / views`, shown on the Funnels screen), so a
+/// counter inflated by crawlers and share-preview fetchers would make every page look worse than
+/// it is. Link previews are the loudest case: every pasted funnel link is fetched by WhatsApp,
+/// Slack, Facebook, Telegram and Discord to build the card, and none of those is a visitor.
+///
+/// Deliberately a DENY-list on the User-Agent, not an allow-list: a browser this list has never
+/// heard of must still count (a new phone is a visitor), while a missing User-Agent does not —
+/// every real browser sends one, and scripted fetches often do not.
+fn looks_like_link_preview(headers: &HeaderMap) -> bool {
+    let ua = headers
+        .get(USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if ua.trim().is_empty() {
+        return true;
+    }
+    let lower = ua.to_ascii_lowercase();
+    [
+        "bot",
+        "crawl",
+        "spider",
+        "preview",
+        "facebookexternalhit",
+        "slack",
+        "whatsapp",
+        "telegram",
+        "discord",
+        "curl",
+        "wget",
+        "python-requests",
+        "go-http-client",
+        "libwww",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
 pub async fn render_funnel(
     axum::extract::Path(slug): axum::extract::Path<String>,
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> axum::response::Response {
     // Load SEO settings for injection
     let seo_rows: Vec<(String, Value)> = sqlx::query_as::<_, (String, String)>(
@@ -488,6 +540,24 @@ pub async fn render_funnel(
         Ok(None) => (StatusCode::NOT_FOUND, None),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, None),
     };
+
+    // ONE VIEW, COUNTED HERE (2026-11-24). The Funnels screen showed how many leads a page captured
+    // but not how many people opened it, so "which funnel is working" had no denominator. This is
+    // the denominator: a real page view of an EXISTING page (a 404 for a mistyped link is not a
+    // view of anything), skipping machines that fetch the link to build a share card.
+    //
+    // Best-effort by design: a page must never fail to render because its counter could not be
+    // written, so the error is logged and the render continues. The counter is a single UPDATE on
+    // the row this request already read, by slug — no extra round-trip before the response.
+    if status == StatusCode::OK && !looks_like_link_preview(&headers) {
+        if let Err(e) = sqlx::query("UPDATE funnels SET views = views + 1 WHERE slug = $1")
+            .bind(&slug)
+            .execute(&state.pool)
+            .await
+        {
+            tracing::warn!(slug = %slug, "funnel view counter could not be written: {:?}", e);
+        }
+    }
 
     // PAUSED (migration 116): the page and its link stay exactly where they are, but the form is
     // replaced with a closed notice and `submit_funnel_lead` refuses — so a visitor holding a
