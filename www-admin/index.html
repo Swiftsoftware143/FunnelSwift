@@ -7961,7 +7961,8 @@ async function renderInvoices() {
       '" style="padding:3px 8px;font-size:11px;margin-left:4px">' +
       (st === 'paid' ? 'Mark paid' : (st === 'void' ? 'Cancel' : 'Reopen')) + '</button>').join('');
     return '<tr data-invoice-id="' + x(v.id) + '">' +
-      '<td><strong>' + x(v.tenant_name || v.tenant_id) + '</strong></td>' +
+      '<td><strong>' + x(v.tenant_name || (v.detached ? 'Workspace erased' : (v.tenant_id || 'Unknown workspace'))) + '</strong>' +
+      (v.detached ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">invoice retained</div>' : '') + '</td>' +
       '<td>' + x(v.plan_name || v.note || 'One-off charge') + '</td>' +
       '<td style="font-weight:700">' + invAmountText(v.amount) + '</td>' +
       '<td>' + (v.due_date ? formatDate(v.due_date) : '—') + '</td>' +

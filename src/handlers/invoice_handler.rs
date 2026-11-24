@@ -47,15 +47,38 @@ use uuid::Uuid;
 ///
 /// Every query in this module is a PARAMETERISED LITERAL on purpose: the fleet gate refuses SQL
 /// built with `format!`/concatenation, and there is no dynamic identifier here that would need it.
+/// A row of the book as JSON.
+///
+/// `tenant_id` is read as OPTIONAL on purpose (2026-11-24, measured live). An erasure DETACHES a
+/// workspace's invoices and keeps them for tax purposes (`src/auth/handlers.rs`), and the column is
+/// nullable for a platform-level charge — so the old `r.get::<Uuid, _>("tenant_id")` panicked with
+/// `ColumnDecode { index: "tenant_id", source: UnexpectedNullError }` and the whole
+/// `GET /api/v1/admin/invoices` request died with the connection CLOSED (no status line at all: the
+/// console showed a load failure, not an error message). One erased workspace took the operator's
+/// whole invoice book down. A detached row is now reported with `tenant_id: null` and
+/// `detached: true`, so the screen can name it — "workspace erased, invoice retained" — instead of
+/// showing a blank cell or crashing. `status` is read the same defensive way: it is NOT NULL today,
+/// and a decode failure must never again become a dropped connection.
 fn row_to_json(r: &sqlx::postgres::PgRow) -> Value {
+    let tenant_id = r
+        .try_get::<Option<Uuid>, _>("tenant_id")
+        .ok()
+        .flatten()
+        .map(|u| u.to_string());
+    let detached = tenant_id.is_none();
     json!({
         "id": r.get::<Uuid, _>("id").to_string(),
-        "tenant_id": r.get::<Uuid, _>("tenant_id").to_string(),
+        "tenant_id": tenant_id,
+        "detached": detached,
         "tenant_name": r.try_get::<Option<String>, _>("tenant_name").unwrap_or(None),
         "plan_id": r.try_get::<Option<Uuid>, _>("plan_id").ok().flatten().map(|u| u.to_string()),
         "plan_name": r.try_get::<Option<String>, _>("plan_name").unwrap_or(None),
         "amount": r.try_get::<Option<String>, _>("amount").unwrap_or(None),
-        "status": r.get::<String, _>("status"),
+        "status": r
+            .try_get::<Option<String>, _>("status")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "pending".to_string()),
         "note": r.try_get::<Option<String>, _>("note").unwrap_or(None),
         "due_date": r.try_get::<Option<String>, _>("due_date").unwrap_or(None),
         "paid_at": r.try_get::<Option<String>, _>("paid_at").unwrap_or(None),
@@ -319,7 +342,10 @@ pub async fn admin_update(
     // TRANSITION into `paid`, so the tier this invoice named and the status it held a moment ago
     // decide whether the money loop closes. A repeat save of an already-paid bill must not mint a
     // second subscription row or settle a referrer's commission twice.
-    let before: Option<(Uuid, Option<Uuid>, String)> =
+    // `tenant_id` is OPTIONAL here for the same reason `row_to_json` reads it that way: an erasure
+    // DETACHES a workspace's invoices and keeps them (tax law), so a retained bill has no workspace.
+    // Decoding that NULL into a `Uuid` made the answer a 500 on a row the operator can still see.
+    let before: Option<(Option<Uuid>, Option<Uuid>, String)> =
         sqlx::query_as("SELECT tenant_id, plan_id, status FROM invoices WHERE id = $1")
             .bind(id)
             .fetch_optional(&state.db)
@@ -378,7 +404,7 @@ pub async fn admin_update(
     let mut plan_note: Option<String> = None;
     let mut notify_reason: Option<&'static str> = None;
     if status == "paid" && old_status != "paid" {
-        if let Some(plan_id) = plan_id {
+        if let (Some(tenant_id), Some(plan_id)) = (tenant_id, plan_id) {
             let target: Option<(String, f64)> =
                 sqlx::query_as("SELECT slug, COALESCE(price, 0)::float8 FROM plans WHERE id = $1")
                     .bind(plan_id)
@@ -440,6 +466,13 @@ pub async fn admin_update(
                     }
                 }
             }
+        } else if tenant_id.is_none() {
+            // A retained invoice from an ERASED workspace: the status change is recorded (the money
+            // still arrived), but there is no workspace left to seat on a tier.
+            plan_note = Some(
+                "this invoice belongs to a workspace that was erased, so no tier was changed"
+                    .to_string(),
+            );
         } else {
             plan_note = Some("this invoice names no plan, so no tier was changed".to_string());
         }
