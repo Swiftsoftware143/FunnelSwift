@@ -1001,8 +1001,14 @@ function S(t){
   if(typeof LTR==="function") L.tagrules=LTR;
   /* Do not mail: same later-block hazard as LWTL/LSUP/LTR above. */
   if(typeof LDNM==="function") L.donotmail=LDNM;
-  if(t==="upgrade") LPU();else if(t==="funnels") LAFN();else if(L[t]) L[t]();
-  else if(t!=="upgrade"&&t!=="funnels"){
+  /* `LPU` lives in the separate upgrade.js and `LAFN` in a later <script> block, so both are
+     resolved the same way as every other late renderer (measured 2026-11-24: blocking upgrade.js
+     left the Upgrade pane on "Loading..." for ever with `LPU is not defined`). A renderer that is
+     not there yet now falls into the bounded retry, and if it never arrives the pane says so. */
+  if(t==="upgrade"&&typeof LPU==="function") LPU();
+  else if(t==="funnels"&&typeof LAFN==="function") LAFN();
+  else if(L[t]) L[t]();
+  else {
     var tries=0;
     (function waitForRenderer(){
       if(!document.querySelector("#ct .loading")) return;
@@ -1010,6 +1016,8 @@ function S(t){
       if(t==="support"&&typeof LSUP==="function"){ L.support=LSUP; LSUP(); return; }
       if(t==="tagrules"&&typeof LTR==="function"){ L.tagrules=LTR; LTR(); return; }
       if(t==="donotmail"&&typeof LDNM==="function"){ L.donotmail=LDNM; LDNM(); return; }
+      if(t==="upgrade"&&typeof LPU==="function"){ LPU(); return; }
+      if(t==="funnels"&&typeof LAFN==="function"){ LAFN(); return; }
       if(t==="workspaces"&&typeof LWSP==="function"){ L.workspaces=LWSP; LWSP(); return; }
       if(t==="inbox"&&typeof LINBOX==="function"){ L.inbox=LINBOX; LINBOX(); return; }
       if(++tries<8) setTimeout(waitForRenderer,300);
@@ -7551,9 +7559,16 @@ function renderWorkspaces() {
       + "</div><div style=\"display:flex;gap:8px\">"
       + (WS.current && String(WS.current.id) === id ? "" : '<button class="btn" onclick="switchWorkspace(\'' + id + "')\">Switch</button>") + (admin && !w.is_default ? '<button class="btn" onclick="setDefaultWorkspace(\'' + id + "')\">Make default</button>" : "")
       + (admin ? '<button class="btn" onclick="renameWorkspace(\'' + id + "')\">Rename</button>" : "")
-      + (admin ? '<button class="btn" onclick="deleteWorkspace(\'' + id + "')\">Delete</button>" : "")
+      + (admin && WS.items.length > 1 ? '<button class="btn" onclick="deleteWorkspace(\'' + id + "')\">Delete</button>"
+        : admin ? '<button class="btn" disabled title="An account must keep at least one workspace" style="opacity:.5;cursor:not-allowed">Delete</button>' : "")
       + "</div></div>";
   }).join("");
+  /* The server refuses to delete an account's last workspace ("An account must always keep at
+     least one workspace"), so the row must not offer a Delete that can only fail (measured
+     2026-11-24: the button was live on the only workspace and every press answered 400). */
+  if (WS.items.length === 1) {
+    el.innerHTML += '<p style="color:#64748b;font-size:12px;margin:10px 0 0">This is the only workspace on the account, so it cannot be deleted. Create another one first &mdash; an account must always keep at least one.</p>';
+  }
 }
 
 function switchWorkspace(id) {
