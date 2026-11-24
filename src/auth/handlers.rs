@@ -295,6 +295,8 @@ pub async fn register(
         iss: Some("funnelswift".to_string()),
         impersonating: None,
         wsid: None,
+        // A session minted by a handler is a PERSON, never an API key.
+        via_api_key: false,
     };
 
     let token = encode(
@@ -557,6 +559,8 @@ pub async fn login(
         iss: Some("funnelswift".to_string()),
         impersonating: None,
         wsid: None,
+        // A session minted by a handler is a PERSON, never an API key.
+        via_api_key: false,
     };
 
     let token = encode(
@@ -647,7 +651,7 @@ pub async fn set_initial_password(
     // set the first password they ever knew. Same fix, same reason as `change_password` below —
     // the boundary allows a session minted in the same second (`iat < valid_from`), the line and
     // the token are both derived from ONE clock reading, and the token goes back to the caller.
-    let fresh = reissue_session(&state, user_id, issued_at).await?;
+    let fresh = reissue_session(&state, user_id, issued_at, auth.via_api_key).await?;
     Ok(Json(json!({"status": "ok", "token": fresh})))
 }
 
@@ -1039,6 +1043,10 @@ pub(crate) async fn reissue_session(
     state: &AppState,
     user_id: Uuid,
     issued_at: i64,
+    // The provenance of the credential that asked for the re-mint (2026-11-24). A durable API key
+    // must not come back as a person's session token: the erasure door refuses a key, and a
+    // re-minted JWT that forgot where it came from would walk straight through that door.
+    via_api_key: bool,
 ) -> AppResult<String> {
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1 AND is_active = true")
         .bind(user_id)
@@ -1057,6 +1065,8 @@ pub(crate) async fn reissue_session(
         iss: Some("funnelswift".to_string()),
         impersonating: None,
         wsid: None,
+        // Carried over, never reset: a key stays a key across a re-mint.
+        via_api_key,
     };
     encode(
         &Header::default(),
@@ -1130,7 +1140,7 @@ pub async fn change_password(
     .execute(&state.pool)
     .await?;
 
-    let token = reissue_session(&state, user.id, issued_at).await?;
+    let token = reissue_session(&state, user.id, issued_at, auth.via_api_key).await?;
 
     Ok(Json(serde_json::json!({
         "message": "Password updated successfully",
@@ -1320,6 +1330,174 @@ pub async fn close_account(
         "status": "account_closed",
         "closed_at": closed_at,
         "message": "Your account is closed. Every session and API key on it has been ended.",
+    })))
+}
+
+/// `POST /api/v1/auth/erase-data` body — the owner's own decision to destroy the workspace's data.
+#[derive(Debug, Deserialize)]
+pub struct EraseDataRequest {
+    pub password: String,
+    /// The literal word `DELETE`, judged HERE as well as in the browser (fleet standard §7): a
+    /// bare POST that skips the dialog cannot skip the word.
+    pub confirm: String,
+}
+
+/// `POST /api/v1/auth/erase-data` — the signed-in OWNER destroys this workspace's data
+/// (2026-11-24, fleet standard §3-§7).
+///
+/// This is the other half of the exit door. `close_account` (migration 132) ends access and KEEPS
+/// every row on purpose, so until now a customer's "delete my data" ask had to be done by hand in
+/// Postgres. The standard makes it a product feature, with four locks that are all enforced here and
+/// none of them in the browser:
+///
+///   * SESSION, never a key — `HUMAN_ONLY_ROUTES` refuses a durable API key at the boundary, and
+///     `AuthUser::via_api_key` refuses it again below, so no agent holding a customer's key (the
+///     fleet MCP server's normal credential) can destroy anything.
+///   * The PASSWORD is re-verified exactly as a closure does: the token proves who is asking, the
+///     password proves the person holding the session is the owner.
+///   * The typed word `DELETE`, judged server-side.
+///   * OWNER only — the workspace's creator / appointed `company_admin`
+///     (`team_handler::is_workspace_owner`), so a teammate cannot wipe the company they work for.
+///
+/// And four accounts it refuses outright: a platform operator (`admin`/`super_admin`), an
+/// impersonation session, the fleet's system tenant, and anything the portfolio registry owns
+/// (David's own companies are kept by rule).
+///
+/// The purge itself is `funnelswift_erase_tenant` (migration 141), inside ONE transaction: billing
+/// documents in `invoices` are DETACHED and kept (tax law), every other tenant row is deleted, the
+/// tenant row goes last, and the function REFUSES to report success while any row still names the
+/// workspace. Sessions and API keys need no separate step — their rows are part of the purge — but
+/// the response says so, because the caller's own token is dead the moment this commits.
+pub async fn erase_data(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    body: Result<Json<EraseDataRequest>, axum::extract::rejection::JsonRejection>,
+) -> AppResult<Json<serde_json::Value>> {
+    // Defence in depth: the boundary already refuses a key on this route.
+    if auth.via_api_key {
+        return Err(AppError::Unauthorized(
+            "This action needs a signed-in person. An API key cannot delete an account.".into(),
+        ));
+    }
+    let Json(req) = body.map_err(crate::error::json_rejection)?;
+    if !req.confirm.trim().eq_ignore_ascii_case("DELETE") {
+        return Err(AppError::BadRequest(
+            "Type DELETE to confirm deleting the workspace and its data".into(),
+        ));
+    }
+
+    let user_id = uuid::Uuid::parse_str(&auth.user_id)
+        .map_err(|_| AppError::Unauthorized("Invalid user ID".into()))?;
+    let tenant_id = uuid::Uuid::parse_str(&auth.tenant_id)
+        .map_err(|_| AppError::Unauthorized("Invalid tenant in token".into()))?;
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+
+    // §3.6 — a platform operator account is not a customer, and the operator console must never be
+    // able to destroy an install from a dashboard button.
+    if user.role == "admin" || user.role == "super_admin" {
+        return Err(AppError::Forbidden(
+            "A platform operator account cannot be erased from this screen.".into(),
+        ));
+    }
+    // An impersonation session is an OPERATOR wearing a customer's identity: it may look, never
+    // destroy. (The operator's own account is refused above; this closes the other direction.)
+    if auth.impersonating.is_some() {
+        return Err(AppError::Forbidden(
+            "An impersonation session cannot delete a customer's data.".into(),
+        ));
+    }
+
+    // The fleet's system tenant and David's own portfolio companies are kept by rule.
+    let (name, email, slug): (String, String, String) = sqlx::query_as(
+        "SELECT COALESCE(name, ''), COALESCE(email, ''), COALESCE(slug, '') \
+           FROM tenants WHERE id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Workspace not found".into()))?;
+    if tenant_id == crate::system_tenant::system_tenant_id() {
+        return Err(AppError::Forbidden(
+            "This workspace belongs to the platform and cannot be deleted here.".into(),
+        ));
+    }
+    if let Some(hit) = crate::handlers::tenant_handler::fixture_slug_hit(&slug) {
+        return Err(AppError::Forbidden(format!(
+            "This workspace is a fleet fixture and cannot be deleted here ({hit})."
+        )));
+    }
+    if let Some(hit) =
+        crate::handlers::tenant_handler::portfolio_hit(&state.pool, tenant_id, &name, &email, &slug)
+            .await?
+    {
+        return Err(AppError::Forbidden(format!(
+            "This workspace belongs to the platform owner's portfolio and cannot be deleted here ({hit})."
+        )));
+    }
+
+    // OWNER only. The creator is the OLDEST active person in the tenant (`team_handler`), or an
+    // appointed `company_admin`; a teammate cannot wipe the company they work for.
+    if !crate::handlers::team_handler::is_workspace_owner(&state, &auth, tenant_id).await? {
+        return Err(AppError::Forbidden(
+            "Only the workspace owner can delete this workspace's data.".into(),
+        ));
+    }
+
+    // A stored hash that is not a usable PHC string can verify no password at all: the ordinary
+    // refusal, never a 500 naming the internal reason (same rule as `close_account`).
+    let parsed_hash = PasswordHash::new(&user.password_hash)
+        .map_err(|_| AppError::Unauthorized("Your password is incorrect".into()))?;
+    Argon2::default()
+        .verify_password(req.password.as_bytes(), &parsed_hash)
+        .map_err(|_| AppError::Unauthorized("Your password is incorrect".into()))?;
+
+    // ONE transaction: the purge, the kept-invoice detach and the audit row commit together or not
+    // at all. `funnelswift_erase_tenant` raises rather than returning a partial result.
+    let mut tx = state.pool.begin().await?;
+    let outcome: serde_json::Value = sqlx::query_scalar("SELECT funnelswift_erase_tenant($1, $2)")
+        .bind(tenant_id)
+        .bind(user.id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                error = %e,
+                tenant = %tenant_id,
+                user = %user.id,
+                "erasure FAILED and was rolled back — nothing was deleted"
+            );
+            AppError::Internal(
+                "The workspace could not be erased, so nothing was deleted. Please try again."
+                    .into(),
+            )
+        })?;
+    tx.commit().await?;
+
+    tracing::info!(
+        tenant = %tenant_id,
+        user = %user.id,
+        rows = outcome.get("rows_deleted").and_then(|v| v.as_i64()).unwrap_or(-1),
+        invoices = outcome.get("invoices_retained").and_then(|v| v.as_i64()).unwrap_or(-1),
+        "workspace ERASED at the owner's request: tenant rows deleted, invoices retained"
+    );
+
+    let rows = outcome.get("rows_deleted").cloned().unwrap_or(json!(0));
+    let invoices = outcome
+        .get("invoices_retained")
+        .cloned()
+        .unwrap_or(json!(0));
+    Ok(Json(json!({
+        "status": "erased",
+        "rows_deleted": rows,
+        "invoices_retained": invoices,
+        "erased_at": Utc::now(),
+        "message": "Your workspace and its data have been deleted. Invoices have been kept for tax \
+                    records. Every session and API key on this account no longer works.",
     })))
 }
 
@@ -1796,6 +1974,9 @@ pub async fn logout_all(
         iss: Some("funnelswift".to_string()),
         impersonating: None,
         wsid: None,
+        // Carried over: a key that re-mints keeps the marker, so this route cannot launder a key
+        // into a person's token (which the erasure door would then admit).
+        via_api_key: auth.via_api_key,
     };
     let token = encode(
         &Header::default(),

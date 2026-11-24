@@ -116,6 +116,9 @@ pub async fn resolve_api_key(db: &sqlx::PgPool, token: &str) -> Option<Claims> {
         iss: Some("funnelswift".to_string()),
         impersonating: None,
         wsid: None,
+        // THE marker: this Claims came from a durable API key, so the boundary and the erasure
+        // handler can refuse an agent holding it (2026-11-24, fleet standard §3.4).
+        via_api_key: true,
     })
 }
 

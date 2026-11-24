@@ -5834,6 +5834,21 @@ h+='<div class="fld"><label for="pf-user">Username</label><input id="pf-user" ma
     h+='<div class="fld"><label for="pf-ca-word">Type CLOSE to confirm</label><input id="pf-ca-word" autocomplete="off" placeholder="CLOSE"></div>';
     h+='<button class="btn btn-sm" onclick="CADO()" style="background:#b91c1c;color:#fff">Close my account permanently</button>';
     h+='<span id="pf-camsg" class="msg" style="margin-left:8px"></span></div></div>';
+    /* Delete my data (2026-11-24, fleet standard section 3-7). The other half of the exit door:
+       closing the account above is a STATE that keeps every row so support can undo it; this
+       DESTROYS the workspace. Invoices are kept for tax records and the card says so BEFORE the
+       button, because the customer deserves to know what survives. Two steps: the first reveals the
+       form, the second is the red button, and the SERVER re-checks the password and the word DELETE
+       (POST /api/v1/auth/erase-data). */
+    h+='<div class="card" id="pf-erase" style="margin-top:14px"><h3 style="color:#b91c1c">Delete my data</h3>';
+    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">This deletes this workspace and everything in it, permanently: campaigns, leads, tags, forms, cards, requests, history and every API key. Closing your account above keeps your data so support can help you; this destroys it and cannot be undone.</p>';
+    h+='<p style="font-size:12px;color:#64748b;margin-bottom:8px">Your invoices are kept, with the workspace name attached, because tax law requires them. Operator accounts, impersonation sessions and the platform owner\'s own companies cannot be deleted from here.</p>';
+    h+='<div id="pf-er-arm"><button class="btn btn-sm" onclick="ERARM()" style="background:#fff;color:#b91c1c;border:1px solid #fca5a5">Delete my data</button></div>';
+    h+='<div id="pf-er-form" style="display:none;border-top:1px solid #fecaca;margin-top:12px;padding-top:12px">';
+    h+='<div class="fld"><label for="pf-er-pw">Your password (proves it is you)</label><input id="pf-er-pw" type="password" autocomplete="current-password"></div>';
+    h+='<div class="fld"><label for="pf-er-word">Type DELETE to confirm</label><input id="pf-er-word" autocomplete="off" placeholder="DELETE"></div>';
+    h+='<button class="btn btn-sm" onclick="ERDO()" style="background:#b91c1c;color:#fff">Delete this workspace and all its data</button>';
+    h+='<span id="pf-ermsg" class="msg" style="margin-left:8px"></span></div></div>';
     h+='</div>';
     $("ct").innerHTML=h;
   }).catch(function(e){
@@ -5981,6 +5996,40 @@ function CADO(){
       setTimeout(function(){ window.location.href="/login?closed=1"; },1200);
     })
     .catch(function(e){ pfMsg("pf-camsg",(e&&e.message)||"Could not close the account","me"); });
+}
+/* Delete my data (2026-11-24). ERARM only reveals the form; nothing is sent until ERDO, which posts
+   the bearer token, the password and the word DELETE. The SERVER owns every rule (the word, the
+   password, owner-only, no API key, no impersonation, no operator account, no portfolio company) and
+   each refusal is printed in the card's own message. Posted directly, not through api(), for the same
+   reason CADO is: api()'s 401/403 arms clear the token and bounce the page, so a refusal would look
+   like an expired session instead of the sentence the customer needs to read. */
+function ERARM(){
+  var a=$("pf-er-arm"), f=$("pf-er-form");
+  if(a) a.style.display="none";
+  if(f) f.style.display="block";
+  var p=$("pf-er-pw"); if(p) p.focus();
+}
+function ERDO(){
+  var pw=(($("pf-er-pw")||{}).value||""), w=(($("pf-er-word")||{}).value||"").trim();
+  if(!pw){ pfMsg("pf-ermsg","Enter your password","me"); return; }
+  if(w.toUpperCase()!=="DELETE"){ pfMsg("pf-ermsg","Type DELETE in the box to confirm","me"); return; }
+  if(!window.confirm("Delete this workspace and every lead, campaign and tag in it? This cannot be undone.")) return;
+  pfMsg("pf-ermsg","Deleting the workspace\u2026","mi");
+  fetch("/api/v1/auth/erase-data",{method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+      body:JSON.stringify({password:pw,confirm:w})})
+    .then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t)}catch(e){}
+      if(!r.ok) throw Error((d&&(d.message||(typeof d.error==="string"?d.error:"")))||("Error "+r.status));
+      return d||{};})})
+    .then(function(d){
+      /* The workspace and this session are gone server-side: drop the token here rather than let the
+         next call bounce the customer with an "expired" message. */
+      T="";
+      try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(e){}
+      pfMsg("pf-ermsg",(d&&d.message)||"Your workspace and its data have been deleted.","ms");
+      setTimeout(function(){ window.location.href="/login?erased=1"; },1600);
+    })
+    .catch(function(e){ pfMsg("pf-ermsg",(e&&e.message)||"Could not delete the workspace","me"); });
 }
 function UPF(){
   var f=$("pf-file"), file=f&&f.files?f.files[0]:null;

@@ -472,6 +472,8 @@ pub async fn impersonate(
         iss: Some("funnelswift".to_string()),
         impersonating: Some(auth.user_id.clone()),
         wsid: None,
+        // An impersonation session is still a person, never a durable key.
+        via_api_key: false,
     };
 
     let token = encode(

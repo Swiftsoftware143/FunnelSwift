@@ -479,6 +479,9 @@ pub async fn switch_workspace(
         iss: Some("funnelswift".to_string()),
         impersonating: auth.impersonating.clone(),
         wsid: Some(id.to_string()),
+        // Provenance is carried, never reset: switching workspace cannot turn an API key into a
+        // person's session token (the erasure door refuses a key; a reset here would launder it).
+        via_api_key: auth.via_api_key,
     };
     let token = encode(
         &Header::default(),

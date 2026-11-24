@@ -839,6 +839,35 @@ pub(crate) async fn portfolio_registry_hit(
     })
 }
 
+/// Is this slug one of the fleet fixtures (the canary's own workspaces, the system seed)?
+///
+/// Extracted from [`guard_protected`] so the OWNER'S OWN erasure door (`auth::handlers::erase_data`)
+/// applies the same rule; one definition, two doors.
+pub(crate) fn fixture_slug_hit(slug: &str) -> Option<&'static str> {
+    FIXTURE_SLUG_PREFIXES
+        .iter()
+        .copied()
+        .find(|p| slug.to_lowercase().starts_with(*p))
+}
+
+/// Is this tenant one of David's portfolio companies — by the registry first, then the name list?
+///
+/// Extracted from [`guard_protected`] for the erasure door, so "kept by rule" means the same thing
+/// on both the operator's delete and the customer's own DELETE.
+pub(crate) async fn portfolio_hit(
+    pool: &sqlx::PgPool,
+    tenant_id: Uuid,
+    name: &str,
+    email: &str,
+    slug: &str,
+) -> Result<Option<String>, AppError> {
+    let hay = format!("{} {}", name, email).to_lowercase();
+    if let Some(hit) = PORTFOLIO_MARKERS.iter().find(|m| hay.contains(*m)) {
+        return Ok(Some((*hit).to_string()));
+    }
+    portfolio_registry_hit(pool, tenant_id, name, slug).await
+}
+
 /// Refuse to delete three things: the account the caller is signed in as (a lockout, not a cleanup),
 /// a portfolio company (kept by rule) and a fleet fixture the canary looks up by name (sabotage).
 /// Everything else behaves exactly as before.
@@ -861,23 +890,13 @@ async fn guard_protected(
     .fetch_optional(&state.pool)
     .await?;
     if let Some((name, email, slug)) = row {
-        if let Some(hit) = FIXTURE_SLUG_PREFIXES
-            .iter()
-            .find(|p| slug.to_lowercase().starts_with(*p))
-        {
+        if let Some(hit) = fixture_slug_hit(&slug) {
             return Err(AppError::BadRequest(format!(
                 "refusing to delete a fleet fixture the tenancy canary looks up by name ({hit})"
             )));
         }
-        let hay = format!("{} {}", name, email).to_lowercase();
-        if let Some(hit) = PORTFOLIO_MARKERS.iter().find(|m| hay.contains(*m)) {
-            return Err(AppError::BadRequest(format!(
-                "refusing to delete a portfolio account ({})",
-                hit
-            )));
-        }
-        // The registry is the authority; the name list above is only a fallback (see the helper).
-        if let Some(hit) = portfolio_registry_hit(&state.pool, tenant_id, &name, &slug).await? {
+        // The registry is the authority; the name list inside is only a fallback (see the helper).
+        if let Some(hit) = portfolio_hit(&state.pool, tenant_id, &name, &email, &slug).await? {
             return Err(AppError::BadRequest(format!(
                 "refusing to delete a portfolio account ({})",
                 hit

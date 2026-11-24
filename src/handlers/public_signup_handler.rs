@@ -859,6 +859,8 @@ pub async fn public_signup(
         iss: Some("funnelswift".to_string()),
         impersonating: None,
         wsid: None,
+        // A session minted by a handler is a PERSON, never an API key.
+        via_api_key: false,
     };
 
     let token = encode(

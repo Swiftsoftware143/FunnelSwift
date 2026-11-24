@@ -349,6 +349,34 @@ pub const INTERNAL_ROUTES: &[&str] = &[
     "/api/v1/internal/affiliate/apply-rate-bands",
 ];
 
+/// Routes a durable API KEY may never call, whoever minted it (2026-11-24, fleet standard §3).
+///
+/// An API key authenticates as its minting user, so without this list an agent holding a
+/// customer's key — the fleet MCP server's normal credential — could end or wipe the account if it
+/// were asked to. The standard is explicit: "no AI agent, API key or MCP tool may ever do it. A
+/// signed-in human, with their password, is the only path."
+///
+/// The boundary (`global_auth::require_auth`) refuses a key here BEFORE any handler runs, and the
+/// handlers refuse it again from `AuthUser::via_api_key`, so the rule does not depend on one layer.
+/// Membership is NOT an allowlist: these routes stay private like every other `/api/` route, they
+/// are only narrower. `erasure_guard` (the §6 test module) fails if either entry leaves this list
+/// or if a route naming close/erase is added without joining it.
+pub const HUMAN_ONLY_ROUTES: &[&str] = &[
+    // The account is CLOSED (a state): access ends, sessions and keys die.
+    "/api/v1/auth/close-account",
+    // The account's DATA IS DESTROYED. No undo.
+    "/api/v1/auth/erase-data",
+    // A person chooses the FIRST password of their account. A key holder could otherwise set the
+    // password on an account whose credentials mail never arrived, and then use it at the erasure
+    // door — the same class, one step earlier.
+    "/api/v1/auth/initial-password",
+];
+
+/// Is `path` one of the committed human-only templates?
+pub fn is_human_only_route(path: &str) -> bool {
+    HUMAN_ONLY_ROUTES.iter().any(|t| matches_template(t, path))
+}
+
 /// Is `path` (a concrete request path) one of the committed public templates?
 pub fn is_public_route(path: &str) -> bool {
     PUBLIC_ROUTES.iter().any(|t| matches_template(t, path))
@@ -558,7 +586,12 @@ mod tests {
             // one takes its tenant from the session and the admin pair is operator-gated, so all
             // three belong in `private`: 249 mounts, 249 unique, 223 on the API surface, 26 public,
             // 3 internal, 194 private, 26 served.
-            (249, 249, 223, 26, 3, 194, 26),
+            // 2026-11-24: +1 mounted API route, PRIVATE — `POST /api/v1/auth/erase-data` (the
+            // owner's right to erasure, fleet standard §3-§7). It takes both the tenant and the
+            // person from the session, so it belongs in `private` (and additionally in the
+            // narrower `HUMAN_ONLY_ROUTES`): 250 mounts, 250 unique, 224 on the API surface,
+            // 26 public, 3 internal, 195 private, 26 served.
+            (250, 250, 224, 26, 3, 195, 26),
             "the census in the module docs no longer matches the router"
         );
     }

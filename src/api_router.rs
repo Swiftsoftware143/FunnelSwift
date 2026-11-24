@@ -8,9 +8,9 @@ use tower_http::trace::TraceLayer;
 use askama::Template;
 
 use crate::auth::handlers::{
-    change_password, close_account, confirm_email_change, delete_avatar, forgot_password,
-    get_avatar, get_usage, login, logout_all, me, register, request_email_change, reset_password,
-    update_profile, upload_avatar,
+    change_password, close_account, confirm_email_change, delete_avatar, erase_data,
+    forgot_password, get_avatar, get_usage, login, logout_all, me, register, request_email_change,
+    reset_password, update_profile, upload_avatar,
 };
 use crate::handlers::{
     account_export, admin_handler, affiliate_commission_handler, affiliate_handler,
@@ -264,6 +264,13 @@ pub fn create_router(
         // the workspace, its leads and its figures stay for the operator, while every session and
         // every API key on the account is ended.
         .route("/api/v1/auth/close-account", post(close_account))
+        // The OWNER destroys this workspace's data (2026-11-24, fleet standard §3-§7). Private like
+        // its neighbours — the tenant and the person both come from the session, so there is no id
+        // to spoof — and additionally HUMAN-ONLY: `auth::route_policy::HUMAN_ONLY_ROUTES` refuses a
+        // durable API key at the boundary, so the fleet MCP server (or any agent holding a
+        // customer's key) cannot reach it. Password + the typed word DELETE are re-checked server
+        // side. Billing documents are kept; every other row goes (migration 141).
+        .route("/api/v1/auth/erase-data", post(erase_data))
         // The signup session's own choice of first password, for an account whose credentials mail
         // never left (migration 119). Authenticated on purpose: the caller must already hold the
         // token signup returned, and the SQL gate admits each account exactly once.

@@ -185,6 +185,24 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     };
 
+    // ── HUMAN-ONLY ROUTES (2026-11-24, fleet standard §3) ────────────────────────────────────
+    // A durable API KEY resolves to the same Claims a session does, so a key holder reaches the
+    // same handlers. Closing an account and DESTROYING its data are the two things an agent must
+    // never do, however it was asked: the standard admits only a signed-in person holding the
+    // owner's password. Refused here, before any handler and before a single row is read, and the
+    // handler refuses again from `AuthUser::via_api_key` (see `auth::handlers::erase_data`).
+    if claims.via_api_key && crate::auth::route_policy::is_human_only_route(&path) {
+        tracing::warn!(
+            path = %path,
+            key_owner = %claims.sub,
+            "refused an API key on a human-only route (account close/erase)"
+        );
+        return reject(
+            StatusCode::UNAUTHORIZED,
+            "This action needs a signed-in person. An API key cannot close or delete an account.",
+        );
+    }
+
     // ── The platform-admin surface (kanban t_9cf378bc) ───────────────────────────────────────
     // Authenticated is not authorised. `/api/v1/admin/*` is PLATFORM-WIDE configuration — the
     // global system-mail credential, the served site, plans, system tags — not tenant data, so a

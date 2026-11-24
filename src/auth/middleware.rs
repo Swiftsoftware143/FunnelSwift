@@ -22,6 +22,9 @@ pub struct AuthUser {
     pub token: String,
     pub impersonating: Option<String>,
     pub wsid: Option<String>,
+    /// The credential was a durable API KEY, not a person's session (2026-11-24). The account
+    /// erasure door refuses it even though the boundary would otherwise admit it.
+    pub via_api_key: bool,
 }
 
 #[async_trait::async_trait]
@@ -84,6 +87,8 @@ where
                             token: token.to_string(),
                             impersonating: claims.impersonating.clone(),
                             wsid: claims.wsid.clone(),
+                            // A durable key, not a person. The erasure handler refuses it.
+                            via_api_key: true,
                         });
                     }
                     None => {
@@ -108,6 +113,8 @@ where
             token: token_str,
             impersonating: token_data.claims.impersonating,
             wsid: token_data.claims.wsid,
+            // A decoded JWT is always a person's session, never a key.
+            via_api_key: false,
         })
     }
 }

@@ -51,6 +51,14 @@ pub struct Claims {
     /// this set.
     #[serde(default)]
     pub wsid: Option<String>,
+    /// TRUE when the credential was a durable API KEY rather than a person's session token
+    /// (2026-11-24, fleet standard §3). Set by `api_keys::resolve_api_key` and by nothing else:
+    /// a JWT can never carry it (`#[serde(default)]`, and the boundary decodes JWTs into this type
+    /// without ever setting it). It exists so the boundary and the erasure handler can refuse an
+    /// AGENT holding a customer's key from ending or wiping the account — the key reaches the same
+    /// handlers a session does, so that door has to be shut explicitly.
+    #[serde(default)]
+    pub via_api_key: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
