@@ -2140,26 +2140,47 @@ pub async fn submit_lead(
     State(state): State<AppState>,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    let card: Option<(Uuid, Uuid, Uuid, String)> = sqlx::query_as(
-        "SELECT id, tenant_id, user_id, COALESCE(title, '') FROM kinetic_cards WHERE slug = $1 LIMIT 1",
+    let card: Option<(Uuid, Uuid, Uuid, String, serde_json::Value)> = sqlx::query_as(
+        "SELECT id, tenant_id, user_id, COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
+           FROM kinetic_cards WHERE slug = $1 LIMIT 1",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
     .await?;
-    let Some((card_id, tenant_id, owner_id, card_title)) = card else {
+    let Some((card_id, tenant_id, owner_id, card_title, layout_blocks)) = card else {
         return Err(AppError::NotFound("Card not found".into()));
     };
 
     // A BOT THAT FILLS THE HIDDEN FIELD IS NOT A VISITOR (2026-11-24). The card page renders one
-    // off-screen input (`website`) that no person can see or tab to; a scripted form filler sets it
-    // because it looks like a real contact field. Such a submission is answered with the SAME 201 a
-    // real visitor gets — a bot told it failed simply retries with a different payload — but nothing
-    // is written: no `leads` row, no `lead_events` row, no `lead.created` webhook, no activity entry
-    // and no owner mail. This is the same guard the funnel door (`/funnel/<slug>/submit`) carries;
-    // the card is this app's front door, so leaving it open made the protection half a fix. Checked
-    // BEFORE field validation, because a bot's other fields are not worth interpreting, and before
-    // the plan ceiling so junk can never consume a customer's allowance.
-    if card_lead_field(&body, "website").is_some() {
+    // off-screen input named `website` (see `card_blocks::lead_form_html`) that no person can see or
+    // tab to; a scripted form filler fills it because it reads as a real contact field. Such a
+    // submission is answered with the SAME 201 a real visitor gets — a bot told it failed simply
+    // retries with a different payload — but nothing is written: no `leads` row, no `lead_events`
+    // row, no `lead.created` webhook, no activity entry and no owner mail. This is the same guard the
+    // funnel door (`/funnel/<slug>/submit`) carries; the card is this app's front door, so leaving it
+    // open made that protection half a fix.
+    //
+    // Checked BEFORE field validation and before the plan ceiling, so junk can never consume a
+    // customer's lead allowance. A card whose own lead form declares a `website` field keeps it as a
+    // REAL field: the page then renders no trap and this check is skipped for that card, using the
+    // identical rule `lead_form_html` applies, so the two can never disagree.
+    let form_declares_website = layout_blocks
+        .as_array()
+        .map(|blocks| {
+            blocks.iter().any(|b| {
+                b.get("type").and_then(|t| t.as_str()) == Some("lead_form")
+                    && b.get("fields")
+                        .and_then(|f| f.as_array())
+                        .map(|fields| {
+                            fields
+                                .iter()
+                                .any(|f| f.get("name").and_then(|n| n.as_str()) == Some("website"))
+                        })
+                        .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+    if !form_declares_website && card_lead_field(&body, "website").is_some() {
         tracing::info!(
             card = %card_id,
             "card submission DROPPED — the hidden bot-trap field was filled"

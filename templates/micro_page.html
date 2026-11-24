@@ -650,12 +650,6 @@
                 </div>
 
                 <form id="leadForm" action="/k/{{ slug }}/lead" method="POST" onsubmit="return handleFormSubmit(event)" class="space-y-4">
-                    {# Hidden bot trap (2026-11-24). A person cannot see or tab to this field; a scripted
-                       form filler fills it because it reads as a real contact field. The form serialises
-                       every input, so a real visitor always sends it empty. A submission that carries a
-                       value writes nothing — see kinetic_handler::submit_lead. #}
-                    <input type="text" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true"
-                           style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">
                     {% for field in modal_fields %}
                     <div>
                         <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{{ field.label }}</label>

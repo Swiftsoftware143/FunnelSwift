@@ -229,10 +229,27 @@ fn lead_form_html(block: &Value, action: &str, index: usize) -> String {
         ));
     }
     // novalidate: the server decides what a valid submission is (see the `required` note above).
+    //
+    // Hidden bot trap (2026-11-24). One off-screen input that no person can see or tab to; a
+    // scripted form filler fills it because it reads as a real contact field. `form_script` serialises
+    // every input, so a real visitor always sends it empty, and `kinetic_handler::submit_lead` drops a
+    // submission that carries a value. Rendered ONLY when this block does not itself declare a
+    // `website` field: a customer's own field of that name must never be mistaken for the trap (the
+    // server applies the same rule against the stored blocks, so the two cannot disagree).
+    let declares_website = lead_fields(block)
+        .iter()
+        .any(|f| field_name_attr(f) == "website");
+    let trap = if declares_website {
+        ""
+    } else {
+        "<input type=\"text\" name=\"website\" value=\"\" tabindex=\"-1\" autocomplete=\"off\" \
+         aria-hidden=\"true\" style=\"position:absolute;left:-9999px;top:auto;width:1px;height:1px;\
+         overflow:hidden;\">"
+    };
     format!(
         "<form class=\"kblock kform\" id=\"kc-lead-form-{index}\" {FORM_ATTR}=\"{}\" \
          action=\"{}\" method=\"post\" novalidate>\
-         <h3 class=\"kform-title\">{title}</h3>{fields_html}\
+         {trap}<h3 class=\"kform-title\">{title}</h3>{fields_html}\
          <button type=\"submit\" class=\"kbtn\">{button}</button>\
          <p class=\"kform-msg\" data-kc-msg role=\"status\" aria-live=\"polite\"></p></form>",
         html_escape(action),
