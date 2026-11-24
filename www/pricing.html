@@ -108,7 +108,7 @@
 <section class="head">
   <div class="container">
     <h1>Start free — upgrade inside the app</h1>
-    <p>Lead capture and Kinetic digital business cards run on one account. Start free — no card required. Plans and upgrades are shown inside the app once you are signed in.</p>
+    <p>Lead capture and Kinetic digital business cards run on one account. Start free — no card required. Prices below are read from this installation\u2019s own plan records; you upgrade inside the app.</p>
   </div>
 </section>
 
@@ -119,6 +119,8 @@
       <div class="card" data-plan="capture-free">
         <h3>Free</h3>
         <p class="who">Two free plans — pick the product you need and start today.</p>
+        <div class="price"><span class="amt" data-role="amt">$0</span><span class="per">free forever</span></div>
+        <div class="yr" data-role="yr">no card required</div>
         
         
         <ul>
@@ -139,6 +141,8 @@
       <div class="card" data-plan="capture-starter">
         <h3>Capture Starter</h3>
         <p class="who">For ad campaigns and lead gen — connect your CRM and automate.</p>
+        <div class="price"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
+        <div class="yr" data-role="yr">or $89 a year — save $19</div>
         
         
         <ul>
@@ -155,6 +159,8 @@
       <div class="card" data-plan="kinetic-pro">
         <h3>Kinetic Pro</h3>
         <p class="who">Fully branded, interactive digital business cards.</p>
+        <div class="price"><span class="amt" data-role="amt">$9</span><span class="per">/month</span></div>
+        <div class="yr" data-role="yr">or $89 a year — save $19</div>
         
         
         <ul>
@@ -171,6 +177,8 @@
         <div class="badge">Most popular</div>
         <h3>Suite</h3>
         <p class="who">Kinetic Cards and lead capture in one platform.</p>
+        <div class="price"><span class="amt" data-role="amt">$29</span><span class="per">/month</span></div>
+        <div class="yr" data-role="yr">or $290 a year — save $58</div>
         
         
         <ul>
@@ -187,6 +195,8 @@
       <div class="card" data-plan="agency">
         <h3>Agency / Scale</h3>
         <p class="who">For agencies and marketing firms managing multiple clients.</p>
+        <div class="price"><span class="amt" data-role="amt">$79</span><span class="per">/month</span></div>
+        <div class="yr" data-role="yr">or $790 a year — save $158</div>
         
         
         <ul>
@@ -202,7 +212,7 @@
 
     </div>
 
-    <p class="note" id="limit-source" hidden>Allowance figures on the cards above are read live from this installation’s own plan records.</p>
+    <p class="note" id="limit-source" hidden>Prices and allowance figures on the cards above are read live from this installation’s own plan records.</p>
 
     <div id="how-to-pay" hidden style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:12px;padding:18px 20px;margin:18px 0">
       <h3 style="font-size:15px;font-weight:800;color:#0f172a;margin-bottom:6px">How to pay for a paid plan</h3>
@@ -267,8 +277,46 @@
         s.textContent = val;
         painted++;
       }
-      var note = document.getElementById('limit-source');
-      if (note && painted) note.hidden = false;
+      // PRICES (2026-11-24): the amount and the yearly line come from the SAME live plan record as
+      // the allowances above, so a price an operator edits in the console is the price this page
+      // shows. The authored figure is the fallback, exactly like the allowance spans.
+      function money(v) {
+        var n = Number(v);
+        if (!isFinite(n)) return null;
+        if (n <= 0) return '$0';
+        return '$' + (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));
+      }
+      function numberText(v) {
+        var n = Number(v);
+        if (!isFinite(n)) return null;
+        return '$' + (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));
+      }
+      var priced = 0;
+      var amtEls = document.querySelectorAll('span[data-role="amt"]');
+      for (var a = 0; a < amtEls.length; a++) {
+        var amtEl = amtEls[a];
+        var pcard = amtEl.closest('[data-plan]');
+        var pplan = pcard ? byslug[pcard.getAttribute('data-plan')] : null;
+        if (!pplan) continue;
+        var mo = money(pplan.price);
+        if (mo === null) continue;
+        amtEl.textContent = mo;
+        var yrEl = pcard.querySelector('[data-role="yr"]');
+        if (yrEl) {
+          var annual = Number(pplan.annual_price);
+          if (mo === '$0') {
+            yrEl.textContent = 'no card required';
+          } else if (isFinite(annual) && annual > 0) {
+            var saving = Math.round((Number(pplan.price) * 12 - annual) * 100) / 100;
+            yrEl.textContent = 'or ' + numberText(annual) + ' a year' +
+              (saving > 0 ? ' \u2014 save ' + numberText(saving) : '');
+          } else {
+            yrEl.hidden = true;
+          }
+        }
+        priced++;
+      }
+      if (note && priced) note.hidden = false;
       // HOW TO PAY (2026-11-17): the operator's own payment details, published here so a VISITOR
       // — not only a signed-in buyer on the Upgrade screen — can see how this installation can
       // actually take the money while no card provider is configured. Empty/absent leaves the
