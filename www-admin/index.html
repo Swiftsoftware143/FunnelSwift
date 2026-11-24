@@ -179,6 +179,25 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .plan-features li{padding:6px 0;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px}
 .plan-features li .check{color:var(--success);font-weight:700}
 .plan-features li .cross{color:var(--muted)}
+/* kanban cron 2026-11-23 — measured on a phone (390x844) at admin.funnelswift.net by walking all 34
+   screens: three screens push the PAGE sideways instead of fitting the viewport. Analytics is 614px
+   wide because its two-column card grid cannot shrink (a 300px chart canvas sits in a `1fr` track whose
+   min-content wins), the Leads toolbar runs to 422px, and Email branding is 434px because its inline
+   `1fr 220px` form keeps the logo column at a fixed 220px. Below 900px every inline multi-column card
+   grid stacks to a single column, a button group wraps, and grid/flex children may shrink below their
+   content width, so the page is exactly the viewport wide. The media query never applies above 900px,
+   so desktop is untouched. */
+@media(max-width:900px){
+  [style*="grid-template-columns:1fr 1fr"],
+  [style*="grid-template-columns:1fr 220px"],
+  [style*="grid-template-columns:2fr 1fr"],
+  [style*="grid-template-columns:1fr 1fr 160px"],
+  [style*="grid-template-columns:repeat(2,minmax(0,1fr))"]{grid-template-columns:minmax(0,1fr)!important}
+  .card,.btn-group>*{min-width:0}
+  .btn-group{flex-wrap:wrap}
+  canvas{max-width:100%!important}
+  .card:has(table){overflow-x:auto}
+}
 </style>
 <link rel="stylesheet" href="/tw.css">
 <script id="theme-boot">/* Night/day applied before first paint. */
