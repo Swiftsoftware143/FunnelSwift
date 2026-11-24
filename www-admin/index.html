@@ -926,6 +926,17 @@ async function renderWorkspaces() {
   const cur = wsCurId();
   // The server's own answer wins; the role list is only a fallback for an older read.
   const can = WS_CAN === true ? true : (WS_CAN === false ? false : wsCanManage());
+  /* kanban (2026-11-24): the add-card note promised a plan ceiling that no FunnelSwift plan
+     carries (measured: `plans.features` has no `max_workspaces` on any plan), so it told the
+     operator to expect an upgrade prompt that could never appear. Read the ceiling from the
+     signed-in workspace's own plan row — the field src/workspaces/handlers.rs enforces — and
+     state the truth either way. */
+  const _wsf = (USER && USER.planObj && USER.planObj.features) || null;
+  const _wsRaw = _wsf ? _wsf.max_workspaces : null;
+  const _wsNum = Number(_wsRaw);
+  const wsCapNote = (_wsf && _wsRaw !== null && _wsRaw !== undefined && _wsRaw !== '' && isFinite(_wsNum) && _wsNum > 0)
+    ? 'Your plan allows up to ' + _wsNum + ' workspace' + (_wsNum === 1 ? '' : 's') + ' — adding past it is refused with the reason.'
+    : 'Your plan does not limit how many workspaces this account can run.';
   const rows = list.map(w => `<tr data-workspace-row="${x(w.id)}">
       <td data-ws-name="${x(w.id)}"><strong>${x(w.name)}</strong></td>
       <td>${w.is_default ? '<span class="badge" style="background:#dbeafe;color:#1e40af">Default</span>' : '<span style="color:var(--muted)">—</span>'}</td>
@@ -962,7 +973,7 @@ async function renderWorkspaces() {
         </div>
         <button type="button" class="btn btn-primary" onclick="window._wsAdd()">Add workspace</button>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin-top:8px">If your plan includes a set number of workspaces, adding past it tells you to upgrade — the ceiling comes from your plan, not this screen.</p>
+      <p style="font-size:12px;color:var(--muted);margin-top:8px">${wsCapNote}</p>
     </div>
   </div>`;
 }
@@ -8437,6 +8448,7 @@ window.fsThemeApply = fsThemeApply;
    touching the path or the hash — so every key here is a STATE.view id and the widget is told
    which screen is open by renderView() and by the sync below. */
 window.appGuidePages = {
+  "workspaces": { title: "Workspaces", desc: "The separate drawers inside this one account — each keeps its own funnels, leads, tags and cards, so one sign-in can run more than one brand, client or location. The table names every workspace, which one is the default and which one you are signed into. Switch to changes the workspace every other screen works in; Rename changes its name; Make default decides which one a new sign-in opens. Two workspaces cannot share a name, an account must always keep at least one workspace, the one you are signed into cannot be deleted until you switch away, and a portfolio business always keeps its own workspaces whatever the count. The add box says whether this account's plan caps how many you can run: a plan that sets a number refuses the one past it with the reason, and a plan that sets none says so rather than leaving you to guess.", actions: ["Switch to a workspace you run", "Rename one, or make it the default a new sign-in opens", "Add a workspace, if your plan allows another", "Delete one you no longer use — switch away from it first"] },
   "apiKeys": { title: "API Keys", desc: "This workspace's own key for the FunnelSwift API and MCP server. It is created with your account and never expires. The screen shows only the prefix; View asks for your account password, then shows the full key so you can copy it, and every view is recorded. Regenerate replaces the key in one step — the old one stops working the moment the new one starts — and Revoke retires it so the workspace can mint a fresh one.", actions: ["Press View, enter your account password, then Copy key", "Press Regenerate to replace a key you think has leaked", "Press Revoke to retire the key entirely"] },
   "mcp": { title: "AI Tools (MCP)", desc: "The fleet MCP server already answers this workspace's FunnelSwift data, and your workspace's own API key is the credential it accepts. This screen is read-only: it shows the endpoint, the prefix of the key that authorises it, and a paste-ready config for an MCP client such as Claude Code, Cursor or Hermes. Every tool is scoped to the workspace that owns the key, so a client can only ever read this account. The table lists each kind of record and the two tools it exposes — one that counts, one that searches.", actions: ["Copy the endpoint into your MCP client", "Copy the client config and replace YOUR_API_KEY with your workspace key from the API Keys screen", "Read the table to see which records an AI client can read"] },
   "team": { title: "Team", desc: "The people who can sign in to this workspace, and the seats your plan includes. The owner is marked so you can tell an owner from a member at a glance. Adding a teammate creates their own sign-in and emails them a temporary password they change after signing in; only the workspace owner or a company admin can add people, and a plan with every seat taken says so instead of offering a button that cannot work. Each person's row carries the three things an owner needs later: move them between roles, send their login details again when the first message never arrived or was lost, and remove them to free the seat. Sending login details again keeps their leads and their history, because their account and their leads stay theirs.", actions: ["Read how many seats your plan includes", "Check who is already in the workspace and their role", "Change a teammate's role, send their login details again, or remove them from their row", "Enter a name and email, choose a role, then press Add teammate"] },
