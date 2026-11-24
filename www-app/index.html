@@ -609,7 +609,7 @@ function api(p,o){
     // caller showed nothing at all and the defect read as "the button does nothing". Read the body as
     // text, parse when it parses, and fall back to the status line.
     function errBody(){return r.text().then(function(t){if(!t)return null;try{return JSON.parse(t)}catch(e){return null}},function(){return null});}
-    if(r.status===401){T="";try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(ex){}window.location.href="/login?expired=1";throw Error("auth")}
+    if(r.status===401){T="";try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(ex){}if(!window.__dzDone)window.location.href="/login?expired=1";throw Error("auth")}
     // kanban t_af890bbf: a retired workspace (or a deleted one) is a session-ENDING condition, not
     // a per-click error - clear the token and let /login explain it, instead of leaving the user on
     // a page that can never load anything. Keyed on the API's own message, not on 403 as a class
@@ -5988,9 +5988,14 @@ function DLDATA(){
    Posted directly, not through api(), because api()'s 401/403 arms clear the token and bounce the
    page, so a refusal would look like an expired session instead of the sentence the customer needs. */
 function dzSignOutTo(where){
+  /* The workspace and the session are BOTH gone by the time this runs, so any other request this
+     console has in flight answers 401 and its handler would bounce to /login?expired=1 — measured in
+     a real browser: the erasure succeeded and the customer landed on "session expired" instead of
+     the page that tells them what happened. The flag below tells that handler to stay quiet. */
+  window.__dzDone=true;
   T="";
   try{localStorage.removeItem("ws_fs_token");localStorage.removeItem("ws_fs_original_token")}catch(e){}
-  window.location.href=where;
+  window.location.replace(where);
 }
 /* One dialog body shared by both doors: the consequences, the password, and the word to type. */
 function dzBody(word, heading, lines, keepLine){
@@ -6033,6 +6038,7 @@ function CPLAN(){
       var pw=(($("dz-pw")||{}).value||""), w=(($("dz-word")||{}).value||"").trim();
       if(!pw||w!=="CLOSE"){ pfMsg("mm","Enter your password and type CLOSE","me"); return; }
       go.disabled=true; go.textContent="Cancelling...";
+      window.__dzDone=true;
       fetch("/api/v1/auth/close-account",{method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
           body:JSON.stringify({password:pw,confirm:w})})
@@ -6045,6 +6051,7 @@ function CPLAN(){
         })
         .catch(function(e){
           go.disabled=false; go.textContent="Cancel plan";
+          window.__dzDone=false;
           pfMsg("mm",(e&&e.message)||"Could not cancel the plan","me");
         });
     };
@@ -6069,6 +6076,10 @@ function EDDEL(){
       var pw=(($("dz-pw")||{}).value||""), w=(($("dz-word")||{}).value||"").trim();
       if(!pw||w!=="DELETE"){ pfMsg("mm","Enter your password and type DELETE","me"); return; }
       go.disabled=true; go.textContent="Deleting...";
+      /* Stop the console's own 401 arm from bouncing us: the workspace is about to stop existing, so
+         every other read in flight will answer 401, and their handler would race the landing page.
+         Reset in the catch so a refusal still behaves normally. */
+      window.__dzDone=true;
       fetch("/api/v1/auth/erase-data",{method:"POST",
           headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
           body:JSON.stringify({password:pw,confirm:w})})
@@ -6083,6 +6094,7 @@ function EDDEL(){
         })
         .catch(function(e){
           go.disabled=false; go.textContent="Delete permanently";
+          window.__dzDone=false;
           pfMsg("mm",(e&&e.message)||"Could not delete the workspace","me");
         });
     };
