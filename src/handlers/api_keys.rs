@@ -127,6 +127,23 @@ fn tenant_from_auth(auth: &AuthUser) -> Result<Uuid, AppError> {
         .map_err(|_| AppError::Unauthorized("Invalid tenant in token".to_string()))
 }
 
+/// Key management is an ACCOUNT-ADMIN surface, on BOTH doors (`/api/v1/api-keys` and the
+/// fleet-standard `/api/personal-api-keys`).
+///
+/// An issued key is the whole workspace's credential: a plain `user` reaching these routes could
+/// rotate the owner's key and walk away with the new plaintext, or revoke the credential every
+/// integration depends on. The fleet's role vocabulary is `user | company_admin | admin` (plus
+/// `owner` in the older apps), so the check is a membership test, not an equality against one
+/// spelling — CoreSwift's version of this check is what the fleet standard was written from.
+pub fn require_key_admin(auth: &AuthUser) -> Result<(), AppError> {
+    if auth.is_admin || matches!(auth.role.as_str(), "admin" | "company_admin" | "owner") {
+        return Ok(());
+    }
+    Err(AppError::Forbidden(
+        "Only an account admin may manage this workspace's API keys.".to_string(),
+    ))
+}
+
 fn caller_id(auth: &AuthUser) -> Result<Uuid, AppError> {
     Uuid::parse_str(&auth.user_id)
         .map_err(|_| AppError::Unauthorized("Invalid user in token".to_string()))
@@ -217,6 +234,7 @@ pub async fn list_api_keys(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> AppResult<Json<serde_json::Value>> {
+    require_key_admin(&auth)?;
     let tenant_id = tenant_from_auth(&auth)?;
 
     let rows = sqlx::query(
@@ -253,6 +271,7 @@ pub async fn create_api_key(
     auth: AuthUser,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    require_key_admin(&auth)?;
     let tenant_id = tenant_from_auth(&auth)?;
     let created_by = caller_id(&auth).ok();
 
@@ -312,6 +331,7 @@ pub async fn reveal_api_key(
     Path(id): Path<Uuid>,
     Json(req): Json<RevealKeyRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    require_key_admin(&auth)?;
     let tenant_id = tenant_from_auth(&auth)?;
 
     let row = sqlx::query(
@@ -387,6 +407,7 @@ pub async fn revoke_api_key(
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
+    require_key_admin(&auth)?;
     let tenant_id = tenant_from_auth(&auth)?;
 
     let res = sqlx::query(
@@ -429,6 +450,7 @@ pub async fn regenerate_api_key(
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    require_key_admin(&auth)?;
     let tenant_id = tenant_from_auth(&auth)?;
     let created_by = caller_id(&auth).ok();
 
