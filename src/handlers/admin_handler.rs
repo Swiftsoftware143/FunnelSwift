@@ -627,7 +627,17 @@ pub async fn admin_stats(
     // (monthly-equivalent: a yearly plan counts as its annual price over twelve months) and is
     // labelled as such in the console, because no money has been collected — `checkouts_paid` is
     // reported beside it for exactly that reason.
-    let mix_rows: Vec<(String, String, String, f64, String)> = sqlx::query_as(
+    //
+    // PORTFOLIO BUSINESSES ARE NOT CUSTOMERS HERE EITHER (measured live 2026-11-25). The counters
+    // above learned this on kanban t_4a9454c1 — "the number above the list can never include a row
+    // the list refuses to show" — but the plan cards did not: the Super Admin dashboard read
+    // "3 Total Customer Accounts" beside "6 On a Paid Plan · $474/mo", because three of the owner's
+    // own portfolio workspaces (SwiftImpact, ZaarHub, Giraudy Capital) were counted as paying
+    // customers. An internal contradiction on one screen, and $237/mo of the $474 was the owner's
+    // own money. Both sets are now held out the SAME way `total_tenants` holds them out, and what
+    // was set aside is REPORTED (`plan_mix_excluded`) instead of dropped, so the operator can still
+    // see that the rows exist.
+    let mix_rows: Vec<(String, String, String, f64, String, bool)> = sqlx::query_as(
         "SELECT COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
            ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
                     u.created_at ASC \
@@ -635,7 +645,9 @@ pub async fn admin_stats(
                 COALESCE(p.slug, '') AS plan_slug, \
                 COALESCE(p.name, '') AS plan_name, \
                 COALESCE(p.price, 0)::float8 AS price, \
-                COALESCE(p.billing_cycle, 'month') AS billing_cycle \
+                COALESCE(p.billing_cycle, 'month') AS billing_cycle, \
+                EXISTS (SELECT 1 FROM portfolio_companies pc \
+                         WHERE pc.account_tenant_id = t.id) AS is_portfolio \
          FROM tenants t \
          LEFT JOIN LATERAL ( \
              SELECT tps.plan_id FROM tenant_plan_subscriptions tps \
@@ -652,8 +664,19 @@ pub async fn admin_stats(
         std::collections::BTreeMap::new();
     let mut workspaces_paid: i64 = 0;
     let mut plan_value_monthly: f64 = 0.0;
-    for (owner, slug, name, price, cycle) in &mix_rows {
-        if !counts_as_customer(include_probe, owner) || slug.is_empty() || *price <= 0.0 {
+    // What the cards above hold OUT, so the number and the caveat stay on one screen.
+    let mut excluded_portfolio: i64 = 0;
+    let mut excluded_test: i64 = 0;
+    for (owner, slug, name, price, cycle, is_portfolio) in &mix_rows {
+        if *is_portfolio {
+            excluded_portfolio += 1;
+            continue;
+        }
+        if !counts_as_customer(include_probe, owner) {
+            excluded_test += 1;
+            continue;
+        }
+        if slug.is_empty() || *price <= 0.0 {
             continue;
         }
         workspaces_paid += 1;
@@ -739,6 +762,13 @@ pub async fn admin_stats(
         "plan_value_monthly": round2(plan_value_monthly),
         "plan_value_yearly": round2(plan_value_monthly * 12.0),
         "plan_mix": plan_mix_json,
+        // The rows the money cards hold OUT, named so nothing is silently dropped: the owner's own
+        // portfolio businesses and workspace(s) on a reserved/test address. Same two notions the
+        // Total Customer Accounts card already applies.
+        "plan_mix_excluded": json!({
+            "portfolio": excluded_portfolio,
+            "test": excluded_test,
+        }),
         "open_plan_requests": open_plan_requests,
         // CUSTOMERS, and (beside them) how many of our OWN attempts were set aside. Both are
         // reported so the number is honest in both directions: a big customer number is real
