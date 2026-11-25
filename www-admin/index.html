@@ -775,9 +775,9 @@ function buildNav() {
      session. Sits beside Provider Keys (the third-party credentials) but is a different thing:
      this is the credential for THIS workspace's own API and MCP server. */
   sections.push(`<button type="button" class="nav-item ${STATE.view==='apiKeys'?'active':''}" data-view="apiKeys" aria-label="API Keys"><span class="icon">🔑</span><span class="nav-text">API Keys</span></button>`);
-  /* The fleet MCP server at hooks.swiftsoftware.net/mcp already answers this app's data and accepts
-     this workspace's own API key, but nothing in this console mentioned it (cron 2026-11-19). The
-     screen is read-only: the endpoint, the key that authorises it (prefix only) and a client config. */
+  /* FunnelSwift's OWN MCP door at app.funnelswift.net/mcp accepts this workspace's own API key and
+     answers eleven read-only tools (kanban t_aeefb4fb, 2026-11-24). The screen is read-only: the
+     endpoint, the key that authorises it (prefix only) and a client config. */
   sections.push(`<button type="button" class="nav-item ${STATE.view==='mcp'?'active':''}" data-view="mcp" aria-label="AI Tools (MCP)"><span class="icon">🤖</span><span class="nav-text">AI Tools (MCP)</span></button>`);
   // Email Branding (kanban t_c06a32eb follow-up): the per-tenant email-branding backend shipped
   // with NO screen anywhere in this console. David's rule: "A backend route with no UI is a DEFECT".
@@ -4712,45 +4712,27 @@ async function renderApiKeys() {
 
 function bindApiKeys() { /* actions are window-level handlers so the table rows survive a re-render */ }
 
-// ── MCP — connect your AI tools (cron 2026-11-19) ───────────────────────────────────────────────
-// The fleet MCP server at hooks.swiftsoftware.net/mcp already answers this app's data, and the
-// credential it accepts is this workspace's OWN API key (the one the API Keys screen mints). Nothing
-// in this console mentioned the server, so the capability was invisible: an operator could not tell
-// that Claude, Cursor or Hermes can read this workspace. This screen is READ-ONLY — it names the
-// endpoint, shows the prefix of the key that authorises it (never the secret), and hands over a
-// paste-ready client config. Creating, revealing and rotating a key stays on the API Keys screen, so
-// there is exactly ONE writer of a key value.
-// What the server ACTUALLY answers for funnelswift today — measured live with a real key
-// (tools/list on the MCP endpoint, 2026-11-21): 69 tools across TWENTY-THREE entity groups, each group
-// carrying three tools — `<key>_summary` (how many exist in this workspace), `<key>_search` (text
-// search, newest first, q + limit 1-200) and `<key>_list_tenants` (platform administrators only).
-// The build that first shipped this screen served six; the fleet server has since grown to twenty,
-// so this table names what the live server answers today, and never a tool it would refuse.
-const MCP_ENDPOINT = 'https://hooks.swiftsoftware.net/mcp';
-const MCP_ENTITIES = [
-  ['Leads', 'funnelswift'],
-  ['Tags', 'funnelswift_tags'],
-  ['Kinetic cards', 'funnelswift_cards'],
-  ['Lead events', 'funnelswift_lead_events'],
-  ['Affiliate products', 'funnelswift_affiliate_products'],
-  ['Webhooks', 'funnelswift_webhooks'],
-  ['Team', 'funnelswift_team'],
-  ['Activity', 'funnelswift_activity'],
-  ['Support requests', 'funnelswift_support_requests'],
-  ['Plan requests', 'funnelswift_plan_requests'],
-  ['Tag rules', 'funnelswift_tag_rules'],
-  ['Tag groups', 'funnelswift_tag_groups'],
-  ['Tag changes', 'funnelswift_tag_changes'],
-  ['Affiliates', 'funnelswift_affiliates'],
-  ['Campaigns', 'funnelswift_campaigns'],
-  ['QR codes', 'funnelswift_qr_codes'],
-  ['Webhook deliveries', 'funnelswift_webhook_deliveries'],
-  ['Checkout sessions', 'funnelswift_checkout_sessions'],
-  ['Portfolio companies', 'funnelswift_portfolio'],
-  ['Subscriptions', 'funnelswift_subscriptions'],
-  ['Funnels', 'funnelswift_funnels'],
-  ['Card stats', 'funnelswift_card_stats'],
-  ['Sending domains', 'funnelswift_email_domains'],
+// ── MCP — connect your AI tools (kanban t_aeefb4fb, 2026-11-24) ─────────────────────────────────
+// FunnelSwift serves its OWN MCP door at https://app.funnelswift.net/mcp, built on the shared
+// mcp-door crate. The credential is this workspace's OWN API key (the one the API Keys screen
+// mints), looked up by sha256 hex on every call, so a revoke or a cancelled workspace kills it at
+// once. Eleven READ-ONLY tools, each with the caller's workspace ids bound in its own SQL — there is
+// no write tool, no free-form SQL door and no operator tool, and a foreign id answers not_found
+// exactly like a missing one. This list is the door's real registration list; `src/mcp_guard.rs`
+// fails the build's tests if the two drift, and www-app/index.html prints the same eleven.
+const MCP_ENDPOINT = 'https://app.funnelswift.net/mcp';
+const MCP_TOOLS = [
+  ['list_funnels', 'your funnels — name, slug, headline, views, live or paused'],
+  ['list_pages', 'landing pages — title, slug, template, block count, last edit'],
+  ['get_page', "one landing page's settings (never its password hash or layout)"],
+  ['page_stats', 'per-page daily views, clicks, shares, QR scans and unique visitors'],
+  ['list_leads', 'leads — name, email, phone, stage and score'],
+  ['lead_events', 'what a lead did — the event, the page, the time'],
+  ['list_form_submissions', 'every capture-form submission'],
+  ['list_tags', 'your tags and the group each one sits in'],
+  ['list_email_domains', 'your sending domains and whether each is verified'],
+  ['list_invoices', 'your invoices — amount, status, due and paid dates'],
+  ['list_affiliate_products', 'affiliate products you can promote, and your commission']
 ];
 function mcpConfigText() {
   return JSON.stringify({ mcpServers: { funnelswift: { type: 'http', url: MCP_ENDPOINT,
@@ -4777,9 +4759,9 @@ async function renderMcp() {
           keys.map(k => `<tr><td><strong>${x(k.name || 'API key')}</strong></td><td><code style="font-size:11px">${x(k.key_prefix || '')}…</code></td></tr>`).join('')
         }</tbody></table></div>`
       : `<p style="font-size:13px;color:var(--muted);margin:0">No active API key on this workspace yet. Create one on <b>API Keys</b>, then come back — the MCP server accepts that key as a Bearer token.</p>`);
-  const rows = MCP_ENTITIES.map(p => `<tr>
-      <td><strong>${x(p[0])}</strong></td>
-      <td><code style="font-size:11px">${x(p[1])}_summary</code> &middot; <code style="font-size:11px">${x(p[1])}_search</code> &middot; <code style="font-size:11px">${x(p[1])}_list_tenants</code> <span style="font-size:10px;color:var(--muted)">(platform admin)</span></td>
+  const rows = MCP_TOOLS.map(t => `<tr>
+      <td><code style="font-size:11px">${x(t[0])}</code></td>
+      <td style="font-size:12px">${x(t[1])}</td>
     </tr>`).join('');
   return `<div>
     <h1 style="font-size:22px;font-weight:700">🤖 AI Tools (MCP)</h1>
@@ -4802,8 +4784,8 @@ async function renderMcp() {
     </div>
     <div class="card">
       <div style="font-size:13px;font-weight:600;margin-bottom:4px">What it can do</div>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Twenty kinds of record, each with two read-only tools. <code>_summary</code> answers how many this workspace holds; <code>_search</code> finds them by text — a <code>q</code> filter, newest first, up to 200 rows. Each entity also has a <code>_list_tenants</code> tool that only a platform administrator's key may call. Every tool is scoped to the workspace that owns the key, so a client can only ever read this account. The list below is what the live server answers for FunnelSwift today.</p>
-      <div class="table-wrap"><table class="table"><thead><tr><th>What</th><th>Tools</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Eleven read-only tools, each scoped in its own SQL to the workspace that owns the key, so a client can only ever read this account. There is no write tool, no free-form SQL door and no operator tool. The list below is the door's own registration list.</p>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Tool</th><th>What it answers</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
   </div>`;
 }
@@ -8451,7 +8433,7 @@ window.fsThemeApply = fsThemeApply;
 window.appGuidePages = {
   "workspaces": { title: "Workspaces", desc: "The separate drawers inside this one account — each keeps its own funnels, leads, tags and cards, so one sign-in can run more than one brand, client or location. The table names every workspace, which one is the default and which one you are signed into. Switch to changes the workspace every other screen works in; Rename changes its name; Make default decides which one a new sign-in opens. Two workspaces cannot share a name, an account must always keep at least one workspace, the one you are signed into cannot be deleted until you switch away, and a portfolio business always keeps its own workspaces whatever the count. The add box says whether this account's plan caps how many you can run: a plan that sets a number refuses the one past it with the reason, and a plan that sets none says so rather than leaving you to guess.", actions: ["Switch to a workspace you run", "Rename one, or make it the default a new sign-in opens", "Add a workspace, if your plan allows another", "Delete one you no longer use — switch away from it first"] },
   "apiKeys": { title: "API Keys", desc: "This workspace's own key for the FunnelSwift API and MCP server. It is created with your account and never expires. The screen shows only the prefix; View asks for your account password, then shows the full key so you can copy it, and every view is recorded. Regenerate replaces the key in one step — the old one stops working the moment the new one starts — and Revoke retires it so the workspace can mint a fresh one.", actions: ["Press View, enter your account password, then Copy key", "Press Regenerate to replace a key you think has leaked", "Press Revoke to retire the key entirely"] },
-  "mcp": { title: "AI Tools (MCP)", desc: "The fleet MCP server already answers this workspace's FunnelSwift data, and your workspace's own API key is the credential it accepts. This screen is read-only: it shows the endpoint, the prefix of the key that authorises it, and a paste-ready config for an MCP client such as Claude Code, Cursor or Hermes. Every tool is scoped to the workspace that owns the key, so a client can only ever read this account. The table lists each kind of record and the two tools it exposes — one that counts, one that searches.", actions: ["Copy the endpoint into your MCP client", "Copy the client config and replace YOUR_API_KEY with your workspace key from the API Keys screen", "Read the table to see which records an AI client can read"] },
+  "mcp": { title: "AI Tools (MCP)", desc: "FunnelSwift serves its own MCP door, and your workspace's own API key is the credential it accepts. This screen is read-only: it shows the endpoint, the prefix of the key that authorises it, and a paste-ready config for an MCP client such as Claude Code, Cursor or Hermes. Eleven read-only tools, each scoped to the workspace that owns the key, so a client can only ever read this account. The table lists each tool and what it answers.", actions: ["Copy the endpoint into your MCP client", "Copy the client config and replace YOUR_API_KEY with your workspace key from the API Keys screen", "Read the table to see which records an AI client can read"] },
   "team": { title: "Team", desc: "The people who can sign in to this workspace, and the seats your plan includes. The owner is marked so you can tell an owner from a member at a glance. Adding a teammate creates their own sign-in and emails them a temporary password they change after signing in; only the workspace owner or a company admin can add people, and a plan with every seat taken says so instead of offering a button that cannot work. Each person's row carries the three things an owner needs later: move them between roles, send their login details again when the first message never arrived or was lost, and remove them to free the seat. Sending login details again keeps their leads and their history, because their account and their leads stay theirs.", actions: ["Read how many seats your plan includes", "Check who is already in the workspace and their role", "Change a teammate's role, send their login details again, or remove them from their row", "Enter a name and email, choose a role, then press Add teammate"] },
   "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data. Below them, Which channel converts measures the last 7, 30 or 90 days of your own leads: how many each traffic source brought in, how many of those became customers, the conversion rate for each, and where this window\u2019s leads sit in your stages. A lead counts under the source recorded when it was captured, so give each channel its own card slug and the comparison is per channel; a lead with no source shows as (direct).", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Read Which channel converts and switch the window to 7, 30 or 90 days", "Check My Account for your plan and profile"] },
   "myAccount": { title: "My Account", desc: "Your own profile — name, company, picture, the address you sign in with, your password and the plan this workspace is on. What you set here is what appears across the console.", actions: ["Set your name and company", "Upload a profile picture", "Change your sign-in email (we email a confirmation link)", "Change your password", "See the plan you are on", "Download a copy of everything this workspace holds, as one file you keep", "Close your account, with your password and the word CLOSE to confirm"] },
