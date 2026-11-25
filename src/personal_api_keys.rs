@@ -55,10 +55,6 @@ fn own_tenant(auth: &AuthUser) -> Result<Uuid, AppError> {
         .map_err(|_| AppError::Unauthorized("Invalid tenant in token".to_string()))
 }
 
-fn caller_id(auth: &AuthUser) -> Option<Uuid> {
-    Uuid::parse_str(&auth.user_id).ok()
-}
-
 /// Both field names for every mint response: `key`/`prefix` (fleet standard, CoreSwift's shape) and
 /// `token`/`key_prefix` (FunnelSwift's own — the Settings screen and the MCP card read these).
 fn mint_body(id: &str, name: &str, token: &str, prefix: &str) -> Value {
@@ -215,63 +211,175 @@ pub async fn list(State(state): State<AppState>, auth: AuthUser) -> AppResult<Js
 }
 
 /// `DELETE /api/personal-api-keys/:id` — revoke (soft; the row stays for audit).
+///
+/// A platform admin may revoke ANOTHER account's key (the account-death kill switch: an operator
+/// must be able to stop a leaking credential without waiting for the customer). Everyone else is
+/// bound to their own account, and a foreign id answers 404 rather than confirming it exists.
 pub async fn revoke(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Value>> {
-    let Json(mut body) = inner::revoke_api_key(State(state), auth, Path(id)).await?;
-    if let Value::Object(map) = &mut body {
-        map.insert("revoked".to_string(), Value::Bool(true));
+    let tenant = own_tenant(&auth)?;
+    let row_tenant: Option<Uuid> =
+        sqlx::query_scalar("SELECT tenant_id FROM api_keys WHERE id = $1 AND revoked_at IS NULL")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some(row_tenant) = row_tenant else {
+        return Err(AppError::NotFound("API key not found".to_string()));
+    };
+    if row_tenant != tenant && !auth.is_admin {
+        return Err(AppError::NotFound("API key not found".to_string()));
     }
-    Ok(Json(body))
+
+    let updated = sqlx::query(
+        "UPDATE api_keys SET revoked_at = now() \
+         WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(id)
+    .bind(row_tenant)
+    .execute(&state.pool)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound(
+            "API key not found or already revoked".to_string(),
+        ));
+    }
+    if let Err(e) = sqlx::query(
+        "INSERT INTO activity_log (id, tenant_id, user_id, action, entity_type, entity_id, metadata) \
+         VALUES ($1, $2, $3, 'api_key_revoked', 'api_key', $4, $5)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(row_tenant)
+    .bind(auth.user_id.clone())
+    .bind(id.to_string())
+    .bind(json!({ "by": auth.email.clone(),
+                  "on_behalf_of": if row_tenant == tenant { "self" } else { "platform admin" } }))
+    .execute(&state.pool)
+    .await
+    {
+        tracing::error!(error = %e, key = %id, "activity_log insert failed for api_key_revoked");
+    }
+
+    Ok(Json(json!({
+        "revoked": true,
+        "id": id,
+        "account_id": row_tenant.to_string(),
+    })))
 }
 
 /// `POST /api/personal-api-keys/:id/rotate` — one atomic revoke-and-issue; the old secret dies with
 /// the same commit that stores the new one.
+///
+/// A platform admin may rotate ANOTHER account's key. That is not a new privilege: minting for any
+/// account is already theirs (the `account_id` arm), and every FunnelSwift account holds an
+/// auto-provisioned key from signup whose plaintext nobody can produce without that account's
+/// password — so without this arm a principal provisioner (plan §P3) could neither mint a second
+/// key (the one-live-key index refuses it) nor recover the existing one. The replacement's
+/// `created_by` is the TARGET account's owner, never the admin (see the module note).
 pub async fn rotate(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    // The caller's own tenant is enforced inside the delegated handler; this id lookup only decides
-    // whether the row is even visible, and a foreign id answers the app's 404.
     let tenant = own_tenant(&auth)?;
-    sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM api_keys WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
+    let row: Option<(Uuid, String)> =
+        sqlx::query_as("SELECT tenant_id, name FROM api_keys WHERE id = $1 AND revoked_at IS NULL")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((row_tenant, name)) = row else {
+        return Err(AppError::NotFound("API key not found".to_string()));
+    };
+
+    if row_tenant == tenant {
+        let (status, Json(body)) = inner::regenerate_api_key(State(state), auth, Path(id)).await?;
+        return Ok((status, Json(rotate_body(&body, &name, id))));
+    }
+
+    // Another account's key: platform admin only, and a non-admin must not learn it exists.
+    if !auth.is_admin {
+        return Err(AppError::NotFound("API key not found".to_string()));
+    }
+
+    let owner: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE tenant_id = $1 AND is_active = true \
+         ORDER BY (role = 'company_admin') DESC, created_at LIMIT 1",
+    )
+    .bind(row_tenant)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let mut tx = state.pool.begin().await?;
+    let retired = sqlx::query(
+        "UPDATE api_keys SET revoked_at = now() \
+         WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
     )
     .bind(id)
-    .bind(tenant)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
+    .bind(row_tenant)
+    .execute(&mut *tx)
+    .await?;
+    if retired.rows_affected() == 0 {
+        return Err(AppError::NotFound("API key not found".to_string()));
+    }
+    let minted = inner::mint_on(&mut tx, row_tenant, owner, &name).await?;
+    sqlx::query(
+        "INSERT INTO activity_log (id, tenant_id, user_id, action, entity_type, entity_id, metadata) \
+         VALUES ($1, $2, $3, 'api_key_regenerated', 'api_key', $4, $5)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(row_tenant)
+    .bind(auth.user_id.clone())
+    .bind(minted.id.to_string())
+    .bind(json!({ "old_key": id.to_string(), "key_prefix": minted.prefix.clone(),
+                  "by": auth.email.clone(), "on_behalf_of": "platform admin" }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
-    let (status, Json(body)) = inner::regenerate_api_key(State(state), auth, Path(id)).await?;
+    let mut out = mint_body(
+        &minted.id.to_string(),
+        &minted.name,
+        &minted.token,
+        &minted.prefix,
+    );
+    if let Value::Object(map) = &mut out {
+        map.insert("rotated_from".to_string(), Value::String(id.to_string()));
+        map.insert(
+            "account_id".to_string(),
+            Value::String(row_tenant.to_string()),
+        );
+    }
+    tracing::info!(
+        new_key = %minted.id,
+        old_key = %id,
+        tenant = %row_tenant,
+        by = %auth.email,
+        "personal API key ROTATED by a platform admin for another account"
+    );
+    Ok((StatusCode::CREATED, Json(out)))
+}
+
+/// The shared rotate response: both field families plus the lineage.
+fn rotate_body(body: &Value, name: &str, old_id: Uuid) -> Value {
     let token = body
         .get("token")
         .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
+        .unwrap_or_default();
     let prefix = body
         .get("key_prefix")
         .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let new_id = body
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let name = body
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let mut out = mint_body(&new_id, &name, &token, &prefix);
+        .unwrap_or_default();
+    let new_id = body.get("id").and_then(Value::as_str).unwrap_or_default();
+    let mut out = mint_body(new_id, name, token, prefix);
     if let Value::Object(map) = &mut out {
-        map.insert("rotated_from".to_string(), Value::String(id.to_string()));
+        map.insert(
+            "rotated_from".to_string(),
+            Value::String(old_id.to_string()),
+        );
     }
-    Ok((status, Json(out)))
+    out
 }
 
 #[derive(Debug, Deserialize)]
@@ -289,7 +397,6 @@ pub async fn reveal(
     Path(id): Path<Uuid>,
     Json(req): Json<RevealRequest>,
 ) -> AppResult<Json<Value>> {
-    let _ = caller_id(&auth);
     let Json(body) = inner::reveal_api_key(
         State(state),
         auth,
