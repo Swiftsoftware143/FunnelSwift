@@ -853,11 +853,15 @@ pub async fn admin_sync_affiliate_products(
     }
     // `name` and `price` ride along so the answer can name what it left alone. `plans.price` is
     // `double precision`, cast for symmetry with the other plan reads in this service.
-    let plans: Vec<(Uuid, String, f64)> = sqlx::query_as(
-        "SELECT id, name, price::float8 FROM plans ORDER BY created_at, id LIMIT 50",
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    //
+    // No LIMIT: the earlier `LIMIT 50` made this route quietly under-sync on an install with more
+    // than 50 plans — the 51st plan and everything after it would never gain a catalogue row, and
+    // nothing in the answer would say so. A plan list is small (one row per tier), so the bound
+    // bought nothing and cost correctness.
+    let plans: Vec<(Uuid, String, f64)> =
+        sqlx::query_as("SELECT id, name, price::float8 FROM plans ORDER BY created_at, id")
+            .fetch_all(&state.pool)
+            .await?;
 
     let mut synced: i64 = 0;
     let mut skipped: Vec<Value> = Vec::new();
@@ -895,19 +899,55 @@ pub async fn admin_sync_affiliate_products(
         }
     }
 
-    let message = if skipped.is_empty() {
-        format!("{} products synced", synced)
-    } else {
-        format!(
-            "{} products synced; {} paid plan(s) skipped (affiliates only hand out free plans)",
-            synced,
+    // The OTHER direction of the same reconciliation: a product whose PLAN IS GONE.
+    //
+    // `affiliate_products.plan_id` is ON DELETE SET NULL, so deleting a plan DETACHES its product
+    // instead of removing it — and before t_9c30ce49 (which made the delete retire the product
+    // first) every such row stayed `is_active = true` with `plan_id = NULL`. Nothing on the console
+    // can put that right: no plan is linked, so no plan screen shows the row, and the affiliate
+    // catalogue keeps offering it. Measured live 2026-11-25: the customer-facing catalogue listed 8
+    // active products, one of them `Probe plan tplgate-1794741548` — an orphan whose plan had been
+    // deleted six days earlier. This route's whole job is "make the catalogue match the plans", so
+    // it reconciles this direction too and reports what it retired.
+    //
+    // Scoped to rows this rule OWNS: `source_app = 'funnelswift'` (a row derived from a FunnelSwift
+    // plan) with no plan left. A hand-made catalogue row carries no `source_app` (the admin
+    // create/update routes never set it) and a sibling app's seeded free plan carries its own app's
+    // name, so neither can be matched here.
+    let retired: Vec<String> = sqlx::query_scalar(
+        "UPDATE affiliate_products SET is_active = false, updated_at = NOW() \
+         WHERE is_active = true AND source_app = 'funnelswift' AND plan_id IS NULL \
+         RETURNING name",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    if !retired.is_empty() {
+        tracing::info!(
+            retired = ?retired,
+            "catalogue rows retired: the plan they were derived from no longer exists"
+        );
+    }
+
+    let mut parts: Vec<String> = vec![format!("{} products synced", synced)];
+    if !skipped.is_empty() {
+        parts.push(format!(
+            "{} paid plan(s) skipped (affiliates only hand out free plans)",
             skipped.len()
-        )
-    };
+        ));
+    }
+    if !retired.is_empty() {
+        parts.push(format!(
+            "{} retired (the plan they came from no longer exists)",
+            retired.len()
+        ));
+    }
+    let message = parts.join("; ");
     Ok(Json(json!({
         "synced": synced,
         "skipped": skipped.len(),
         "skipped_plans": skipped,
+        "retired": retired.len(),
+        "retired_names": retired,
         "message": message,
     })))
 }
