@@ -6531,7 +6531,7 @@ function LMCP(){
     /* ── 1. THE KEY — FIRST card on this screen (plan §6.4, David 2026-11-25) ── */
     +'<div class="cc" id="mcp-key-card" style="margin-bottom:12px">'
     +'  <h3 style="margin:0 0 4px;font-size:15px">Your workspace key</h3>'
-    +'  <p style="font-size:11px;color:#94a3b8;margin:0 0 10px">The MCP service accepts this workspace\'s API key as a Bearer token. It is listed by its first characters only. <strong>View</strong> shows the whole key in one click and every view is recorded; <strong>Copy</strong> puts it on your clipboard without showing it. To rotate the key, go to <strong>API Keys</strong> — this screen never rotates it.</p>'
+    +'  <p style="font-size:11px;color:#94a3b8;margin:0 0 10px">The MCP service accepts this workspace\'s API key as a Bearer token. It is listed by its first characters only. <strong>View</strong> shows the whole key in one click and every view is recorded; <strong>Copy</strong> puts it on your clipboard without showing it. A key is only replaced on the <strong>API Keys</strong> screen — never here.</p>'
     +'  <div id="mcp-key-list" style="margin-bottom:8px"></div>'
     +'  <div id="mcp-key-out"></div>'
     +'</div>'
@@ -6765,7 +6765,10 @@ function MCPCLIP(t){
   var ok=false;
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); ok=true; } }catch(e){}
   if(!ok){ try{ var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); ok=document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
-  alert(ok?"Copied":"Could not copy automatically — select the text and press Ctrl+C");
+  /* Non-blocking confirmation — Copy is the normal path (plan §6.3) and must not open a modal. */
+  try{ showMsg(ok?"Copied to the clipboard":'Could not copy automatically — press View and copy the box', ok?"ok":"me");
+       setTimeout(function(){ var m=$("mm"); if(m) m.className="msg"; },3000); }
+  catch(e){ if(!ok) alert("Could not copy automatically — press View and copy the box"); }
 }
 
 function LM(){
@@ -7001,7 +7004,11 @@ function AKCLIP(tok){
   var ok=false;
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(tok); ok=true; } }catch(e){}
   if(!ok){ try{ var t=document.createElement("textarea"); t.value=tok; document.body.appendChild(t); t.select(); ok=document.execCommand("copy"); document.body.removeChild(t); }catch(e){} }
-  alert(ok?"Key copied":"Could not copy automatically — select the key and press Ctrl+C");
+  /* Non-blocking confirmation: Copy is the everyday path (plan §6.3), so it must not open a modal
+     the user has to dismiss before pasting. */
+  try{ showMsg(ok?"Key copied to the clipboard":'Could not copy automatically — press View and copy the box', ok?"ok":"me");
+       setTimeout(function(){ var m=$("mm"); if(m) m.className="msg"; },3000); }
+  catch(e){ if(!ok) alert("Could not copy automatically — press View and copy the box"); }
 }
 function AKCREATE(){
   var name=$("lm-ak-name"); var msg=$("lm-ak-msg");
