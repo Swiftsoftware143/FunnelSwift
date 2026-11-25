@@ -1,22 +1,22 @@
 {
   "app": "FunnelSwift Mobile",
   "platform": "android",
-  "version": "1.0.23",
-  "version_source": "versionName 1.0.23 / versionCode 3 (android/app/build.gradle and app.json, the values this build was compiled with); read back OUT of the built APK's AndroidManifest.xml: '1.0.23' present, '1.0.22' absent",
-  "size": 110959713,
-  "sha256": "5d79ef015fdad2a19e0b9283ddbc80dd2712f43b9ef9227ec70a158ee9897e3c",
-  "md5": "f54c553072efc151ded91fb35b341ed4",
+  "version": "1.0.24",
+  "version_source": "versionName 1.0.24 / versionCode 4 (android/app/build.gradle + app.json); read back from the build's output-metadata.json",
+  "size": 110970181,
+  "sha256": "3a2cfdc4145f5ad52d8c2d0b1d2fe68f889d4e83b53c4f03437aa5554aa3de12",
+  "md5": "59fd4ed7b316e657d9c728858add3293",
   "live_routes": [
-    "https://funnelswift.net/funnelswift-f54c5530.apk",
+    "https://funnelswift.net/funnelswift-59fd4ed7.apk",
     "https://funnelswift.net/funnelswift.apk"
   ],
   "mirrors_byte_identical": true,
   "naming": "funnelswift-<md5[0:8]>.apk is the immutable versioned mirror; funnelswift.apk is the stable alias (same bytes)",
   "binary_in_git": false,
-  "binary_location": "/opt/swift/nginx/www/funnelswift/{funnelswift.apk,funnelswift-f54c5530.apk} (served by nginx)",
+  "binary_location": "/opt/swift/nginx/www/funnelswift/{funnelswift.apk,funnelswift-59fd4ed7.apk} (served by nginx)",
   "guard_class": "ARTIFACT-MIRROR",
   "why_not_in_git": "110 MB served-only binary: guard class ARTIFACT-MIRROR. This record is the tracked provenance; the bytes stay out of both repos.",
-  "recorded_by": "cron default 2026-11-21",
+  "recorded_by": "cron default 2026-11-25",
   "history": [
     {
       "build": "4b36d55a",
@@ -28,13 +28,19 @@
       "build": "58d99851",
       "version": "1.0.22",
       "published": null,
-      "note": "built 2026-11-20 from HEAD (portfolio/customer separation #5) but never published \u2014 the download page kept handing out 4b36d55a"
+      "note": "built 2026-11-20 but never published"
     },
     {
       "build": "f54c5530",
       "version": "1.0.23",
       "published": "2026-11-21",
-      "note": "rebuilt from HEAD (2943b70) with versionCode 3 / versionName 1.0.23 so an installed 1.0.22 can be UPDATED rather than reinstalled; 6-leg live proof: page link, served md5, served size, manifest version, signature block, bytes==artifact"
+      "note": "versionCode 3 so an installed 1.0.22 can UPDATE"
+    },
+    {
+      "build": "59fd4ed7",
+      "version": "1.0.24",
+      "published": "2026-11-25",
+      "note": "profile shows the server picture (upload/change/remove) and the workspace plan; version text comes from app.json instead of the stale v1.0.5 literal; versionCode 4"
     }
   ]
 }
