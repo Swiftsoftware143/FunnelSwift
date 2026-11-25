@@ -17,7 +17,9 @@ Checks (one PASS/FAIL line each; exit 1 on any FAIL):
   7. real-Chromium DOM: MCP key card is FIRST, has View+Copy, no rotate/regenerate control
   8. real-Chromium DOM: the MCP screen body carries no rotate/regenerate handler, Copy writes the
      clipboard and is never rendered, View renders with NO dialog
-  9. teardown: probe account erased, residue 0
+  9. real-Chromium DOM: the Settings API Keys screen keeps View+Copy+Regenerate+Revoke, stays
+     masked, and its View is one click with no dialog
+ 10. teardown: probe account erased, residue 0
 
 Never prints a full key — prefixes only.
 
@@ -244,6 +246,46 @@ const puppeteer = require('/usr/lib/node_modules/puppeteer');
       return scripts.slice(start, end);
     });
 
+    // ── Settings → API Keys: the ORIGINAL location keeps View, Copy, Regenerate (rotate), Revoke,
+    // and its View is one click with no dialog too (plan §6.4/§6.2).
+    await page.goto('https://app.funnelswift.net/', { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.evaluate(() => document.querySelector('[data-tab="settings"]').click());
+    for (let i = 0; i < 60; i++) {
+      const ok = await page.evaluate(() => {
+        const box = document.getElementById('lm-ak-list');
+        return !!(box && box.querySelector('[data-ak-view]'));
+      });
+      if (ok) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    const settings = await page.evaluate(() => {
+      const box = document.getElementById('lm-ak-list');
+      const texts = box ? [...box.querySelectorAll('a, button')].map(e => (e.textContent || '').trim()) : [];
+      return {
+        controls: texts,
+        hasView: texts.includes('View'),
+        hasCopy: texts.includes('Copy'),
+        hasRotate: texts.includes('Regenerate'),
+        hasRevoke: texts.includes('Revoke'),
+        canvasHasSecret: /fs_[0-9a-f]{64}/.test(document.getElementById('lm-ak-list').textContent || ''),
+      };
+    });
+    const dialogsBeforeSettings = dialogs.length;
+    await page.evaluate(() => {
+      const a = document.querySelector('#lm-ak-list [data-ak-view]');
+      if (a) a.click();
+    });
+    let settingsViewVal = null;
+    for (let i = 0; i < 40; i++) {
+      settingsViewVal = await page.evaluate(() => {
+        const inp = document.querySelector('#lm-ak-new input');
+        return inp ? inp.value : null;
+      });
+      if (settingsViewVal) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    const settingsDialogs = dialogs.length - dialogsBeforeSettings;
+
     console.log(JSON.stringify({
       openedMcp: opened,
       ready,
@@ -254,6 +296,9 @@ const puppeteer = require('/usr/lib/node_modules/puppeteer');
       copyRenderedNothing: (copyOutBefore || '').trim() === '' && (copy.out || '').trim() === '',
       copyLeakedToDom: copy.bodyHasSecret,
       mcpBodyHasRotateOrRegen: source === null ? null : /rotate|regenerate/i.test(source),
+      settings,
+      settingsViewRendersServerKey: !!settingsViewVal && settingsViewVal === secret,
+      settingsViewDialogs: settingsDialogs,
       dialogs,
       pageErrors: errors,
     }));
@@ -369,15 +414,25 @@ def main():
           s4 == 200 and secret4 == secret and (after - before) == 1 and who == a["user_id"] and bool(when),
           f"reveal HTTP {s4} same={secret4 == secret} audit delta={after - before} who={who} when={bool(when)}")
 
-    # ── 5. credential boundary: anon 401, key 403, legacy password body 200 (ignored) ──────────
+    # ── 5. credential boundary on BOTH doors: anon 401, key 403, legacy password body 200 ──────
     anon, _ = http("POST", f"/api/v1/api-keys/{k['id']}/reveal", raw_body=True)
     askey, _ = http("POST", f"/api/v1/api-keys/{k['id']}/reveal", api_key=secret, raw_body=True)
     legacy, body5 = http("POST", f"/api/v1/api-keys/{k['id']}/reveal",
                          {"password": "definitely-not-the-password"}, token=a["token"])
     legacy_tok = body5.get("token") if isinstance(body5, dict) else None
-    check("5 credential boundary: anon 401, an API key as the bearer 403, legacy {password} body 200 (ignored)",
-          anon == 401 and askey == 403 and legacy == 200 and legacy_tok == secret,
-          f"anon={anon} key={askey} legacy={legacy} legacy_same_secret={legacy_tok == secret}")
+    # the fleet-standard twin (/api/personal-api-keys) is the same handler — prove it too
+    ps, pbody = http("GET", "/api/personal-api-keys", token=a["token"])
+    pkeys = (pbody.get("keys") if isinstance(pbody, dict) else None) or []
+    p_anon, _ = http("POST", f"/api/personal-api-keys/{k['id']}/reveal", raw_body=True)
+    p_key, _ = http("POST", f"/api/personal-api-keys/{k['id']}/reveal", api_key=secret, raw_body=True)
+    p_ok, p_body = http("POST", f"/api/personal-api-keys/{k['id']}/reveal", token=a["token"], raw_body=True)
+    p_tok = p_body.get("token") if isinstance(p_body, dict) else None
+    twin_masked = bool(pkeys) and not _re.search(r"fs_[0-9a-f]{64}", json.dumps(pbody))
+    check("5 credential boundary on both doors: anon 401, API key 403, legacy {password} 200 (ignored)",
+          anon == 401 and askey == 403 and legacy == 200 and legacy_tok == secret
+          and ps == 200 and twin_masked and p_anon == 401 and p_key == 403 and p_ok == 200 and p_tok == secret,
+          f"v1[anon={anon} key={askey} legacy={legacy} same={legacy_tok == secret}] "
+          f"personal[list={ps} masked={twin_masked} anon={p_anon} key={p_key} session={p_ok} same={p_tok == secret}]")
 
     # ── 6. rotate -> old 401, new 200, one live key, session untouched ─────────────────────────
     s6, body6 = http("POST", f"/api/v1/api-keys/{k['id']}/regenerate", {}, token=a["token"])
@@ -425,11 +480,22 @@ def main():
                   "pageErrors": dom.get("pageErrors"),
               })[:700])
         print("     DOM OUTPUT: " + json.dumps(dom)[:1800])
+        st = dom.get("settings") or {}
+        check("9 DOM: Settings API Keys keeps View+Copy+Regenerate+Revoke, list masked, View one click no dialog",
+              st.get("hasView") is True and st.get("hasCopy") is True
+              and st.get("hasRotate") is True and st.get("hasRevoke") is True
+              and st.get("canvasHasSecret") is False
+              and dom.get("settingsViewRendersServerKey") is True
+              and (dom.get("settingsViewDialogs") or 0) == 0,
+              json.dumps({"controls": st.get("controls"), "masked": st.get("canvasHasSecret") is False,
+                          "view_renders_key": dom.get("settingsViewRendersServerKey"),
+                          "view_dialogs": dom.get("settingsViewDialogs")})[:500])
     else:
         check("7 DOM: MCP key card FIRST, View+Copy present, masked, no rotate/regenerate control", False, str(dom)[:400])
         check("8 DOM: no rotate handler in the MCP body; View one click no dialog; Copy writes clipboard, never rendered", False, str(dom)[:400])
+        check("9 DOM: Settings API Keys keeps View+Copy+Regenerate+Revoke, list masked, View one click no dialog", False, str(dom)[:400])
 
-    # ── 9. teardown ─────────────────────────────────────────────────────────────────────────────
+    # ── 10. teardown ────────────────────────────────────────────────────────────────────────────
     es = erase(a)
     if a["tenant_id"]:
         sql(f"DELETE FROM account_erasures WHERE tenant_ref = '{a['tenant_id']}';")
@@ -437,7 +503,7 @@ def main():
     keys_left = int(scalar(f"SELECT COUNT(*) FROM api_keys WHERE tenant_id = '{a['tenant_id']}'") or 0)
     users_left = int(scalar(f"SELECT COUNT(*) FROM users WHERE tenant_id = '{a['tenant_id']}'") or 0)
     erasure_left = int(scalar(f"SELECT COUNT(*) FROM account_erasures WHERE tenant_ref = '{a['tenant_id']}'") or 0)
-    check("9 probe account erased, residue 0",
+    check("10 probe account erased, residue 0",
           es == 200 and residue == 0 and keys_left == 0 and users_left == 0 and erasure_left == 0,
           f"erase={es} tenants={residue} keys={keys_left} users={users_left} erasure_rows={erasure_left}")
 
@@ -445,7 +511,7 @@ def main():
     if FAILED:
         print(f"{len(FAILED)} CHECK(S) FAILED: " + ", ".join(FAILED))
         return 1
-    print("ALL 9 CHECKS PASSED")
+    print("ALL 10 CHECKS PASSED")
     return 0
 
 
