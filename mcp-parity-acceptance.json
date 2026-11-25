@@ -18,17 +18,17 @@
     {
       "check": "campaign create",
       "ok": true,
-      "detail": "{'id': '9ea77844-e837-4d26-aa32-bdd472052cdf', 'message': 'Campaign created'}"
+      "detail": "{'id': '98f84a1d-7c44-4fcb-9ef9-ba35271089c2', 'message': 'Campaign created'}"
     },
     {
       "check": "campaign read back (row changed)",
       "ok": true,
-      "detail": "Parity campaign dc3d2caf|email"
+      "detail": "Parity campaign 54ffb366|email"
     },
     {
       "check": "campaign update",
       "ok": true,
-      "detail": "Parity campaign 2 dc3d2caf"
+      "detail": "Parity campaign 2 54ffb366"
     },
     {
       "check": "campaign archive (row kept, status archived)",
@@ -38,17 +38,17 @@
     {
       "check": "tag group create",
       "ok": true,
-      "detail": "{'id': 'f2cd86e1-9333-44c0-a31d-771694947adc', 'message': 'Tag group created'}"
+      "detail": "{'id': '453115b8-57b0-40a4-b8c6-ce81860763b9', 'message': 'Tag group created'}"
     },
     {
       "check": "tag group read back",
       "ok": true,
-      "detail": "Parity group dc3d2caf"
+      "detail": "Parity group 54ffb366"
     },
     {
       "check": "tag group update",
       "ok": true,
-      "detail": "Parity group 2 dc3d2caf|7"
+      "detail": "Parity group 2 54ffb366|7"
     },
     {
       "check": "tag group archive without hard_delete is refused",
@@ -63,17 +63,17 @@
     {
       "check": "tag rule create",
       "ok": true,
-      "detail": "{'id': '2fa20516-96f8-466c-a679-3825ae88390a', 'message': 'Tag rule created'}"
+      "detail": "{'id': '1796eaf0-e877-4f5d-aae1-96b7b498cd51', 'message': 'Tag rule created'}"
     },
     {
       "check": "tag rule read back",
       "ok": true,
-      "detail": "Parity rule dc3d2caf"
+      "detail": "Parity rule 54ffb366"
     },
     {
       "check": "tag rule update",
       "ok": true,
-      "detail": "Parity rule 2 dc3d2caf"
+      "detail": "Parity rule 2 54ffb366"
     },
     {
       "check": "tag rule archive (is_active false, row kept)",
@@ -88,17 +88,17 @@
     {
       "check": "web-to-lead create",
       "ok": true,
-      "detail": "{'id': '843ea52c-4c15-47b2-90dc-f2d54ce94d6a', 'public_key': '10a191d0-071f-4698-af0b-c223301b9eec'}"
+      "detail": "{'id': '2595762a-6371-4d82-97c5-238f6a15507e', 'public_key': 'd767799c-a569-43ee-b453-1fae7a0983ce'}"
     },
     {
       "check": "web-to-lead read back",
       "ok": true,
-      "detail": "Parity form dc3d2caf"
+      "detail": "Parity form 54ffb366"
     },
     {
       "check": "web-to-lead update",
       "ok": true,
-      "detail": "Parity form 2 dc3d2caf"
+      "detail": "Parity form 2 54ffb366"
     },
     {
       "check": "web-to-lead archive (is_active false, row kept)",
@@ -108,17 +108,17 @@
     {
       "check": "webhook create",
       "ok": true,
-      "detail": "{'id': '695f6bcc-5417-4212-bd11-f34a3b4be89c', 'message': 'Webhook created'}"
+      "detail": "{'id': '77601a8c-8436-4630-9913-e14ba4e767af', 'message': 'Webhook created'}"
     },
     {
       "check": "webhook read back",
       "ok": true,
-      "detail": "Parity hook dc3d2caf"
+      "detail": "Parity hook 54ffb366"
     },
     {
       "check": "webhook update",
       "ok": true,
-      "detail": "Parity hook 2 dc3d2caf"
+      "detail": "Parity hook 2 54ffb366"
     },
     {
       "check": "webhook archive (is_active false, row kept)",
@@ -128,22 +128,22 @@
     {
       "check": "page create (precondition for a QR)",
       "ok": true,
-      "detail": "{'id': 'adff9da8-a9fe-42fb-964b-ef0d2a8ae7e0', 'message': 'Card created', 'slug': 'adff9da8'}"
+      "detail": "{'id': '3d52b20c-4afe-4676-88b6-6a97f47c1a44', 'message': 'Card created', 'slug': '3d52b20c'}"
     },
     {
       "check": "QR create",
       "ok": true,
-      "detail": "{'existing': False, 'id': '7ae0a8de-5a3d-4601-8673-4bb4cad9ecd8', 'png_url': '/api/v1/kinetic/qr/7ae0a8de-5a3d-4601-8673-4bb4cad9ecd8/png', 'svg_url': '/api/v1/"
+      "detail": "{'existing': False, 'id': 'd8c39608-9965-4702-9aa6-33306550b451', 'png_url': '/api/v1/kinetic/qr/d8c39608-9965-4702-9aa6-33306550b451/png', 'svg_url': '/api/v1/"
     },
     {
       "check": "QR read back",
       "ok": true,
-      "detail": "Parity QR dc3d2caf"
+      "detail": "Parity QR 54ffb366"
     },
     {
       "check": "QR update",
       "ok": true,
-      "detail": "Parity QR 2 dc3d2caf|true"
+      "detail": "Parity QR 2 54ffb366|true"
     },
     {
       "check": "QR archive (is_active false, row kept)",

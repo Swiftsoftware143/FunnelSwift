@@ -1,0 +1,201 @@
+{
+  "checks": [
+    {
+      "check": "key reads settings",
+      "ok": true,
+      "detail": "200 []"
+    },
+    {
+      "check": "key reads suppressions",
+      "ok": true,
+      "detail": "200 {\"suppressions\":[]}"
+    },
+    {
+      "check": "key reads product categories",
+      "ok": true,
+      "detail": "200 [{\"description\":\"WorkflowSwift automation subscription plans\",\"id\":\"35f39908-ce3"
+    },
+    {
+      "check": "key reads workspaces",
+      "ok": true,
+      "detail": "200 {\"can_manage\":true,\"count\":1,\"workspaces\":[{\"id\":\"e73fe3ec-5b8e-40f3-a899-a3edb5"
+    },
+    {
+      "check": "key reads private-email domains",
+      "ok": true,
+      "detail": "200 []"
+    },
+    {
+      "check": "key reads private-email mailboxes",
+      "ok": true,
+      "detail": "200 []"
+    },
+    {
+      "check": "key reads team",
+      "ok": true,
+      "detail": "200 {\"members\":[{\"email\":\"probe-a-811ada21@example.invalid\",\"id\":\"b87287a1-3221-4810"
+    },
+    {
+      "check": "key reads API keys (list only)",
+      "ok": true,
+      "detail": "200 {\"api_keys\":[{\"created_at\":\"2026-11-25T20:30:03.988471\",\"id\":\"1c8397a1-d71d-4cad"
+    },
+    {
+      "check": "key reads support requests",
+      "ok": true,
+      "detail": "200 {\"open\":0,\"requests\":[]}"
+    },
+    {
+      "check": "key reads CoreSwift integration status",
+      "ok": true,
+      "detail": "200 {\"base_url\":\"http://localhost:8084\",\"connected\":false,\"description\":\"Push leads "
+    },
+    {
+      "check": "key reads my affiliate",
+      "ok": true,
+      "detail": "200 []"
+    },
+    {
+      "check": "key reads card scanner history",
+      "ok": true,
+      "detail": "200 {\"scans\":[]}"
+    },
+    {
+      "check": "key reads plans (price list)",
+      "ok": true,
+      "detail": "200 [{\"id\":\"f0000000-0000-0000-0000-000000000001\",\"name\":\"Capture Free\",\"slug\":\"capt"
+    },
+    {
+      "check": "key reads Kinetic site meta",
+      "ok": true,
+      "detail": "200 {}"
+    },
+    {
+      "check": "key reads dashboard",
+      "ok": true,
+      "detail": "200 {\"cards_total\":0,\"conversion_rate\":0.0,\"leads_by_source\":[],\"leads_by_stage\":[],"
+    },
+    {
+      "check": "key reads mail log",
+      "ok": true,
+      "detail": "200 {\"failed\":0,\"sends\":[],\"sent\":0,\"total\":0,\"window_days\":30,\"withheld\":0}"
+    },
+    {
+      "check": "key reads tag change log",
+      "ok": true,
+      "detail": "200 []"
+    },
+    {
+      "check": "key reads webhook events",
+      "ok": true,
+      "detail": "200 {\"events\":[\"lead.created\",\"tag.updated\"]}"
+    },
+    {
+      "check": "lead stages saved by key (Lead Stages screen)",
+      "ok": true,
+      "detail": "200 [\"New\", \"Contacted\", \"Won\"]"
+    },
+    {
+      "check": "product category created by key",
+      "ok": true,
+      "detail": "201 10152f09-239c-4c98-8462-741932e1dd10"
+    },
+    {
+      "check": "product category renamed by key",
+      "ok": true,
+      "detail": "200 Parity cat 2 811ada21"
+    },
+    {
+      "check": "suppression added by key",
+      "ok": true,
+      "detail": "200 rows=1"
+    },
+    {
+      "check": "workspace created by key",
+      "ok": true,
+      "detail": "200 rows=1"
+    },
+    {
+      "check": "own profile name changed by key",
+      "ok": true,
+      "detail": "200 Parity name 811ada21"
+    },
+    {
+      "check": "own avatar uploaded by key",
+      "ok": true,
+      "detail": "200 bytes=70"
+    },
+    {
+      "check": "workspace logo uploaded by key",
+      "ok": true,
+      "detail": "200 bytes=70"
+    },
+    {
+      "check": "provider-key TEST button answers the key (no key stored \u2192 valid=false)",
+      "ok": true,
+      "detail": "200 {\"detail\":\"No key stored for this tenant\",\"provider\":\"openai\",\"valid\":false}"
+    },
+    {
+      "check": "email-config TEST button answers the key",
+      "ok": true,
+      "detail": "200 {\"detail\":\"Save your own email provider first \u2014 this test sends through YOUR wor"
+    },
+    {
+      "check": "checkout answers the key (refuses only because no payment provider is configured)",
+      "ok": true,
+      "detail": "424"
+    },
+    {
+      "check": "a second key is refused: one active key per account (409)",
+      "ok": true,
+      "detail": "409"
+    },
+    {
+      "check": "key REVEAL needs the signed-in person (refused)",
+      "ok": true,
+      "detail": "403"
+    },
+    {
+      "check": "another workspace's key id cannot be rotated (404)",
+      "ok": true,
+      "detail": "404"
+    },
+    {
+      "check": "account close refused to a key",
+      "ok": true,
+      "detail": "401"
+    },
+    {
+      "check": "data erasure refused to a key",
+      "ok": true,
+      "detail": "401"
+    },
+    {
+      "check": "platform plans refused to a customer key",
+      "ok": true,
+      "detail": "403"
+    },
+    {
+      "check": "operator integration schema refused to a customer key",
+      "ok": true,
+      "detail": "403"
+    },
+    {
+      "check": "own password change needs the current password, which a key does not have",
+      "ok": true,
+      "detail": "401"
+    },
+    {
+      "check": "own key rotated by key (a new secret replaces the old one)",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "check": "teardown leaves no probe account",
+      "ok": true,
+      "detail": "0"
+    }
+  ],
+  "passed": 39,
+  "failed": 0
+}
