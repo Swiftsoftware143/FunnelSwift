@@ -135,12 +135,33 @@ fn tenant_from_auth(auth: &AuthUser) -> Result<Uuid, AppError> {
 /// integration depends on. The fleet's role vocabulary is `user | company_admin | admin` (plus
 /// `owner` in the older apps), so the check is a membership test, not an equality against one
 /// spelling — CoreSwift's version of this check is what the fleet standard was written from.
-pub fn require_key_admin(auth: &AuthUser) -> Result<(), AppError> {
+/// May this session manage the workspace's API keys?
+///
+/// MEASURED 2026-11-25: signup writes `role = "user"` for the person who creates the workspace
+/// (`public_signup_handler`) and mints the tenant's `auto-provisioned` key in the same
+/// transaction — so the OWNER of a brand-new account was answered
+/// `403 Only an account admin may manage this workspace's API keys` the moment the Settings pane
+/// read `GET /api/v1/api-keys`. The key existed and could be neither seen, revealed, rotated nor
+/// revoked, which also meant the fleet MCP could never be connected by that customer.
+///
+/// Authority cannot be a role list here for exactly the reason `team_handler::is_workspace_owner`
+/// documents (2026-11-10): a brand-new customer's own owner row IS literally `user`. So the
+/// decision is: a platform operator, an appointed account admin — or the workspace's CREATOR, the
+/// app's own owner predicate.
+pub async fn require_key_admin(state: &AppState, auth: &AuthUser) -> AppResult<()> {
     if auth.is_admin || matches!(auth.role.as_str(), "admin" | "company_admin" | "owner") {
         return Ok(());
     }
+    if auth.impersonating.is_some() {
+        return Ok(());
+    }
+    let tenant_id = tenant_from_auth(auth)?;
+    if crate::handlers::team_handler::is_workspace_owner(state, auth, tenant_id).await? {
+        return Ok(());
+    }
     Err(AppError::Forbidden(
-        "Only an account admin may manage this workspace's API keys.".to_string(),
+        "Only the workspace owner or an account admin may manage this workspace's API keys."
+            .to_string(),
     ))
 }
 
@@ -234,7 +255,7 @@ pub async fn list_api_keys(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> AppResult<Json<serde_json::Value>> {
-    require_key_admin(&auth)?;
+    require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
 
     let rows = sqlx::query(
@@ -271,7 +292,7 @@ pub async fn create_api_key(
     auth: AuthUser,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    require_key_admin(&auth)?;
+    require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
     let created_by = caller_id(&auth).ok();
 
@@ -331,7 +352,7 @@ pub async fn reveal_api_key(
     Path(id): Path<Uuid>,
     Json(req): Json<RevealKeyRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
-    require_key_admin(&auth)?;
+    require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
 
     let row = sqlx::query(
@@ -407,7 +428,7 @@ pub async fn revoke_api_key(
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    require_key_admin(&auth)?;
+    require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
 
     let res = sqlx::query(
@@ -450,7 +471,7 @@ pub async fn regenerate_api_key(
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
-    require_key_admin(&auth)?;
+    require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
     let created_by = caller_id(&auth).ok();
 
