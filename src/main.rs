@@ -243,7 +243,7 @@ async fn main() -> Result<()> {
     // registry or bad config refuses to boot instead of failing a customer's first call. The door
     // resolves its own `api_keys` bearer on every request; it is NOT behind `require_auth`
     // (that layer accepts session JWTs, which this door deliberately does not).
-    let mcp_door = mcp::build_door(app_state.pool.clone())
+    let mcp_door = mcp::build_door(app_state.clone())
         .map_err(|e| crate::error::AppError::Internal(format!("MCP door refused to start: {e}")))?;
 
     // Build router

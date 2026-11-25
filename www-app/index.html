@@ -6487,10 +6487,14 @@ function saveSubdomain(){
 /* === MCP — the fleet slot directly above Settings (docs/fleet-mcp-nav-convention.md)
    Point any MCP client at https://app.funnelswift.net/mcp with THIS workspace's API key as the
    Bearer token. That address is FunnelSwift's OWN door (`src/mcp.rs`, built on the shared mcp-door
-   crate, kanban t_aeefb4fb): eleven READ-ONLY tools, each scoped inside its SQL to the workspace
-   that owns the key. There is no write tool, no free-form SQL door and no operator tool — a key
-   from another workspace gets not_found, exactly like a missing id. The list below is the door's
-   real registration list; `src/mcp_guard.rs` fails the test suite if the two drift. */
+   crate, kanban t_aeefb4fb): eleven reads plus twelve writes (create / update / archive for
+   funnels, pages, leads and tags — kanban t_03af3510, fleet MCP standard §9), each scoped to the
+   workspace that owns the key. There is no free-form SQL door and no operator tool: a key from
+   another workspace gets not_found, exactly like a missing id, and a platform-admin action is
+   refused. Archive means is_active=false (funnel, page) or status='archived' (lead); a tag has no
+   archive state, so archive_tag only deletes when the caller passes hard_delete=true. Every write
+   is recorded with the key id and the row id. The list below is the door's real registration list;
+   `src/mcp_guard.rs` fails the test suite if the two drift. */
 var MCP_SPECS=[
   ["list_funnels","funnels — name, slug, headline, views, live/idle"],
   ["list_pages","landing pages — title, slug, template, block count, last edit"],
@@ -6502,7 +6506,19 @@ var MCP_SPECS=[
   ["list_tags","tags and the group each one sits in"],
   ["list_email_domains","your sending domains and whether they are verified"],
   ["list_invoices","your invoices — amount, status, due and paid dates"],
-  ["list_affiliate_products","affiliate products you can promote, and your commission"]
+  ["list_affiliate_products","affiliate products you can promote, and your commission"],
+  ["create_funnel","make a funnel — name required, page copy optional"],
+  ["update_funnel","change a funnel's name, copy, phone prompt or pause switch"],
+  ["archive_funnel","pause a funnel's public page without deleting it"],
+  ["create_page","make a landing page — title required, slug allocated for you"],
+  ["update_page","change a landing page's title, copy, theme, colours or blocks"],
+  ["archive_page","stop a landing page serving without deleting it"],
+  ["create_lead","add a lead — name, email, phone, company, source, tags"],
+  ["update_lead","change a lead's fields, stage, status or tags"],
+  ["archive_lead","archive a lead (status becomes archived; nothing is deleted)"],
+  ["create_tag","make a tag, within the plan's tag allowance"],
+  ["update_tag","rename or recolour a tag, or move it between groups"],
+  ["archive_tag","remove a tag only when hard_delete is true — it has no archive state"]
 ];
 var MCP_ENDPOINT='https://app.funnelswift.net/mcp';
 var MCP_CONFIG_TEXT='{\n'
@@ -6583,7 +6599,7 @@ function LMCP(){
 
     /* ── 6. What it can read ──────────────────────────────────────────────── */
     +'<div class="cc" style="margin-bottom:12px">'
-    +'  <h3 style="margin:0 0 4px;font-size:15px">What the AI can read</h3>'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">What the AI can read and change</h3>'
     +'  <p style="color:#64748b;font-size:12px;margin:0 0 10px">These are the real tools this app exposes to a workspace key — each one scoped to this workspace.</p>'
     +'  <details id="mcp-advanced"><summary style="cursor:pointer;font-weight:600;font-size:13px">Show all '+MCP_SPECS.length+' data areas</summary>'
     +'    <ul style="font-size:12px;color:#334155;line-height:1.9;padding-left:18px;margin:10px 0 0">'+mcpToolsHtml()+'</ul>'
@@ -6594,7 +6610,9 @@ function LMCP(){
     +'<div class="cc" style="margin-bottom:12px">'
     +'  <h3 style="margin:0 0 8px;font-size:15px">What it will not do</h3>'
     +'  <ul style="font-size:12px;color:#334155;line-height:1.9;padding-left:18px;margin:0">'
-    +'    <li>It cannot change anything — every tool is a read-only SELECT. No write tool, no free-form SQL.</li>'
+    +'    <li>It can change only the four things this workspace owns — funnels, landing pages, leads and tags — and every change is recorded with your key and the row it touched.</li>'
+    +'    <li>It archives rather than deletes: a funnel or page is paused, a lead is marked archived. A tag has no archive state, so removing one needs an explicit hard_delete.</li>'
+    +'    <li>It cannot run free-form SQL, change your plan or billing, or act on the platform.</li>'
     +'    <li>It cannot see another workspace. The scope is this account\'s rows, enforced in the query, not in the prompt.</li>'
     +'    <li>It cannot use operator tools: your key is refused anything that spans accounts.</li>'
     +'    <li>It has no consent screen — the key <em>is</em> the connection. Revoke it here and the AI loses access immediately.</li>'

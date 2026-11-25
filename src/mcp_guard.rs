@@ -1,18 +1,20 @@
-//! Guard: the MCP door exposes EXACTLY the eleven read tools, each tenant-scoped in its own
-//! statement, and prints the same list on the customer console (kanban t_aeefb4fb).
+//! Guard: the MCP door exposes EXACTLY the eleven reads plus the twelve write tools (fleet standard
+//! §9), each tenant-scoped in its own statement or by calling the app's own handler, and prints
+//! the same list on the customer console (kanban t_aeefb4fb, t_03af3510).
 //!
 //! These are source-level checks in the style of `tenant_decode_guard` — no database, no network —
 //! so a later change cannot quietly widen the surface:
 //!
-//! * a twelfth tool (or a renamed one) fails;
-//! * a write/destructive tool fails;
+//! * a tool that is neither a read nor one of the twelve named writes fails;
+//! * a read tool annotated writable (or a write tool annotated read-only) fails;
+//! * only `archive_tag` may be annotated destructive;
 //! * a statement that lost the bound `tenant_id` predicate fails;
 //! * a SELECT that projects a password hash, key, provider credential or the layout blob fails;
 //! * the console's MCP screen drifting away from the door fails.
 
 #[cfg(test)]
 mod tests {
-    use mcp_door::ToolHandler;
+    use crate::db::SchemaStatus;
 
     /// The door's own source, read at COMPILE time.
     const SRC: &str = include_str!("mcp.rs");
@@ -26,8 +28,21 @@ mod tests {
             .expect("a lazy pool parses without connecting")
     }
 
+    /// The door only ever READS this state while building its registry; no tool runs here, so a
+    /// lazy pool and placeholder config are enough to validate names, schemas and annotations.
+    fn test_state() -> crate::state::AppState {
+        crate::state::AppState::new(
+            lazy_pool(),
+            SchemaStatus::new(),
+            "guard-jwt-secret".to_string(),
+            "guard-internal-key".to_string(),
+            "http://127.0.0.1:1".to_string(),
+            "http://127.0.0.1:1".to_string(),
+        )
+    }
+
     fn registry() -> mcp_door::Registry {
-        super::super::mcp::registry(lazy_pool())
+        super::super::mcp::registry(test_state())
     }
 
     fn spec(name: &str) -> serde_json::Value {
@@ -38,8 +53,25 @@ mod tests {
             .to_json()
     }
 
+    /// The twelve writes §9 adds: one create, one update and one archive per top-level entity the
+    /// product owns (funnels, pages, leads, tags). Any other write tool is a surface change.
+    const WRITE_TOOLS: [&str; 12] = [
+        "create_funnel",
+        "update_funnel",
+        "archive_funnel",
+        "create_page",
+        "update_page",
+        "archive_page",
+        "create_lead",
+        "update_lead",
+        "archive_lead",
+        "create_tag",
+        "update_tag",
+        "archive_tag",
+    ];
+
     #[tokio::test]
-    async fn the_door_offers_exactly_the_eleven_read_tools() {
+    async fn the_door_offers_the_eleven_reads_and_the_twelve_writes() {
         let reg = registry();
         assert_eq!(
             reg.validate(),
@@ -54,21 +86,34 @@ mod tests {
             .collect();
         expected.sort();
         assert_eq!(names, expected, "the exposed tool set changed");
-        assert_eq!(names.len(), 11, "this phase is eleven reads");
+        assert_eq!(names.len(), 23, "eleven reads plus twelve writes");
 
         for name in &names {
             let tool = spec(name);
             let annotations = tool.get("annotations").expect("annotations");
-            assert_eq!(
-                annotations.get("readOnlyHint").and_then(|v| v.as_bool()),
-                Some(true),
-                "{name} must be annotated read-only"
-            );
-            assert_eq!(
-                annotations.get("destructiveHint").and_then(|v| v.as_bool()),
-                Some(false),
-                "{name} must never be destructive"
-            );
+            let read_only = annotations
+                .get("readOnlyHint")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let destructive = annotations
+                .get("destructiveHint")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if WRITE_TOOLS.contains(&name.as_str()) {
+                assert!(
+                    !read_only,
+                    "{name} is a write tool and must not read-only-annotate"
+                );
+            } else {
+                assert!(read_only, "{name} must be annotated read-only");
+            }
+            // Archive semantics keep every write reversible EXCEPT the tag, which has no archive
+            // column and therefore says so with the destructive annotation.
+            if name == "archive_tag" {
+                assert!(destructive, "archive_tag deletes the row and must say so");
+            } else {
+                assert!(!destructive, "{name} must never be destructive");
+            }
         }
     }
 
@@ -96,13 +141,13 @@ mod tests {
             assert!(
                 head.starts_with('"'),
                 "a run-time-built SQL statement appeared in the door: {:?}",
-                &head.chars().take(40).collect::<String>()
+                head.chars().take(40).collect::<String>()
             );
             statements += 1;
         }
         assert_eq!(
-            statements, 13,
-            "eleven tool statements, the credential lookup and its usage stamp"
+            statements, 14,
+            "eleven tool statements, the archive_page update, the credential lookup and its usage stamp"
         );
     }
 
@@ -130,8 +175,8 @@ mod tests {
         let statements = sql_literals();
         assert_eq!(
             statements.len(),
-            13,
-            "eleven reads plus the credential pair"
+            14,
+            "eleven reads, the page archive and the credential pair"
         );
         for sql in &statements {
             for token in [
@@ -198,8 +243,8 @@ mod tests {
     #[tokio::test]
     async fn the_door_builds_and_refuses_a_bad_registry() {
         // A real build validates names, descriptions, schemas, annotations and the config.
-        let door = super::super::mcp::build_door(lazy_pool()).expect("the door builds");
-        assert_eq!(door.registry().len(), 11);
+        let door = super::super::mcp::build_door(test_state()).expect("the door builds");
+        assert_eq!(door.registry().len(), 23);
         assert_eq!(door.config().path, "/mcp");
         assert_eq!(door.config().server_name, "funnelswift");
     }
