@@ -383,10 +383,11 @@ html[data-theme="dark"] [style*="border-left:3px"]{border-left-color:#818cf8!imp
        (kanban t_5a3c2d9c: the key-management screen was RETIRED, so it is no longer in this list.) -->
   <a data-tab="webhooks" onclick="S('webhooks')">Webhooks</a>
   <!-- fleet MCP slot (docs/fleet-mcp-nav-convention.md): ONE entry, labelled exactly `MCP`,
-       placed immediately above Settings. The panel shows the endpoint, this workspace's API key by
-       prefix (Reveal/Copy/Regenerate through the existing /api/v1/api-keys routes), the read-only
-       tools the mcp server exposes for funnelswift, and a copy-paste client config. No audit block:
-       the MCP audit log is a file owned by the mcp service and has no read API. -->
+       placed immediately above Settings. The panel opens with this workspace's key card FIRST —
+       View (one click, session only) and Copy, never rotate, which lives on the API Keys screen
+       (plan §6.4) — then the read-only tools the mcp server exposes for funnelswift and a
+       copy-paste client config. No audit block: the MCP audit log is a file owned by the mcp
+       service and has no read API. -->
   <a data-tab="settings" onclick="S('settings')">Settings</a>
   <!-- cron 2026-11-23: GET|POST /api/v1/settings/suppressions, DELETE .../:id, the CSV twin
        and GET /api/v1/settings/do-not-mail/webhook shipped 2026-11-21 with NO screen, so a
@@ -540,7 +541,7 @@ initAccordions();
 
 /* ═══ INLINE HELP SYSTEM — slide-out panel with per-section tips ═══ */
 var helpContent={
-  "mcp":'<h4>MCP \u2014 connect your AI tools</h4><p>Point an MCP client (Claude Desktop, Cursor, Hermes, or your own agent) at the endpoint on this screen and it can <strong>read</strong> this workspace\u2019s data. Every tool is a read-only SELECT: there is no write tool, no free-form SQL door, and operator-wide tools are refused for a workspace key. The token is this workspace\u2019s own API key, shown by prefix until you press Reveal. If no active key is listed, create one on the Settings screen first.</p>',
+  "mcp":'<h4>MCP \u2014 connect your AI tools</h4><p>Point an MCP client (Claude Desktop, Cursor, Hermes, or your own agent) at the endpoint on this screen and it can <strong>read</strong> this workspace\u2019s data. Every tool is a read-only SELECT: there is no write tool, no free-form SQL door, and operator-wide tools are refused for a workspace key. The token is this workspace\u2019s own API key, shown by prefix; one click on View shows the whole key and every view is recorded, and Copy puts it on your clipboard without showing it. If no active key is listed, create one on the Settings screen first.</p>',
   "campaigns":'<h4>Campaigns</h4><p>The campaigns this workspace runs, newest first. Each row carries a name, a type (for example <code>email</code>), a status and an optional description.</p><ul><li><strong>+ New campaign</strong> &mdash; name it, pick a type and a status, then <strong>Create campaign</strong>.</li><li><strong>Edit</strong> changes any of those fields; <strong>Delete</strong> removes the campaign for good and asks first.</li><li>Status is yours to set: <code>draft</code>, <code>active</code>, <code>paused</code> or <code>completed</code>. This screen records what your team is running &mdash; it does not send anything.</li></ul>',
   "analytics":'<h4>Analytics</h4><p>Views, clicks and shares for every card in this workspace, plus the visitors counted once per session. The table ranks your cards by views, so you can see which one earns the traffic. A card with no traffic yet does not appear until it is viewed. <strong>Analytics is part of the paid plans</strong> — on the free plan this screen shows the plans instead.'
   +'<p><strong>One card at a time.</strong> Every card has an <strong>Analytics</strong> button. It opens that card\'s own numbers: views, clicks, shares, unique visitors, views today and this week, a day-by-day table, where the views came from, and what visitors did. The same panel holds the <strong>campaign labels</strong> (source, medium, campaign, content, term) that are saved on the card, and the <strong>tracking link</strong> to share \u2014 the labels ride in that link\'s query string, so each visit it brings is filed under them and shows up in the labelled-visits list. Saving re-reads the link from the server, so the link shown is the one stored.</p>',
@@ -6527,7 +6528,15 @@ function LMCP(){
     +'<h2 style="margin:6px 0 4px;font-size:22px">Connect AI with FunnelSwift</h2>'
     +'<p style="color:#64748b;font-size:13px;margin:0 0 18px;max-width:70ch">Ask Claude or ChatGPT about your leads, funnels, campaigns and tags — and have it find things for you.</p>'
 
-    /* ── 1. CONNECT: client tabs + numbered steps ─────────────────────────── */
+    /* ── 1. THE KEY — FIRST card on this screen (plan §6.4, David 2026-11-25) ── */
+    +'<div class="cc" id="mcp-key-card" style="margin-bottom:12px">'
+    +'  <h3 style="margin:0 0 4px;font-size:15px">Your workspace key</h3>'
+    +'  <p style="font-size:11px;color:#94a3b8;margin:0 0 10px">The MCP service accepts this workspace\'s API key as a Bearer token. It is listed by its first characters only. <strong>View</strong> shows the whole key in one click and every view is recorded; <strong>Copy</strong> puts it on your clipboard without showing it. To rotate the key, go to <strong>API Keys</strong> — this screen never rotates it.</p>'
+    +'  <div id="mcp-key-list" style="margin-bottom:8px"></div>'
+    +'  <div id="mcp-key-out"></div>'
+    +'</div>'
+
+    /* ── 2. CONNECT: client tabs + numbered steps ─────────────────────────── */
     +'<div class="cc" style="margin-bottom:12px">'
     +'  <div style="display:flex;gap:8px;margin-bottom:12px">'
     +'    <button class="btn btn-sm" id="mcpTabChatgpt" onclick="MCPCLIENT(\'chatgpt\')" style="font-weight:600">ChatGPT</button>'
@@ -6537,14 +6546,6 @@ function LMCP(){
     +'  <p style="color:#64748b;font-size:13px;margin:0 0 14px;max-width:70ch">For ChatGPT and Claude on the web. There is no app to install: you give your AI client this workspace\'s API key, so every answer is scoped to <strong>your</strong> data and nobody else\'s.</p>'
     +'  <div id="mcpSteps"></div>'
     +'  <p style="color:#94a3b8;font-size:11px;line-height:1.7;margin:10px 0 0">Connectors are available on paid ChatGPT and Claude plans. Be signed in to the same browser first. The key acts as the account that created it, so treat it like a password.</p>'
-    +'</div>'
-
-    /* ── 2. The key ───────────────────────────────────────────────────────── */
-    +'<div class="cc" style="margin-bottom:12px">'
-    +'  <h3 style="margin:0 0 4px;font-size:15px">Your workspace key</h3>'
-    +'  <p style="font-size:11px;color:#94a3b8;margin:0 0 10px">The MCP service accepts this workspace\'s API key as a Bearer token. It is listed by prefix only — the secret appears only after Reveal, which asks for your account password.</p>'
-    +'  <div id="mcp-key-list" style="margin-bottom:8px"></div>'
-    +'  <div id="mcp-key-out"></div>'
     +'</div>'
 
     /* ── 3. Ready to connect ──────────────────────────────────────────────── */
@@ -6608,7 +6609,7 @@ function LMCP(){
     +'  <button class="btn btn-sm" style="margin-top:8px" onclick="MCPCLIP(MCP_CONFIG_TEXT)">Copy config</button>'
     +'</div>';
 
-  $("ct").innerHTML='<div class="cc" style="padding-bottom:0;background:transparent;border:0;box-shadow:none">'+inner+'</div>';
+  $("ct").innerHTML='<div id="mcp-root" style="padding-bottom:0">'+inner+'</div>';
   MCPCLIENT('chatgpt');
   MCPEXAMPLES();
   MCPTLOAD();
@@ -6717,9 +6718,10 @@ function MCPTEST(){
       +X((e&&e.message)||'Could not read your keys.')+'</div>';
   });
 }
-/* The token block reads the same GET /api/v1/api-keys the Settings screen reads; Reveal/Copy/
-   Regenerate call the app's existing reveal/regenerate routes (password-gated reveal, atomic
-   regenerate). Prefix only until a Reveal, exactly like the Settings API-keys screen. */
+/* The key card reads the same GET /api/v1/api-keys the Settings screen reads; View/Copy call the
+   app's existing reveal route (one click, console session only — plan §6.2). Prefix only until a
+   View, exactly like the Settings API-keys screen. NO rotate control on this screen: plan §6.4 says
+   a key rotates at its original location, so the handler and the button were removed here. */
 function MCPTLOAD(){
   var box=$("mcp-key-list"); if(!box) return;
   api("/api/v1/api-keys").then(function(d){
@@ -6733,26 +6735,24 @@ function MCPTLOAD(){
         +'<code style="font-size:11px;color:#4f46e5">'+X(k.key_prefix)+'&hellip;</code>'
         +'<br><span style="color:#94a3b8;font-size:11px">Created '+TSFMT(k.created_at)+'</span></span>'
         +'<span style="white-space:nowrap;font-size:11px">'
-        +'<a href="#" data-mcp-view="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">Reveal</a>'
-        +'<a href="#" data-mcp-copy="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">Copy</a>'
-        +'<a href="#" data-mcp-regen="'+X(k.id)+'" style="color:#b45309">Regenerate</a>'
+        +'<a href="#" data-mcp-view="'+X(k.id)+'" style="color:#2563eb;margin-right:8px">View</a>'
+        +'<a href="#" data-mcp-copy="'+X(k.id)+'" style="color:#2563eb">Copy</a>'
         +'</span></div>';
     });
     box.innerHTML=h;
     function wire(attr,fn){ Array.prototype.forEach.call(box.querySelectorAll("["+attr+"]"),function(a){ a.addEventListener("click",function(ev){ ev.preventDefault(); fn(a.getAttribute(attr)); }); }); }
     wire("data-mcp-view",function(id){ MCPTREVEAL(id,false); });
     wire("data-mcp-copy",function(id){ MCPTREVEAL(id,true); });
-    wire("data-mcp-regen",MCPTREGEN);
   }).catch(function(e){ box.innerHTML='<p style="color:#b91c1c;font-size:12px">'+X(e.message||"Could not load API keys")+'</p>'; });
 }
 function MCPTREVEAL(id,copyOnly){
-  var pw=prompt("Enter your account password to reveal this key");
-  if(pw===null) return;
-  api("/api/v1/api-keys/"+id+"/reveal",{method:"POST",body:JSON.stringify({password:pw})}).then(function(r){
+  /* One click, no password prompt (plan §6.2/§8) — the session is the authority and every reveal is
+     recorded server-side. Copy never renders the secret. */
+  api("/api/v1/api-keys/"+id+"/reveal",{method:"POST"}).then(function(r){
     var tok=r.token||"";
     if(copyOnly){ MCPCLIP(tok); return; }
-    MCPTSHOW("You can reveal this key again any time.",tok);
-  }).catch(function(e){ alert((e&&e.message)||"Could not reveal the key — check the password."); });
+    MCPTSHOW("You can view or copy this key again any time.",tok);
+  }).catch(function(e){ alert((e&&e.message)||"Could not show the key."); });
 }
 function MCPTSHOW(note,tok){
   var box=$("mcp-key-out"); if(!box) return;
@@ -6766,13 +6766,6 @@ function MCPCLIP(t){
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); ok=true; } }catch(e){}
   if(!ok){ try{ var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); ok=document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
   alert(ok?"Copied":"Could not copy automatically — select the text and press Ctrl+C");
-}
-function MCPTREGEN(id){
-  if(!confirm("Regenerate this key? The old key stops working immediately, so anything using it — including any connected MCP client — must be updated with the new one.")) return;
-  api("/api/v1/api-keys/"+id+"/regenerate",{method:"POST",body:"{}"}).then(function(r){
-    MCPTSHOW("The old key no longer works. Use this new one in your MCP client.",r.token);
-    MCPTLOAD();
-  }).catch(function(e){ alert((e&&e.message)||"Could not regenerate the key"); });
 }
 
 function LM(){
@@ -6933,13 +6926,14 @@ function LM(){
     MHLOAD();
 
     /* API keys (kanban t_7863696b) — the workspace's durable credential for external callers. The
-       key is stored sealed and shown masked; View asks for the account password before revealing;
-       Copy is one click; Regenerate revokes and re-issues in one step. Every mint/reveal is
+       key is stored sealed and shown masked; View shows it in one click (no password re-prompt,
+       every view recorded), Copy puts it on the clipboard without showing it, and Regenerate rotates
+       it in one step. This screen is the ONLY place a key rotates (plan §6.4). Every mint/reveal is
        audited server-side. Built LAST like the panes above, with its dynamic half rendered into its
        own #lm-ak-list container (the t_7caf7873 trap). */
     var akDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
     akDiv.innerHTML='<strong style="font-size:13px">API keys</strong>'
-      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">A key lets your own software — or another SwiftSoftware app — talk to this workspace without a login screen. It is stored encrypted and shown masked, and you can view or copy it any time. Regenerate rotates it; the old key stops working immediately.</p>'
+      +'<p style="font-size:11px;color:#94a3b8;margin:4px 0 10px">A key lets your own software — or another SwiftSoftware app — talk to this workspace without a login screen. It is stored encrypted and shown masked. View shows it in one click and Copy puts it on your clipboard without showing it; every view is recorded. Regenerate rotates it; the old key stops working immediately.</p>'
       +'<div id="lm-ak-list" style="margin-bottom:10px"></div>'
       +'<div id="lm-ak-new" style="margin-bottom:10px"></div>'
       +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
@@ -6951,10 +6945,12 @@ function LM(){
   });
 }
 /* === API keys (2026-11-13) =====================================================================
-   Reads GET /api/v1/api-keys, creates POST /api/v1/api-keys, reveals POST /api/v1/api-keys/:id/reveal
-   (password-gated), regenerates POST /api/v1/api-keys/:id/regenerate, revokes DELETE
-   /api/v1/api-keys/:id. The server owns every decision; a refusal arrives as the server's own
-   sentence and is printed verbatim. */
+   Reads GET /api/v1/api-keys, creates POST /api/v1/api-keys, shows POST /api/v1/api-keys/:id/reveal
+   (one click, console session only — plan §6.2), rotates POST /api/v1/api-keys/:id/regenerate and
+   revokes DELETE /api/v1/api-keys/:id. The list is masked by default (prefix + …). View renders the
+   full value in the box below the list; Copy takes the same server response and writes it to the
+   clipboard WITHOUT rendering it. The server owns every decision; a refusal arrives as the server's
+   own sentence and is printed verbatim. */
 function AKLOAD(){
   var box=$("lm-ak-list"); if(!box) return;
   api("/api/v1/api-keys").then(function(d){
@@ -6984,13 +6980,14 @@ function AKLOAD(){
   }).catch(function(e){ box.innerHTML='<p style="color:#b91c1c;font-size:12px">'+X(e.message||"Could not load API keys")+'</p>'; });
 }
 function AKREVEAL(id,copyOnly){
-  var pw=prompt("Enter your account password to view this key");
-  if(pw===null) return;
-  api("/api/v1/api-keys/"+id+"/reveal",{method:"POST",body:JSON.stringify({password:pw})}).then(function(r){
+  /* Plan §6.2/§8 (David, 2026-11-25): View is ONE click from a valid console session — no password
+     re-prompt. Every view is recorded server-side. Copy is the same fetch, written straight to the
+     clipboard and NEVER rendered: the secret must not land in the DOM on the copy path. */
+  api("/api/v1/api-keys/"+id+"/reveal",{method:"POST"}).then(function(r){
     var tok=r.token||"";
     if(copyOnly){ AKCLIP(tok); return; }
-    AKSHOW("This key stays viewable — you can reveal it again any time.",tok,"#eff6ff","#bfdbfe");
-  }).catch(function(e){ alert((e&&e.message)||"Could not reveal the key — check the password."); });
+    AKSHOW("This key stays viewable — you can view or copy it again any time.",tok,"#eff6ff","#bfdbfe");
+  }).catch(function(e){ alert((e&&e.message)||"Could not show the key."); });
 }
 function AKSHOW(note,tok,bg,bd){
   var box=$("lm-ak-new"); if(!box) return;
@@ -7645,7 +7642,7 @@ window.appGuidePages = {
   // live in Chromium on app.funnelswift.net: MCP -> #ig-toggle display:none while Dashboard and
   // Support -> flex. The screen is real (endpoint, token, tool list, client config), so it gets
   // an entry that names those four things.
-  mcp:         { title: "MCP", desc: "Connects an AI tool \u2014 Claude Code, Cursor, Hermes or your own agent \u2014 to read this workspace's FunnelSwift data. Read-only: every tool is a SELECT, with no write tool and no free-form SQL. The server takes this workspace's API key as the token, so the key is shown by prefix only until you Reveal it with your account password.", actions: ["Copy the endpoint into your MCP client", "Press Reveal to see this workspace's key, then Copy", "Copy the client config and paste it into Claude Desktop or Cursor", "Read the tool list to see what the tool can look at"] },
+  mcp:         { title: "MCP", desc: "Connects an AI tool \u2014 Claude Code, Cursor, Hermes or your own agent \u2014 to read this workspace's FunnelSwift data. Read-only: every tool is a SELECT, with no write tool and no free-form SQL. The server takes this workspace's API key as the token, so the key is shown by prefix only; View shows it in one click (recorded) and Copy puts it on your clipboard without showing it.", actions: ["Copy the endpoint into your MCP client", "Press View to see this workspace's key, or Copy to put it on your clipboard", "Copy the client config and paste it into Claude Desktop or Cursor", "Read the tool list to see what the tool can look at"] },
   inbox:       { title: "Inbox", desc: "Your own addresses on your own domain. Add the domain you already own, paste the exact records the screen prints at your DNS provider, then Check again until the domain reads Receiving — mail cannot arrive before that. The Mailgun (or SMTP) credential you enter is stored encrypted. Create the addresses you want, and read the mail in the client at inbox.funnelswift.net, which is the same account. A branded inbox.yourbusiness.com address is not offered yet. The Recent mail list has a search box that reads the subject, the sender and the opening text of every message.", actions: ["Add your domain and paste its records", "Press Check again until it says Receiving", "Create the addresses you want", "Open inbox.funnelswift.net to read the mail", "Type in Search subject, sender or text to narrow the recent mail"] },
   // DO NOT MAIL HAD NO ENTRY (cron 2026-11-23): the screen shipped this morning with its own sidebar
   // tab and its fetch path, but no key in this map — so the guide's round "?" was display:none on

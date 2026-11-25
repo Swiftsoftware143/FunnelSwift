@@ -305,7 +305,7 @@ async fn provision_workspace(
                 &mut *tx,
                 tenant_id,
                 Some(user_id),
-                "auto-provisioned",
+                &crate::handlers::api_keys::auto_provisioned_key_name(name),
             )
             .await?;
             (Some(minted.prefix), true)

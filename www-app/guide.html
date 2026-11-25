@@ -745,17 +745,20 @@ window.FunnelSwiftConfig = {
       your secret and comparing the two.</p>
 
       <h2 id="api-keys">🔑 API Keys</h2>
-      <p>Your workspace already has an API key — FunnelSwift creates one with the account, so an
-      outside tool can call your workspace's API and its MCP server without you making anything
-      first. The <strong>API Keys</strong> screen (sidebar, under TOOLS, just above Provider Keys)
-      is where you see and manage it.</p>
+      <p>Your workspace already has an API key — FunnelSwift creates one with the account, named
+      <code>MCP — your account name</code>, so an outside tool can call your workspace's API and its
+      MCP server without you making anything first. The <strong>API Keys</strong> screen (sidebar,
+      under TOOLS, just above Provider Keys) is where you see and manage it.</p>
       <p>The list shows the key's <strong>prefix</strong> only — for example
       <code>fs_1a2b3c4d5…</code> — with whether it is active, the day it was created and the last
-      time it was used. Three buttons sit on each live key:</p>
+      time it was used. Four controls sit on each live key:</p>
       <ul>
-        <li><strong>View</strong> asks for the password you sign in with, then shows the whole key so
-        you can copy it (Copy key). You can do this as often as you like; each view is recorded, and
-        a mistyped password just says it is incorrect — it does not sign you out.</li>
+        <li><strong>View</strong> shows the whole key in one click — no password step; if you are
+        signed in, that is enough, the same way Stripe treats a key you own. Every view is recorded
+        (who, which key, when), so a copied key can always be traced to the moment it was read.</li>
+        <li><strong>Copy</strong> puts the whole key straight on your clipboard without showing it
+        on the screen — the everyday way to move a key into an app. It reads the key from the server
+        the same way View does, and the value never appears in the page.</li>
         <li><strong>Regenerate</strong> swaps the key for a brand-new one in a single step. The old
         key stops working the moment the new one is issued, so anything already using it fails until
         you paste the new key in. Press it when a key has been shared by mistake.</li>
@@ -783,10 +786,11 @@ window.FunnelSwiftConfig = {
         <li><strong>The endpoint</strong> &mdash; <code>https://app.funnelswift.net/mcp</code>, with a
         <strong>Copy</strong> button.</li>
         <li><strong>Your token</strong> &mdash; the same workspace key the API Keys screen shows, listed by its
-        first characters only. <strong>Reveal</strong> asks for the password you sign in with before it shows
-        the key, and every view is recorded; the secret is never on the screen until then. Press
-        <strong>Regenerate</strong> on the <strong>API Keys</strong> screen when a key has been shared by
-        mistake &mdash; it replaces the key at once and the old one stops working.</li>
+        first characters only. This card is the <strong>first</strong> thing on the screen: <strong>View</strong>
+        shows the whole key in one click (every view is recorded) and <strong>Copy</strong> puts it on your
+        clipboard without showing it. There is no rotate button here &mdash; a key rotates only on the
+        <strong>API Keys</strong> screen, at its original location, so a key is never replaced by accident
+        while you are wiring up a client.</li>
         <li><strong>The tools your key can call</strong> &mdash; eleven read-only tools, named exactly as the
         client sees them: <code>list_funnels</code>, <code>list_pages</code>, <code>get_page</code>,
         <code>page_stats</code>, <code>list_leads</code>, <code>lead_events</code>,

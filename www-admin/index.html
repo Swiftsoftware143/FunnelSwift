@@ -4584,7 +4584,7 @@ function bindProviderKeys() {
 //   GET    /api-keys                       -> { api_keys: [{id,name,key_prefix,created_at,
 //                                                last_used_at,revoked_at,recoverable}] }
 //   POST   /api-keys                       -> 201 {token,...} | 409 when a live key exists
-//   POST   /api-keys/:id/reveal {password} -> { token, key_prefix }  (CURRENT password required)
+//   POST   /api-keys/:id/reveal           -> { token, key_prefix }  (console session, one click, audited)
 //   POST   /api-keys/:id/regenerate        -> {token,...}  (one atomic retire-then-mint)
 //   DELETE /api-keys/:id                   -> revoke
 // The server writes the audit rows itself (api_key_revealed / api_key_regenerated /
@@ -4635,13 +4635,27 @@ window._apiKeyCopy = function () {
 
 window._apiKeyView = async function (id) {
   if (!id) return;
-  const pw = prompt('Enter YOUR account password to show this key. Every view is recorded.');
-  if (!pw) return;
+  // Plan §6.2/§8 (David, 2026-11-25): View is ONE click from a valid console session — no password
+  // re-prompt. Every view is recorded server-side (api_key_revealed).
   try {
-    const r = await api('/api-keys/' + encodeURIComponent(id) + '/reveal', { method: 'POST', body: JSON.stringify({ password: pw }), authRedirect: false });
+    const r = await api('/api-keys/' + encodeURIComponent(id) + '/reveal', { method: 'POST', authRedirect: false });
     _apiKeyTokenModal(r && r.token, (r && r.key_prefix) || '');
   } catch (e) {
     showToast('Could not show the key: ' + ((e && e.message) ? e.message : 'unknown error'), 'error');
+  }
+};
+
+// COPY = the same fetch, written to the clipboard and NEVER rendered (plan §6.3). Kept separate from
+// View so the normal path never puts the secret in the DOM.
+window._apiKeyCopy = async function (id) {
+  if (!id) return;
+  try {
+    const r = await api('/api-keys/' + encodeURIComponent(id) + '/reveal', { method: 'POST', authRedirect: false });
+    const t = (r && r.token) || '';
+    if (!t) { showToast('The server returned no key to copy', 'error'); return; }
+    mcpCopy(t);
+  } catch (e) {
+    showToast('Could not copy the key: ' + ((e && e.message) ? e.message : 'unknown error'), 'error');
   }
 };
 
@@ -4694,6 +4708,7 @@ async function renderApiKeys() {
       <td style="font-size:12px;color:var(--muted)">${x(formatDate(k.created_at))}</td>
       <td style="font-size:12px;color:var(--muted)">${k.last_used_at ? x(formatDate(k.last_used_at)) : 'never'}</td>
       <td>${k.revoked_at ? '' : `<button class="btn btn-secondary btn-xs" onclick="window._apiKeyView('${x(k.id)}')">View</button>
+        <button class="btn btn-secondary btn-xs" onclick="window._apiKeyCopy('${x(k.id)}')">Copy</button>
         <button class="btn btn-secondary btn-xs" onclick="window._apiKeyRegenerate('${x(k.id)}')">Regenerate</button>
         <button class="btn btn-danger btn-xs" onclick="window._apiKeyRevoke('${x(k.id)}')">Revoke</button>`}</td>
     </tr>`).join('');
@@ -4703,7 +4718,7 @@ async function renderApiKeys() {
       <h1 style="font-size:22px;font-weight:700">🔑 API Keys</h1>
       ${live.length ? '' : `<button class="btn btn-primary btn-sm" onclick="window._apiKeyCreate()">Create an API key</button>`}
     </div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">This workspace's key for the FunnelSwift API and MCP server. It is created with your account, it never expires, and you can view it again at any time — each view asks for your password and is recorded.</p>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px">This workspace's key for the FunnelSwift API and MCP server. It is created with your account, it never expires, and you can view or copy it again at any time — View shows it in one click and Copy puts it on your clipboard without showing it. Every view is recorded.</p>
     ${API_KEYS_STATE.err ? `<div class="card" style="border-color:#fca5a5;margin-bottom:16px"><div style="font-size:13px;color:#991b1b">${x(API_KEYS_STATE.err)}</div></div>` : ''}
     ${API_KEYS_STATE.list === null ? `<div class="empty"><div class="icon">⏳</div><div class="title">Loading…</div></div>` : ''}
     ${list.length === 0 ? `<div class="empty"><div class="icon">🔑</div><div class="title">No API key yet</div><div class="desc">Minting one makes this workspace's API usable from your own tools.</div></div>` : `
@@ -4759,9 +4774,11 @@ async function renderMcp() {
   const keyBlock = err
     ? `<div style="font-size:13px;color:#991b1b">${x(err)}</div>`
     : (keys.length
-      ? `<p style="font-size:13px;color:var(--muted);margin:0 0 8px">Use one of these as the Bearer token. Only the prefix is shown — open <b>API Keys</b> and press View to read the full value (it asks for your password).</p>
-        <div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Key prefix</th></tr></thead><tbody>${
-          keys.map(k => `<tr><td><strong>${x(k.name || 'API key')}</strong></td><td><code style="font-size:11px">${x(k.key_prefix || '')}…</code></td></tr>`).join('')
+      ? `<p style="font-size:13px;color:var(--muted);margin:0 0 8px">Use one of these as the Bearer token. Only the prefix is listed. <b>View</b> shows the whole key in one click (every view is recorded) and <b>Copy</b> puts it on your clipboard without showing it. To rotate a key, use the <b>API Keys</b> screen — this screen never rotates it.</p>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Key prefix</th><th>Actions</th></tr></thead><tbody>${
+          keys.map(k => `<tr><td><strong>${x(k.name || 'API key')}</strong></td><td><code style="font-size:11px">${x(k.key_prefix || '')}…</code></td>
+            <td><button class="btn btn-secondary btn-xs" onclick="window._apiKeyView('${x(k.id)}')">View</button>
+            <button class="btn btn-secondary btn-xs" onclick="window._apiKeyCopy('${x(k.id)}')">Copy</button></td></tr>`).join('')
         }</tbody></table></div>`
       : `<p style="font-size:13px;color:var(--muted);margin:0">No active API key on this workspace yet. Create one on <b>API Keys</b>, then come back — the MCP server accepts that key as a Bearer token.</p>`);
   const rows = MCP_TOOLS.map(t => `<tr>
@@ -4771,16 +4788,16 @@ async function renderMcp() {
   return `<div>
     <h1 style="font-size:22px;font-weight:700">🤖 MCP — connect your AI tools</h1>
     <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Point any MCP client — Claude Code, Cursor, Hermes, or your own agent — at the endpoint below and it can read this workspace's data. The client authenticates with this workspace's own API key, so it only ever sees this account. Everything here is read-only.</p>
+    <div class="card" id="mcp-key-card" style="margin-bottom:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Your key</div>
+      ${keyBlock}
+    </div>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px">Endpoint</div>
       <div style="display:flex;align-items:center;gap:8px">
         <code id="mcp-ep" style="font-size:12px;word-break:break-all;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;flex:1">${x(MCP_ENDPOINT)}</code>
         <button class="btn btn-secondary btn-sm" id="mcp-ep-copy">Copy</button>
       </div>
-    </div>
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Your key</div>
-      ${keyBlock}
     </div>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px">Client config — replace YOUR_API_KEY with the key above</div>
@@ -8437,7 +8454,7 @@ window.fsThemeApply = fsThemeApply;
    which screen is open by renderView() and by the sync below. */
 window.appGuidePages = {
   "workspaces": { title: "Workspaces", desc: "The separate drawers inside this one account — each keeps its own funnels, leads, tags and cards, so one sign-in can run more than one brand, client or location. The table names every workspace, which one is the default and which one you are signed into. Switch to changes the workspace every other screen works in; Rename changes its name; Make default decides which one a new sign-in opens. Two workspaces cannot share a name, an account must always keep at least one workspace, the one you are signed into cannot be deleted until you switch away, and a portfolio business always keeps its own workspaces whatever the count. The add box says whether this account's plan caps how many you can run: a plan that sets a number refuses the one past it with the reason, and a plan that sets none says so rather than leaving you to guess.", actions: ["Switch to a workspace you run", "Rename one, or make it the default a new sign-in opens", "Add a workspace, if your plan allows another", "Delete one you no longer use — switch away from it first"] },
-  "apiKeys": { title: "API Keys", desc: "This workspace's own key for the FunnelSwift API and MCP server. It is created with your account and never expires. The screen shows only the prefix; View asks for your account password, then shows the full key so you can copy it, and every view is recorded. Regenerate replaces the key in one step — the old one stops working the moment the new one starts — and Revoke retires it so the workspace can mint a fresh one.", actions: ["Press View, enter your account password, then Copy key", "Press Regenerate to replace a key you think has leaked", "Press Revoke to retire the key entirely"] },
+  "apiKeys": { title: "API Keys", desc: "This workspace's own key for the FunnelSwift API and MCP server. It is created with your account and never expires. The screen shows only the prefix; View shows the whole key in one click and every view is recorded, while Copy puts it on your clipboard without showing it. Regenerate replaces the key in one step — the old one stops working the moment the new one starts — and Revoke retires it so the workspace can mint a fresh one.", actions: ["Press View to read the key, or Copy to put it on your clipboard", "Press Regenerate to replace a key you think has leaked", "Press Revoke to retire the key entirely"] },
   "mcp": { title: "MCP — connect your AI tools", desc: "FunnelSwift serves its own MCP door, and your workspace's own API key is the credential it accepts. This screen is read-only: it shows the endpoint, the prefix of the key that authorises it, and a paste-ready config for an MCP client such as Claude Code, Cursor or Hermes. Eleven read-only tools, each scoped to the workspace that owns the key, so a client can only ever read this account. The table lists each tool and what it answers.", actions: ["Copy the endpoint into your MCP client", "Copy the client config and replace YOUR_API_KEY with your workspace key from the API Keys screen", "Read the table to see which records an AI client can read"] },
   "team": { title: "Team", desc: "The people who can sign in to this workspace, and the seats your plan includes. The owner is marked so you can tell an owner from a member at a glance. Adding a teammate creates their own sign-in and emails them a temporary password they change after signing in; only the workspace owner or a company admin can add people, and a plan with every seat taken says so instead of offering a button that cannot work. Each person's row carries the three things an owner needs later: move them between roles, send their login details again when the first message never arrived or was lost, and remove them to free the seat. Sending login details again keeps their leads and their history, because their account and their leads stay theirs.", actions: ["Read how many seats your plan includes", "Check who is already in the workspace and their role", "Change a teammate's role, send their login details again, or remove them from their row", "Enter a name and email, choose a role, then press Add teammate"] },
   "dashboard": { title: "Dashboard", desc: "Your workspace at a glance: cards, leads and recent activity for this account. The numbers come from your own data. Below them, Which channel converts measures the last 7, 30 or 90 days of your own leads: how many each traffic source brought in, how many of those became customers, the conversion rate for each, and where this window\u2019s leads sit in your stages. A lead counts under the source recorded when it was captured, so give each channel its own card slug and the comparison is per channel; a lead with no source shows as (direct).", actions: ["Open Cards to build or edit a funnel", "Open Leads to see who has come in", "Read Which channel converts and switch the window to 7, 30 or 90 days", "Check My Account for your plan and profile"] },

@@ -568,8 +568,13 @@ pub async fn public_signup(
     // minted one at creation, sealed for later display, and the mint + its audit row commit or
     // roll back with the account. `mint_on` is the ONE writer both signup doors and the Settings
     // create/regenerate routes funnel through.
-    crate::handlers::api_keys::mint_on(&mut tx, tenant_id, Some(user_id), "auto-provisioned")
-        .await?;
+    crate::handlers::api_keys::mint_on(
+        &mut tx,
+        tenant_id,
+        Some(user_id),
+        &crate::handlers::api_keys::auto_provisioned_key_name(&workspace_name),
+    )
+    .await?;
 
     tx.commit().await?;
 

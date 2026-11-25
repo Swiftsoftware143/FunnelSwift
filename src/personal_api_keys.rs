@@ -10,7 +10,7 @@
 //!   POST   /api/personal-api-keys              mint one  -> plaintext returned once
 //!   DELETE /api/personal-api-keys/:id          revoke one (soft: `revoked_at`)
 //!   POST   /api/personal-api-keys/:id/rotate   replace one with a fresh secret
-//!   POST   /api/personal-api-keys/:id/reveal   show it again (caller's password required)
+//!   POST   /api/personal-api-keys/:id/reveal   show it again (one click, session only, audited)
 //! ```
 //!
 //! It is a THIN DOOR, not a second implementation. Every arm delegates to
@@ -65,7 +65,7 @@ fn mint_body(id: &str, name: &str, token: &str, prefix: &str) -> Value {
         "token": token,
         "prefix": prefix,
         "key_prefix": prefix,
-        "note": "This key can be viewed again (POST /api/personal-api-keys/:id/reveal) with your password.",
+        "note": "This key can be viewed again at any time with one click (POST /api/personal-api-keys/:id/reveal); every view is recorded.",
     })
 }
 
@@ -382,30 +382,19 @@ fn rotate_body(body: &Value, name: &str, old_id: Uuid) -> Value {
     out
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RevealRequest {
-    /// The caller's CURRENT password — a stolen session must not be enough to read a live credential.
-    pub password: String,
-}
-
-/// `POST /api/personal-api-keys/:id/reveal` — show the key again. Password re-auth and an
-/// `activity_log` audit row are the delegated handler's (`api_key_revealed`).
+/// `POST /api/personal-api-keys/:id/reveal` — show the key again (plan §6.2/§8: one click from a
+/// console session, no password re-prompt), and the delegated handler writes the
+/// `activity_log` row (`api_key_revealed`).
+///
+/// No body is read: a legacy `{"password":"…"}` body is accepted and ignored, so an older console
+/// build keeps working. A durable `fs_…` key presented as the bearer is refused 403 inside the
+/// shared handler.
 pub async fn reveal(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<Uuid>,
-    Json(req): Json<RevealRequest>,
 ) -> AppResult<Json<Value>> {
-    let Json(body) = inner::reveal_api_key(
-        State(state),
-        auth,
-        Path(id),
-        Json(inner::RevealKeyRequest {
-            password: req.password,
-        }),
-    )
-    .await?;
+    let Json(body) = inner::reveal_api_key(State(state), auth, Path(id)).await?;
     let token = body
         .get("token")
         .and_then(Value::as_str)

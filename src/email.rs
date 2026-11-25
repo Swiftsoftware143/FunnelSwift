@@ -981,8 +981,9 @@ pub async fn send_credentials_email(
 
 /// The welcome mail the portfolio-sync door sends a brand-new workspace (fleet portfolio
 /// provisioning standard, 2026-11-15): the login (email + the DERIVED password), the app name, and
-/// the workspace's API key PREFIX only — never the full key. The full key is revealed in-app under
-/// the owner's own password (`POST /api/v1/api-keys/:id/reveal`), exactly as a manual signup works.
+/// the workspace's API key PREFIX only — never the full key. The full key is viewable and copyable
+/// in-app in one click from a signed-in console (`POST /api/v1/api-keys/:id/reveal`), exactly as a
+/// manual signup works.
 ///
 /// Composed inline rather than through the `credentials` template so the sync door can carry the
 /// one extra fact a manual signup's mail has no need for (the key prefix) without changing what a
@@ -999,10 +1000,10 @@ pub async fn send_portfolio_provision_email(
 ) -> Result<(), String> {
     let subject = format!("Your {APP_NAME} account is ready");
     let text = format!(
-        "Hi {name},\n\nYour {APP_NAME} workspace is ready to use.\n\nSign in at {APP_LOGIN_URL} with:\nEmail: {to}\nPassword: {password}\n\nThe password above is temporary. After you sign in, go to your profile settings and replace it with one of your own.\n\nYour workspace API key starts with: {key_prefix}\nThe full key lives in your account under Settings > API keys, where you can reveal it with your password.\n\n- The {APP_NAME} Team"
+        "Hi {name},\n\nYour {APP_NAME} workspace is ready to use.\n\nSign in at {APP_LOGIN_URL} with:\nEmail: {to}\nPassword: {password}\n\nThe password above is temporary. After you sign in, go to your profile settings and replace it with one of your own.\n\nYour workspace API key starts with: {key_prefix}\nThe full key lives in your account under Settings > API keys, where one click shows it or copies it.\n\n- The {APP_NAME} Team"
     );
     let html = format!(
-        "<p>Hi {name},</p><p>Your {APP_NAME} workspace is ready to use.</p><p>Sign in at <a href=\"{APP_LOGIN_URL}\">{APP_LOGIN_URL}</a> with:</p><p>Email: {to}<br>Password: {password}</p><p>The password above is temporary. After you sign in, go to your profile settings and replace it with one of your own.</p><p>Your workspace API key starts with: <strong>{key_prefix}</strong><br>The full key lives in your account under Settings &gt; API keys, where you can reveal it with your password.</p><p>- The {APP_NAME} Team</p>"
+        "<p>Hi {name},</p><p>Your {APP_NAME} workspace is ready to use.</p><p>Sign in at <a href=\"{APP_LOGIN_URL}\">{APP_LOGIN_URL}</a> with:</p><p>Email: {to}<br>Password: {password}</p><p>The password above is temporary. After you sign in, go to your profile settings and replace it with one of your own.</p><p>Your workspace API key starts with: <strong>{key_prefix}</strong><br>The full key lives in your account under Settings &gt; API keys, where one click shows it or copies it.</p><p>- The {APP_NAME} Team</p>"
     );
     dispatch_for_tenant(
         pool,

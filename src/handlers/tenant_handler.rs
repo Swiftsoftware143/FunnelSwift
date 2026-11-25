@@ -600,7 +600,13 @@ pub async fn create_tenant(
         ]))
         .execute(&mut *tx)
         .await?;
-        crate::handlers::api_keys::mint_on(&mut tx, id, Some(user_id), "auto-provisioned").await?;
+        crate::handlers::api_keys::mint_on(
+            &mut tx,
+            id,
+            Some(user_id),
+            &crate::handlers::api_keys::auto_provisioned_key_name(name),
+        )
+        .await?;
         owner_login = Some((user_id, password));
     }
     tx.commit().await?;
@@ -1179,7 +1185,13 @@ pub async fn create_owner_login(
     .fetch_one(&mut *tx)
     .await?;
     if live_keys == 0 {
-        crate::handlers::api_keys::mint_on(&mut tx, id, Some(user_id), "auto-provisioned").await?;
+        crate::handlers::api_keys::mint_on(
+            &mut tx,
+            id,
+            Some(user_id),
+            &crate::handlers::api_keys::auto_provisioned_key_name(&name),
+        )
+        .await?;
     }
     tx.commit().await?;
 

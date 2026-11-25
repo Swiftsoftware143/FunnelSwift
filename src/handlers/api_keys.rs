@@ -179,6 +179,29 @@ pub struct MintedKey {
     pub prefix: String,
 }
 
+/// The label every account's auto-provisioned key carries (plan §6.5, David 2026-11-25):
+/// `MCP — <account name>`, so the key says what it is for in the API Keys screen and on the MCP
+/// card. ONE formatter for every account-creating door (both signups, the operator's workspace
+/// create/repair, the portfolio mirror), so a new account can never arrive with a key labelled
+/// something else.
+///
+/// The `api_keys.name` column is `text`, but a name longer than the screen can show is still a
+/// defect: truncated to 255 CHARS on a boundary the UI can print, the same ceiling
+/// `create_api_key` refuses a hand-typed name at.
+pub fn auto_provisioned_key_name(account_name: &str) -> String {
+    let name = account_name.trim();
+    let base = if name.is_empty() {
+        "MCP — this account"
+    } else {
+        "MCP — "
+    };
+    let budget = 255usize.saturating_sub(base.chars().count());
+    let mut out = String::with_capacity(base.len() + name.len().min(budget));
+    out.push_str(base);
+    out.extend(name.chars().take(budget));
+    out
+}
+
 /// Mint one key and INSERT it on the caller's connection. The ONE writer for every mint in this
 /// app: the signup transaction, `create_api_key` and regenerate.
 pub async fn mint_on(
@@ -337,21 +360,32 @@ pub async fn create_api_key(
     ))
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RevealKeyRequest {
-    /// The caller's CURRENT password — a stolen session token must not be enough to read a live
-    /// credential.
-    pub password: String,
-}
-
-/// `POST /api/v1/api-keys/:id/reveal` — show the key again (repeatable). Requires the caller's
-/// current password, and every reveal is audited in `activity_log`.
+/// `POST /api/v1/api-keys/:id/reveal` — show the key again (repeatable), one click from a console
+/// session, no password re-prompt, and every reveal audited in `activity_log`.
+///
+/// David's ruling (2026-11-25, plan §6.2/§8 in
+/// `docs/fleet-per-account-keys-and-mcp-2026-11-25.md`): **View is one click.** The key is private
+/// by default (only its prefix is ever listed) and each reveal is recorded, so a valid console
+/// session is enough — the same friction model as Stripe. No password re-prompt.
+///
+/// SESSION ONLY. `AuthUser`'s extractor also accepts a durable `fs_…` key as a bearer credential, so
+/// a key presented here is refused 403: a read-only key must never be able to obtain the account's
+/// read+write key. The classifier is free (`AuthUser::via_api_key`), no hash is paid per View.
+///
+/// A request body is not read at all, so a legacy `{"password":"…"}` body is accepted and ignored
+/// and an older console build keeps working. The audit row carries the key PREFIX only.
 pub async fn reveal_api_key(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<Uuid>,
-    Json(req): Json<RevealKeyRequest>,
 ) -> AppResult<Json<serde_json::Value>> {
+    if auth.via_api_key {
+        return Err(AppError::Forbidden(
+            "This needs a console session. An API key cannot view keys — sign in to the console \
+             and press View."
+                .to_string(),
+        ));
+    }
     require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
 
@@ -367,21 +401,7 @@ pub async fn reveal_api_key(
 
     let prefix: String = row.get("key_prefix");
     let sealed: String = row.get("key_sealed");
-
-    // ── re-authenticate ───────────────────────────────────────────────────────────────────────
     let caller = caller_id(&auth)?;
-    let stored: Option<String> =
-        sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1 AND is_active = true")
-            .bind(caller)
-            .fetch_optional(&state.pool)
-            .await?;
-    let stored = stored.ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
-    use argon2::password_hash::{PasswordHash, PasswordVerifier};
-    let parsed = PasswordHash::new(&stored)
-        .map_err(|_| AppError::Unauthorized("Current password is incorrect".to_string()))?;
-    argon2::Argon2::default()
-        .verify_password(req.password.as_bytes(), &parsed)
-        .map_err(|_| AppError::Unauthorized("Current password is incorrect".to_string()))?;
 
     let token = crate::security::provider_key_crypto::open_in(&state.pool, &sealed)
         .await
