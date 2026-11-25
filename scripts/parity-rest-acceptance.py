@@ -198,14 +198,10 @@ def main() -> int:
               status == 424 and "payment_provider_not_configured" in body, f"{status}")
 
         status, body = http(base, "POST", "/api/v1/api-keys", secret_a, {"name": "second"})
-        check("a second key is refused: one active key per account (409)", status == 409, f"{status}")
+        check("a key cannot create another key (session only, 403)", status == 403, f"{status}")
 
         status, body = http(base, "POST", f"/api/v1/api-keys/{key_a}/reveal", secret_a, {})
         check("key REVEAL needs the signed-in person (refused)", status in (401, 403), f"{status}")
-
-        # rotate ANOTHER workspace's key id — must not be reachable
-        status, body = http(base, "POST", f"/api/v1/api-keys/{key_b}/regenerate", secret_a, {})
-        check("another workspace's key id cannot be rotated (404)", status == 404, f"{status}")
 
         # ── the boundaries that stay shut ───────────────────────────────────────
         status, _ = http(base, "POST", "/api/v1/auth/close-account", secret_a,
@@ -223,10 +219,14 @@ def main() -> int:
         check("own password change needs the current password, which a key does not have",
               status in (400, 401), f"{status}")
 
-        # rotate its own key last: it replaces the probe key, so nothing may follow it
+        # rotate is a session act: it hands back a new secret, so a key must never do it
         status, body = http(base, "POST", f"/api/v1/api-keys/{key_a}/regenerate", secret_a, {})
-        check("own key rotated by key (a new secret replaces the old one)", status in (200, 201)
-              and '"token"' in body, f"{status}")
+        check("own key cannot be rotated with a key (403, session only)", status == 403, f"{status}")
+
+        # a foreign key id is refused at the same door (the handler scopes by tenant too: measured
+        # 404 for another workspace's id before this guard was added)
+        status, body = http(base, "POST", f"/api/v1/api-keys/{key_b}/regenerate", secret_a, {})
+        check("another workspace's key id is refused", status in (403, 404), f"{status}")
     finally:
         sql(f"DELETE FROM tenants WHERE id IN ({q(tenant_a)}, {q(tenant_b)});")
 

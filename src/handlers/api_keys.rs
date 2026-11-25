@@ -315,6 +315,15 @@ pub async fn create_api_key(
     auth: AuthUser,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    // §10 (t_3a7f70c1): a credential must not mint another credential. A key that could mint,
+    // rotate or reveal keys is a takeover — revoking the leaked key would not end the access.
+    if auth.via_api_key {
+        return Err(AppError::Forbidden(
+            "This needs a console session. An API key cannot create keys — sign in to the \
+             console and press Create key."
+                .to_string(),
+        ));
+    }
     require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
     let created_by = caller_id(&auth).ok();
@@ -491,6 +500,15 @@ pub async fn regenerate_api_key(
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
+    // §10 (t_3a7f70c1): rotate returns a NEW secret in the response. A key that can replace the
+    // account's key is a takeover — a leaked key could re-mint itself and outlive its revocation.
+    if auth.via_api_key {
+        return Err(AppError::Forbidden(
+            "This needs a console session. An API key cannot rotate keys — sign in to the \
+             console and press Regenerate."
+                .to_string(),
+        ));
+    }
     require_key_admin(&state, &auth).await?;
     let tenant_id = tenant_from_auth(&auth)?;
     let created_by = caller_id(&auth).ok();

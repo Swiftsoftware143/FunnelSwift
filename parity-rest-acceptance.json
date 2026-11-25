@@ -18,7 +18,7 @@
     {
       "check": "key reads workspaces",
       "ok": true,
-      "detail": "200 {\"can_manage\":true,\"count\":1,\"workspaces\":[{\"id\":\"e73fe3ec-5b8e-40f3-a899-a3edb5"
+      "detail": "200 {\"can_manage\":true,\"count\":1,\"workspaces\":[{\"id\":\"79cadfe4-7faf-4484-95c0-b6a3c9"
     },
     {
       "check": "key reads private-email domains",
@@ -33,12 +33,12 @@
     {
       "check": "key reads team",
       "ok": true,
-      "detail": "200 {\"members\":[{\"email\":\"probe-a-811ada21@example.invalid\",\"id\":\"b87287a1-3221-4810"
+      "detail": "200 {\"members\":[{\"email\":\"probe-a-40c257c0@example.invalid\",\"id\":\"1e6a30a2-5ba2-4710"
     },
     {
       "check": "key reads API keys (list only)",
       "ok": true,
-      "detail": "200 {\"api_keys\":[{\"created_at\":\"2026-11-25T20:30:03.988471\",\"id\":\"1c8397a1-d71d-4cad"
+      "detail": "200 {\"api_keys\":[{\"created_at\":\"2026-11-25T20:37:07.933714\",\"id\":\"9d8f7c52-f3f0-4e63"
     },
     {
       "check": "key reads support requests",
@@ -98,12 +98,12 @@
     {
       "check": "product category created by key",
       "ok": true,
-      "detail": "201 10152f09-239c-4c98-8462-741932e1dd10"
+      "detail": "201 abaf1e93-1db7-4053-bccb-f4fa71efed5d"
     },
     {
       "check": "product category renamed by key",
       "ok": true,
-      "detail": "200 Parity cat 2 811ada21"
+      "detail": "200 Parity cat 2 40c257c0"
     },
     {
       "check": "suppression added by key",
@@ -118,7 +118,7 @@
     {
       "check": "own profile name changed by key",
       "ok": true,
-      "detail": "200 Parity name 811ada21"
+      "detail": "200 Parity name 40c257c0"
     },
     {
       "check": "own avatar uploaded by key",
@@ -146,19 +146,14 @@
       "detail": "424"
     },
     {
-      "check": "a second key is refused: one active key per account (409)",
+      "check": "a key cannot create another key (session only, 403)",
       "ok": true,
-      "detail": "409"
+      "detail": "403"
     },
     {
       "check": "key REVEAL needs the signed-in person (refused)",
       "ok": true,
       "detail": "403"
-    },
-    {
-      "check": "another workspace's key id cannot be rotated (404)",
-      "ok": true,
-      "detail": "404"
     },
     {
       "check": "account close refused to a key",
@@ -186,9 +181,14 @@
       "detail": "401"
     },
     {
-      "check": "own key rotated by key (a new secret replaces the old one)",
+      "check": "own key cannot be rotated with a key (403, session only)",
       "ok": true,
-      "detail": "201"
+      "detail": "403"
+    },
+    {
+      "check": "another workspace's key id is refused",
+      "ok": true,
+      "detail": "403"
     },
     {
       "check": "teardown leaves no probe account",
