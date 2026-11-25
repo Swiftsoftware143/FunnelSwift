@@ -4397,7 +4397,7 @@ async function renderProviderKeys() {
               <td><code style="font-size:11px">${x(key || '—')}</code></td>
               <td>${_postureCell(_rowField(k, 'api_key_set'), _rowField(k, 'api_key_sealed'))}</td>
               <td style="font-size:12px;color:var(--muted)">${x(created || '—')}</td>
-              <td><button class="btn btn-danger btn-xs" onclick="window._deleteProviderKey('${x(prov)}')">Delete</button></td>
+              <td><button class="btn btn-secondary btn-xs" onclick="window._testProviderKey('${x(prov)}')" title="Probe this credential. A CoreSwift key makes a real call to the hub and reports what the key can see; any other provider reports whether a readable key is stored.">Test</button> <button class="btn btn-danger btn-xs" onclick="window._deleteProviderKey('${x(prov)}')">Delete</button> <span id="prov-test-${x(prov)}" style="font-size:11px;margin-left:6px;display:inline-block;max-width:340px;vertical-align:middle"></span></td>
             </tr>`;
           }).join('')}</tbody>
       </table></div>
@@ -4482,6 +4482,30 @@ window._deleteProviderKey = async function(provider) {
   if (!confirm('Delete the ' + provider + ' key?')) return;
   try { await api('/provider-keys/' + encodeURIComponent(provider), { method: 'DELETE' }); showToast('Provider key deleted', 'success'); renderView(); }
   catch(e) { showToast(e.message, 'error'); }
+};
+
+/* The backend has served POST /provider-keys/:provider/test since this screen shipped, and the
+   console never called it: a credential could be saved, and NOTHING on this page could say whether
+   the provider actually answers to it — an operator pasting a key had no way to tell a working key
+   from a typo until a customer's lead silently failed to sync (kanban cron 2026-11-25). One Test
+   button per saved row, and the answer printed is the API's own sentence: for CoreSwift the probe
+   is a REAL hub call that reports how many lists the key can see; for every other provider it
+   reports whether a readable key is stored, and says so instead of claiming a validation the app
+   cannot perform. The result is painted in the row and toasted with reRender=false so the row does
+   not disappear before it can be read. */
+window._testProviderKey = async function(provider) {
+  const cell = document.getElementById('prov-test-' + provider);
+  if (cell) { cell.textContent = 'Testing…'; cell.style.color = 'var(--muted)'; }
+  try {
+    const r = await api('/provider-keys/' + encodeURIComponent(provider) + '/test', { method: 'POST' });
+    const valid = !!(r && r.valid);
+    const sentence = (r && r.detail) || (valid ? 'Credential accepted' : 'The provider refused this credential');
+    if (cell) { cell.textContent = sentence; cell.style.color = valid ? 'var(--success)' : 'var(--danger)'; }
+    showToast(provider + ': ' + sentence, valid ? 'success' : 'error', false);
+  } catch (e) {
+    if (cell) { cell.textContent = e.message; cell.style.color = 'var(--danger)'; }
+    showToast(provider + ': ' + e.message, 'error', false);
+  }
 };
 
 window._deletePaymentProvider = async function(ptype) {
