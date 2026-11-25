@@ -249,20 +249,40 @@ pub async fn push_lead_to_coreswift(
     tenant_id: Uuid,
     lead: LeadPayload,
 ) -> Result<bool, String> {
+    let Some(body) = pushable_body(&lead) else {
+        return Ok(false);
+    };
+    push_body_to_coreswift(db, tenant_id, &body).await
+}
+
+/// The hub body for a lead worth pushing — `None` when there is nothing to identify it, or the
+/// address is harness residue that must never enter the hub.
+fn pushable_body(lead: &LeadPayload) -> Option<Value> {
     if !lead.has_identity() {
         tracing::debug!("[coreswift] lead push skipped: no email/phone/name to identify it");
-        return Ok(false);
+        return None;
     }
-    // Harness residue never reaches the hub: a probe/canary address is not a person, and a
-    // contact left in the operator's list is the CRM equivalent of a test account left behind.
     if let Some(email) = lead.email.as_deref() {
         if is_reserved_test_email(email) {
             tracing::info!(
                 "[coreswift] lead push skipped: {email} is a reserved test address (harness residue stays out of the hub)"
             );
-            return Ok(false);
+            return None;
         }
     }
+    Some(lead_body(lead))
+}
+
+/// POST an already-built hub contact body. The connection is resolved HERE, per attempt, so a
+/// retried row honours a rotated key or a corrected base URL instead of the one it was queued
+/// with.
+///
+/// `Ok(false)` = the tenant has no usable CoreSwift credential (nothing to post to).
+pub async fn push_body_to_coreswift(
+    db: &PgPool,
+    tenant_id: Uuid,
+    body: &Value,
+) -> Result<bool, String> {
     let Some(conn) = resolve_conn(db, tenant_id).await? else {
         tracing::debug!(
             "[coreswift] lead push skipped: CoreSwift not connected for tenant {tenant_id}"
@@ -270,11 +290,10 @@ pub async fn push_lead_to_coreswift(
         return Ok(false);
     };
 
-    let body = lead_body(&lead);
     let resp = reqwest::Client::new()
         .post(format!("{}/api/external/contacts", conn.base_url))
         .header("Authorization", auth_header_value(&conn.api_key))
-        .json(&body)
+        .json(body)
         .timeout(std::time::Duration::from_secs(10))
         .send()
         .await
@@ -292,14 +311,163 @@ pub async fn push_lead_to_coreswift(
     Ok(true)
 }
 
+// ───────────────────────── durable retry (2026-11-25) ─────────────────────────
+//
+// `spawn_lead_push` used to be fire-and-forget: a hub that answered 502 during a deploy window
+// left the lead in FunnelSwift with a log line and nothing that ever tried again (measured
+// 2026-11-25 00:01-00:08, six consecutive 502s). The capture was never lost, but the CRM hand-off
+// was. A failed push is now queued in `coreswift_push_queue` (migration 146) and this worker
+// re-posts it — the same shape as the outbound-webhook retry worker, which has run in production
+// since kanban t_431faa99.
+
+/// How often the worker looks for due rows.
+const PUSH_SWEEP_INTERVAL_SECS: u64 = 60;
+/// Rows claimed per sweep, so one sweep cannot sit in the request path for minutes.
+const PUSH_SWEEP_BATCH: usize = 20;
+/// First retry waits a minute; each later one doubles, capped at an hour.
+const PUSH_BACKOFF_BASE_SECS: i64 = 60;
+const PUSH_BACKOFF_MAX_SECS: i64 = 3600;
+
+/// Exponential backoff in seconds for the attempt that just failed.
+fn push_backoff_secs(attempt: i32) -> i64 {
+    let factor = 1i64 << (attempt.saturating_sub(1).clamp(0, 10) as u32);
+    (PUSH_BACKOFF_BASE_SECS * factor).min(PUSH_BACKOFF_MAX_SECS)
+}
+
+/// Record a push the hub refused, so it is retried instead of dropped.
+async fn enqueue_push(db: &PgPool, tenant_id: Uuid, body: &Value, error: &str) {
+    let reason: String = error.chars().take(500).collect();
+    let inserted = sqlx::query(
+        "INSERT INTO coreswift_push_queue (tenant_id, payload, last_error, next_retry_at) \
+         VALUES ($1, $2, $3, now() + make_interval(secs => $4))",
+    )
+    .bind(tenant_id)
+    .bind(body)
+    .bind(&reason)
+    .bind(PUSH_BACKOFF_BASE_SECS as f64)
+    .execute(db)
+    .await;
+    match inserted {
+        Ok(_) => tracing::warn!(
+            %tenant_id,
+            "coreswift push queued for retry after: {reason}"
+        ),
+        // Not queued is worse than a slow retry: say so loudly, the customer's CRM is short a contact.
+        Err(e) => tracing::error!(
+            %tenant_id,
+            "coreswift push NOT queued ({e}) — the hub refused with: {reason}"
+        ),
+    }
+}
+
 /// Fire-and-forget wrapper for capture handlers: the visitor's submission must never fail
-/// or slow down because the hub is missing, slow or broken.
+/// or slow down because the hub is missing, slow or broken. A real failure is queued.
 pub fn spawn_lead_push(db: PgPool, tenant_id: Uuid, lead: LeadPayload) {
     tokio::spawn(async move {
-        match push_lead_to_coreswift(&db, tenant_id, lead).await {
-            Ok(true) => {}
-            Ok(false) => {}
-            Err(e) => tracing::warn!("[coreswift] lead push failed (capture kept locally): {e}"),
+        let Some(body) = pushable_body(&lead) else {
+            return;
+        };
+        if let Err(e) = push_body_to_coreswift(&db, tenant_id, &body).await {
+            enqueue_push(&db, tenant_id, &body, &e).await;
         }
     });
+}
+
+/// Boot-time worker: retries queued pushes. Started from `main` next to the other background
+/// tasks; a failure inside one sweep is logged and the loop continues.
+pub fn spawn_push_retry_worker(pool: PgPool) {
+    tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(PUSH_SWEEP_INTERVAL_SECS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            match sweep_pushes_once(&pool).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(retried = n, "coreswift push sweep"),
+                Err(e) => tracing::warn!(error = %e, "coreswift push sweep failed"),
+            }
+        }
+    });
+}
+
+/// Claims and re-sends at most `PUSH_SWEEP_BATCH` due rows. The claim is a `FOR UPDATE SKIP
+/// LOCKED` select plus a conditional status update, so two workers (or two app instances) never
+/// take the same row.
+async fn sweep_pushes_once(pool: &PgPool) -> Result<usize, sqlx::Error> {
+    let mut handled = 0usize;
+    while handled < PUSH_SWEEP_BATCH {
+        let mut tx = pool.begin().await?;
+        let claimed: Option<(Uuid, Uuid, Value, i32, i32)> = sqlx::query_as(
+            "SELECT id, tenant_id, payload, attempt, max_attempts FROM coreswift_push_queue \
+             WHERE status = 'pending' AND attempt < max_attempts \
+               AND (next_retry_at IS NULL OR next_retry_at <= now()) \
+             ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((id, tenant_id, payload, attempt, max_attempts)) = claimed else {
+            tx.commit().await?;
+            break;
+        };
+        let taken = sqlx::query(
+            "UPDATE coreswift_push_queue SET status = 'sending', attempt = attempt + 1 \
+             WHERE id = $1 AND status = 'pending'",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        if taken.rows_affected() == 0 {
+            continue;
+        }
+
+        let attempted = attempt + 1;
+        let reason: Option<String> = match push_body_to_coreswift(pool, tenant_id, &payload).await {
+            Ok(true) => None,
+            Ok(false) => Some("CoreSwift is not connected for this tenant".to_string()),
+            Err(e) => Some(e),
+        };
+
+        match reason {
+            None => {
+                sqlx::query(
+                    "UPDATE coreswift_push_queue SET status = 'sent', sent_at = now(), \
+                     last_error = NULL WHERE id = $1",
+                )
+                .bind(id)
+                .execute(pool)
+                .await?;
+            }
+            Some(reason) => {
+                let exhausted = attempted >= max_attempts;
+                let delay = push_backoff_secs(attempted);
+                sqlx::query(
+                    "UPDATE coreswift_push_queue \
+                     SET status = CASE WHEN $2 THEN 'failed' ELSE 'pending' END, \
+                         last_error = $3, next_retry_at = now() + make_interval(secs => $4) \
+                     WHERE id = $1",
+                )
+                .bind(id)
+                .bind(exhausted)
+                .bind(reason.chars().take(500).collect::<String>())
+                .bind(delay as f64)
+                .execute(pool)
+                .await?;
+                if exhausted {
+                    tracing::error!(
+                        %tenant_id,
+                        "coreswift push gave up after {attempted} attempts: {reason}"
+                    );
+                } else {
+                    tracing::warn!(
+                        %tenant_id,
+                        "coreswift push retry {attempted} failed, next in {delay}s: {reason}"
+                    );
+                }
+            }
+        }
+        handled += 1;
+    }
+    Ok(handled)
 }

@@ -205,6 +205,12 @@ async fn main() -> Result<()> {
     // columns of migrations/0016 — would stay unread configuration, the same defect one level down.
     webhooks::spawn_retry_worker(app_state.pool.clone());
 
+    // CoreSwift push retry worker (2026-11-25). A capture that the hub refused used to be dropped
+    // with only a log line (measured: six 502s to /api/external/contacts during a deploy window,
+    // and no retry anywhere). The failed body is now queued in `coreswift_push_queue` and this
+    // sweeper re-posts it with backoff, so a hub blip costs a delay instead of the contact.
+    coreswift::spawn_push_retry_worker(app_state.pool.clone());
+
     // Probe-workspace janitor (2026-11-06). Harnesses mint a real workspace through the real
     // signup route and mark it with `X-Swift-Harness`; they retire their identity but not the
     // workspace, so probe rows accumulate for ever. Measured live: 30 of them across five apps,
