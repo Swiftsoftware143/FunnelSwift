@@ -597,7 +597,11 @@ mod tests {
             // arm binds the caller's own tenant from the session (the admin `account_id` arm is
             // `is_admin`-gated), so all four belong in `private`: 254 mounts, 254 unique, 228 on
             // the API surface, 26 public, 3 internal, 199 private, 26 served.
-            (254, 254, 228, 26, 3, 199, 26),
+            // 2026-11-25 (kanban t_739722ac): -1 mounted API route, PRIVATE — the uncalled
+            // `POST /api/v1/push/workflowswift` was deleted. That commit left this pin behind, so
+            // the suite was red at HEAD. 253 mounts, 253 unique, 227 on the API surface,
+            // 26 public, 3 internal, 198 private, 26 served.
+            (253, 253, 227, 26, 3, 198, 26),
             "the census in the module docs no longer matches the router"
         );
     }

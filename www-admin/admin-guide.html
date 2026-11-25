@@ -1426,14 +1426,16 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
         customer and an operator find it in the same place — is the hand-off
         between FunnelSwift and an AI assistant you already use — Claude Code, Cursor, Hermes or your
         own agent. It shows the address your assistant connects to and the exact configuration block to
-        paste, and it lists the eleven things the assistant is allowed to read. There is nothing to
+        paste, and it lists the forty-one tools the assistant can call: eleven reads and a create,
+        update and archive triple for each of ten action families (funnels, landing pages, leads, tags,
+        campaigns, tag groups, tagging rules, web-to-lead forms, webhooks, QR codes). There is nothing to
         switch on: the door is open the moment the workspace has a live API key.</p>
         <p><strong>The credential is this workspace's own API key</strong> — the same key the
         <strong>API Keys</strong> screen shows. Your assistant sends it as a Bearer token on every
         request, so it only ever sees <em>this</em> workspace. Revoking or regenerating that key closes
         the door on the assistant's next call, with no second switch to remember.</p>
-        <p><strong>What an assistant can read</strong> (all of it read-only — no tool writes, sends or
-        deletes anything):</p>
+        <p><strong>What an assistant can read</strong> (reads are read-only; the write tools are the
+        second half of the same door and are listed after them):</p>
         <ul>
           <li><strong>list_funnels</strong> — your funnels: name, slug, headline, views, live or paused.</li>
           <li><strong>list_pages</strong> — landing pages: title, slug, template, block count, last edit.</li>
@@ -1450,6 +1452,13 @@ POST /api/v1/bulk/products     — Delete multiple products</pre>
           <li><strong>list_affiliate_products</strong> — affiliate products you can promote, and your
           commission on each.</li>
         </ul>
+        <p><strong>What an assistant can write</strong> — the same action families the console edits,
+        each with a create, update and archive tool: funnels, landing pages, leads, tags, campaigns,
+        tag groups, automatic tagging rules, web-to-lead capture forms, webhooks and QR codes. Archive
+        means paused/inactive (the row is kept); a tag or tag group has no archive column, so its
+        archive tool refuses unless the client explicitly confirms a delete. Every write runs the
+        console's own handler, so plan limits, validation and slug rules are identical, and every one is
+        recorded with the key and the row it changed.</p>
         <p><strong>Asking about something from another workspace</strong> is answered exactly like a
         record that does not exist — the workspace is taken from the key, never from the question, so
         there is no argument an assistant could send to reach another account. A request with no key,

@@ -6519,7 +6519,25 @@ var MCP_SPECS=[
   ["archive_lead","archive a lead (status becomes archived; nothing is deleted)"],
   ["create_tag","make a tag, within the plan's tag allowance"],
   ["update_tag","rename or recolour a tag, or move it between groups"],
-  ["archive_tag","remove a tag only when hard_delete is true — it has no archive state"]
+  ["archive_tag","remove a tag only when hard_delete is true — it has no archive state"],
+  ["create_campaign","make a campaign — name required, type and status optional"],
+  ["update_campaign","change a campaign's name, type, description or status"],
+  ["archive_campaign","archive a campaign (status becomes archived; nothing is deleted)"],
+  ["create_tag_group","make a tag group, within the plan's allowance"],
+  ["update_tag_group","rename, reorder or change whether a tag group collapses"],
+  ["archive_tag_group","remove a tag group only when hard_delete is true — its tags are kept"],
+  ["create_tag_rule","make an automatic tagging rule — needs a trigger tag and an action"],
+  ["update_tag_rule","change a rule's name, action, action tag or active switch"],
+  ["archive_tag_rule","switch a tagging rule off without deleting it"],
+  ["create_web_to_lead","make a capture form — name required, fields and tag binding optional"],
+  ["update_web_to_lead","change a capture form's copy, fields, redirect or tag binding"],
+  ["archive_web_to_lead","switch a capture form off; the form and its key are kept"],
+  ["create_webhook","make an outbound webhook — name, url and events required"],
+  ["update_webhook","change a webhook's name, url, events or active switch"],
+  ["archive_webhook","switch a webhook off so nothing is delivered to it"],
+  ["create_qr_code","make a QR code for a landing page or funnel page"],
+  ["update_qr_code","rename a QR code or switch it on/off"],
+  ["archive_qr_code","switch a QR code off; the code and its history are kept"]
 ];
 var MCP_ENDPOINT='https://app.funnelswift.net/mcp';
 var MCP_CONFIG_TEXT='{\n'

@@ -777,9 +777,10 @@ window.FunnelSwiftConfig = {
       <p><strong>MCP</strong> is the open standard an AI client &mdash; Claude Code, Claude Desktop, Cursor,
       Hermes, or your own agent &mdash; speaks to read your business data. FunnelSwift serves its <strong>own</strong>
       MCP door from inside this app, so you do not install anything: you paste one endpoint and one key into
-      the client and it can read this workspace. It is <strong>read-only</strong> &mdash; eleven tools, every
-      one a SELECT, with no write tool, no free-form SQL door and no operator tool, so an assistant cannot
-      change or delete anything.</p>
+      the client and it can read <em>and</em> manage this workspace. It serves eleven read tools and thirty
+      write tools &mdash; one create, update and archive per action family the console owns &mdash; with no
+      free-form SQL door and no operator tool, so an assistant can do exactly what you could do yourself,
+      inside this workspace only, and nothing an operator could do.</p>
       <p><strong>Where it is in the console:</strong> <strong>MCP</strong> sits in the sidebar directly above
       <strong>Settings</strong>, labelled exactly <strong>MCP</strong>. The screen carries four things:</p>
       <ul>
@@ -791,16 +792,15 @@ window.FunnelSwiftConfig = {
         clipboard without showing it. There is no rotate button here &mdash; a key rotates only on the
         <strong>API Keys</strong> screen, at its original location, so a key is never replaced by accident
         while you are wiring up a client.</li>
-        <li><strong>The tools your key can call</strong> &mdash; twenty-three tools, named exactly as the
+        <li><strong>The tools your key can call</strong> &mdash; forty-one tools, named exactly as the
         client sees them. Eleven read: <code>list_funnels</code>, <code>list_pages</code>, <code>get_page</code>,
         <code>page_stats</code>, <code>list_leads</code>, <code>lead_events</code>,
         <code>list_form_submissions</code>, <code>list_tags</code>, <code>list_email_domains</code>,
-        <code>list_invoices</code> and <code>list_affiliate_products</code>. Twelve write &mdash;
-        <code>create_funnel</code>, <code>update_funnel</code>, <code>archive_funnel</code>,
-        <code>create_page</code>, <code>update_page</code>, <code>archive_page</code>,
-        <code>create_lead</code>, <code>update_lead</code>, <code>archive_lead</code>,
-        <code>create_tag</code>, <code>update_tag</code> and <code>archive_tag</code> &mdash; and every one of
-        them is a change you could make on the console yourself. Every answer and every write touches only
+        <code>list_invoices</code> and <code>list_affiliate_products</code>. Thirty write &mdash; a
+        create, update and archive triple for each of <strong>ten</strong> action families: funnels,
+        landing pages, leads, tags, campaigns, tag groups, automatic tagging rules, web-to-lead forms,
+        webhooks and QR codes (<code>create_funnel</code> … <code>archive_qr_code</code>) &mdash; and every
+        one of them is a change you could make on the console yourself. Every answer and every write touches only
         this workspace&rsquo;s rows: a page id from another workspace answers <em>not found</em>, exactly like an
         id that does not exist. Archiving pauses a funnel or page, marks a lead archived or (for a tag, which
         has no archive state) deletes it only when the client passes <code>hard_delete</code>; nothing else is

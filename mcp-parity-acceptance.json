@@ -1,0 +1,196 @@
+{
+  "checks": [
+    {
+      "check": "tools/list offers 41 tools (11 reads + 30 writes)",
+      "ok": true,
+      "detail": "41"
+    },
+    {
+      "check": "the \u00a710 parity tier is present",
+      "ok": true,
+      "detail": "all present"
+    },
+    {
+      "check": "no operator/admin tool is advertised",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "campaign create",
+      "ok": true,
+      "detail": "{'id': '9ea77844-e837-4d26-aa32-bdd472052cdf', 'message': 'Campaign created'}"
+    },
+    {
+      "check": "campaign read back (row changed)",
+      "ok": true,
+      "detail": "Parity campaign dc3d2caf|email"
+    },
+    {
+      "check": "campaign update",
+      "ok": true,
+      "detail": "Parity campaign 2 dc3d2caf"
+    },
+    {
+      "check": "campaign archive (row kept, status archived)",
+      "ok": true,
+      "detail": "archived"
+    },
+    {
+      "check": "tag group create",
+      "ok": true,
+      "detail": "{'id': 'f2cd86e1-9333-44c0-a31d-771694947adc', 'message': 'Tag group created'}"
+    },
+    {
+      "check": "tag group read back",
+      "ok": true,
+      "detail": "Parity group dc3d2caf"
+    },
+    {
+      "check": "tag group update",
+      "ok": true,
+      "detail": "Parity group 2 dc3d2caf|7"
+    },
+    {
+      "check": "tag group archive without hard_delete is refused",
+      "ok": true,
+      "detail": "{\"error\":\"invalid\",\"message\":\"tag groups have no archive state: pass hard_delete=true to delete the group (its tags are "
+    },
+    {
+      "check": "tag group hard delete removes only the group",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "tag rule create",
+      "ok": true,
+      "detail": "{'id': '2fa20516-96f8-466c-a679-3825ae88390a', 'message': 'Tag rule created'}"
+    },
+    {
+      "check": "tag rule read back",
+      "ok": true,
+      "detail": "Parity rule dc3d2caf"
+    },
+    {
+      "check": "tag rule update",
+      "ok": true,
+      "detail": "Parity rule 2 dc3d2caf"
+    },
+    {
+      "check": "tag rule archive (is_active false, row kept)",
+      "ok": true,
+      "detail": "f"
+    },
+    {
+      "check": "a rule on another workspace's tag is refused",
+      "ok": true,
+      "detail": "{\"error\":\"not_found\",\"message\":\"not found in this workspace\"}"
+    },
+    {
+      "check": "web-to-lead create",
+      "ok": true,
+      "detail": "{'id': '843ea52c-4c15-47b2-90dc-f2d54ce94d6a', 'public_key': '10a191d0-071f-4698-af0b-c223301b9eec'}"
+    },
+    {
+      "check": "web-to-lead read back",
+      "ok": true,
+      "detail": "Parity form dc3d2caf"
+    },
+    {
+      "check": "web-to-lead update",
+      "ok": true,
+      "detail": "Parity form 2 dc3d2caf"
+    },
+    {
+      "check": "web-to-lead archive (is_active false, row kept)",
+      "ok": true,
+      "detail": "f"
+    },
+    {
+      "check": "webhook create",
+      "ok": true,
+      "detail": "{'id': '695f6bcc-5417-4212-bd11-f34a3b4be89c', 'message': 'Webhook created'}"
+    },
+    {
+      "check": "webhook read back",
+      "ok": true,
+      "detail": "Parity hook dc3d2caf"
+    },
+    {
+      "check": "webhook update",
+      "ok": true,
+      "detail": "Parity hook 2 dc3d2caf"
+    },
+    {
+      "check": "webhook archive (is_active false, row kept)",
+      "ok": true,
+      "detail": "f"
+    },
+    {
+      "check": "page create (precondition for a QR)",
+      "ok": true,
+      "detail": "{'id': 'adff9da8-a9fe-42fb-964b-ef0d2a8ae7e0', 'message': 'Card created', 'slug': 'adff9da8'}"
+    },
+    {
+      "check": "QR create",
+      "ok": true,
+      "detail": "{'existing': False, 'id': '7ae0a8de-5a3d-4601-8673-4bb4cad9ecd8', 'png_url': '/api/v1/kinetic/qr/7ae0a8de-5a3d-4601-8673-4bb4cad9ecd8/png', 'svg_url': '/api/v1/"
+    },
+    {
+      "check": "QR read back",
+      "ok": true,
+      "detail": "Parity QR dc3d2caf"
+    },
+    {
+      "check": "QR update",
+      "ok": true,
+      "detail": "Parity QR 2 dc3d2caf|true"
+    },
+    {
+      "check": "QR archive (is_active false, row kept)",
+      "ok": true,
+      "detail": "f"
+    },
+    {
+      "check": "foreign id refused (update_campaign)",
+      "ok": true,
+      "detail": "{\"error\":\"not_found\",\"message\":\"not found in this workspace\"}"
+    },
+    {
+      "check": "foreign id refused (archive_campaign)",
+      "ok": true,
+      "detail": "{\"error\":\"not_found\",\"message\":\"not found in this workspace\"}"
+    },
+    {
+      "check": "foreign id refused (update_tag_group)",
+      "ok": true,
+      "detail": "{\"error\":\"not_found\",\"message\":\"not found in this workspace\"}"
+    },
+    {
+      "check": "account close is refused to a key",
+      "ok": true,
+      "detail": "401"
+    },
+    {
+      "check": "data erasure is refused to a key",
+      "ok": true,
+      "detail": "401"
+    },
+    {
+      "check": "platform-admin route is refused to a key",
+      "ok": true,
+      "detail": "403"
+    },
+    {
+      "check": "every new family leaves an audit line naming the key id",
+      "ok": true,
+      "detail": "campaign.archived,campaign.created,campaign.updated,page.created,qr_code.archived,qr_code.created,qr_code.updated,tag_group.created,tag_group.deleted,tag_group.updated,tag_rule.archived,tag_rule.creat"
+    },
+    {
+      "check": "teardown leaves no probe account",
+      "ok": true,
+      "detail": "0"
+    }
+  ],
+  "passed": 38,
+  "failed": 0
+}

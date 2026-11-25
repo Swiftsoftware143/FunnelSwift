@@ -1,5 +1,6 @@
-//! Guard: the MCP door exposes EXACTLY the eleven reads plus the twelve write tools (fleet standard
-//! §9), each tenant-scoped in its own statement or by calling the app's own handler, and prints
+//! Guard: the MCP door exposes EXACTLY the eleven reads plus the thirty write tools (fleet standard
+//! §9 core + §10 parity families), each tenant-scoped in its own statement or by calling the app's
+//! own handler, and prints
 //! the same list on the customer console (kanban t_aeefb4fb, t_03af3510).
 //!
 //! These are source-level checks in the style of `tenant_decode_guard` — no database, no network —
@@ -55,7 +56,7 @@ mod tests {
 
     /// The twelve writes §9 adds: one create, one update and one archive per top-level entity the
     /// product owns (funnels, pages, leads, tags). Any other write tool is a surface change.
-    const WRITE_TOOLS: [&str; 12] = [
+    const WRITE_TOOLS: [&str; 30] = [
         "create_funnel",
         "update_funnel",
         "archive_funnel",
@@ -68,6 +69,24 @@ mod tests {
         "create_tag",
         "update_tag",
         "archive_tag",
+        "create_campaign",
+        "update_campaign",
+        "archive_campaign",
+        "create_tag_group",
+        "update_tag_group",
+        "archive_tag_group",
+        "create_tag_rule",
+        "update_tag_rule",
+        "archive_tag_rule",
+        "create_web_to_lead",
+        "update_web_to_lead",
+        "archive_web_to_lead",
+        "create_webhook",
+        "update_webhook",
+        "archive_webhook",
+        "create_qr_code",
+        "update_qr_code",
+        "archive_qr_code",
     ];
 
     #[tokio::test]
@@ -86,7 +105,11 @@ mod tests {
             .collect();
         expected.sort();
         assert_eq!(names, expected, "the exposed tool set changed");
-        assert_eq!(names.len(), 23, "eleven reads plus twelve writes");
+        assert_eq!(
+            names.len(),
+            41,
+            "eleven reads plus thirty writes (§9 core + §10 parity families)"
+        );
 
         for name in &names {
             let tool = spec(name);
@@ -109,8 +132,8 @@ mod tests {
             }
             // Archive semantics keep every write reversible EXCEPT the tag, which has no archive
             // column and therefore says so with the destructive annotation.
-            if name == "archive_tag" {
-                assert!(destructive, "archive_tag deletes the row and must say so");
+            if name == "archive_tag" || name == "archive_tag_group" {
+                assert!(destructive, "{name} deletes the row and must say so");
             } else {
                 assert!(!destructive, "{name} must never be destructive");
             }
@@ -244,7 +267,7 @@ mod tests {
     async fn the_door_builds_and_refuses_a_bad_registry() {
         // A real build validates names, descriptions, schemas, annotations and the config.
         let door = super::super::mcp::build_door(test_state()).expect("the door builds");
-        assert_eq!(door.registry().len(), 23);
+        assert_eq!(door.registry().len(), 41);
         assert_eq!(door.config().path, "/mcp");
         assert_eq!(door.config().server_name, "funnelswift");
     }

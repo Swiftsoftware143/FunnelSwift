@@ -119,6 +119,22 @@ pub async fn create_tag_rule(
     // action type would otherwise surface as a raw database error from the INSERT.
     check_storable(&name, RULE_NAME_CHARS, "name")?;
     check_storable(&action_type, RULE_ACTION_TYPE_CHARS, "action_type")?;
+    // Both tag references must be THIS workspace's tags. The FK is not tenant-aware, so without
+    // this check a rule could point at another account's tag id (kanban t_3a7f70c1: the §10 rule
+    // tool's own description promises not_found for a foreign tag, and the promise has to be the
+    // handler's, not the door's). A missing and a foreign id answer the SAME 404.
+    let action_tag_id = opt_uuid(&payload, "action_tag_id");
+    for tag in [Some(trigger_tag_id), action_tag_id].into_iter().flatten() {
+        let owned: Option<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM tags WHERE id = $1 AND tenant_id = $2")
+                .bind(tag)
+                .bind(tenant_id)
+                .fetch_optional(&state.pool)
+                .await?;
+        if owned.is_none() {
+            return Err(AppError::NotFound("Tag not found".into()));
+        }
+    }
     let id = Uuid::new_v4();
     let target_app = payload["target_app"]
         .as_str()
@@ -137,7 +153,7 @@ pub async fn create_tag_rule(
     .bind(payload["description"].as_str())
     .bind(trigger_tag_id)
     .bind(&action_type)
-    .bind(opt_uuid(&payload, "action_tag_id"))
+    .bind(action_tag_id)
     .bind(&target_app)
     .bind(is_active)
     .execute(&state.pool)
@@ -165,6 +181,19 @@ pub async fn update_tag_rule(
             ("target_app", RULE_TARGET_APP_CHARS),
         ],
     )?;
+    // The action tag, when the caller changes it, must be this workspace's (same reason as the
+    // create path: the FK is not tenant-aware).
+    if let Some(tag) = opt_uuid(&payload, "action_tag_id") {
+        let owned: Option<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM tags WHERE id = $1 AND tenant_id = $2")
+                .bind(tag)
+                .bind(tenant_id)
+                .fetch_optional(&state.pool)
+                .await?;
+        if owned.is_none() {
+            return Err(AppError::NotFound("Tag not found".into()));
+        }
+    }
     let updated: Option<(Uuid,)> = sqlx::query_as(
         "UPDATE tag_rules SET
            name = COALESCE($3, name),
