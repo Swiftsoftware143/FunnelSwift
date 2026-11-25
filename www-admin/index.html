@@ -4839,6 +4839,15 @@ async function renderSuperAdmin() {
   const note = nrefused + (nrefused === 1 ? ' customer checkout was' : ' customer checkouts were') + ' turned away because no payment provider is set up, ' +
     npaid + ' paid, ' + nreq + (nreq === 1 ? ' plan request is' : ' plan requests are') + ' waiting for an answer.' +
     (nrefusedTest ? ' ' + nrefusedTest + (nrefusedTest === 1 ? ' attempt' : ' attempts') + ' from your own test and harness accounts are excluded from that customer count.' : '');
+  // THE MONEY CARDS COUNT CUSTOMERS TOO (measured live 2026-11-25). "On a Paid Plan" and "Plan
+  // Value" used to include the owner's own portfolio workspaces while "Total Customer Accounts"
+  // beside them excluded those same rows — one screen, two definitions of a customer, and $237/mo
+  // of the $474 was the owner's own money. The API now holds those rows out (and test addresses)
+  // exactly as the accounts card does; say so, or the smaller number reads as lost revenue.
+  const xm = stats.plan_mix_excluded || {};
+  const xmN = (Number(xm.portfolio) || 0) + (Number(xm.test) || 0);
+  const mixNote = xmN ? ' ' + xmN + (xmN === 1 ? ' workspace is' : ' workspaces are') +
+    ' held out of the plan cards: your own portfolio companies and test workspaces.' : '';
 
   return `<div>
     <h1 style="font-size:22px;font-weight:700;margin-bottom:20px">⚙️ Super Admin Dashboard</h1>
@@ -4858,7 +4867,7 @@ async function renderSuperAdmin() {
         : '<div class="table-wrap"><table class="table"><thead><tr><th>Plan</th><th>Workspaces</th><th>Price / mo</th><th>Value / mo</th></tr></thead><tbody>' +
             mix.map(p => '<tr><td>' + (p.name || p.slug) + '</td><td>' + (p.count || 0) + '</td><td>' + money(p.price) + '</td><td>' + money((p.count || 0) * (p.price || 0)) + '</td></tr>').join('') +
           '</tbody></table></div>'}
-      <p style="font-size:12px;color:var(--muted);margin-top:10px">${note}</p>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">${note}${mixNote}</p>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Quick Actions</span></div>
