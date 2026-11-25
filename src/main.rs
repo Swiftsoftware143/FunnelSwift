@@ -41,6 +41,7 @@ mod features;
 mod feedback;
 mod handlers;
 mod image_store;
+mod report_clock;
 // The CoreSwift visual field mapper's SOURCE describe endpoint (fleet-canonical generic module).
 mod integration_schema;
 mod login_throttle;

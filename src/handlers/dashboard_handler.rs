@@ -35,24 +35,34 @@ pub async fn get_dashboard_stats(
     .fetch_all(&state.pool)
     .await?;
 
+    // "Today", "this week" and "this month" are the WORKSPACE's calendar, not the database's
+    // (`report_clock`): the database runs in UTC, so a US business's "today" used to roll over at
+    // 19:00-20:00 local and its week started on Sunday evening.
+    let tz = crate::report_clock::report_tz();
     let leads_today: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 AND created_at::date = CURRENT_DATE",
+        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 \
+         AND (created_at AT TIME ZONE $2::text)::date = (now() AT TIME ZONE $2::text)::date",
     )
     .bind(tenant_id)
+    .bind(&tz)
     .fetch_one(&state.pool)
     .await?;
 
     let leads_this_week: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 AND created_at >= date_trunc('week', CURRENT_DATE)",
+        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 \
+         AND created_at >= (date_trunc('week', now() AT TIME ZONE $2::text) AT TIME ZONE $2::text)",
     )
     .bind(tenant_id)
+    .bind(&tz)
     .fetch_one(&state.pool)
     .await?;
 
     let leads_this_month: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 AND created_at >= date_trunc('month', CURRENT_DATE)",
+        "SELECT COUNT(*) FROM leads WHERE tenant_id = $1 \
+         AND created_at >= (date_trunc('month', now() AT TIME ZONE $2::text) AT TIME ZONE $2::text)",
     )
     .bind(tenant_id)
+    .bind(&tz)
     .fetch_one(&state.pool)
     .await?;
 

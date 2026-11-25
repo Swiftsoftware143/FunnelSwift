@@ -98,8 +98,11 @@ pub async fn get_dashboard_insights(
     }
 
     // ── daily trend: the same window, one row per day that HAS a lead ───────────────────────────
+    // Day boundaries are the WORKSPACE's clock, not the database's (`report_clock`): a lead
+    // captured at 23:30 in New York used to be filed under tomorrow because the server groups in
+    // UTC (measured live 2026-11-25).
     let day_rows = sqlx::query(
-        r#"SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+        r#"SELECT to_char(date_trunc('day', created_at AT TIME ZONE $3::text), 'YYYY-MM-DD') AS day,
                   COUNT(*)::bigint AS leads
              FROM leads
             WHERE tenant_id = $1
@@ -109,6 +112,7 @@ pub async fn get_dashboard_insights(
     )
     .bind(tenant_id)
     .bind(days)
+    .bind(crate::report_clock::report_tz())
     .fetch_all(&state.pool)
     .await?;
     let by_day: Vec<Value> = day_rows

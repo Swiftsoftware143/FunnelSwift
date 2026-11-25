@@ -406,13 +406,27 @@ pub async fn get_card_analytics(
         "SELECT COUNT(DISTINCT session_id) FROM kinetic_card_events WHERE card_id=$1 AND session_id IS NOT NULL"
     ).bind(card_id).fetch_one(&state.pool).await.unwrap_or(0);
 
+    // Both counters are the WORKSPACE's calendar (`report_clock`), not the database's UTC day/week.
+    let tz = crate::report_clock::report_tz();
     let today_views: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='view' AND created_at::date = CURRENT_DATE"
-    ).bind(card_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='view' \
+         AND (created_at AT TIME ZONE $2::text)::date = (now() AT TIME ZONE $2::text)::date",
+    )
+    .bind(card_id)
+    .bind(&tz)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let this_week_views: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='view' AND created_at >= date_trunc('week', CURRENT_DATE)"
-    ).bind(card_id).fetch_one(&state.pool).await.unwrap_or(0);
+        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='view' \
+         AND created_at >= (date_trunc('week', now() AT TIME ZONE $2::text) AT TIME ZONE $2::text)",
+    )
+    .bind(card_id)
+    .bind(&tz)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let utm_sources: Vec<UtmSourceRow> = sqlx::query_as(
         "SELECT utm_source, utm_medium, utm_campaign, COUNT(*) as count FROM kinetic_card_events WHERE card_id=$1 AND utm_source IS NOT NULL GROUP BY utm_source, utm_medium, utm_campaign ORDER BY count DESC LIMIT 10"
