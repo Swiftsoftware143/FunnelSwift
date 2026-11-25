@@ -160,9 +160,13 @@ caller-supplied plan slug is ignored) and an admin assigns any other plan with
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/v1/push/coreswift` | Push lead to CoreSwift |
-| POST | `/api/v1/push/workflowswift` | Push lead to WorkflowSwift |
-| POST | `/api/v1/push/adaswift` | Push lead to ADASwift |
 | POST | `/api/v1/webhooks/conversion` | Cross-app conversion receiver (requires `x-internal-key`; writes `affiliate_commissions`) |
+
+`POST /api/v1/push/workflowswift` and `POST /api/v1/push/adaswift` are gone. WorkflowSwift delivery
+still happens on every lead create, through the same `deliver_lead` call that posts
+`{WORKFLOWSWIFT_URL}/api/v1/incoming`; the HTTP push route had no caller anywhere and was removed
+2026-11-25 (kanban t_739722ac). The ADASwift push legs had no correct payload and were removed
+earlier (t_65084d8b).
 
 `/api/v1/webhooks/conversion` is posted by sibling apps (WorkflowSwift, ADASwift, missedcallrespondr)
 when a paid checkout carries referral data. It requires the `x-internal-key` header, resolves the

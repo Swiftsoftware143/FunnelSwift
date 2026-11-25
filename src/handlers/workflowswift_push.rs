@@ -1,5 +1,11 @@
 // Cross-app lead push to WorkflowSwift — the ONE leg of the legacy "cross-app push" family
-// (commit 650e91c, 28 handlers) that has a real counterpart, now that it is a real call.
+// (commit 650e91c, 28 handlers) that has a real counterpart.
+//
+// The HTTP leg is GONE. POST /api/v1/push/workflowswift was removed 2026-11-25 (kanban
+// t_739722ac): it had no caller anywhere — the lead-create flow delivers through `deliver_lead`
+// directly (src/handlers/lead_handler.rs), and no shipped SPA, template, script, fleet tool or
+// n8n workflow ever posted to it. The delivery function below is the app's ONE WorkflowSwift
+// writer and stays: it is what the lead flow uses. Handler imports were dropped with the route.
 //
 // That family fabricated success: every leg below answered a 200 with a `json!({...})` built from
 // the request payload, importing only AuthUser/Json/Value, calling nothing. The rest of the family
@@ -29,10 +35,6 @@
 // returned as `no_workflow`, never as a success. A refusal (its key guard) or an unreachable target
 // is an error carrying the target's own HTTP status, not a 200 with a made-up body.
 
-use crate::auth::middleware::AuthUser;
-use crate::error::{AppError, AppResult};
-use crate::state::AppState;
-use axum::{extract::State, Json};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -149,80 +151,6 @@ pub async fn deliver_lead(base_url: &str, lead: &LeadPush) -> PushOutcome {
                 message: format!("WorkflowSwift unreachable: {e}"),
             }
         }
-    }
-}
-
-/// POST /api/v1/push/workflowswift — real delivery, honest reply.
-pub async fn push_lead_to_workflowswift(
-    _auth: AuthUser,
-    State(state): State<AppState>,
-    Json(payload): Json<Value>,
-) -> AppResult<Json<Value>> {
-    let has_identity = ["email", "phone", "name"]
-        .iter()
-        .any(|k| payload.get(*k).and_then(|v| v.as_str()).is_some());
-    if !has_identity {
-        return Err(AppError::BadRequest(
-            "email, phone or name is required".into(),
-        ));
-    }
-    if state.workflowswift_url.trim().is_empty() {
-        return Err(AppError::BadRequest(
-            "WorkflowSwift is not connected — set WORKFLOWSWIFT_URL".into(),
-        ));
-    }
-
-    let lead = LeadPush {
-        email: payload
-            .get("email")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        name: payload
-            .get("name")
-            .and_then(|v| v.as_str())
-            .or_else(|| payload.get("first_name").and_then(|v| v.as_str()))
-            .map(String::from),
-        phone: payload
-            .get("phone")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        company: payload
-            .get("company")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        source_entry_id: payload
-            .get("lead_id")
-            .or_else(|| payload.get("source_entry_id"))
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        campaign_slug: payload
-            .get("campaign_slug")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        data: payload.clone(),
-    };
-
-    match deliver_lead(&state.workflowswift_url, &lead).await {
-        PushOutcome::Pushed => Ok(Json(json!({
-            "provider": "workflowswift",
-            "status": "pushed",
-            "matched": true,
-            "workflowswift_status": 200,
-            "message": "Lead delivered to WorkflowSwift; an active workflow matched and was started"
-        }))),
-        PushOutcome::NoWorkflow => Ok(Json(json!({
-            "provider": "workflowswift",
-            "status": "no_workflow",
-            "matched": false,
-            "workflowswift_status": 200,
-            "message": "WorkflowSwift accepted the lead but no active workflow matches source 'funnelswift' — nothing was written in WorkflowSwift"
-        }))),
-        PushOutcome::Failed { status, message } => Err(AppError::Internal(format!(
-            "WorkflowSwift push failed (upstream status {}): {message}",
-            status
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "none".to_string())
-        ))),
     }
 }
 

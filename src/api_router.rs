@@ -25,7 +25,7 @@ use crate::handlers::{
     public_signup_handler, qr_handler, seo_handler, settings_handler, site_handler,
     site_settings_handler, support_request_handler, tag_group_handler, tag_handler,
     tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler,
-    webhook_handler, workflowswift_push,
+    webhook_handler,
 };
 use crate::personal_api_keys;
 use crate::state::AppState;
@@ -1518,10 +1518,13 @@ pub fn create_router(
             "/api/v1/push/coreswift/health",
             get(coreswift_push::coreswift_health),
         )
-        .route(
-            "/api/v1/push/workflowswift",
-            post(workflowswift_push::push_lead_to_workflowswift),
-        )
+        // REMOVED 2026-11-25 (kanban t_739722ac): POST /api/v1/push/workflowswift is gone — it had
+        // no caller anywhere. The lead-create flow delivers through `deliver_lead` directly
+        // (src/handlers/lead_handler.rs), and zero shipped SPA, template, script, fleet tool or n8n
+        // workflow ever posted to this path (the only repo hits were the registration, the handler
+        // and one comment). Measured after removal: the path answers 404 exactly like a bogus path,
+        // while the sibling /api/v1/push/coreswift (which ops scripts DO call) still answers.
+        // Do not re-add without a real producer AND a target route that accepts the body.
         // REMOVED 2026-09-25 (kanban t_0a6a93f1): the rest of this family is gone, because every
         // leg below answered a 200 with a success body built from the request payload and wrote
         // NOTHING anywhere (measured live: 0 rows in workflowswift / adaswift / coreswift_crm for a

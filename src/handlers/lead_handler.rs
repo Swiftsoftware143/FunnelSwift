@@ -324,8 +324,10 @@ pub async fn create_lead(
     )
     .await;
 
-    // Best-effort push to WorkflowSwift — the REAL POST {WORKFLOWSWIFT_URL}/api/v1/incoming call,
-    // the same `deliver_lead` the /api/v1/push/workflowswift leg uses. Until 2026-09-25 this spawn
+    // Best-effort push to WorkflowSwift — the REAL POST {WORKFLOWSWIFT_URL}/api/v1/incoming call
+    // through `deliver_lead`, the app's ONE WorkflowSwift writer. (The /api/v1/push/workflowswift
+    // leg that also called it was removed 2026-11-25, kanban t_739722ac: it had no caller; this
+    // lead-create path is the only one.) Until 2026-09-25 this spawn
     // was `push_to_workflowswift`, which only wrote a log line while the route beside it fabricated
     // a success body (kanban t_0a6a93f1); a lead was "pushed" nowhere. Failures are logged and never
     // fail the lead — the same best-effort contract MissedCallRespondr ships for its contacts.
