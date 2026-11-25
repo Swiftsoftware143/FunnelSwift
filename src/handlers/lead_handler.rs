@@ -1430,10 +1430,22 @@ pub async fn assign_lead_tags(
     let (current_tags, rules_applied) =
         apply_lead_tags(&state, tenant_id, id, &req.tags, &req.remove, &triggered_by).await?;
 
+    // THE TAG→FREE-ACCOUNT OUTCOME BELONGS IN THIS ANSWER (2026-11-25). `apply_lead_tags` runs the
+    // provisioner before it returns, and the lead create/update doors already answer with one
+    // plain-English sentence per attempt (`provisioning_sentences`). This route did not, so a caller
+    // that tagged a lead through it was told "Tags updated" and could not tell a minted workspace
+    // from a refused address — measured live on the probe tenant: the attempt was recorded in
+    // `provisioning_log` as `invalid 422` while this response carried no trace of it. Same event,
+    // three doors, and now all three say what happened.
+    let provisioning = provisioning_sentences(&state.pool, tenant_id, id)
+        .await
+        .unwrap_or_default();
+
     Ok(Json(json!({
         "message": "Tags updated",
         "tags": current_tags,
-        "rules_applied": rules_applied
+        "rules_applied": rules_applied,
+        "provisioning": provisioning
     })))
 }
 
