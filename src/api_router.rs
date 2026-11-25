@@ -27,6 +27,7 @@ use crate::handlers::{
     tag_rule_handler, template_gating_handler, tenant_handler, theme_endpoint, web_to_lead_handler,
     webhook_handler, workflowswift_push,
 };
+use crate::personal_api_keys;
 use crate::state::AppState;
 
 /// The intended request-body ceiling for BOTH image uploads — the profile picture
@@ -992,6 +993,27 @@ pub fn create_router(
             post(api_keys::regenerate_api_key),
         )
         .route("/api/v1/api-keys/:id", delete(api_keys::revoke_api_key))
+        // THE FLEET-STANDARD MINT SURFACE (kanban t_164fbcc3, plan §P1): the same five arms every
+        // product serves at the same paths, so one provisioning step can mint for a principal in
+        // any app. A thin door over `handlers::api_keys` — one writer, one audit trail — plus the
+        // platform-admin arm that mints into ANOTHER account (`account_id`). See
+        // `src/personal_api_keys.rs` for the tenancy rules and why the creator is never the admin.
+        .route(
+            "/api/personal-api-keys",
+            get(personal_api_keys::list).post(personal_api_keys::create),
+        )
+        .route(
+            "/api/personal-api-keys/:id",
+            delete(personal_api_keys::revoke),
+        )
+        .route(
+            "/api/personal-api-keys/:id/rotate",
+            post(personal_api_keys::rotate),
+        )
+        .route(
+            "/api/personal-api-keys/:id/reveal",
+            post(personal_api_keys::reveal),
+        )
         // The CoreSwift visual field mapper's SOURCE describe endpoint (spec
         // /opt/swift/docs/coreswift-data-mapping-spec-2026-11-13.md §2). Generic module
         // `src/integration_schema.rs` (fleet-canonical); the app-specific config is `pub const

@@ -591,7 +591,13 @@ mod tests {
             // person from the session, so it belongs in `private` (and additionally in the
             // narrower `HUMAN_ONLY_ROUTES`): 250 mounts, 250 unique, 224 on the API surface,
             // 26 public, 3 internal, 195 private, 26 served.
-            (250, 250, 224, 26, 3, 195, 26),
+            // 2026-11-25 (kanban t_164fbcc3): +4 mounted API routes, all PRIVATE — the
+            // fleet-standard per-account key surface (`GET|POST /api/personal-api-keys`,
+            // `DELETE /api/personal-api-keys/:id`, `POST /:id/rotate`, `POST /:id/reveal`). Every
+            // arm binds the caller's own tenant from the session (the admin `account_id` arm is
+            // `is_admin`-gated), so all four belong in `private`: 254 mounts, 254 unique, 228 on
+            // the API surface, 26 public, 3 internal, 199 private, 26 served.
+            (254, 254, 228, 26, 3, 199, 26),
             "the census in the module docs no longer matches the router"
         );
     }

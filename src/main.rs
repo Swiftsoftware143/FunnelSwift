@@ -52,6 +52,7 @@ mod models;
 // Private inbox + workspaces, ported from ADASwift (kanban t_5592e079).
 mod module_registry;
 mod path_rejection;
+mod personal_api_keys;
 mod plan_movement;
 mod plan_resolver;
 mod platform_settings;
