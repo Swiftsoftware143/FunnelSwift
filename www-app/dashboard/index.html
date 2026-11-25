@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FunnelSwift — Dashboard</title>
+<meta name="robots" content="noindex">
+<!--
+  Cron 2026-11-10: app.funnelswift.com/dashboard answered 404 while the other five
+  app consoles (incentiveswift, workflowswift, adaswift, missedcall, coreswift) all
+  serve a dashboard at exactly that path — measured live: /dashboard -> 404 on
+  funnelswift, 301 -> /dashboard/ -> 200 elsewhere. FunnelSwift's console is the
+  tabbed SPA at `/`, and its Dashboard tab is selected by the `#dashboard` hash, so
+  this page is the missing door: it carries the visitor to that tab instead of
+  showing "Not Found". No API call, no credential, no data — a pure redirect.
+-->
+<link rel="canonical" href="/#dashboard">
+<meta http-equiv="refresh" content="0; url=/#dashboard">
+<script>location.replace('/#dashboard');</script>
+<style>
+  html,body{margin:0;height:100%;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:#0b1220;color:#e8eefc;display:flex;align-items:center;justify-content:center}
+  a{color:#7dd3fc}
+</style>
+</head>
+<body>
+  <p>Opening your dashboard&hellip; <a href="/#dashboard">Continue to FunnelSwift</a></p>
+</body>
+</html>
