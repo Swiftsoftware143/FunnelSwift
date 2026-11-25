@@ -164,13 +164,22 @@ pub async fn register(
     // written.
     let mut tx = state.pool.begin().await?;
 
-    sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
-        .bind(tenant_id)
-        .bind(&workspace_name)
-        .bind(&tenant_slug)
-        .bind(&probe_harness)
-        .execute(&mut *tx)
-        .await?;
+    // `email` is the person's own address and it belongs on the workspace row too (measured
+    // defect, 2026-11-25): every tenant this door created carried `tenants.email = NULL` while the
+    // console-created ones carried it, so a real self-serve customer (`EMI Mold Removal Tulsa OK`,
+    // live) had a blank contact address in the operator's Tenants list and nothing for the
+    // owner-address fallbacks to read. The identity lives in `users`, and the workspace row now
+    // records the same address in the same transaction.
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug, probe_harness, email) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(tenant_id)
+    .bind(&workspace_name)
+    .bind(&tenant_slug)
+    .bind(&probe_harness)
+    .bind(&email)
+    .execute(&mut *tx)
+    .await?;
 
     // Create user
     // `users_email_key` is the real guard against a duplicate address; the SELECT above is only a

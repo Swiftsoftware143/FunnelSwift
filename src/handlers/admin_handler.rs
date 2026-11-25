@@ -131,10 +131,14 @@ pub async fn portfolio_sync(
     let tenant_id = Uuid::new_v4();
     let tenant_slug = crate::security::display_name::slugify(&name);
 
-    sqlx::query("INSERT INTO tenants (id, name, slug) VALUES ($1, $2, $3)")
+    // The workspace row carries the owner's address as well as the user row (measured defect,
+    // 2026-11-25): this door left `tenants.email` NULL, so a minted account's contact address was
+    // blank everywhere the workspace row is what is read.
+    sqlx::query("INSERT INTO tenants (id, name, slug, email) VALUES ($1, $2, $3, $4)")
         .bind(tenant_id)
         .bind(&name)
         .bind(&tenant_slug)
+        .bind(&email)
         .execute(&mut *tx)
         .await?;
 

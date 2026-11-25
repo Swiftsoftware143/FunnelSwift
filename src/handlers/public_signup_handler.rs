@@ -509,13 +509,19 @@ pub async fn public_signup(
     // with empty "…'s Workspace" rows. Committing only once the account is complete means a failed
     // signup writes nothing at all.
     let mut tx = state.pool.begin().await?;
-    sqlx::query("INSERT INTO tenants (id, name, slug, probe_harness) VALUES ($1, $2, $3, $4)")
-        .bind(tenant_id)
-        .bind(&workspace_name)
-        .bind(&tenant_slug)
-        .bind(&probe_harness)
-        .execute(&mut *tx)
-        .await?;
+    // The workspace row records the person's address too (measured defect, 2026-11-25): this door
+    // created `tenants.email = NULL` for every self-serve customer, so the operator's Tenants list
+    // showed a blank contact address for real accounts while console-created rows carried one.
+    sqlx::query(
+        "INSERT INTO tenants (id, name, slug, probe_harness, email) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(tenant_id)
+    .bind(&workspace_name)
+    .bind(&tenant_slug)
+    .bind(&probe_harness)
+    .bind(&email)
+    .execute(&mut *tx)
+    .await?;
 
     // Create user
     // `users_email_key` is the real guard: the duplicate SELECT above is only a fast path, so two
