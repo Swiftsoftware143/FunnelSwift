@@ -2227,7 +2227,12 @@ pub async fn submit_lead(
         company.as_deref(),
         crate::security::lead_fields::TEXT_CHARS,
     );
-    let notes = card_lead_field(&body, "message").or_else(|| card_lead_field(&body, "notes"));
+    // A NUL byte in a visitor's message is not storable (Postgres answers `invalid byte sequence for
+    // encoding "UTF8": 0x00`) and used to drop the whole capture as a raw 500; stripped so the card
+    // form still records the lead with the words the visitor typed.
+    let notes = card_lead_field(&body, "message")
+        .or_else(|| card_lead_field(&body, "notes"))
+        .map(|s| crate::security::lead_fields::strip_nul(&s));
     let utm_source = card_lead_field(&body, "utm_source");
     let utm_medium = card_lead_field(&body, "utm_medium");
     let utm_campaign = card_lead_field(&body, "utm_campaign");

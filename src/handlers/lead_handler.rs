@@ -266,7 +266,7 @@ pub async fn create_lead(
     .bind(&req.stage)
     .bind(req.tags.map(|t| serde_json::Value::Array(t.into_iter().map(serde_json::Value::String).collect())))
     .bind(&req.custom_fields)
-    .bind(&req.notes)
+    .bind(req.notes.as_deref().map(crate::security::lead_fields::strip_nul))
     .bind(req.assigned_to)
     .bind(created_by)
     .execute(&state.pool)
@@ -684,7 +684,11 @@ pub async fn update_lead(
     .bind(score)
     .bind(&tags)
     .bind(&custom_fields)
-    .bind(&notes)
+    .bind(
+        notes
+            .as_deref()
+            .map(crate::security::lead_fields::strip_nul),
+    )
     .bind(assigned_to)
     .bind(id)
     .bind(tenant_id)
@@ -1790,7 +1794,9 @@ pub async fn import_leads(
         }
         let cell = |i: Option<usize>| {
             i.and_then(|i| row.get(i))
-                .map(|s| s.trim().to_string())
+                // A NUL byte in ANY cell would abort the whole file (`invalid byte sequence for
+                // encoding "UTF8": 0x00`) — stripped here, before the per-field checks below.
+                .map(|s| lead_fields::strip_nul(s).trim().to_string())
                 .filter(|s| !s.is_empty())
         };
 
