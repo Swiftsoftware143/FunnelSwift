@@ -150,7 +150,7 @@ pub async fn create_tag_rule(
     .bind(id)
     .bind(tenant_id)
     .bind(&name)
-    .bind(payload["description"].as_str())
+    .bind(payload["description"].as_str().map(crate::security::lead_fields::strip_nul))
     .bind(trigger_tag_id)
     .bind(&action_type)
     .bind(action_tag_id)
@@ -209,7 +209,11 @@ pub async fn update_tag_rule(
     .bind(id)
     .bind(tenant_id)
     .bind(payload["name"].as_str())
-    .bind(payload["description"].as_str())
+    .bind(
+        payload["description"]
+            .as_str()
+            .map(crate::security::lead_fields::strip_nul),
+    )
     .bind(payload["action_type"].as_str())
     .bind(opt_uuid(&payload, "action_tag_id"))
     .bind(payload["target_app"].as_str())

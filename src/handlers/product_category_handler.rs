@@ -124,7 +124,7 @@ pub async fn create_category(
     .bind(tenant_id)
     .bind(&req.name)
     .bind(&slug)
-    .bind(&req.description)
+    .bind(req.description.as_deref().map(crate::security::lead_fields::strip_nul))
     .execute(&state.pool)
     .await?;
 
@@ -158,7 +158,10 @@ pub async fn update_category(
 
     let name = req.name.or(ex.0);
     let slug = req.slug.or(ex.1);
-    let desc = req.description.or(ex.2);
+    let desc = req
+        .description
+        .map(|d| crate::security::lead_fields::strip_nul(&d))
+        .or(ex.2);
 
     // The same two columns on the edit path (the stored value already fits; the new one may not).
     if let Some(value) = name.as_deref() {

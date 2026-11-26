@@ -608,7 +608,7 @@ pub async fn create_affiliate_product(
     .bind(id)
     .bind(tenant_id)
     .bind(&req.name)
-    .bind(&req.description)
+    .bind(req.description.as_deref().map(crate::security::lead_fields::strip_nul))
     .bind(req.price.unwrap_or(0.0))
     .bind(req.default_commission_rate.unwrap_or(0.0))
     .bind(is_active)
@@ -661,7 +661,10 @@ pub async fn update_affiliate_product(
     .ok_or_else(|| AppError::NotFound("Product not found".into()))?;
 
     let name = req.name.or(existing.0);
-    let description = req.description.or(existing.1);
+    let description = req
+        .description
+        .map(|d| crate::security::lead_fields::strip_nul(&d))
+        .or(existing.1);
     let price = req.price.unwrap_or(existing.2);
     // The t_92bd5eb6 rule (kanban t_5c2a9bde). `plan_rate_source` answers `Some` only for a
     // plan-derived row (`plan_id IS NOT NULL`), and for one the PLAN's rate is what gets written

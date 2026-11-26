@@ -300,7 +300,11 @@ pub async fn create_group(
     .bind(tenant_id)
     .bind(req.name.trim())
     .bind(req.commission_rate)
-    .bind(&req.description)
+    .bind(
+        req.description
+            .as_deref()
+            .map(crate::security::lead_fields::strip_nul),
+    )
     .execute(&mut *tx)
     .await
     {
@@ -377,7 +381,11 @@ pub async fn update_group(
     .bind(id)
     .bind(&req.name)
     .bind(req.commission_rate)
-    .bind(&req.description)
+    .bind(
+        req.description
+            .as_deref()
+            .map(crate::security::lead_fields::strip_nul),
+    )
     .bind(req.clear_commission_rate.unwrap_or(false))
     .bind(tenant_id)
     .bind(system_id)
