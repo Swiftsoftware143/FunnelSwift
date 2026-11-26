@@ -34,6 +34,32 @@ fn affiliate_email_for_storage(raw: &str) -> AppResult<String> {
     crate::security::email_addr::normalize(raw).map_err(AppError::UnprocessableEntity)
 }
 
+/// `affiliates.name` and `affiliates.industry` are `varchar(255)` — the cap and the storability
+/// check are the live column width, so nothing that used to fit is refused.
+const AFFILIATE_TEXT_CHARS: usize = 255;
+
+/// Refuse or scrub the affiliate form's free text before ANY write.
+///
+/// MEASURED LIVE 2026-11-26: `POST /api/v1/affiliates` with a pasted NUL byte (U+0000 — what a
+/// copy out of a PDF or another CRM carries) answered a raw `500 {"error":"Database error"}` and
+/// LOST the affiliate. Three fields did it: `name` and `industry` are `varchar(255)`, where
+/// Postgres refuses the byte outright (`invalid byte sequence for encoding "UTF8": 0x00`), and
+/// `override_note`/`tax_docs`/`tags` are text/jsonb, where the same byte fails one layer down
+/// (`unsupported Unicode escape sequence`).
+///
+/// The split is the house one: a FIELD THE OPERATOR CAN SEE AND FIX (`name`, `industry`) is
+/// refused and named, so the console can highlight it; an invisible byte inside a note or a blob
+/// is scrubbed, because there is nothing to point at and the rest of what they typed is still
+/// what they meant. The same guard runs on the edit door (`PUT /api/v1/affiliates/:id`), which
+/// takes the same fields.
+fn check_affiliate_text(name: Option<&str>, industry: Option<&str>) -> AppResult<()> {
+    crate::security::lead_fields::check("name", name, AFFILIATE_TEXT_CHARS)
+        .map_err(AppError::UnprocessableEntity)?;
+    crate::security::lead_fields::check("industry", industry, AFFILIATE_TEXT_CHARS)
+        .map_err(AppError::UnprocessableEntity)?;
+    Ok(())
+}
+
 fn generate_affiliate_id() -> String {
     let now = chrono::Utc::now();
     let date_part = now.format("%m%d%Y").to_string();
@@ -129,6 +155,10 @@ pub async fn create_affiliate(
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
     features::enforce_feature_limit(&state, tenant_id, "max_affiliates", "Affiliates").await?;
 
+    // Storability first: a control character or an over-long name/industry must be a named 422,
+    // never the raw 500 this door answered before (measured 2026-11-26).
+    check_affiliate_text(Some(req.name.as_str()), req.industry.as_deref())?;
+
     // Refuse a value that is not an address BEFORE the duplicate check, so the caller is told
     // about the typo itself instead of being told a malformed string "already exists".
     let email = affiliate_email_for_storage(&req.email)?;
@@ -164,9 +194,23 @@ pub async fn create_affiliate(
     .bind(&req.industry)
     .bind(req.commission_rate)
     .bind(req.override_commission_rate)
-    .bind(&req.override_note)
-    .bind(&req.tax_docs)
-    .bind(&req.tags)
+    // The note and the two jsonb blobs: an invisible NUL is scrubbed rather than refused
+    // (see `check_affiliate_text`) — a jsonb string cannot hold one either.
+    .bind(
+        req.override_note
+            .as_deref()
+            .map(crate::security::lead_fields::strip_nul),
+    )
+    .bind(
+        req.tax_docs
+            .as_ref()
+            .map(crate::security::lead_fields::strip_nul_json),
+    )
+    .bind(
+        req.tags
+            .as_ref()
+            .map(crate::security::lead_fields::strip_nul_json),
+    )
     .bind(req.is_visible)
     .execute(&state.pool)
     .await?;
@@ -222,8 +266,26 @@ pub async fn update_affiliate(
         None => existing.email.clone(),
     };
 
-    let tags_val = req.tags.or(existing.tags);
+    let tags_val = req
+        .tags
+        .as_ref()
+        .map(crate::security::lead_fields::strip_nul_json)
+        .or(existing.tags.clone());
     let visible_val = req.is_visible.or(existing.is_visible);
+
+    // The edit door takes the same fields as the create door, so it takes the same guard:
+    // measured 2026-11-26, a NUL in the pasted name/industry/note answered a raw 500 and the
+    // edit was lost. Named 422 for the visible fields, scrub for the note and the blobs.
+    check_affiliate_text(req.name.as_deref(), req.industry.as_deref())?;
+    let note_val = req
+        .override_note
+        .as_deref()
+        .map(crate::security::lead_fields::strip_nul);
+    let tax_val = req
+        .tax_docs
+        .as_ref()
+        .map(crate::security::lead_fields::strip_nul_json)
+        .or(existing.tax_docs.clone());
 
     let result = sqlx::query(
         "UPDATE affiliates SET name=$1, email=$2, industry=$3, commission_rate=$4, tax_docs=$5, is_active=$6, tags=$7, is_visible=$8, override_commission_rate=CASE WHEN $9 THEN NULL ELSE COALESCE($10, override_commission_rate) END, override_note=CASE WHEN $9 THEN NULL ELSE COALESCE($11, override_note) END, updated_at=NOW() WHERE id=$12 AND tenant_id=$13",
@@ -232,13 +294,13 @@ pub async fn update_affiliate(
     .bind(&email_val)
     .bind(req.industry.or(existing.industry))
     .bind(req.commission_rate.or(existing.commission_rate))
-    .bind(req.tax_docs.or(existing.tax_docs))
+    .bind(&tax_val)
     .bind(req.is_active.unwrap_or(existing.is_active))
     .bind(tags_val)
     .bind(visible_val)
     .bind(req.clear_override.unwrap_or(false))
     .bind(req.override_commission_rate)
-    .bind(&req.override_note)
+    .bind(&note_val)
     .bind(&id)
     .bind(tenant_id)
     .execute(&state.pool)

@@ -56,6 +56,27 @@ pub fn strip_nul(value: &str) -> String {
     value.chars().filter(|c| *c != '\u{0}').collect()
 }
 
+/// [`strip_nul`] for a whole JSON value — every string, at any depth, and every object KEY.
+///
+/// A NUL is not storable in a jsonb string either: the statement fails with `unsupported Unicode
+/// escape sequence` rather than `invalid byte sequence … 0x00`, which is the same raw 500 one layer
+/// down. Measured live 2026-11-26 on the affiliate form, whose `tax_docs` and `tags` are jsonb
+/// blobs pasted/selected by the operator. Scrubbed, not refused: the rest of the blob is still what
+/// they meant, and the byte is invisible so there is nothing to point at.
+pub fn strip_nul_json(value: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match value {
+        Value::String(s) => Value::String(strip_nul(s)),
+        Value::Array(items) => Value::Array(items.iter().map(strip_nul_json).collect()),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (strip_nul(k), strip_nul_json(v)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
 /// A `%…%` ILIKE pattern that matches the text the caller TYPED, not a pattern.
 ///
 /// A search box is literal text, but `format!("%{search}%")` hands the term to `ILIKE` as a
@@ -179,5 +200,27 @@ mod tests {
         // A NUL in the term is stripped, not passed to Postgres (measured: `?search=%00` -> 500).
         assert_eq!(like_contains("Ac\u{0}me"), "%Acme%");
         assert_eq!(like_contains("\u{0}"), "%%");
+    }
+
+    #[test]
+    fn a_json_blob_is_scrubbed_at_every_depth_and_in_its_keys() {
+        // Measured live 2026-11-26: `POST /api/v1/affiliates` with a NUL in `tax_docs`/`tags`
+        // failed inside jsonb (`unsupported Unicode escape sequence`) while the same handler had
+        // already answered a clean 422 for the same byte in `name`.
+        let blob = serde_json::json!({
+            "do\u{0}c": "W-9\u{0}.pdf",
+            "files": [{"name": "a\u{0}b"}, 7, true, null],
+            "nested": {"deep": "x\u{0}y"}
+        });
+        let cleaned = strip_nul_json(&blob);
+        assert_eq!(cleaned["doc"], "W-9.pdf");
+        assert_eq!(cleaned["files"][0]["name"], "ab");
+        assert_eq!(cleaned["nested"]["deep"], "xy");
+        // Non-string leaves are untouched, so numbers and flags survive the scrub unchanged.
+        assert_eq!(cleaned["files"][1], 7);
+        assert_eq!(cleaned["files"][3], serde_json::Value::Null);
+        // A clean value is a no-op.
+        let clean = serde_json::json!({"tags": ["vip", "2026"]});
+        assert_eq!(strip_nul_json(&clean), clean);
     }
 }
