@@ -90,7 +90,10 @@ pub async fn list_leads(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| format!("%{s}%"));
+        // Literal text, not a pattern: `%` and `_` typed into the box are characters the operator
+        // is looking for. Measured live 2026-11-26 — `?search=%` and `?search=_` each returned the
+        // whole workspace, and a NUL in the term answered `500 {"error":"Database error"}`.
+        .map(lead_fields::like_contains);
     let stage = query
         .stage
         .as_deref()
@@ -116,8 +119,9 @@ pub async fn list_leads(
         "SELECT COUNT(*) FROM leads
          WHERE tenant_id = $1
            AND ($2::text IS NULL
-                OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
-                OR phone ILIKE $2 OR notes ILIKE $2)
+                OR name ILIKE $2 ESCAPE '#' OR email ILIKE $2 ESCAPE '#'
+                OR company ILIKE $2 ESCAPE '#'
+                OR phone ILIKE $2 ESCAPE '#' OR notes ILIKE $2 ESCAPE '#')
            AND ($3::text IS NULL OR stage = $3)
            AND ($4::text IS NULL OR source = $4)
            AND ($5::text IS NULL OR custom_fields->>'funnel_id' = $5)",
@@ -134,8 +138,9 @@ pub async fn list_leads(
         "SELECT * FROM leads
          WHERE tenant_id = $1
            AND ($2::text IS NULL
-                OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
-                OR phone ILIKE $2 OR notes ILIKE $2)
+                OR name ILIKE $2 ESCAPE '#' OR email ILIKE $2 ESCAPE '#'
+                OR company ILIKE $2 ESCAPE '#'
+                OR phone ILIKE $2 ESCAPE '#' OR notes ILIKE $2 ESCAPE '#')
            AND ($3::text IS NULL OR stage = $3)
            AND ($4::text IS NULL OR source = $4)
            AND ($5::text IS NULL OR custom_fields->>'funnel_id' = $5)
@@ -1503,14 +1508,17 @@ pub async fn export_leads(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| format!("%{s}%"));
+        // Same literal-text rule as the list (see `lead_fields::like_contains`): a `%` in the box
+        // must not turn the export into "everything".
+        .map(lead_fields::like_contains);
 
     let leads = sqlx::query_as::<_, Lead>(
         "SELECT * FROM leads
          WHERE tenant_id = $1
            AND ($2::text IS NULL
-                OR name ILIKE $2 OR email ILIKE $2 OR company ILIKE $2
-                OR phone ILIKE $2 OR notes ILIKE $2)
+                OR name ILIKE $2 ESCAPE '#' OR email ILIKE $2 ESCAPE '#'
+                OR company ILIKE $2 ESCAPE '#'
+                OR phone ILIKE $2 ESCAPE '#' OR notes ILIKE $2 ESCAPE '#')
          ORDER BY created_at DESC",
     )
     .bind(tenant_id)

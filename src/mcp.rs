@@ -1245,7 +1245,9 @@ pub fn registry(state: AppState) -> Registry {
                 .and_then(|v| v.as_str())
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .map(str::to_string);
+                // Literal text, not a LIKE pattern — the same rule the console's search box follows
+                // (`lead_fields::like_contains`, measured live 2026-11-26: `%` matched every card).
+                .map(crate::security::lead_fields::like_contains);
             let rows = sqlx::query(
                 "SELECT c.id, c.slug, c.title, c.tagline, c.template_type, c.theme, c.is_active, \
                         (CASE WHEN jsonb_typeof(c.layout_blocks) = 'array' \
@@ -1253,8 +1255,8 @@ pub fn registry(state: AppState) -> Registry {
                         c.updated_at, c.created_at \
                  FROM kinetic_cards c \
                  WHERE c.tenant_id::text = any($2::text[]) \
-                   AND ($3::text IS NULL OR c.title ILIKE '%' || $3::text || '%' \
-                        OR c.slug ILIKE '%' || $3::text || '%') \
+                   AND ($3::text IS NULL OR c.title ILIKE $3 ESCAPE '#' \
+                        OR c.slug ILIKE $3 ESCAPE '#') \
                  ORDER BY c.updated_at DESC LIMIT $1",
             )
             .bind(limit)

@@ -56,6 +56,36 @@ pub fn strip_nul(value: &str) -> String {
     value.chars().filter(|c| *c != '\u{0}').collect()
 }
 
+/// A `%…%` ILIKE pattern that matches the text the caller TYPED, not a pattern.
+///
+/// A search box is literal text, but `format!("%{search}%")` hands the term to `ILIKE` as a
+/// PATTERN: `%` and `_` are wildcards there. Measured live 2026-11-26 on the running binary with a
+/// two-lead probe workspace — `GET /api/v1/leads?search=%` returned BOTH rows and `?search=_` did
+/// the same, so a search for `50%` matched every row whose text contains "50", and a search for `_`
+/// matched everything: the box silently ignored what the operator typed. The same pattern was used
+/// by the CSV export (a filtered table exported unfiltered rows) and by the MCP card search.
+///
+/// A NUL inside the term is a second, harder failure: the bound text reaches Postgres as a byte it
+/// cannot decode and the list answers `500 {"error":"Database error"}` instead of rows (measured live
+/// the same minute, `?search=%00`). It is stripped rather than refused — the rest of the term is
+/// still the search the operator meant, and this is a READ.
+pub fn like_contains(raw: &str) -> String {
+    let cleaned = strip_nul(raw);
+    let mut out = String::with_capacity(cleaned.len() + 2);
+    out.push('%');
+    for c in cleaned.chars() {
+        // `#` is the escape character the matching statements declare (`ESCAPE '#'`), so no
+        // backslash ever has to survive Rust's own string escaping. A literal one is escaped too,
+        // otherwise a search for "Job #12" would eat the character after it.
+        if matches!(c, '#' | '%' | '_') {
+            out.push('#');
+        }
+        out.push(c);
+    }
+    out.push('%');
+    out
+}
+
 /// Refuse a value the column cannot store (panel path). `None` is left to the caller.
 pub fn check(field: &str, value: Option<&str>, cap: usize) -> Result<(), String> {
     match value {
@@ -134,5 +164,20 @@ mod tests {
         assert!(err.contains("control characters"), "{err}");
         // A clean value is untouched by the new arm.
         assert!(check("name", Some("Ada Lovelace"), TEXT_CHARS).is_ok());
+    }
+
+    #[test]
+    fn a_search_term_is_matched_literally_not_as_a_pattern() {
+        // Measured live 2026-11-26 on the running binary: `?search=%` and `?search=_` each returned
+        // the WHOLE probe workspace (2 of 2 leads), i.e. the box ignored what was typed.
+        assert_eq!(like_contains("50%"), "%50#%%");
+        assert_eq!(like_contains("a_b"), "%a#_b%");
+        // A literal escape character is escaped too, so "Job #12" does not eat the next character.
+        assert_eq!(like_contains("Job #12"), "%Job ##12%");
+        // A plain term is untouched, so an ordinary search keeps working exactly as before.
+        assert_eq!(like_contains("Acme"), "%Acme%");
+        // A NUL in the term is stripped, not passed to Postgres (measured: `?search=%00` -> 500).
+        assert_eq!(like_contains("Ac\u{0}me"), "%Acme%");
+        assert_eq!(like_contains("\u{0}"), "%%");
     }
 }
