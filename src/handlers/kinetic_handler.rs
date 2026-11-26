@@ -187,7 +187,11 @@ const SOCIAL_COLUMNS: [(&str, &str); 6] = [
 fn social_column_values(body: &Value) -> Vec<Option<String>> {
     SOCIAL_COLUMNS
         .iter()
-        .map(|(k, _)| body.get(*k).and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .map(|(k, _)| {
+            body.get(*k)
+                .and_then(|v| v.as_str())
+                .map(crate::security::lead_fields::strip_nul)
+        })
         .collect()
 }
 
@@ -406,7 +410,13 @@ pub async fn create_card(
     // plan words (same probe: a second title on the one-card plan answers 402), so the allowance is
     // unchanged — only the repeat of a press that already landed is now recognised as itself.
     crate::features::enforce_feature_limit(&state, tenant_id, "max_cards", "Cards").await?;
-    let bio = body["bio"].as_str().unwrap_or("");
+    // A control character in a FREE-TEXT value is invisible and unstorable: a NUL fails the whole
+    // statement (`invalid byte sequence for encoding "UTF8": 0x00`) and a NUL inside `layout_blocks`
+    // fails the jsonb cast. Measured live 2026-11-26: PUT a card with U+0000 in bio / tagline /
+    // meta_description / layout_blocks answered 500 `{"error":"Database error"}` and the edit was
+    // lost. Same house split as the rest of the app: free text is scrubbed and everything typed
+    // survives; the visible `title`/`slug` are refused by `check_card_text` and name the field.
+    let bio = crate::security::lead_fields::strip_nul(body["bio"].as_str().unwrap_or(""));
     let bg_color = body["bg_color"].as_str().unwrap_or("#0f172a");
     let accent_color = body["accent_color"].as_str().unwrap_or("#6366f1");
     let text_color = body["text_color"].as_str().unwrap_or("#ffffff");
@@ -432,15 +442,18 @@ pub async fn create_card(
         )
         .await?;
     }
-    let tagline = body["tagline"].as_str().unwrap_or("");
-    let meta_desc = body["meta_description"].as_str().unwrap_or("");
+    let tagline = crate::security::lead_fields::strip_nul(body["tagline"].as_str().unwrap_or(""));
+    let meta_desc =
+        crate::security::lead_fields::strip_nul(body["meta_description"].as_str().unwrap_or(""));
     let avatar = body["avatar_url"].as_str();
     // kanban t_114b706b — HONEST KEYS. This route used to take the block array out of
     // `body["social_links"]`; blocks now come from `layout_blocks` (the misnamed key survives only
     // as a documented legacy alias for an array — see `blocks_from_body`). The card's six social
     // URLs, which the editor has always sent and no statement ever bound, are written too.
     // A new card starts with an empty block list (`[]`), never SQL NULL: the column's own default.
-    let blocks = blocks_from_body(&body).unwrap_or_else(|| json!([]));
+    let blocks = crate::security::lead_fields::strip_nul_json(
+        &blocks_from_body(&body).unwrap_or_else(|| json!([])),
+    );
     let socials = social_column_values(&body);
     let theme = body["theme_slug"].as_str();
     let video_provider = body["video_provider"].as_str();
@@ -487,7 +500,7 @@ pub async fn create_card(
     let mut last_err: Option<sqlx::Error> = None;
     for _attempt in 0..3u32 {
         let insert = sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
-            .bind(id).bind(tenant_id).bind(id).bind(title).bind(&attempt_slug).bind(bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(tagline).bind(meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
+            .bind(id).bind(tenant_id).bind(id).bind(title).bind(&attempt_slug).bind(&bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(&tagline).bind(&meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
             .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
             .execute(&state.pool)
             .await;
@@ -615,7 +628,21 @@ pub async fn update_card(
     // kanban t_114b706b — same honest keys as `create_card` (shared helpers, so the two routes
     // cannot drift): blocks come from `layout_blocks`, and the six social columns the editor has
     // always sent are finally written (they were in NEITHER statement before).
-    let blocks = blocks_from_body(&body);
+    // Free text is scrubbed, never refused (measured live 2026-11-26 — see `create_card`): a NUL in
+    // bio / tagline / meta_description / layout_blocks answered 500 and lost the whole card edit.
+    let blocks = blocks_from_body(&body).map(|b| crate::security::lead_fields::strip_nul_json(&b));
+    let bio = body["bio"]
+        .as_str()
+        .map(crate::security::lead_fields::strip_nul);
+    let tagline = body["tagline"]
+        .as_str()
+        .map(crate::security::lead_fields::strip_nul);
+    let meta_desc = body["meta_description"]
+        .as_str()
+        .map(crate::security::lead_fields::strip_nul);
+    let video_id = body["video_id"]
+        .as_str()
+        .map(crate::security::lead_fields::strip_nul);
     let socials = social_column_values(&body);
     // kanban t_8151c83f — TWO columns this screen edits were not writable through this route:
     //  * `template_type` was missing from the SET list entirely, so the editor's Template Type select
@@ -702,13 +729,15 @@ pub async fn update_card(
             .await?;
     let result = sqlx::query_scalar::<_, String>("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2 RETURNING slug")
         .bind(id).bind(tenant_id)
-        .bind(body["title"].as_str()).bind(body["bio"].as_str())
+        .bind(body["title"].as_str())
+        .bind(bio)
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
         .bind(body["text_color"].as_str()).bind(body["sub_color"].as_str())
         .bind(body["btn_color"].as_str()).bind(body["avatar_url"].as_str())
         .bind(&blocks)
-        .bind(body["tagline"].as_str()).bind(body["meta_description"].as_str())
-        .bind(body["video_id"].as_str())
+        .bind(tagline)
+        .bind(meta_desc)
+        .bind(video_id)
         // `cta_text` was dropped: `kinetic_cards` has no such column and nothing reads one —
         // the footer CTA is the plan feature `kinetic_cta_text` and per-block CTAs live inside
         // `layout_blocks`. Naming it made this UPDATE fail 42703 on every card edit.
