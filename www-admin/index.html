@@ -656,7 +656,7 @@ function renderShell() {
           <div class="avatar"${u.avatar_url?` style="background-image:url('${x(u.avatar_url)}');background-size:cover;background-position:center"`:''}>${u.avatar_url?'':initials}</div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${x(u.email)}">${x(u.name || u.email)}</div>
-            <div class="role-badge">${x(planLabel)}</div>${isSuperAdmin() ? '<div class="role-badge admin">Admin</div>' : ''}
+            ${planLabel ? '<div class="role-badge">' + x(planLabel) + '</div>' : ''}${isSuperAdmin() ? '<div class="role-badge admin">Admin</div>' : ''}
           </div>
           <span class="logout" onclick="window._logout()" title="Sign Out">⏻</span>
         </div>
