@@ -29,9 +29,26 @@ fn tenant(auth: &AuthUser) -> Result<Uuid, AppError> {
 }
 
 fn clean_name(raw: &str) -> Result<String, AppError> {
-    let n = raw.trim();
+    // A pasted name can carry an INVISIBLE control character (a spreadsheet cell, an email
+    // signature, a copy out of a PDF). Postgres cannot store a NUL byte in a text column, so the
+    // bound statement failed and the customer was answered `500 {"error":"Database error"}` with
+    // nothing saved and no idea which field was wrong — measured live 2026-11-26 on the running
+    // binary: `POST /api/v1/workspaces {"name":"WS\u0000one"}` answered 500 while every other write
+    // door (funnel, tag, lead, profile) refused the same byte with a 422 naming its field.
+    //
+    // A NUL is STRIPPED rather than refused: it is invisible, so keeping it only turns a paste into
+    // an opaque error, while dropping it preserves every character the customer can see. Any other
+    // control character is REFUSED with a sentence naming the field, because a newline or a tab in
+    // a name is a paste accident and the value is used in a switcher row and a heading.
+    let stripped = crate::security::lead_fields::strip_nul(raw);
+    let n = stripped.trim();
     if n.is_empty() {
         return Err(AppError::Validation("A workspace needs a name.".into()));
+    }
+    if n.chars().any(char::is_control) {
+        return Err(AppError::Validation(
+            "A workspace name cannot contain line breaks or control characters.".into(),
+        ));
     }
     if n.chars().count() > 120 {
         return Err(AppError::Validation(
