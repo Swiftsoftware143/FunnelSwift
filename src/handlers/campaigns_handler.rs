@@ -102,6 +102,14 @@ pub async fn create_campaign(
         check_storable(s, CAMPAIGN_STATUS_CHARS, "status")?;
     }
 
+    // `description` is free text (`text`), so newlines stay — but a pasted NUL byte is not
+    // storable and used to answer a raw 500 "Database error" with the campaign lost (measured
+    // live 2026-11-26 on this door: `{"name":"Camp","description":"d\u0000x"}` -> 500).
+    let description = req
+        .description
+        .as_deref()
+        .map(crate::security::lead_fields::strip_nul);
+
     sqlx::query(
         "INSERT INTO campaigns (id, tenant_id, name, campaign_type, description, status) VALUES ($1, $2, $3, $4, $5, $6)",
     )
@@ -109,7 +117,7 @@ pub async fn create_campaign(
     .bind(tenant_id)
     .bind(&req.name)
     .bind(&req.campaign_type)
-    .bind(&req.description)
+    .bind(description.as_deref())
     .bind(&req.status)
     .execute(&state.pool)
     .await?;
@@ -169,6 +177,12 @@ pub async fn update_campaign(
         check_storable(s, CAMPAIGN_STATUS_CHARS, "status")?;
     }
 
+    // The same free-text rule on the edit door: an invisible byte is scrubbed, never a 500.
+    let description = req
+        .description
+        .as_deref()
+        .map(crate::security::lead_fields::strip_nul);
+
     let res = sqlx::query(
         "UPDATE campaigns SET \
            name = COALESCE($3, name), \
@@ -182,7 +196,7 @@ pub async fn update_campaign(
     .bind(tenant_id)
     .bind(&req.name)
     .bind(&req.campaign_type)
-    .bind(&req.description)
+    .bind(description.as_deref())
     .bind(&req.status)
     .execute(&state.pool)
     .await?;

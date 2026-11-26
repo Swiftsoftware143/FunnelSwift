@@ -175,15 +175,29 @@ pub async fn create_template(
         demote_default(&mut tx, &req.template_type, None).await?;
     }
 
+    // A template body is pasted HTML/text, so newlines and tabs stay — but a NUL byte is not
+    // storable in any of these columns and answered a raw 500 with the operator's edit lost.
+    // Scrubbed rather than refused: the byte is invisible, and the rest is still what they wrote.
+    let name = crate::security::lead_fields::strip_nul(&req.name);
+    let subject = crate::security::lead_fields::strip_nul(&req.subject);
+    let body = req
+        .body
+        .as_deref()
+        .map(crate::security::lead_fields::strip_nul);
+    let html_body = req
+        .html_body
+        .as_deref()
+        .map(crate::security::lead_fields::strip_nul);
+
     sqlx::query(
         "INSERT INTO email_templates (id, template_type, name, subject, body, html_body, is_default) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
     .bind(id)
     .bind(&req.template_type)
-    .bind(&req.name)
-    .bind(&req.subject)
-    .bind(&req.body)
-    .bind(&req.html_body)
+    .bind(&name)
+    .bind(&subject)
+    .bind(body)
+    .bind(html_body)
     .bind(is_default)
     .execute(&mut *tx)
     .await
@@ -219,17 +233,17 @@ pub async fn update_template(
     let template_type: String = req
         .template_type
         .unwrap_or_else(|| existing.get("template_type"));
-    let name = req.name.unwrap_or_else(|| existing.get("name"));
-    let subject = req.subject.unwrap_or_else(|| existing.get("subject"));
-    let body: Option<String> = if req.body.is_some() {
-        req.body
-    } else {
-        existing.get("body")
+    // Same rule as the create door: an invisible byte is scrubbed, the rest of the edit is kept.
+    let strip = crate::security::lead_fields::strip_nul;
+    let name = strip(&req.name.unwrap_or_else(|| existing.get("name")));
+    let subject = strip(&req.subject.unwrap_or_else(|| existing.get("subject")));
+    let body: Option<String> = match req.body {
+        Some(b) => Some(strip(&b)),
+        None => existing.get("body"),
     };
-    let html_body: Option<String> = if req.html_body.is_some() {
-        req.html_body
-    } else {
-        existing.get("html_body")
+    let html_body: Option<String> = match req.html_body {
+        Some(h) => Some(strip(&h)),
+        None => existing.get("html_body"),
     };
     let is_default: bool = req.is_default.unwrap_or_else(|| existing.get("is_default"));
 
