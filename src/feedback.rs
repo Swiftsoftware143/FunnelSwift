@@ -33,7 +33,14 @@ pub struct SubmitFeedback {
 }
 
 fn clean_text(raw: &str, max: usize, label: &str) -> Result<String, AppError> {
-    let t = raw.trim();
+    // A U+0000 anywhere in this text makes the INSERT answer the raw
+    // `500 {"error":"Database error"}` (Postgres: `invalid byte sequence for encoding "UTF8": 0x00`).
+    // Measured live 2026-11-26: `POST /api/v1/feedback` with a NUL in `message` answered 500 and the
+    // report was lost. A bug report is the customer telling us about a defect — never drop it for an
+    // invisible byte, so it is STRIPPED here and newlines survive (`strip_nul` is the one helper the
+    // other free-text boundaries use).
+    let stripped = crate::security::lead_fields::strip_nul(raw);
+    let t = stripped.trim();
     if t.is_empty() {
         return Err(AppError::Validation(format!("{label} is required.")));
     }
@@ -177,4 +184,29 @@ pub fn router(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/", routing::post(submit_feedback).get(list_feedback))
         .route("/:id", routing::patch(update_feedback_status))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_nul_byte_in_a_feedback_message_still_files_and_keeps_the_words() {
+        // Measured live 2026-11-26: `POST /api/v1/feedback` with a U+0000 in `message` answered
+        // `500 {"error":"Database error"}` and the report was lost. Stripped, not refused.
+        assert_eq!(
+            clean_text("Export is broken\u{0} today", 4000, "Message").unwrap(),
+            "Export is broken today"
+        );
+        assert_eq!(
+            clean_text("line one\nline two", 4000, "Message").unwrap(),
+            "line one\nline two"
+        );
+        // A lone NUL is still an empty report, so the required-field refusal still fires.
+        assert!(clean_text("\u{0}  ", 4000, "Message").is_err());
+        // This arm REFUSES an over-long report (the panel is present to shorten it); the cap is
+        // unchanged by the NUL strip.
+        assert!(clean_text(&"y".repeat(4010), 4000, "Message").is_err());
+        assert!(clean_text(&"y".repeat(4000), 4000, "Message").is_ok());
+    }
 }

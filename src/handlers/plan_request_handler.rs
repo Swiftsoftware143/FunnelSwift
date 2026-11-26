@@ -55,6 +55,22 @@ fn money(p: f64) -> String {
     }
 }
 
+/// Free text this module stores (the customer's note, the operator's reply), made storable.
+///
+/// A U+0000 anywhere in the text makes the INSERT/UPDATE answer the raw
+/// `500 {"error":"Database error"}` (Postgres: `invalid byte sequence for encoding "UTF8": 0x00`).
+/// Measured live 2026-11-26: `POST /api/v1/plan-requests` with `"note":"Please set us up.\u0000 Thanks"`
+/// answered 500 and wrote NOTHING — this is the buying path (a request IS how a customer buys while no
+/// payment provider is configured), so the ask was lost to an invisible byte. Stripped rather than
+/// refused, the same rule the support message follows: the words still file and newlines survive.
+fn clean_text(raw: &str, max: usize) -> String {
+    crate::security::lead_fields::strip_nul(raw)
+        .trim()
+        .chars()
+        .take(max)
+        .collect()
+}
+
 #[derive(Deserialize)]
 pub struct UpdateBody {
     pub status: String,
@@ -224,7 +240,7 @@ pub async fn create(
         ));
     }
 
-    let note: String = body.note.trim().chars().take(1000).collect();
+    let note: String = clean_text(&body.note, 1000);
     let row = sqlx::query(
         "INSERT INTO plan_requests
              (tenant_id, user_id, requested_by, plan_slug, plan_name, note, billing_cycle)
@@ -570,7 +586,7 @@ pub async fn admin_update(
     // customer must never read a new status with the previous explanation still attached.
     let reply: Option<String> = body
         .reply
-        .map(|r| r.trim().chars().take(1000).collect::<String>())
+        .map(|r| clean_text(&r, 1000))
         .filter(|r| !r.is_empty());
     // The row BEFORE the write travels back with it, so "did anything the customer can read actually
     // change?" is answered by the database rather than by trusting the request body. Saving a status
@@ -778,4 +794,26 @@ pub async fn admin_update(
         "plan_applied": plan_applied,
         "plan_note": plan_note,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_nul_byte_in_an_upgrade_note_still_files_and_keeps_the_words() {
+        // Measured live 2026-11-26: `POST /api/v1/plan-requests` with a U+0000 in `note` answered
+        // `500 {"error":"Database error"}` and wrote no row — on the one path a customer can use to
+        // buy while no payment provider is configured, so the ask was simply lost.
+        assert_eq!(
+            clean_text("Please set us up.\u{0} Thanks", 1000),
+            "Please set us up. Thanks"
+        );
+        // Newlines survive: a note may be several lines.
+        assert_eq!(clean_text("line one\nline two", 1000), "line one\nline two");
+        // The cap arm is unchanged.
+        assert_eq!(clean_text(&"x".repeat(1010), 1000).chars().count(), 1000);
+        // Blank stays blank (the note is optional and the caller filters on emptiness).
+        assert_eq!(clean_text("   ", 1000), "");
+    }
 }
