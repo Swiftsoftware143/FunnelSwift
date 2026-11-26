@@ -165,7 +165,7 @@ pub async fn create_portfolio_company(
     .bind(&req.name)
     .bind(&req.slug)
     .bind(&req.email)
-    .bind(&req.description)
+    .bind(req.description.as_deref().map(crate::security::lead_fields::strip_nul))
     .bind(&settings)
     .bind(now)
     .bind(now)
@@ -249,7 +249,10 @@ pub async fn update_portfolio_company(
         crate::security::email_addr::check_lead_address(raw)
             .map_err(AppError::UnprocessableEntity)?;
     }
-    let description = req.description.or(current.description);
+    let description = req
+        .description
+        .map(|d| crate::security::lead_fields::strip_nul(&d))
+        .or(current.description);
 
     sqlx::query(
         "UPDATE portfolio_companies SET name = $1, slug = $2, settings = $3, email = $4, description = $5, updated_at = $6 WHERE id = $7 AND ($9::bool OR tenant_id = $8)",
