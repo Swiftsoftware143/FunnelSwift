@@ -57,13 +57,27 @@ pub fn normalize_capped(raw: &str, max_chars: usize, label: &str) -> Result<Stri
     Ok(value.to_string())
 }
 
-/// Enforce ONLY the storage limit, for a `varchar(255)` field that may legitimately be EMPTY
-/// (`username` and `company` are clearable from the profile screen, and the register path's
+/// Enforce the storage limit and STORABILITY, for a `varchar(255)` field that may legitimately be
+/// EMPTY (`username` and `company` are clearable from the profile screen, and the register path's
 /// `tenant_name` is optional). A blank value is the caller's business; a value the column cannot
 /// hold is not, and used to surface as a raw 500 `"Database error"`.
+///
+/// MEASURED LIVE 2026-11-26 — the control-character half of "cannot hold". A control character
+/// (U+0000, a paste from another system) in a signup's `tenant_name` skipped this check (it only
+/// counted characters) and reached the INSERT, which answered
+/// `500 {"error":"Database error"}` / `invalid byte sequence for encoding "UTF8": 0x00`, rolling the
+/// signup back: the visitor's account was LOST as a server error on the PUBLIC door. The person's
+/// `name` right beside it already refused a control character with a clean 422, so this was a gap
+/// in the shared boundary rather than a per-field one — every caller of this function (both signup
+/// doors, workspace/tenant names, API-key names, campaign and rule names, card titles) now answers
+/// a 422 naming the field instead of failing inside a transaction.
 pub fn check_len(raw: &str, max_chars: usize, label: &str) -> Result<(), String> {
-    if raw.trim().chars().count() > max_chars {
+    let value = raw.trim();
+    if value.chars().count() > max_chars {
         return Err(format!("{label}: is longer than {max_chars} characters"));
+    }
+    if value.chars().any(|c| c.is_control()) {
+        return Err(format!("{label}: must not contain control characters"));
     }
     Ok(())
 }
@@ -163,5 +177,33 @@ mod tests {
         );
         assert!(normalize_capped("Acme Ltd", COLUMN_CHARS, "company").is_ok());
         assert!(normalize_capped("", COLUMN_CHARS, "username").is_err());
+    }
+
+    #[test]
+    fn check_len_refuses_the_control_character_that_produced_a_500() {
+        // Measured live 2026-11-26: `POST /api/v1/auth/register` with a U+0000 inside
+        // `tenant_name` answered `500 {"error":"Database error"}` (Postgres:
+        // `invalid byte sequence for encoding "UTF8": 0x00`) and the signup was rolled back. The
+        // shared boundary now names the field, like the person's `name` beside it already did.
+        assert_eq!(
+            check_len("Probe\u{0}Co", MAX_NAME_CHARS, "tenant_name"),
+            Err("tenant_name: must not contain control characters".to_string())
+        );
+        // An ordinary value, a unicode value and a BLANK value all still pass: `check_len` must not
+        // become `normalize` (a clearable field stays clearable).
+        assert!(check_len("Acme Roofing", MAX_NAME_CHARS, "tenant_name").is_ok());
+        assert!(check_len("Ó Súilleabháin Ltd", MAX_NAME_CHARS, "tenant_name").is_ok());
+        assert!(check_len("   ", MAX_NAME_CHARS, "tenant_name").is_ok());
+        // …and the length arm is unchanged.
+        assert_eq!(
+            check_len(
+                &"x".repeat(MAX_NAME_CHARS + 1),
+                MAX_NAME_CHARS,
+                "tenant_name"
+            ),
+            Err(format!(
+                "tenant_name: is longer than {MAX_NAME_CHARS} characters"
+            ))
+        );
     }
 }
