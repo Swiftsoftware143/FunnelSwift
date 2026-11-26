@@ -76,7 +76,19 @@ pub async fn get_dashboard_insights(
     let mut window_leads: i64 = 0;
     let mut converted: i64 = 0;
     for row in &source_rows {
-        let source: String = row.get("source");
+        // NON-PANICKING FORM on purpose. The statement COALESCEs the label, so this can only ever
+        // be a string — but `Row::get` is `try_get().unwrap()`, and under this crate's
+        // `panic=abort` a single NULL decode would take the whole API process with it. Measured
+        // 2026-11-26: the pre-build rowget census flagged this exact line as live the moment a
+        // probe workspace held leads with a NULL `source` (2/2) and blocked the deploy. The
+        // census cannot see through the COALESCE, and the honest fix is the form that cannot
+        // panic either way: read an Option and fall back to the same `(direct)` label the SQL
+        // already substitutes, so behaviour is identical.
+        let source: String = row
+            .try_get::<Option<String>, _>("source")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "(direct)".to_string());
         let leads: i64 = row.get("leads");
         let conv: i64 = row.get("converted");
         let last_lead_at: Option<String> = row.try_get("last_lead_at").ok().flatten();
