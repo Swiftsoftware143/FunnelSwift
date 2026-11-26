@@ -78,7 +78,17 @@ fn parse_tenant(auth: &AuthUser) -> AppResult<Uuid> {
 }
 
 fn trim_cap(s: &str, max: usize) -> String {
-    s.trim().chars().take(max).collect()
+    // A U+0000 anywhere in this text makes the INSERT/UPDATE answer the raw
+    // `500 {"error":"Database error"}` (Postgres: `invalid byte sequence for encoding "UTF8": 0x00`).
+    // The public arm is a LOCKED-OUT customer's only way back in, so the message must never be lost
+    // to an invisible byte: it is STRIPPED here (the words still file, newlines survive) rather than
+    // refused, which is what `lead_fields::strip_nul` does at the other free-text boundaries
+    // (measured 2026-11-26 on the signup door for the same class of defect).
+    crate::security::lead_fields::strip_nul(s)
+        .trim()
+        .chars()
+        .take(max)
+        .collect()
 }
 
 /// `POST /api/v1/support-requests` — file a help request for this workspace.
@@ -709,4 +719,29 @@ pub async fn public_answer(
         "reply": (!reply.is_empty()).then_some(reply),
         "replied_at": (!replied_at.is_empty()).then_some(replied_at),
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_nul_byte_in_a_message_still_files_and_keeps_the_words() {
+        // Measured 2026-11-26: a U+0000 in a support message reached the INSERT and answered
+        // `500 {"error":"Database error"}` — a locked-out customer's only way back in, lost. The
+        // shared trim_cap strips it so the row is still written with everything a text column holds.
+        assert_eq!(trim_cap("Can't\u{0} sign in", MAX_SUBJECT), "Can't sign in");
+        // Newlines SURVIVE: a message is allowed to be several lines.
+        assert_eq!(
+            trim_cap("line one\nline two", MAX_BODY),
+            "line one\nline two"
+        );
+        // The cap arm is unchanged.
+        assert_eq!(
+            trim_cap(&"x".repeat(MAX_SUBJECT + 10), MAX_SUBJECT)
+                .chars()
+                .count(),
+            MAX_SUBJECT
+        );
+    }
 }
