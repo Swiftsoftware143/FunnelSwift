@@ -82,8 +82,16 @@ pub async fn update_settings(
     // t_b040a78e): left raw, a dump, a backup or a read-only psql yields a working provider key.
     // A masked credential coming back from the tenant's own view restores the STORED (already
     // sealed) value instead of storing the mask as the credential.
-    let mut value = req.value.clone();
-    if crate::email_provider::TENANT_CONFIG_KEYS.contains(&req.key.as_str()) {
+    // A control character in a settings VALUE or KEY is invisible and unstorable: Postgres refuses
+    // a NUL inside a jsonb string (`unsupported Unicode escape sequence`) and inside a text key
+    // (`invalid byte sequence for encoding "UTF8": 0x00`), and this door answered a raw 500
+    // `{"error":"Database error"}` with the customer's save lost (measured live 2026-11-26: PUT
+    // /api/v1/settings {"key":"company_name","value":"ACME\u0000Corp"} -> 500). Same house rule as
+    // the rest of the app: free text is SCRUBBED, everything typed survives, because the byte is
+    // invisible and there is nothing to point at.
+    let mut value = crate::security::lead_fields::strip_nul_json(&req.value);
+    let key = crate::security::lead_fields::strip_nul(&req.key);
+    if crate::email_provider::TENANT_CONFIG_KEYS.contains(&key.as_str()) {
         // Refuse a document the send path could only misread (kanban t_7ac7ceb5). This runs BEFORE
         // the row is touched, so a rejected save stores nothing — the same discipline the API uses
         // for a provider key nothing can read.
@@ -92,7 +100,7 @@ pub async fn update_settings(
             "SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = $2",
         )
         .bind(tenant_id)
-        .bind(&req.key)
+        .bind(&key)
         .fetch_optional(&state.pool)
         .await?;
         crate::email_provider::restore_masked_config_secrets(&mut value, stored.as_ref());
@@ -105,7 +113,7 @@ pub async fn update_settings(
     // `brand_color` are written HERE (and validated here), while `logo_url` belongs to the logo
     // endpoints. A panel echo that omits `logo_url` must not un-reference a logo that is still
     // stored, so an omitted key INHERITS the stored value; an explicit "" (= "no logo") is kept.
-    if req.key == crate::branding::SETTINGS_KEY {
+    if key == crate::branding::SETTINGS_KEY {
         crate::branding::validate_value(&value).map_err(AppError::BadRequest)?;
         if let Some(obj) = value.as_object_mut() {
             if !obj.contains_key("logo_url") {
@@ -144,7 +152,7 @@ pub async fn update_settings(
     // door refused both. Two writers, one rule: validate here with the same function, and store
     // the NORMALISED value so a mixed-case or padded input cannot create a second spelling of a
     // claim that already exists.
-    if req.key == "subdomain" {
+    if key == "subdomain" {
         let normalized = super::kinetic_handler::normalize_subdomain(
             &state.pool,
             tenant_id,
@@ -161,7 +169,7 @@ pub async fn update_settings(
            ON CONFLICT (tenant_id, key) DO UPDATE SET value = $3, updated_at = NOW()"#,
     )
     .bind(tenant_id)
-    .bind(&req.key)
+    .bind(&key)
     .bind(&value)
     .execute(&state.pool)
     .await?;
