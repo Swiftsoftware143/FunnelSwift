@@ -280,6 +280,12 @@ pub async fn update_mailbox(
         }
     }
 
+    // Free text (the address's own signature): scrubbed so a pasted control character cannot turn
+    // the save into a 500 the way the draft composer did.
+    let signature_clean = req
+        .signature
+        .as_deref()
+        .map(crate::security::lead_fields::strip_nul);
     let row = sqlx::query_as::<_, PrivateEmailBox>(
         r#"
         UPDATE private_email_boxes
@@ -294,7 +300,7 @@ pub async fn update_mailbox(
     )
     .bind(box_id)
     .bind(account_id)
-    .bind(&req.signature)
+    .bind(&signature_clean)
     .bind(req.forwarding_enabled)
     .bind(req.creates_ticket)
     // `mentioned` / `person`: an absent key leaves the assignment alone, an explicit null clears it,

@@ -28,6 +28,15 @@ pub async fn deliver(
     in_reply_to: Option<&str>,
     include_signature: bool,
 ) -> Result<Option<String>, AppError> {
+    // A pasted CONTROL CHARACTER is invisible and unstorable: U+0000 fails the statement with
+    // `invalid byte sequence for encoding "UTF8": 0x00`, so the send is refused and the whole
+    // message is lost behind a raw 500. Measured live 2026-11-26 on a probe workspace:
+    // `POST /api/v1/private-email/messages/drafts` with U+0000 in subject/body answered
+    // `500 {"error":"Database error"}` (create AND update), and a label name did the same.
+    // Scrubbed here, at the module's ONE sending funnel, so every caller inherits it.
+    let subject_clean = crate::security::lead_fields::strip_nul(subject);
+    let body_clean = crate::security::lead_fields::strip_nul(body);
+    let (subject, body) = (subject_clean.as_str(), body_clean.as_str());
     let mailbox = sqlx::query_as::<_, PrivateEmailBox>(
         "SELECT * FROM private_email_boxes WHERE tenant_id = $1 AND email_address = $2 AND status = 'active'",
     )
@@ -139,6 +148,10 @@ pub async fn send_email(
 ) -> AppResult<Json<serde_json::Value>> {
     let account_id = Uuid::parse_str(&auth.tenant_id)
         .map_err(|_| AppError::Unauthorized("Invalid session".into()))?;
+    // The same scrub as `deliver` — the Sent copy is written from these locals, so the row and the
+    // message that left carry identical bytes instead of the row being skipped on a NUL.
+    let subject = crate::security::lead_fields::strip_nul(&req.subject);
+    let body = crate::security::lead_fields::strip_nul(&req.body);
 
     let provider_message_id = deliver(
         &state.db,
@@ -147,8 +160,8 @@ pub async fn send_email(
         &req.to,
         &req.cc,
         &req.bcc,
-        &req.subject,
-        &req.body,
+        &subject,
+        &body,
         req.in_reply_to.as_deref(),
         // Absent means "do what the composer showed": signed. Only an explicit false drops it.
         req.include_signature.unwrap_or(true),
@@ -159,7 +172,7 @@ pub async fn send_email(
     // The answer is recorded in Sent, so the account's own outgoing mail is visible where a mail
     // client expects it. A failure to record is logged, never escalated: the mail HAS left, and
     // answering 500 would invite the caller to send it twice.
-    let snippet: String = req.body.chars().take(500).collect();
+    let snippet: String = body.chars().take(500).collect();
     let mailbox_id: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM private_email_boxes
           WHERE tenant_id = $1 AND email_address = $2 AND status = 'active'",
@@ -183,13 +196,13 @@ pub async fn send_email(
     .bind(&req.from_address)
     .bind(&req.from_address)
     .bind(&req.to)
-    .bind(&req.subject)
-    .bind(&req.body)
+    .bind(&subject)
+    .bind(&body)
     .bind(&snippet)
     .bind(req.in_reply_to.as_deref())
     .bind(provider)
     .bind(provider_message_id.as_deref())
-    .bind(req.body.len() as i32)
+    .bind(body.len() as i32)
     .execute(&state.db)
     .await
     {
@@ -206,7 +219,7 @@ pub async fn send_email(
         "provider_message_id": provider_message_id,
         "from": req.from_address,
         "to": req.to,
-        "subject": req.subject,
+        "subject": subject,
     })))
 }
 

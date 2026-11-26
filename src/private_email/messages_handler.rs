@@ -699,6 +699,11 @@ pub async fn reply_to_message(
         }
     }
 
+    // Free text the person typed: scrubbed BEFORE it reaches the send and the Sent row, so one
+    // pasted control character cannot turn the reply into a raw 500 after the mail has left.
+    let subject = crate::security::lead_fields::strip_nul(&subject);
+    let body = crate::security::lead_fields::strip_nul(&req.body);
+
     // Reuse the one send path.
     crate::private_email::send_handler::deliver(
         &state.db,
@@ -708,13 +713,13 @@ pub async fn reply_to_message(
         &cc,
         &[],
         &subject,
-        &req.body,
+        &body,
         None,
         req.include_signature.unwrap_or(true),
     )
     .await?;
 
-    let snippet: String = req.body.chars().take(500).collect();
+    let snippet: String = body.chars().take(500).collect();
     let sent_id: Uuid = sqlx::query_scalar(
         r#"INSERT INTO private_email_messages (
               tenant_id, mailbox_id, address, folder, direction, from_address, to_address,
@@ -728,10 +733,10 @@ pub async fn reply_to_message(
     .bind(&req.from_address)
     .bind(&to)
     .bind(&subject)
-    .bind(&req.body)
+    .bind(&body)
     .bind(&snippet)
     .bind(&subject_original)
-    .bind(req.body.len() as i32)
+    .bind(body.len() as i32)
     .fetch_one(&state.db)
     .await
     .map_err(AppError::Database)?;
@@ -882,6 +887,13 @@ pub async fn create_label(
         .map(str::trim)
         .filter(|n| !n.is_empty())
         .ok_or_else(|| AppError::Validation("A label needs a name.".into()))?;
+    // A visible name is REFUSED rather than silently rewritten (the house split): a control
+    // character pasted into it used to reach the INSERT and answer 500 `Database error` — measured
+    // live 2026-11-26 on a probe workspace.
+    crate::security::display_name::check_len(name, 64, "label name")
+        .map_err(AppError::Validation)?;
+    let name_clean = crate::security::lead_fields::strip_nul(name);
+    let name = name_clean.as_str();
     if name.chars().count() > 64 {
         return Err(AppError::Validation(
             "A label name is at most 64 characters.".into(),
@@ -925,6 +937,17 @@ pub async fn update_label(
     Json(req): Json<LabelRequest>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = account_id(&auth)?;
+    let name_clean: Option<String> = req
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(|n| {
+            crate::security::display_name::check_len(n, 64, "label name")
+                .map_err(AppError::Validation)
+                .map(|_| crate::security::lead_fields::strip_nul(n))
+        })
+        .transpose()?;
     let row = sqlx::query(
         "UPDATE private_email_labels
             SET name = COALESCE($3, name), color = COALESCE($4, color)
@@ -933,7 +956,7 @@ pub async fn update_label(
     )
     .bind(label_id)
     .bind(tenant_id)
-    .bind(req.name.as_deref().map(str::trim).filter(|n| !n.is_empty()))
+    .bind(name_clean.as_deref())
     .bind(req.color.as_deref())
     .fetch_optional(&state.db)
     .await
@@ -1185,7 +1208,11 @@ pub async fn create_folder(
     Json(req): Json<CreateFolderRequest>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = account_id(&auth)?;
-    let name = req.name.trim();
+    let name_raw = req.name.trim();
+    crate::security::display_name::check_len(name_raw, 64, "folder name")
+        .map_err(AppError::Validation)?;
+    let name_clean = crate::security::lead_fields::strip_nul(name_raw);
+    let name = name_clean.as_str();
     if name.is_empty() || name.chars().count() > 64 {
         return Err(AppError::Validation(
             "A folder needs a name of 64 characters or fewer.".into(),
@@ -1199,7 +1226,11 @@ pub async fn create_folder(
         ));
     }
 
-    let parent = req.parent.trim().trim_matches('/').to_lowercase();
+    // The parent is a LOOKUP key as well as a value, so a NUL in it fails the SELECT before any
+    // validation could answer: scrubbed first, then matched.
+    let parent = crate::security::lead_fields::strip_nul(req.parent.trim())
+        .trim_matches('/')
+        .to_lowercase();
     let parent_ok = SYSTEM_FOLDERS.contains(&parent.as_str())
         || sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM private_email_folders WHERE tenant_id = $1 AND lower(path) = $2",
@@ -1278,10 +1309,13 @@ pub async fn save_draft(
     Json(req): Json<DraftRequest>,
 ) -> AppResult<Json<Value>> {
     let tenant_id = account_id(&auth)?;
-    let from = req.from_address.unwrap_or_default();
-    let to = req.to.unwrap_or_default();
-    let subject = req.subject.unwrap_or_default();
-    let body = req.body.unwrap_or_default();
+    // Free text the person typed: a pasted control character is scrubbed, so the draft still saves
+    // (measured live 2026-11-26: U+0000 in subject or body answered 500 `Database error` on both
+    // the create and the update arm, and the draft was lost).
+    let from = crate::security::lead_fields::strip_nul(&req.from_address.unwrap_or_default());
+    let to = crate::security::lead_fields::strip_nul(&req.to.unwrap_or_default());
+    let subject = crate::security::lead_fields::strip_nul(&req.subject.unwrap_or_default());
+    let body = crate::security::lead_fields::strip_nul(&req.body.unwrap_or_default());
 
     if body.trim().is_empty() && subject.trim().is_empty() && to.trim().is_empty() {
         return Err(AppError::Validation(
