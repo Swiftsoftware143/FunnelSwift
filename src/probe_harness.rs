@@ -156,12 +156,18 @@ pub async fn tenant_is_probe(
     pool: &sqlx::PgPool,
     tenant_id: uuid::Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let stamp: Option<String> =
+    // `probe_harness` is NULLABLE: the scalar is `Option<String>` (the column) *inside* the
+    // `Option` of `fetch_optional` (the row). Decoding it as a bare `String` answers 500 for every
+    // ordinary customer — measured live 2026-11-27 in the first run of this guard.
+    let stamp: Option<Option<String>> =
         sqlx::query_scalar("SELECT probe_harness FROM tenants WHERE id = $1")
             .bind(tenant_id)
             .fetch_optional(pool)
             .await?;
-    Ok(stamp.map(|m| !m.trim().is_empty()).unwrap_or(false))
+    Ok(stamp
+        .flatten()
+        .map(|m| !m.trim().is_empty())
+        .unwrap_or(false))
 }
 
 #[cfg(test)]
