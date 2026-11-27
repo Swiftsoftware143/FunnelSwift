@@ -12,6 +12,22 @@ use crate::features;
 use crate::models::webhook::*;
 use crate::state::AppState;
 
+/// `webhooks.name` is `varchar(255)`. The webhook screen is a PANEL door, so a name the column
+/// cannot hold is REFUSED with a 422 that names the field instead of reaching the INSERT.
+///
+/// MEASURED LIVE 2026-11-27 at the origin: `POST /api/v1/webhooks` answered
+/// `500 {"error":"Database error"}` for a 300-character `name` and for a `name` holding U+0000, and
+/// `PUT /api/v1/webhooks/{id}` did the same on the edit screen — both saved nothing and named no
+/// field. The `secret` is a machine value, so the ONE byte no text column can store is SCRUBBED from
+/// it rather than refused (the rest of the pasted secret is what the operator meant).
+const WEBHOOK_NAME_CHARS: usize = 255;
+
+/// Refuse a webhook name the column cannot hold, naming it, instead of failing inside the INSERT.
+fn check_webhook_name(name: &str) -> AppResult<()> {
+    crate::security::display_name::check_len(name, WEBHOOK_NAME_CHARS, "name")
+        .map_err(AppError::UnprocessableEntity)
+}
+
 /// SSRF guard: webhook URLs must be http(s), must not target loopback/private/link-local
 /// addresses, the cloud metadata endpoint, or internal hostnames, and must be resolvable.
 ///
@@ -107,6 +123,7 @@ pub async fn create_webhook(
         .tenant_id
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
+    check_webhook_name(&req.name)?;
     validate_webhook_url(&req.url)?;
     features::enforce_feature_flag(&state, tenant_id, "has_webhooks", "Webhooks").await?;
     features::enforce_feature_limit(&state, tenant_id, "max_webhooks", "Webhooks").await?;
@@ -120,7 +137,7 @@ pub async fn create_webhook(
     .bind(&req.name)
     .bind(&req.url)
     .bind(serde_json::to_value(&req.events).map_err(|e| AppError::Internal(format!("Events serialize error: {e}")))?)
-    .bind(&req.secret)
+    .bind(req.secret.as_deref().map(crate::security::lead_fields::strip_nul))
     // kanban t_ae907da8: the Add form's Active toggle used to be dropped on the floor (the key was
     // not in the request struct, so serde ignored it and every webhook was created active).
     .bind(req.is_active.unwrap_or(true))
@@ -157,6 +174,9 @@ pub async fn update_webhook(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    if let Some(name) = req.name.as_deref() {
+        check_webhook_name(name)?;
+    }
     if let Some(url) = req.url.as_deref() {
         validate_webhook_url(url)?;
     }
