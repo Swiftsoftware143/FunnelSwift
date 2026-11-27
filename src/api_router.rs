@@ -1386,6 +1386,12 @@ pub fn create_router(
                 .put(funnel_handler::update_funnel)
                 .delete(funnel_handler::delete_funnel),
         )
+        // Fork one of this workspace's own funnels (2026-11-27): the copy keeps the page copy and
+        // starts paused, on a fresh link.
+        .route(
+            "/api/v1/funnels/:id/duplicate",
+            post(funnel_handler::duplicate_funnel),
+        )
         // QR codes for kinetic cards
         .route(
             "/api/v1/kinetic/qr",

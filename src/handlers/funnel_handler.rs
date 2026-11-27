@@ -227,6 +227,110 @@ pub async fn create_funnel(
         })),
     ))
 }
+
+/// `POST /api/v1/funnels/:id/duplicate` — fork one of this workspace's own funnels.
+///
+/// WHY THIS EXISTS (2026-11-27): a customer with a page that works has no way to build the next one
+/// except retyping every field, and the page they rebuilt by hand is a different link. The fork
+/// keeps the words and the settings and leaves the ORIGINAL untouched.
+///
+/// Three deliberate rules:
+/// * **The copy starts PAUSED** (`is_active = false`). A duplicate that went live immediately would
+///   publish a second page, at a link nobody chose, carrying the same offer — the customer opens
+///   it, edits it, and resumes it when it is ready.
+/// * **The source is the caller's row or nothing.** The read is scoped by `tenant_id`; a row that
+///   belongs to another workspace answers 404 (never 403 — a 403 would confirm the row exists).
+/// * **A fresh link from the same allocator the create path uses**, so the fork cannot collide with
+///   the original, with another workspace, or with a page minted at the same instant
+///   (`ON CONFLICT (slug) DO NOTHING` plus the `-2`, `-3`, … retry; `uq_funnels_slug` decides a race).
+pub async fn duplicate_funnel(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(source_id): Path<Uuid>,
+) -> AppResult<(StatusCode, Json<Value>)> {
+    // A create must name a workspace that still exists (see `create_funnel`): an admin token for a
+    // deleted workspace would otherwise reach the INSERT and answer a foreign-key 500.
+    let tenant_id =
+        crate::handlers::tenant_handler::require_existing_workspace(&state.pool, &auth.tenant_id)
+            .await?;
+    #[derive(sqlx::FromRow)]
+    struct Source {
+        name: String,
+        headline: Option<String>,
+        subheadline: Option<String>,
+        cta_label: Option<String>,
+        thank_you: Option<String>,
+        ask_phone: bool,
+    }
+    let source: Option<Source> = sqlx::query_as(
+        "SELECT name, headline, subheadline, cta_label, thank_you, ask_phone \
+         FROM funnels WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(source_id)
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(source) = source else {
+        return Err(AppError::NotFound("funnel".to_string()));
+    };
+    // "Copy of <name>", through the same normaliser (and the same 255 cap) the create path applies,
+    // so the fork cannot be refused AFTER the source row was read.
+    let proposed = format!("Copy of {}", source.name.trim());
+    let name = crate::security::display_name::normalize_capped(&proposed, 255, "funnel name")
+        .map_err(AppError::BadRequest)?;
+    let id = Uuid::new_v4();
+    let base = {
+        let s = slugify(&name);
+        if s.is_empty() {
+            "funnel-copy".to_string()
+        } else {
+            s
+        }
+    };
+    let mut slug = base.clone();
+    let mut attempt = 1u32;
+    loop {
+        let res = sqlx::query(
+            "INSERT INTO funnels (id, tenant_id, name, slug, headline, subheadline, cta_label, \
+             thank_you, ask_phone, is_active, views) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, 0) \
+             ON CONFLICT (slug) DO NOTHING",
+        )
+        .bind(id)
+        .bind(tenant_id)
+        .bind(&name)
+        .bind(&slug)
+        .bind(&source.headline)
+        .bind(&source.subheadline)
+        .bind(&source.cta_label)
+        .bind(&source.thank_you)
+        .bind(source.ask_phone)
+        .execute(&state.pool)
+        .await?;
+        if res.rows_affected() == 1 {
+            break;
+        }
+        attempt += 1;
+        if attempt > 50 {
+            return Err(AppError::BadRequest(
+                "Could not allocate a public link for the copy: try again".into(),
+            ));
+        }
+        slug = format!("{base}-{attempt}");
+    }
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "id": id.to_string(),
+            "name": name,
+            "slug": slug,
+            "public_path": format!("/funnel/{slug}"),
+            "is_active": false,
+            "message": "Funnel duplicated — the copy is paused until you open it.",
+        })),
+    ))
+}
+
 /// ONE funnel, in the SAME shape `list_funnels` ships.
 ///
 /// This used to select `id, name, slug, created_at` and answer a three-field stub — while
