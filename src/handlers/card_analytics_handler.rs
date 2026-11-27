@@ -356,6 +356,10 @@ pub struct CardAnalyticsResponse {
     pub total_views: i64,
     pub total_clicks: i64,
     pub total_shares: i64,
+    /// Exits: the card page reports one when the visitor leaves (`leave`). Until migration 147 the
+    /// CHECK refused that type, so this counted nothing and every visit lost its exit to an ERROR
+    /// line — the number is new, not a recount.
+    pub total_leaves: i64,
     pub unique_visitors: i64,
     pub today_views: i64,
     pub this_week_views: i64,
@@ -428,6 +432,16 @@ pub async fn get_card_analytics(
 
     let total_shares: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='share'",
+    )
+    .bind(card_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    // Exits — the type the card page already sends on visibilitychange (migration 147 accepts it).
+    // Counted here so the console can say how many visits ended without a click.
+    let total_leaves: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kinetic_card_events WHERE card_id=$1 AND event_type='leave'",
     )
     .bind(card_id)
     .fetch_one(&state.pool)
@@ -517,6 +531,7 @@ pub async fn get_card_analytics(
         total_views,
         total_clicks,
         total_shares,
+        total_leaves,
         unique_visitors,
         today_views,
         this_week_views,

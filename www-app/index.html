@@ -2646,7 +2646,7 @@ function CARDAN(c){
   function paint(a,tr){
     function stat(l,v){return '<div style="text-align:center;min-width:74px"><div style="font-size:20px;font-weight:700;color:#0f172a">'+X(String(v))+'</div><div style="font-size:11px;color:#64748b">'+X(l)+'</div></div>';}
     var h='<div style="display:flex;gap:14px;justify-content:space-between;flex-wrap:wrap;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;margin-bottom:14px">'
-      +stat("Views",a.total_views||0)+stat("Clicks",a.total_clicks||0)+stat("Shares",a.total_shares||0)
+      +stat("Views",a.total_views||0)+stat("Clicks",a.total_clicks||0)+stat("Shares",a.total_shares||0)+stat("Exits",a.total_leaves||0)
       +stat("Unique visitors",a.unique_visitors||0)+stat("Today",a.today_views||0)+stat("This week",a.this_week_views||0)+'</div>';
 
     var d=a.daily_stats||[];
@@ -2663,8 +2663,9 @@ function CARDAN(c){
     if(!L.length){h+='<p style="font-size:12px;color:#94a3b8;margin:0 0 12px">No geography recorded yet.</p>';}
     else{h+='<div style="font-size:12px;color:#334155;margin-bottom:12px">'+L.slice(0,8).map(function(r){return X([r.city,r.region,r.country].filter(Boolean).join(", ")||"\u2014")+' \u2014 '+X(String(r.count||0));}).join("<br>")+'</div>';}
 
+    var EV={view:"Viewed the card",click:"Clicked a link",button_click:"Clicked a button",link_click:"Clicked a link",share:"Shared the card",qr_scan:"Scanned the QR code",nfc_tap:"Tapped the NFC tag",form_submit:"Sent the form",leave:"Left without clicking"};
     var E=a.events_by_type||[];
-    if(E.length){h+='<h4 style="font-size:13px;margin:8px 0 6px">What visitors did</h4><div style="font-size:12px;color:#334155;margin-bottom:12px">'+E.map(function(r){return X(String(r.event_type||"\u2014"))+' \u2014 '+X(String(r.count||0));}).join("<br>")+'</div>';}
+    if(E.length){h+='<h4 style="font-size:13px;margin:8px 0 6px">What visitors did</h4><div style="font-size:12px;color:#334155;margin-bottom:12px">'+E.map(function(r){return X(EV[r.event_type]||String(r.event_type||"\u2014"))+' \u2014 '+X(String(r.count||0));}).join("<br>")+'</div>';}
 
     var US=a.utm_sources||[];
     h+='<h4 style="font-size:13px;margin:8px 0 6px">Campaign labels that brought visits</h4>';
