@@ -1693,12 +1693,15 @@ pub async fn list_checkout_requests(
                               OR (cs.purchasable_id IS NULL
                                   AND pj.slug = cs.metadata->>'plan_slug'))
                   ) AS plan_applied,
-                  ($2::bool OR NOT (
+                  -- RAW provenance, never folded with the `include_probe` flag: the console badges
+                  -- a row from THIS value, so the show-everything mode (where the badge is the only
+                  -- thing standing between our own clicking and a false sale) still marks our rows.
+                  NOT (
                        COALESCE(t.probe_harness, '') <> ''
                     OR lower(COALESCE(o.owner_email, '')) LIKE ANY (ARRAY[
                            'swiftsoftware143%', 'certifiedtb143%',
                            '%@swiftsoftware.com', '%@swiftsoftware.net', '%@funnelswift.net'])
-                  )) AS is_customer
+                  ) AS is_customer_raw
              FROM checkout_sessions cs
              LEFT JOIN tenants t ON t.id = cs.tenant_id
              LEFT JOIN LATERAL (
@@ -1712,19 +1715,17 @@ pub async fn list_checkout_requests(
             ORDER BY cs.created_at DESC
             LIMIT 2000"#,
     )
-    .bind(limit)
-    .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
 
     // The split happens here, AFTER the read and BEFORE the limit, so a page of our own attempts can
     // never push a customer's row off the screen — and the count of what was held back travels with
     // the answer (`admin_stats`'s two-number rule, applied to the list it describes).
-    let mut hidden_test = 0usize;
     let mut rows: Vec<_> = rows;
+    let mut hidden_test = 0usize;
     if !include_probe {
         let before = rows.len();
-        rows.retain(|r| r.try_get::<bool, _>("is_customer").unwrap_or(true));
+        rows.retain(|r| r.try_get::<bool, _>("is_customer_raw").unwrap_or(true));
         hidden_test = before - rows.len();
     }
     rows.truncate(limit as usize);
@@ -1750,7 +1751,7 @@ pub async fn list_checkout_requests(
                 // WHOSE ATTEMPT THIS IS. `is_test` is the same predicate the dashboard counters
                 // split on; the screen prints it as a badge, so a folded-back row (`include_probe=1`)
                 // can never be mistaken for a customer wanting to buy.
-                "is_test": !r.try_get::<bool, _>("is_customer").unwrap_or(true),
+                "is_test": !r.try_get::<bool, _>("is_customer_raw").unwrap_or(true),
                 "reason": r
                     .try_get::<Option<Value>, _>("metadata")
                     .unwrap_or(None)
