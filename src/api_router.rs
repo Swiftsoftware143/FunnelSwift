@@ -202,6 +202,14 @@ pub fn create_router(
             "/card/:id/track",
             post(crate::handlers::card_analytics_handler::track_card_event),
         )
+        // The card as a contact file (the page's "Save contact" button), on the same six
+        // prefixes as the lead form so every shared card link can save its owner.
+        .route("/k/:slug/vcard", get(kinetic_handler::download_vcard))
+        .route("/b/:slug/vcard", get(kinetic_handler::download_vcard))
+        .route("/m/:slug/vcard", get(kinetic_handler::download_vcard))
+        .route("/c/:slug/vcard", get(kinetic_handler::download_vcard))
+        .route("/f/:slug/vcard", get(kinetic_handler::download_vcard))
+        .route("/h/:slug/vcard", get(kinetic_handler::download_vcard))
         .route("/k/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/b/:slug/lead", post(kinetic_handler::submit_lead))
         .route("/m/:slug/lead", post(kinetic_handler::submit_lead))

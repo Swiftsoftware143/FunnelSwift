@@ -77,6 +77,9 @@ pub struct BlockOptions<'a> {
     pub accent: &'a str,
     /// Where the `lead_form` posts: `/<prefix>/<slug>/lead` on the page's OWN prefix.
     pub lead_action: &'a str,
+    /// Where the card's savable contact file is served: `/<prefix>/<slug>/vcard` on the page's
+    /// OWN prefix. Empty means a business-card block renders no "Save contact" button.
+    pub vcard_href: &'a str,
 }
 
 /// The selector the lead-form script binds to; also what a `kinetic_buttons` row whose
@@ -418,7 +421,7 @@ fn features_html(block: &Value) -> String {
     format!("<section class=\"kblock\">{heading}<div class=\"kfeatures\">{items}</div></section>")
 }
 
-fn business_card_html(block: &Value) -> String {
+fn business_card_html(block: &Value, opts: &BlockOptions<'_>) -> String {
     let mut out = String::from("<section class=\"kblock kbc\">");
     if let Some(u) = s(block, "avatar_url").or_else(|| s(block, "company_logo_url")) {
         if let Some(img) = image_html(u, "", "kbc-av") {
@@ -485,10 +488,137 @@ fn business_card_html(block: &Value) -> String {
     if !rows.is_empty() {
         out.push_str(&format!("<div class=\"kbc-rows\">{rows}</div>"));
     }
+    // SAVE CONTACT (2026-11-27). The card is sold as "tap to save contact" and the theme
+    // catalogue ships `download:` actions, but the served page had no way to save the person:
+    // the contact rows are tel:/mailto: links and nothing wrote a contact file. The data is
+    // already in this block, so the button offers the file `vcard_for` builds from the same
+    // fields the page renders — and from nothing else.
+    if !opts.vcard_href.is_empty() && s(block, "name").is_some() {
+        out.push_str(&format!(
+            "<a class=\"kbc-save\" href=\"{}\" download>Save contact</a>",
+            html_escape(opts.vcard_href)
+        ));
+    }
     out.push_str(&button_rows_html(block));
     out.push_str(&socials_html(block));
     out.push_str("</section>");
     out
+}
+
+/// Escape one vCard 3.0 text value: the backslash, semicolon and comma are structural and a line
+/// break would end the property early, so a value can never break out of its own line.
+fn vesc(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for c in raw.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            ';' => out.push_str("\\;"),
+            ',' => out.push_str("\\,"),
+            '\n' | '\r' => out.push_str("\\n"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Fold a vCard at 75 octets with a leading-space continuation (the 3.0 rule). Folding walks
+/// characters, so a multi-byte character is never split in half.
+fn fold_vcard(lines: &[String]) -> String {
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 {
+            out.push_str("\r\n");
+        }
+        let mut used = 0usize;
+        for c in line.chars() {
+            let w = c.len_utf8();
+            if used + w > 73 {
+                out.push_str("\r\n ");
+                used = 1;
+            }
+            out.push(c);
+            used += w;
+        }
+    }
+    out.push_str("\r\n");
+    out
+}
+
+/// The card's `business_card` block as a VCARD 3.0 document, or `None` when the card carries no
+/// contact block (or no name) to save.
+///
+/// WHY (2026-11-27): `www/kinetic.html` tells visitors a Kinetic card lets them "tap to save
+/// contact", and six shipped themes advertise a `download:` action, but no served card has ever
+/// been able to produce a contact file. The block already holds the name, job title, company,
+/// phone(s), email(s), website and catchphrase; this builds the file from exactly those fields —
+/// never from the owner's `users` row, because a public card must not publish contact details its
+/// owner did not put on it. `card_url` is the card's own public address, built by the handler from
+/// the host the visitor used.
+pub fn vcard_for(blocks: &Value, card_title: &str, card_url: &str) -> Option<String> {
+    let block = blocks
+        .as_array()?
+        .iter()
+        .find(|b| s(b, "type") == Some("business_card"))?;
+    let name = s(block, "name").or_else(|| {
+        let t = card_title.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    })?;
+
+    let mut lines: Vec<String> = vec!["BEGIN:VCARD".to_string(), "VERSION:3.0".to_string()];
+    // `N` is required by 3.0 even when only a display name is known (clients show `FN`).
+    let (last, first) = match name.rsplit_once(' ') {
+        Some((first, last)) => (last, first),
+        None => ("", name),
+    };
+    lines.push(format!("N:{};{};;;", vesc(last), vesc(first)));
+    lines.push(format!("FN:{}", vesc(name)));
+    if let Some(v) = s(block, "company") {
+        lines.push(format!("ORG:{}", vesc(v)));
+    }
+    if let Some(v) = s(block, "title") {
+        lines.push(format!("TITLE:{}", vesc(v)));
+    }
+    if let Some(v) = s(block, "phone") {
+        lines.push(format!("TEL;TYPE=CELL:{}", vesc(v)));
+    }
+    if let Some(arr) = block.get("phones").and_then(|v| v.as_array()) {
+        for it in arr {
+            if let Some(v) = s(it, "value") {
+                lines.push(format!("TEL;TYPE=CELL:{}", vesc(v)));
+            }
+        }
+    }
+    if let Some(v) = s(block, "email") {
+        lines.push(format!("EMAIL;TYPE=INTERNET:{}", vesc(v)));
+    }
+    if let Some(arr) = block.get("emails").and_then(|v| v.as_array()) {
+        for it in arr {
+            if let Some(v) = s(it, "value") {
+                lines.push(format!("EMAIL;TYPE=INTERNET:{}", vesc(v)));
+            }
+        }
+    }
+    if let Some(w) = s(block, "website") {
+        let href = if w.to_ascii_lowercase().starts_with("http") {
+            w.to_string()
+        } else {
+            format!("https://{w}")
+        };
+        lines.push(format!("URL:{}", vesc(&href)));
+    }
+    let url = card_url.trim();
+    if !url.is_empty() {
+        lines.push(format!("URL:{}", vesc(url)));
+    }
+    if let Some(n) = s(block, "catchphrase").or_else(|| s(block, "biography")) {
+        lines.push(format!("NOTE:{}", vesc(n)));
+    }
+    lines.push("END:VCARD".to_string());
+    Some(fold_vcard(&lines))
 }
 
 fn bio_link_html(block: &Value) -> String {
@@ -635,7 +765,7 @@ fn single_block(block: &Value, opts: &BlockOptions<'_>, form_index: &mut usize) 
             *form_index += 1;
             lead_form_html(block, opts.lead_action, *form_index)
         }
-        "business_card" => business_card_html(block),
+        "business_card" => business_card_html(block, opts),
         "bio_link" | "bio" | "links" => bio_link_html(block),
         "mini_funnel" => mini_funnel_html(block),
         "thank_you" => thank_you_html(block),
@@ -765,7 +895,7 @@ display:flex;flex-direction:column;gap:20px;text-align:left}}\
 .kform-msg{{font-size:13px;font-weight:600;min-height:18px;text-align:center}}\
 .kok{{color:#22c55e}}.kerr{{color:#f87171}}\
 .kcap{{font-size:12px;text-align:center;opacity:.75;margin-top:8px}}\
-.kqr{{display:block;margin:0 auto;width:100%;max-width:200px}}\n"
+.kqr{{display:block;margin:0 auto;width:100%;max-width:200px}}\n.kbc-save{{display:block;width:max-content;margin:14px auto 0;padding:11px 22px;border-radius:999px;background:{a};color:#fff;font-size:14px;font-weight:700;text-decoration:none}}\n"
     )
 }
 
@@ -824,7 +954,71 @@ mod tests {
         BlockOptions {
             accent: "#8b5cf6",
             lead_action: "/k/swiftsoftware/lead",
+            vcard_href: "/k/swiftsoftware/vcard",
         }
+    }
+
+    #[test]
+    fn a_business_card_block_saves_as_a_real_contact_file() {
+        let blocks = json!([{"type":"business_card","name":"Ada Lovelace",
+            "title":"Analyst","company":"Analytical Engines",
+            "phone":"+1 (305) 555 0100","email":"ada@example.com",
+            "website":"analytical.example","catchphrase":"Poetry, science"}]);
+        let out = vcard_for(&blocks, "ignored", "https://www.kntcrd.com/k/ada").unwrap();
+        assert!(out.starts_with("BEGIN:VCARD\r\nVERSION:3.0\r\n"), "{out}");
+        assert!(out.ends_with("END:VCARD\r\n"), "{out}");
+        assert!(out.contains("FN:Ada Lovelace"), "{out}");
+        assert!(out.contains("N:Lovelace;Ada;;;"), "{out}");
+        assert!(out.contains("ORG:Analytical Engines"), "{out}");
+        assert!(out.contains("TITLE:Analyst"), "{out}");
+        assert!(out.contains("TEL;TYPE=CELL:+1 (305) 555 0100"), "{out}");
+        assert!(out.contains("EMAIL;TYPE=INTERNET:ada@example.com"), "{out}");
+        assert!(out.contains("URL:https://analytical.example"), "{out}");
+        assert!(out.contains("URL:https://www.kntcrd.com/k/ada"), "{out}");
+        // A comma inside a vCard text value is structural, so it is escaped in the file.
+        assert!(out.contains("NOTE:Poetry\\, science"), "{out}");
+    }
+
+    #[test]
+    fn a_served_card_with_contact_details_offers_the_save_button() {
+        let blocks =
+            json!([{"type":"business_card","name":"Ada Lovelace","phone":"+1 305 555 0100"}]);
+        let r = render(&blocks, &[], &opts());
+        assert!(r.section.contains("class=\"kbc-save\""), "{}", r.section);
+        assert!(
+            r.section.contains("href=\"/k/swiftsoftware/vcard\""),
+            "{}",
+            r.section
+        );
+        assert!(r.section.contains(">Save contact</a>"), "{}", r.section);
+        // A card with no contact block offers nothing to save.
+        let hero = json!([{"type":"hero","title":"Hello"}]);
+        assert!(!render(&hero, &[], &opts()).section.contains("kbc-save"));
+    }
+
+    #[test]
+    fn a_card_without_a_contact_block_has_no_contact_file() {
+        let blocks = json!([{"type":"hero","title":"Hello"}]);
+        assert!(vcard_for(&blocks, "Just a title", "https://x/k/a").is_none());
+        // A business_card block with no name falls back to the card's own title.
+        let blocks = json!([{"type":"business_card","company":"Acme"}]);
+        let out = vcard_for(&blocks, "Acme Cards", "https://x/k/a").unwrap();
+        assert!(out.contains("FN:Acme Cards"), "{out}");
+    }
+
+    #[test]
+    fn a_value_cannot_break_out_of_its_property() {
+        let blocks = json!([{"type":"business_card","name":"Eve\nEND:VCARD\nBEGIN:VCARD",
+            "phone":"+1;555,0100"}]);
+        let out = vcard_for(&blocks, "", "").unwrap();
+        // The newline is escaped, so the document carries exactly one END:VCARD (its own last line).
+        assert_eq!(
+            out.lines().filter(|l| *l == "END:VCARD").count(),
+            1,
+            "{out}"
+        );
+        assert!(out.contains("Eve\\nEND:VCARD"), "{out}");
+        assert!(out.contains("TEL;TYPE=CELL:+1\\;555\\,0100"), "{out}");
     }
 
     #[test]

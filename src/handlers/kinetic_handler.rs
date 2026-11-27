@@ -901,6 +901,13 @@ pub async fn preview_blocks(
         &crate::card_blocks::BlockOptions {
             accent: &block_accent,
             lead_action: &lead_action,
+            // The preview shows the same button the live page will, reusing the slug already
+            // validated for the form's action; with no usable slug there is no route to offer.
+            vcard_href: &if lead_action == "#" {
+                String::new()
+            } else {
+                lead_action.replace("/lead", "/vcard")
+            },
         },
     );
     Ok(Json(json!({
@@ -1876,6 +1883,17 @@ pub async fn render_card(
         &card_buttons,
         &crate::card_blocks::BlockOptions {
             accent: &block_accent,
+            // The "Save contact" button downloads from the page's OWN prefix, exactly as the lead
+            // form posts to it; `/thank/:slug` has no `:slug/vcard` route, so it uses `/k/`.
+            vcard_href: &format!(
+                "/{}/{}/vcard",
+                if matches!(prefix, "k" | "b" | "m" | "c" | "f" | "h") {
+                    prefix
+                } else {
+                    "k"
+                },
+                slug
+            ),
             // The form posts to the page's OWN prefix (`/k/<slug>/lead` on a `/k/` page), which is
             // the route that page was served from — all six prefixes are registered and proven.
             // `/thank/:slug` renders this same card but has NO `:slug/lead` route of its own, so it
@@ -2139,6 +2157,65 @@ fn card_lead_extra_fields(body: &Value) -> serde_json::Map<String, Value> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// `GET /{k,b,m,c,f,h}/:slug/vcard` — the card as a downloadable contact file.
+///
+/// WHY (2026-11-27): the product's own marketing says a Kinetic card lets a visitor "tap to save
+/// contact" (`www/kinetic.html`) and six shipped themes advertise a `download:` action, but no card
+/// could produce a contact file: the contact rows are `tel:`/`mailto:` links and nothing wrote a
+/// vCard. This serves the file the card page's "Save contact" button offers, built from the
+/// `business_card` block the page already renders — never from the owner's `users` row, so a
+/// public card cannot publish an address its owner did not put on it.
+///
+/// A card with no contact block answers 404 rather than an empty vCard (an empty contact in a
+/// phone's address book is worse than a refusal), and an unknown slug answers 404 like the page.
+pub async fn download_vcard(
+    Path(slug): Path<String>,
+    axum::extract::Host(host): axum::extract::Host,
+    headers: axum::http::HeaderMap,
+    State(state): State<AppState>,
+) -> AppResult<axum::response::Response> {
+    let row: Option<(String, serde_json::Value)> = sqlx::query_as(
+        "SELECT COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
+           FROM kinetic_cards WHERE slug = $1 LIMIT 1",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((title, blocks)) = row else {
+        return Err(AppError::NotFound("Card not found".into()));
+    };
+
+    // The card's address on the host the visitor actually used (the same host that rendered the
+    // page), so the saved contact links back to the live card. A proxied request carries the
+    // public name in `x-forwarded-host`; `Host` is the extractor's fallback.
+    let public_host = headers
+        .get("x-forwarded-host")
+        .and_then(|v| v.to_str().ok())
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or(&host)
+        .trim()
+        .to_string();
+    let card_url = format!("https://{public_host}/k/{slug}");
+
+    let Some(vcard) = crate::card_blocks::vcard_for(&blocks, &title, &card_url) else {
+        return Err(AppError::NotFound(
+            "This card has no contact details to save.".into(),
+        ));
+    };
+
+    let disposition = format!("attachment; filename=\"{}.vcf\"", slug.replace('"', ""));
+    Ok((
+        StatusCode::OK,
+        [
+            ("content-type", "text/vcard; charset=utf-8".to_string()),
+            ("content-disposition", disposition),
+            ("cache-control", "public, max-age=300".to_string()),
+        ],
+        vcard,
+    )
+        .into_response())
 }
 
 /// Public card lead capture — `POST /{k,b,m,c,f,h}/:slug/lead`.
