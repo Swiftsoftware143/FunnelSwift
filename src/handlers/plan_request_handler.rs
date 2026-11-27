@@ -418,14 +418,6 @@ pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResu
                 "reply": r.get::<String, _>("reply"),
                 "replied_at": r.get::<Option<String>, _>("replied_at"),
                 "created_at": r.get::<String, _>("created_at"),
-                // WHAT THE WORKSPACE IS ON RIGHT NOW (2026-11-27). Closing a request moves the
-                // workspace onto the plan it asked for unless it already holds a dearer one, so the
-                // operator needs the current tier BEFORE pressing Closed: without it the screen
-                // shows the ask and hides the thing that decides the outcome. Null when the
-                // workspace has no active subscription row (a free tier minted without one).
-                "current_plan_slug": r.get::<Option<String>, _>("current_plan_slug"),
-                "current_plan_name": r.get::<Option<String>, _>("current_plan_name"),
-                "current_plan_price": r.get::<Option<f64>, _>("current_plan_price"),
             })
         })
         .collect();
@@ -615,6 +607,14 @@ pub async fn admin_list(
                 "reply": r.get::<String, _>("reply"),
                 "replied_at": r.get::<Option<String>, _>("replied_at"),
                 "created_at": r.get::<String, _>("created_at"),
+                // WHAT THE WORKSPACE IS ON RIGHT NOW (2026-11-27). Closing a request moves the
+                // workspace onto the plan it asked for unless it already holds a dearer one, so the
+                // operator needs the current tier BEFORE pressing Closed: without it the screen
+                // shows the ask and hides the thing that decides the outcome. Null when the
+                // workspace has no active subscription row (a free tier minted without one).
+                "current_plan_slug": r.get::<Option<String>, _>("current_plan_slug"),
+                "current_plan_name": r.get::<Option<String>, _>("current_plan_name"),
+                "current_plan_price": r.get::<Option<f64>, _>("current_plan_price"),
             })
         })
         .collect();
