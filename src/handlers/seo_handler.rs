@@ -27,6 +27,11 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
     urls.push(xml_url(base, "", "weekly", "1.0", None));
     urls.push(xml_url(base, "/kinetic", "weekly", "0.9", None));
     urls.push(xml_url(base, "/pricing", "weekly", "0.9", None));
+    // THE SIGNUP DOOR (2026-11-26). Every /pricing card's CTA lands on /signup, and it is the page a
+    // searcher for "funnel builder sign up" should be given — yet it was in NEITHER sitemap (this one
+    // nor www/sitemap.xml): the legal pages were listed and the conversion page was invisible. One
+    // canonical URL, deliberately without `?plan=` (every card's arrival is the same page).
+    urls.push(xml_url(base, "/signup", "monthly", "0.9", None));
     urls.push(xml_url(base, "/download-app", "monthly", "0.8", None));
     urls.push(xml_url(base, "/guide", "monthly", "0.7", None));
     urls.push(xml_url(base, "/guide-admin", "monthly", "0.7", None));
