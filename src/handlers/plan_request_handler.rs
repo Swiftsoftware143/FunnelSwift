@@ -418,6 +418,14 @@ pub async fn list_mine(auth: AuthUser, State(state): State<AppState>) -> AppResu
                 "reply": r.get::<String, _>("reply"),
                 "replied_at": r.get::<Option<String>, _>("replied_at"),
                 "created_at": r.get::<String, _>("created_at"),
+                // WHAT THE WORKSPACE IS ON RIGHT NOW (2026-11-27). Closing a request moves the
+                // workspace onto the plan it asked for unless it already holds a dearer one, so the
+                // operator needs the current tier BEFORE pressing Closed: without it the screen
+                // shows the ask and hides the thing that decides the outcome. Null when the
+                // workspace has no active subscription row (a free tier minted without one).
+                "current_plan_slug": r.get::<Option<String>, _>("current_plan_slug"),
+                "current_plan_name": r.get::<Option<String>, _>("current_plan_name"),
+                "current_plan_price": r.get::<Option<f64>, _>("current_plan_price"),
             })
         })
         .collect();
@@ -554,9 +562,20 @@ pub async fn admin_list(
                 COALESCE((SELECT u.email FROM users u WHERE u.tenant_id = t.id \
                    ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END, \
                             u.created_at ASC \
-                   LIMIT 1), '') AS owner_email
+                   LIMIT 1), '') AS owner_email,
+                cp.slug AS current_plan_slug,
+                cp.name AS current_plan_name,
+                cp.price AS current_plan_price
            FROM plan_requests pr
            JOIN tenants t ON t.id = pr.tenant_id
+           LEFT JOIN LATERAL (
+               SELECT p.slug, p.name, COALESCE(p.price, 0)::float8 AS price
+                 FROM tenant_plan_subscriptions tps
+                 JOIN plans p ON p.id = tps.plan_id
+                WHERE tps.tenant_id = t.id AND tps.status = 'active'
+                ORDER BY tps.start_date DESC
+                LIMIT 1
+           ) cp ON TRUE
           WHERE ($1::text[] IS NULL OR pr.status = ANY($1))
             AND ($2::bool OR COALESCE(t.probe_harness, '') = '')
           ORDER BY (pr.status = 'open') DESC, pr.created_at DESC
