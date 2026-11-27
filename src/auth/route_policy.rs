@@ -601,7 +601,14 @@ mod tests {
             // `POST /api/v1/push/workflowswift` was deleted. That commit left this pin behind, so
             // the suite was red at HEAD. 253 mounts, 253 unique, 227 on the API surface,
             // 26 public, 3 internal, 198 private, 26 served.
-            (253, 253, 227, 26, 3, 198, 26),
+            // 2026-11-27 (kanban t_20a614c7, card-page vcard): +6 SERVED routes, no API movement —
+            // `GET /k|/b|/m|/c|/f|/h/:slug/vcard` (commit 184791c, "Save contact" on a Kinetic card)
+            // were mounted on the six shared card prefixes and committed without moving this pin, so
+            // the suite was red at HEAD for every run in between. They are public by design (a shared
+            // card link is the credential), and they sit OFF the `/api/` surface, so only the served
+            // bucket moved: 259 mounts, 259 unique, 227 on the API surface, 26 public, 3 internal,
+            // 198 private, 32 served.
+            (259, 259, 227, 26, 3, 198, 32),
             "the census in the module docs no longer matches the router"
         );
     }

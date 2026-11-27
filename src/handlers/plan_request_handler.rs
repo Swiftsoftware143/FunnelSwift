@@ -29,9 +29,54 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
-/// The states an ask can be in. `open` is what a customer files; `contacted` means the operator
-/// has reached out; `done`/`declined` are terminal for the customer's screen.
-pub const STATUSES: [&str; 4] = ["open", "contacted", "done", "declined"];
+/// The three states the operator queue speaks, fleet-wide (contract 2026-11-27):
+/// `open` -> `contacted` -> `closed`. `closed` means finished — plan granted, declined or withdrawn —
+/// and the outcome lives in the reply text.
+pub const CANONICAL_STATUSES: [&str; 3] = ["open", "contacted", "closed"];
+
+/// Every word this app's rows may STORE. `closed` is canonical; `done`/`declined` are the
+/// pre-contract terminal words and stay WRITABLE so a stale console tab or an integration built
+/// before 2026-11-27 cannot start answering 400. `withdrawn` is written only by the customer's own
+/// withdraw control and is deliberately not in this list (an operator cannot set it).
+pub const STATUSES: [&str; 5] = ["open", "contacted", "closed", "done", "declined"];
+
+/// Any stored word -> the queue's three states. Total and one-directional: `closed`, `done`,
+/// `declined` and `withdrawn` all mean the ask is FINISHED, so they read `closed` (the outcome is in
+/// the reply). Anything unrecognised reads `open`, so a row can never hide from the queue.
+pub fn queue_status(stored: &str) -> &'static str {
+    match stored.trim().to_ascii_lowercase().as_str() {
+        "open" => "open",
+        "contacted" => "contacted",
+        "closed" | "done" | "declined" | "withdrawn" => "closed",
+        _ => "open",
+    }
+}
+
+/// The inverse of `queue_status`: every stored word that READS as `want`, so `?status=closed` also
+/// returns the legacy `done`/`declined`/`withdrawn` rows instead of silently skipping them.
+fn stored_words_for(want: &str) -> Vec<String> {
+    STATUSES
+        .iter()
+        .copied()
+        .chain(std::iter::once("withdrawn"))
+        .filter(|s| queue_status(s) == want)
+        .map(str::to_string)
+        .collect()
+}
+
+/// A `?status=` argument, resolved against the vocabulary this app understands. `None` means no
+/// filter; an unknown word is a 400 rather than a silently-ignored argument.
+fn parse_status_filter(raw: &str) -> Result<&'static str, AppError> {
+    let word = raw.trim().to_ascii_lowercase();
+    if STATUSES.contains(&word.as_str()) || word == "withdrawn" {
+        Ok(queue_status(&word))
+    } else {
+        Err(AppError::BadRequest(format!(
+            "status must be one of: {}",
+            CANONICAL_STATUSES.join(", ")
+        )))
+    }
+}
 
 #[derive(Deserialize)]
 pub struct CreateBody {
@@ -475,7 +520,9 @@ pub async fn withdraw(
     }
 }
 
-/// `GET /api/v1/admin/plan-requests` — the operator's queue. Optional `?status=open`.
+/// `GET /api/v1/admin/plan-requests` — the operator's queue. Optional `?status=` accepting the
+/// canonical three (`open`|`contacted`|`closed`) and the legacy words (`done`/`declined`/`withdrawn`,
+/// which all read as `closed`). An unknown word is a 400, never a silently ignored argument.
 pub async fn admin_list(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -484,6 +531,13 @@ pub async fn admin_list(
     if !auth.is_admin {
         return Err(AppError::Forbidden("Admin access required".into()));
     }
+    let status_filter = match params.get("status") {
+        Some(raw) => Some(parse_status_filter(raw)?),
+        None => None,
+    };
+    // The stored words that read as the requested state, so the SQL filter answers exactly what the
+    // returned `queue_status` says instead of only matching the canonical spelling.
+    let stored_words: Option<Vec<String>> = status_filter.map(stored_words_for);
     // The `include_probe` flag admits a HARNESS-TAGGED workspace. It is only ONE of the two arms the
     // dashboard counters use (`admin_handler::admin_stats` spells both out): a workspace minted
     // before `probe_harness` existed, or one whose owner sits on a reserved test domain, carries no
@@ -503,11 +557,12 @@ pub async fn admin_list(
                    LIMIT 1), '') AS owner_email
            FROM plan_requests pr
            JOIN tenants t ON t.id = pr.tenant_id
-          WHERE $1::bool
-             OR COALESCE(t.probe_harness, '') = ''
+          WHERE ($1::text[] IS NULL OR pr.status = ANY($1))
+            AND ($2::bool OR COALESCE(t.probe_harness, '') = '')
           ORDER BY (pr.status = 'open') DESC, pr.created_at DESC
           LIMIT 200",
     )
+    .bind(stored_words.as_deref())
     .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
@@ -535,6 +590,9 @@ pub async fn admin_list(
                 "billing_cycle": r.get::<String, _>("billing_cycle"),
                 "note": r.get::<String, _>("note"),
                 "status": r.get::<String, _>("status"),
+                // The canonical three-state word the console renders and the contract promises. The
+                // raw `status` above stays so nothing that reads this row today changes meaning.
+                "queue_status": queue_status(&r.get::<String, _>("status")),
                 "reply": r.get::<String, _>("reply"),
                 "replied_at": r.get::<Option<String>, _>("replied_at"),
                 "created_at": r.get::<String, _>("created_at"),
@@ -544,7 +602,7 @@ pub async fn admin_list(
 
     let open = requests
         .iter()
-        .filter(|r| r.get("status").and_then(|s| s.as_str()) == Some("open"))
+        .filter(|r| r.get("queue_status").and_then(|s| s.as_str()) == Some("open"))
         .count();
 
     Ok(Json(json!({ "requests": requests, "open": open })))
@@ -565,7 +623,7 @@ pub async fn admin_update(
     if !STATUSES.contains(&status.as_str()) {
         return Err(AppError::BadRequest(format!(
             "status must be one of: {}",
-            STATUSES.join(", ")
+            CANONICAL_STATUSES.join(", ")
         )));
     }
     // A WITHDRAWN ask is closed BY THE CUSTOMER: it can no longer be granted, declined or moved.
@@ -657,7 +715,16 @@ pub async fn admin_update(
             .fetch_optional(&state.pool)
             .await?
             .unwrap_or_else(|| "monthly".to_string());
-    if new_status == "done" && old_status != "done" {
+    // `closed` is the contract's terminal word (2026-11-27) and inherits `done`'s fulfilment
+    // behaviour: the queue now offers exactly three actions, so closing is how an operator says "the
+    // plan was granted". Fires only on the TRANSITION out of an unfinished state, so saving a note
+    // on an already-finished row can never mint a second subscription or re-settle a commission.
+    let closing_now = matches!(new_status.as_str(), "done" | "closed")
+        && !matches!(
+            old_status.as_str(),
+            "done" | "closed" | "declined" | "withdrawn"
+        );
+    if closing_now {
         let target: Option<(Uuid, String)> =
             sqlx::query_as("SELECT id, slug FROM plans WHERE slug = $1")
                 .bind(&plan_slug)
@@ -767,6 +834,13 @@ pub async fn admin_update(
         let status_word = match new_status.as_str() {
             "contacted" => "with our team - someone will be in touch",
             "done" => "complete",
+            "closed" => {
+                if plan_applied {
+                    "complete"
+                } else {
+                    "closed"
+                }
+            }
             "declined" => "closed",
             _ => "received",
         };
@@ -820,5 +894,38 @@ mod tests {
         assert_eq!(clean_text(&"x".repeat(1010), 1000).chars().count(), 1000);
         // Blank stays blank (the note is optional and the caller filters on emptiness).
         assert_eq!(clean_text("   ", 1000), "");
+    }
+
+    #[test]
+    fn every_stored_word_reads_as_one_of_the_three_queue_states() {
+        // The 5 live rows carry 'closed' and no writer ever produced it — the console rendered the
+        // raw string. The map is total, so no stored word can ever reach the screen unmapped.
+        assert_eq!(queue_status("open"), "open");
+        assert_eq!(queue_status("contacted"), "contacted");
+        assert_eq!(queue_status("closed"), "closed");
+        // Legacy terminal words all read as the canonical 'closed' (the outcome lives in the reply).
+        assert_eq!(queue_status("done"), "closed");
+        assert_eq!(queue_status("declined"), "closed");
+        assert_eq!(queue_status("withdrawn"), "closed");
+        // Case/whitespace tolerant, and an unrecognised word reads 'open' so it cannot hide.
+        assert_eq!(queue_status(" CLOSED "), "closed");
+        assert_eq!(queue_status("mystery"), "open");
+        assert_eq!(queue_status(""), "open");
+    }
+
+    #[test]
+    fn the_status_filter_answers_the_state_it_was_asked_for() {
+        // `?status=closed` must also return the legacy rows it reads as closed.
+        let closed = stored_words_for("closed");
+        for word in ["closed", "done", "declined", "withdrawn"] {
+            assert!(closed.contains(&word.to_string()), "{word} missing");
+        }
+        assert!(!closed.contains(&"open".to_string()));
+        assert_eq!(stored_words_for("open"), vec!["open".to_string()]);
+        assert_eq!(stored_words_for("contacted"), vec!["contacted".to_string()]);
+        // An unknown argument is a 400, never a silently ignored filter.
+        assert_eq!(parse_status_filter("closed").unwrap(), "closed");
+        assert_eq!(parse_status_filter("DONE").unwrap(), "closed");
+        assert!(parse_status_filter("finished").is_err());
     }
 }

@@ -7880,23 +7880,35 @@ async function renderCheckoutSessions() {
 const PLAN_REQ_LABEL = {
   open: 'Open — waiting on us',
   contacted: 'Contacted — we reached out',
-  // NOT 'moved onto the plan' (2026-11-19): a stale ask for a tier the workspace already beats is
-  // closed without touching the plan, so the chip states the state and the OUTCOME is written under
-  // it from the server's own `plan_note` (a lie in an operator's screen is worse than no chip).
-  done: 'Done',
-  declined: 'Declined',
-  // The customer took the ask back while it was still open (2026-10-19). Kept in the queue as a
-  // record, and it can no longer be answered: the server refuses to move a withdrawn ask.
-  withdrawn: 'Withdrawn by the customer'
+  // The contract's terminal state (2026-11-27): finished — granted, declined or withdrawn — with the
+  // outcome written under the chip from the server's own `plan_note`/reply.
+  closed: 'Closed',
+  // Legacy STORED words. No row can render them raw any more: the chip reads the server's
+  // `queue_status`, and these keys only answer if an older API build is still running.
+  done: 'Closed',
+  declined: 'Closed',
+  withdrawn: 'Closed — withdrawn by the customer'
 };
+// The three actions the queue offers, in order. Nothing else: `done`/`declined` were the old
+// vocabulary and are no longer buttons.
+const PLAN_REQ_ACTIONS = [['open', 'Open'], ['contacted', 'Contacted'], ['closed', 'Closed']];
 // What the server said it actually did on the last save, keyed by request id. Rendering it under
-// the status chip keeps the screen honest about a `done` that applied no plan change.
+// the status chip keeps the screen honest about a close that applied no plan change.
 const PLAN_REQ_NOTE = {};
-const PLAN_REQ_BG = { open: '#fef3c7', contacted: '#dbeafe', done: '#dcfce7', declined: '#fee2e2', withdrawn: '#f1f5f9' };
-const PLAN_REQ_FG = { open: '#92400e', contacted: '#1e40af', done: '#166534', declined: '#991b1b', withdrawn: '#475569' };
-function planReqChip(s) {
-  const k = String(s || 'open');
-  return '<span style="background:' + (PLAN_REQ_BG[k] || '#f1f5f9') + ';color:' + (PLAN_REQ_FG[k] || '#334155') +
+const PLAN_REQ_BG = { open: '#fef3c7', contacted: '#dbeafe', closed: '#dcfce7' };
+const PLAN_REQ_FG = { open: '#92400e', contacted: '#1e40af', closed: '#166534' };
+// The canonical state for a row: the server's `queue_status` when present, else the raw word mapped
+// here — so a legacy `done`/`declined`/`withdrawn` row can never print its stored spelling.
+function planReqQueue(r) {
+  const q = String((r && r.queue_status) || '').trim().toLowerCase();
+  if (q) return q;
+  const s = String((r && r.status) || '').trim().toLowerCase();
+  if (s === 'done' || s === 'declined' || s === 'withdrawn') return 'closed';
+  return s === 'contacted' ? 'contacted' : 'open';
+}
+function planReqChip(r) {
+  const k = planReqQueue(r);
+  return '<span data-plan-request-state="' + x(k) + '" style="background:' + (PLAN_REQ_BG[k] || '#f1f5f9') + ';color:' + (PLAN_REQ_FG[k] || '#334155') +
     ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' + x(PLAN_REQ_LABEL[k] || k) + '</span>';
 }
 
@@ -7910,19 +7922,20 @@ async function renderPlanRequests() {
   // — one list feeds both surfaces, so they can never disagree.
   if (!err && Array.isArray(payload.requests)) { PREQ_LIST = payload.requests; paintPlanRequests(); }
   const list = Array.isArray(payload.requests) ? payload.requests : [];
-  const open = typeof payload.open === 'number' ? payload.open : list.filter(r => r.status === 'open').length;
+  const open = typeof payload.open === 'number' ? payload.open : list.filter(r => planReqQueue(r) === 'open').length;
   PLAN_REQ_OPEN = open;
   const rowFor = (r) => {
+    const qs = planReqQueue(r);
     // A WITHDRAWN ask has no answer to give: the customer took it back, and the server refuses to
     // move it (409). Offering the state buttons here would only produce a red toast, so the cell says
     // what happened instead — the row stays readable as a record.
-    const acts = r.status === 'withdrawn'
+    const acts = String(r.status || '').toLowerCase() === 'withdrawn'
       ? '<span style="font-size:11px;color:var(--muted)">Customer withdrew it</span>'
-      : ['contacted', 'done', 'declined'].filter(st => st !== r.status).map(st =>
+      : PLAN_REQ_ACTIONS.filter(([st]) => st !== qs).map(([st, label]) =>
       '<button class="btn" data-pr-id="' + x(r.id) + '" data-pr-status="' + st + '" data-pr-ws="' + x(r.tenant_name || '') +
       '" data-pr-tenant="' + x(r.tenant_id || '') + '" data-pr-slug="' + x(r.plan_slug || '') +
       '" data-pr-cycle="' + x(r.billing_cycle || '') +
-      '" style="padding:4px 8px;font-size:11px;margin-left:4px">' + st + '</button>').join('');
+      '" style="padding:4px 8px;font-size:11px;margin-left:4px">' + label + '</button>').join('');
     // THE TERM THE CUSTOMER ASKED FOR is part of the ask (2026-11-18). `plan_requests.billing_cycle`
     // has carried 'monthly' | 'yearly' since migration 124 and the fulfilment charges on it, but this
     // table named only the plan — so the operator pressed "done" without seeing whether the customer
@@ -7943,7 +7956,7 @@ async function renderPlanRequests() {
       'request ' + x(r.id) + '</div></td>' +
       '<td>' + x(r.plan_name || r.plan_slug) + term +
       (r.note ? '<div style="font-size:11px;color:var(--muted);max-width:280px">' + x(r.note) + '</div>' : '') + '</td>' +
-      '<td>' + planReqChip(r.status) +
+      '<td>' + planReqChip(r) +
       (PLAN_REQ_NOTE[r.id] ? '<div style="font-size:11px;color:var(--muted);max-width:230px;margin-top:3px">' + x(PLAN_REQ_NOTE[r.id]) + '</div>' : '') +
       '</td>' +
       '<td>' + formatDate(r.created_at) + '</td>' +
@@ -8151,36 +8164,34 @@ function bindPlanRequests() {
       const id = b.getAttribute('data-pr-id');
       const status = b.getAttribute('data-pr-status');
       const ws = b.getAttribute('data-pr-ws') || 'this workspace';
-      const tid = b.getAttribute('data-pr-tenant');
-      const slug = b.getAttribute('data-pr-slug');
       // THE TERM TRAVELS WITH THE MOVE (2026-11-18). The server's plan-request `done` arm applies the
       // term the customer asked for — but this screen moved the workspace FIRST, with no term, so
       // `set_active_plan` created the subscription on the catalogue default ('month') and the server's
       // own term-aware move then found the workspace "already on" that plan and applied nothing. A
       // customer who asked for a YEAR was invoiced monthly. The cycle is sent with the move now; an
       // empty value (a row that predates the column) keeps the old behaviour exactly.
-      const cycle = b.getAttribute('data-pr-cycle') || '';
-      if (status === 'declined' && !confirm('Decline ' + ws + '\u2019s plan request?')) return;
+      const actionLabel = (PLAN_REQ_ACTIONS.find(([st]) => st === status) || [status, status])[1];
       b.disabled = true;
       try {
         // THE SERVER IS THE ONLY WRITER OF THE PLAN (2026-11-19). This screen used to move the
         // workspace itself, BEFORE the request was saved — an unguarded POST /tenants/:id/plan that
         // would happily downgrade a paying workspace onto a stale ask. `PUT /admin/plan-requests/:id`
-        // performs the move on `done` (with the term the customer asked for) and now REFUSES a
-        // downgrade, so the screen only reports what the server actually did.
+        // performs the move when the request is CLOSED (with the term the customer asked for) and now
+        // REFUSES a downgrade, so the screen only reports what the server actually did.
         const resp = await api('/admin/plan-requests/' + encodeURIComponent(id),
           { method: 'PUT', body: JSON.stringify({ status, reply: planReqReplyValue(id) }) });
-        const moved = status === 'done'
+        const finished = status === 'closed' || status === 'done';
+        const moved = finished
           ? (resp && resp.plan_applied
             ? ' and moved the workspace onto the plan it asked for'
             : (resp && resp.plan_note ? ' — ' + resp.plan_note : ''))
           : '';
-        if (status === 'done' && resp && resp.plan_applied === false && resp.plan_note) {
+        if (finished && resp && resp.plan_applied === false && resp.plan_note) {
           PLAN_REQ_NOTE[id] = resp.plan_note;
         } else {
           delete PLAN_REQ_NOTE[id];
         }
-        showToast('Marked ' + status + moved, 'success');
+        showToast('Marked ' + actionLabel + ' for ' + ws + moved, 'success');
         renderApp();
       } catch (e) {
         b.disabled = false;
@@ -8306,7 +8317,7 @@ async function refreshPlanRequestBadge() {
 var PREQ_LIST = null;
 function paintPlanRequests() {
   if (PREQ_LIST === null) return;
-  const openRows = PREQ_LIST.filter(r => r.status === 'open');
+  const openRows = PREQ_LIST.filter(r => planReqQueue(r) === 'open');
   PLAN_REQ_OPEN = openRows.length;
   const nav = document.querySelector('.nav-item[data-view="planRequests"]');
   if (nav) {
