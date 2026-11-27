@@ -139,6 +139,11 @@ pub async fn create(
     State(state): State<AppState>,
     Json(body): Json<CreateBody>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    // WHO IS ASKING (kanban t_a14ad547). This is the door a hand-minted session pressed on
+    // 2026-11-26: it filed a row for the real EMI Mold Removal customer and mailed the customer and
+    // the operator. A session this app never issued cannot use it — see
+    // `auth::session_provenance`. Refused BEFORE the plan lookup, before the row, before any mail.
+    crate::auth::session_provenance::ensure_issued_session(&state.pool, &auth).await?;
     let tenant_id = parse_tenant(&auth)?;
     let user_id = Uuid::parse_str(&auth.user_id).ok();
     let slug = body.plan_slug.trim().to_string();

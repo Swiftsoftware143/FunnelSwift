@@ -478,6 +478,8 @@ pub async fn impersonate(
         wsid: None,
         // An impersonation session is still a person, never a durable key.
         via_api_key: false,
+        // Issued by the operator's own console action (kanban t_a14ad547).
+        origin: Some("impersonation".to_string()),
     };
 
     let token = encode(

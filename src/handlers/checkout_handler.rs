@@ -498,6 +498,10 @@ pub async fn create_checkout_session(
     State(state): State<AppState>,
     Json(payload): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    // WHO IS ASKING (kanban t_a14ad547). The refusal arm below files a `plan_requests` row and mails
+    // both the customer and the operator — that is exactly what a hand-minted session made happen on
+    // 2026-11-26. A session this app never issued stops here, before any provider call, row or mail.
+    crate::auth::session_provenance::ensure_issued_session(&state.pool, &auth).await?;
     let tenant_id = Uuid::parse_str(&auth.tenant_id).unwrap_or_default();
 
     // YEARLY CHECKOUT (2026-10-24). The public pricing page sells every paid tier with an annual

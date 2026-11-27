@@ -875,6 +875,8 @@ pub async fn public_signup(
         wsid: None,
         // A session minted by a handler is a PERSON, never an API key.
         via_api_key: false,
+        // Issued by the public signup door (kanban t_a14ad547).
+        origin: Some("signup".to_string()),
     };
 
     let token = encode(

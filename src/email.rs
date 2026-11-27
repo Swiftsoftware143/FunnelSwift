@@ -1169,6 +1169,28 @@ pub async fn send_plan_request_received_email(
         );
         return Ok(false);
     }
+    // A PROBE-MARKED WORKSPACE NEVER MAILS A CUSTOMER (kanban t_a14ad547). The incident this card
+    // is about mailed a real customer a receipt the operator never saw; that tenant was a customer's,
+    // so no gate fired. This is the other half: when the WORKSPACE is harness-minted
+    // (`tenants.probe_harness`), the receipt is machinery talking to itself — withheld, never sent,
+    // and never stamped as acknowledged. A database error withholds (fail closed).
+    match crate::probe_harness::tenant_is_probe(pool, tenant_id).await {
+        Ok(true) => {
+            tracing::info!(
+                tenant = %tenant_id,
+                to = %to,
+                "plan-request receipt WITHHELD — the workspace is harness-minted"
+            );
+            return Ok(false);
+        }
+        Ok(false) => {}
+        Err(e) => {
+            return Err(format!(
+                "plan request {request_id}: could not tell whether the workspace is a probe \
+                 workspace, so the receipt was not sent: {e}"
+            ))
+        }
+    }
     // A RESERVED / FLEET-HARNESS RECIPIENT IS A NON-SEND, not a receipt. `dispatch_for_tenant`
     // records it as `withheld` and attempts no provider request at all, so reporting it as sent is
     // the same lie one layer down. The verdict below reads the SAME predicate the dispatcher used, so
@@ -1499,6 +1521,27 @@ pub async fn send_plan_request_operator_alert(
             "plan-request operator alert WITHHELD — the requester is a synthetic identity"
         );
         return Ok(());
+    }
+    // A PROBE-MARKED WORKSPACE NEVER RINGS THE OPERATOR (kanban t_a14ad547). The requester predicate
+    // above reads the address and the workspace NAME, so machinery with a customer-shaped name got
+    // through: measured 2026-11-26, a probe filed a request for the real EMI Mold Removal workspace
+    // and the operator was mailed "a customer asked to buy". The workspace's own stamp is data, not
+    // a guess — when it says harness, the human is not paged.
+    match crate::probe_harness::tenant_is_probe(pool, tenant_id).await {
+        Ok(true) => {
+            tracing::info!(
+                tenant = %tenant_id,
+                requester = %requester_email,
+                "plan-request operator alert WITHHELD — the workspace is harness-minted"
+            );
+            return Ok(());
+        }
+        Ok(false) => {}
+        Err(e) => {
+            return Err(format!(
+                "plan_request {request_id}: probe verdict failed: {e}"
+            ))
+        }
     }
     // THE OPERATOR'S OWN REQUESTS MUST NOT MAIL THE OPERATOR (2026-11-18). A platform admin
     // (David) filing from his own workspace would otherwise mail `operator_alert_email` — his own

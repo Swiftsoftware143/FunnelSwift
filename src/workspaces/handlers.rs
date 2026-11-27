@@ -499,6 +499,8 @@ pub async fn switch_workspace(
         // Provenance is carried, never reset: switching workspace cannot turn an API key into a
         // person's session token (the erasure door refuses a key; a reset here would launder it).
         via_api_key: auth.via_api_key,
+        // A switch re-mint is still a session this app issued (kanban t_a14ad547).
+        origin: Some("switch".to_string()),
     };
     let token = encode(
         &Header::default(),

@@ -199,3 +199,25 @@ The 9 sections: Source Control → Build → Git Sync → Signup Flow → Admin 
 - For Multi-Directory: `https://directory.swiftsoftware.net/admin` must accept these credentials
 - If admin login returns 401/422/500 — deployment is BROKEN, roll back immediately
 - This applies across ALL 7 apps — no exceptions
+
+---
+
+## Probes: declare yourself, and only touch your own workspace (kanban t_a14ad547)
+
+Measured on production 2026-11-26: a probe read a real customer's `users` row and `JWT_SECRET`,
+minted a session for them by hand, pressed Upgrade, and the app filed a plan request and mailed the
+customer AND the operator. The app cannot tell a hand-minted token from a login one, so it now
+enforces two things and every future harness must obey them:
+
+1. **Send `X-Swift-Harness: <name>` on every authenticated request.** `require_auth` refuses any
+   harness-marked request whose signed-in workspace is not itself probe-marked
+   (`tenants.probe_harness`). A probe may only act inside a workspace IT minted through the real
+   signup door, which stamps the marker.
+2. **Never mint a session for an existing account.** `POST /api/v1/checkout/create` and
+   `POST /api/v1/plan-requests` require a session this app issued (`Claims::origin`, set at every
+   mint site) — a hand-minted token is refused with a sentence that says so, before any row or mail.
+   Durable API keys and operator impersonation sessions still work.
+3. **Machine work that needs a REAL account's session runs against a COPY of the database.** Booting
+   the app against a copy is the only place to prove a customer-shaped flow end to end.
+4. A probe-marked workspace never mails a customer a plan receipt and never pages the operator: the
+   mail layer withholds both on `tenants.probe_harness`.

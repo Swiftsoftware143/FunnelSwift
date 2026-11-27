@@ -497,6 +497,10 @@ async fn key_actor(state: &AppState, ctx: &mcp_door::Ctx) -> Result<KeyActor, To
         impersonating: None,
         wsid: None,
         via_api_key: true,
+        // The key is the credential; there is no mint time to reason about, and the key's own
+        // `via_api_key` arm already admits it at the money doors (kanban t_a14ad547).
+        iat: chrono::Utc::now().timestamp(),
+        origin: Some("api_key".to_string()),
     };
     Ok(KeyActor {
         auth,

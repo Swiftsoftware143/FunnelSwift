@@ -25,6 +25,12 @@ pub struct AuthUser {
     /// The credential was a durable API KEY, not a person's session (2026-11-24). The account
     /// erasure door refuses it even though the boundary would otherwise admit it.
     pub via_api_key: bool,
+    /// When the token was minted (unix seconds), carried so the money/mail doors can tell a
+    /// session issued before the provenance claim existed (kanban t_a14ad547).
+    pub iat: i64,
+    /// Where this token came from — set by every mint site in this app, absent on a token minted
+    /// by hand with `JWT_SECRET` (`auth::session_provenance`).
+    pub origin: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -89,6 +95,8 @@ where
                             wsid: claims.wsid.clone(),
                             // A durable key, not a person. The erasure handler refuses it.
                             via_api_key: true,
+                            iat: claims.iat as i64,
+                            origin: claims.origin.clone(),
                         });
                     }
                     None => {
@@ -115,6 +123,8 @@ where
             wsid: token_data.claims.wsid,
             // A decoded JWT is always a person's session, never a key.
             via_api_key: false,
+            iat: token_data.claims.iat as i64,
+            origin: token_data.claims.origin,
         })
     }
 }

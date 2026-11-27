@@ -185,6 +185,61 @@ pub async fn require_auth(State(state): State<AppState>, req: Request, next: Nex
         }
     };
 
+    // ── A HARNESS MAY NOT CARRY A CUSTOMER'S SESSION (kanban t_a14ad547) ─────────────────────
+    // Measured 2026-11-26 23:19:12Z: a live probe minted the real EMI Mold Removal customer's
+    // session, pressed Upgrade on PRODUCTION, filed a plan request and mailed BOTH the customer and
+    // the operator — then deleted the row a minute later. The durability trigger (migration 148)
+    // stops the deletion; it does not stop a probe from BEING the customer. This does: a request
+    // that declares itself fleet machinery (`X-Swift-Harness`, the same header the signup door
+    // stamps onto `tenants.probe_harness`) is refused here unless the workspace it is signed into
+    // is itself probe-marked. Refused for every method, before any handler and before a single
+    // row is written, so no write arm and no mail arm can be reached at all.
+    //
+    // Unmarked requests are untouched: a real customer never sends this header, so their behaviour
+    // is byte-for-byte what it was. The harness contract is "mark yourself, and only act on your
+    // own workspace" — a run that does neither is indistinguishable from a customer by
+    // construction, which is why the fleet rule is that machine work runs against a COPY.
+    if let Some(marker) = crate::probe_harness::from_headers(req.headers()) {
+        match crate::probe_harness::write_verdict(&state.pool, &claims.tenant_id).await {
+            Ok(crate::probe_harness::WriteVerdict::Allowed) => {}
+            Ok(crate::probe_harness::WriteVerdict::RealTenant) => {
+                tracing::warn!(
+                    harness = %marker,
+                    tenant = %claims.tenant_id,
+                    requester = %claims.email,
+                    path = %path,
+                    method = %req.method(),
+                    "REFUSED a harness request signed into a customer workspace"
+                );
+                return reject(
+                    StatusCode::FORBIDDEN,
+                    crate::probe_harness::REFUSED_REAL_TENANT,
+                );
+            }
+            Ok(crate::probe_harness::WriteVerdict::UnknownTenant) => {
+                tracing::warn!(
+                    harness = %marker,
+                    tenant = %claims.tenant_id,
+                    "REFUSED a harness request whose workspace could not be resolved"
+                );
+                return reject(
+                    StatusCode::FORBIDDEN,
+                    crate::probe_harness::REFUSED_UNKNOWN_TENANT,
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    "harness workspace lookup failed for {}: {e}",
+                    claims.tenant_id
+                );
+                return reject(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Workspace status unavailable",
+                );
+            }
+        }
+    }
+
     // ── HUMAN-ONLY ROUTES (2026-11-24, fleet standard §3) ────────────────────────────────────
     // A durable API KEY resolves to the same Claims a session does, so a key holder reaches the
     // same handlers. Closing an account and DESTROYING its data are the two things an agent must

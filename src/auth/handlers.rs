@@ -311,6 +311,8 @@ pub async fn register(
         wsid: None,
         // A session minted by a handler is a PERSON, never an API key.
         via_api_key: false,
+        // Issued here, so it may use the money/mail doors (kanban t_a14ad547).
+        origin: Some("signup".to_string()),
     };
 
     let token = encode(
@@ -575,6 +577,8 @@ pub async fn login(
         wsid: None,
         // A session minted by a handler is a PERSON, never an API key.
         via_api_key: false,
+        // Issued by a real sign-in, so it may use the money/mail doors (kanban t_a14ad547).
+        origin: Some("login".to_string()),
     };
 
     let token = encode(
@@ -1081,6 +1085,8 @@ pub(crate) async fn reissue_session(
         wsid: None,
         // Carried over, never reset: a key stays a key across a re-mint.
         via_api_key,
+        // A re-mint by this app is still an issued session (kanban t_a14ad547).
+        origin: Some(if via_api_key { "api_key" } else { "reissue" }.to_string()),
     };
     encode(
         &Header::default(),
@@ -1991,6 +1997,8 @@ pub async fn logout_all(
         // Carried over: a key that re-mints keeps the marker, so this route cannot launder a key
         // into a person's token (which the erasure door would then admit).
         via_api_key: auth.via_api_key,
+        // Issued by this app for a real account action (kanban t_a14ad547).
+        origin: Some("password_reset".to_string()),
     };
     let token = encode(
         &Header::default(),

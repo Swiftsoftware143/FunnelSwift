@@ -59,6 +59,12 @@ pub struct Claims {
     /// handlers a session does, so that door has to be shut explicitly.
     #[serde(default)]
     pub via_api_key: bool,
+    /// WHERE this token came from: `login`, `signup`, `switch`, `impersonation`, `api_key`.
+    /// Set by every mint site in this app and by nothing else; a token minted by hand with
+    /// `JWT_SECRET` carries no origin, which is what `auth::session_provenance` refuses at the two
+    /// doors that take money or mail a customer (kanban t_a14ad547).
+    #[serde(default)]
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -91,6 +91,79 @@ pub fn for_signup(headers: &HeaderMap, email: &str) -> Option<String> {
     crate::security::probe_addr::attribution_domain(email).map(|domain| format!("auto-{domain}"))
 }
 
+/// Is this request answering a CUSTOMER while claiming to be fleet machinery? (kanban t_a14ad547)
+///
+/// WHY THIS EXISTS (measured 2026-11-26 23:19:12Z): a live probe minted the real EMI Mold Removal
+/// customer's session, pressed Upgrade for Agency / Scale on the PRODUCTION database, and both the
+/// customer and the operator were mailed. Nothing in the write path or the mail path could tell it
+/// was machinery, because the request looked exactly like the customer — the harness never said who
+/// it was. `tenants.probe_harness` records which workspaces are machinery ([`for_signup`]); this
+/// module's `X-Swift-Harness` header is how a run DECLARES itself. The two together are the only
+/// honest test, and a run that declares itself must not be holding a customer's session.
+///
+/// A request that does not carry the header is untouched (byte-for-byte the behaviour a real
+/// customer has always had) — but then the run must not expect the fleet to know it is a probe.
+/// [`write_verdict`] is applied at `auth::global_auth::require_auth`, the ONE choke point every
+/// authenticated `/api/v1` route passes through, so a handler added later cannot forget it.
+pub const REFUSED_REAL_TENANT: &str =
+    "This request declared itself a fleet harness (X-Swift-Harness) but the signed-in workspace \
+     belongs to a customer. A probe may only act on a workspace it minted itself (a probe-marked \
+     workspace), or against a copy of the database. Nothing was written and no mail was sent.";
+
+/// The tenant behind the credential could not be resolved to a `tenants` row — fail closed.
+pub const REFUSED_UNKNOWN_TENANT: &str =
+    "This harness request could not verify that the signed-in workspace is a probe workspace, so it \
+     was refused. Nothing was written.";
+
+/// What a harness-marked request may do, decided from the workspace's own `probe_harness` stamp.
+#[derive(Debug, PartialEq, Eq)]
+pub enum WriteVerdict {
+    /// The workspace is harness-minted: this is its own machinery, so the request is ordinary.
+    Allowed,
+    /// The workspace is a customer's. A declared harness must not act as a customer.
+    RealTenant,
+    /// The workspace could not be resolved (bad uuid, no row). Fail closed.
+    UnknownTenant,
+}
+
+/// Read the workspace's `probe_harness` stamp and turn it into a verdict.
+///
+/// `Ok(WriteVerdict::Allowed)` only for a tenant row that exists AND carries a non-empty stamp —
+/// every other shape (empty stamp, missing row, unparseable id) is a refusal, because the whole
+/// point is that machinery may not borrow a customer's identity.
+pub async fn write_verdict(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+) -> Result<WriteVerdict, sqlx::Error> {
+    let Ok(id) = uuid::Uuid::parse_str(tenant_id.trim()) else {
+        return Ok(WriteVerdict::UnknownTenant);
+    };
+    let stamp: Option<Option<String>> =
+        sqlx::query_scalar("SELECT probe_harness FROM tenants WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(match stamp {
+        Some(Some(marker)) if !marker.trim().is_empty() => WriteVerdict::Allowed,
+        Some(_) => WriteVerdict::RealTenant,
+        None => WriteVerdict::UnknownTenant,
+    })
+}
+
+/// Is this workspace harness-minted? `true` only for a live row with a non-empty stamp; a database
+/// error is an error, never a silent `false` (the mail layer turns it into a refusal).
+pub async fn tenant_is_probe(
+    pool: &sqlx::PgPool,
+    tenant_id: uuid::Uuid,
+) -> Result<bool, sqlx::Error> {
+    let stamp: Option<String> =
+        sqlx::query_scalar("SELECT probe_harness FROM tenants WHERE id = $1")
+            .bind(tenant_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(stamp.map(|m| !m.trim().is_empty()).unwrap_or(false))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
