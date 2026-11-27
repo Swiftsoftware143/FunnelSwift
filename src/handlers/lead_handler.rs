@@ -924,6 +924,12 @@ pub async fn update_lead_stage(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    // Before ANY write: a stage the column cannot hold is refused with the field named, exactly as
+    // `create_lead` / `update_lead` already do. This was the one lead door with no guard at all, so
+    // a control character pasted into the PIPELINE picker reached Postgres and answered a raw
+    // database 500 (measured live 2026-11-27: `POST /api/v1/leads/:id/stage` with `new\u0000` -> 500).
+    check_storable("stage", Some(&req.stage), lead_fields::STAGE_CHARS)?;
+
     let result = sqlx::query(
         "UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
     )
@@ -1046,11 +1052,11 @@ pub async fn update_lead_status(
     if status.is_empty() {
         return Err(AppError::BadRequest("status is required".into()));
     }
-    if status.chars().count() > 50 {
-        return Err(AppError::BadRequest(
-            "status must be 50 characters or fewer".into(),
-        ));
-    }
+    // Same guard the other lead doors carry, and for the same measured reason: the length arm let a
+    // control character through to Postgres, which answered a raw 500 (measured live 2026-11-27:
+    // `PUT /api/v1/leads/:id/status` with `new\u0000` -> 500). `check_storable` names the field AND
+    // keeps the 50-character cap (`leads.status` is varchar(50)).
+    check_storable("status", Some(&status), lead_fields::STATUS_CHARS)?;
 
     let res = sqlx::query(
         "UPDATE leads SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
