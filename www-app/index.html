@@ -1678,9 +1678,9 @@ function D(){
     if(!rows.length) return;
     var q=rows[0];
     var st=String(q.status||'open');
-    var label={open:'With our team',contacted:'We have contacted you',done:'Done — this workspace was moved',declined:'Declined — see the note',withdrawn:'Withdrawn by you'}[st]||st;
-    var chipBg=st==='done'?'#dcfce7':(st==='declined'?'#fee2e2':(st==='contacted'?'#dbeafe':(st==='withdrawn'?'#f1f5f9':'#fef3c7')));
-    var chipFg=st==='done'?'#166534':(st==='declined'?'#991b1b':(st==='contacted'?'#1e40af':(st==='withdrawn'?'#475569':'#92400e')));
+    var label={open:'With our team',contacted:'We have contacted you',closed:'Closed — see the note',done:'Closed — see the note',declined:'Closed — see the note',withdrawn:'Withdrawn by you'}[st]||st;
+    var chipBg=(st==='closed'||st==='done'||st==='declined'||st==='withdrawn')?'#f1f5f9':(st==='contacted'?'#dbeafe':'#fef3c7');
+    var chipFg=(st==='closed'||st==='done'||st==='declined'||st==='withdrawn')?'#475569':(st==='contacted'?'#1e40af':'#92400e');
     var h='<div class="card" data-plan-request-card="'+X(q.id)+'" style="margin-bottom:16px">';
     h+='<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">';
     h+='<div><h3 style="margin:0 0 2px">Your plan request</h3><div style="font-size:16px;font-weight:700">'+X(q.plan_name||q.plan_slug||'')+(q.billing_cycle?' <span data-plan-request-term="'+X(q.billing_cycle)+'" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+(q.billing_cycle==='yearly'?'#dcfce7':'#f1f5f9')+';color:'+(q.billing_cycle==='yearly'?'#166534':'#475569')+'">'+X(q.billing_cycle==='yearly'?'Yearly':'Monthly')+'</span>':'')+'</div>';

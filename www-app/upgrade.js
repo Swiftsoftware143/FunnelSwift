@@ -61,15 +61,17 @@ function esc(v){
 var PREQ_LABEL = {
   open:      'Open — with our team',
   contacted: 'We have contacted you',
-  done:      'Done — this workspace was moved',
-  declined:  'Declined — see the note',
+  closed:    'Closed — see the note',
+  /* Legacy stored words: rows written before the queue spoke closed. */
+  done:      'Closed — see the note',
+  declined:  'Closed — see the note',
   withdrawn: 'Withdrawn by you'
 };
 
 function reqChip(status){
   var s = String(status || 'open');
-  var bg = s === 'done' ? '#dcfce7' : (s === 'declined' ? '#fee2e2' : (s === 'contacted' ? '#dbeafe' : '#fef3c7'));
-  var fg = s === 'done' ? '#166534' : (s === 'declined' ? '#991b1b' : (s === 'contacted' ? '#1e40af' : '#92400e'));
+  var bg = (s === 'closed' || s === 'done' || s === 'declined') ? '#f1f5f9' : (s === 'contacted' ? '#dbeafe' : '#fef3c7');
+  var fg = (s === 'closed' || s === 'done' || s === 'declined') ? '#475569' : (s === 'contacted' ? '#1e40af' : '#92400e');
   return '<span style="background:'+bg+';color:'+fg+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'
     + esc(PREQ_LABEL[s] || s) + '</span>';
 }
@@ -335,10 +337,13 @@ async function loadAdminRequests(){
         + ' <span data-term-chip="'+esc(q.billing_cycle||'monthly')+'" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:'+(q.billing_cycle==='yearly'?'#dcfce7':'#f1f5f9')+';color:'+(q.billing_cycle==='yearly'?'#166534':'#475569')+'">'+esc(q.billing_cycle==='yearly'?'Yearly':'Monthly')+'</span>'
         + '<div style="color:#94a3b8;font-size:11px">'+esc(q.requested_by||'')+' · '+esc(String(q.created_at||'').slice(0,16).replace('T',' '))+'</div></div>'
         + '<div style="display:flex;gap:6px;align-items:center">'+reqChip(q.status);
-      ['contacted','done','declined'].forEach(function(s){
-        if(q.status !== s){
-          h += '<button data-set-status="'+esc(q.id)+'" data-status="'+s+'" onclick="setRequestStatus(\''+esc(q.id)+'\',\''+s+'\')" '
-            + 'style="padding:4px 8px;font-size:11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;cursor:pointer">'+s+'</button>';
+      /* Exactly three states, fleet contract 2026-11-27. `done`/`declined` are read as Closed and are
+         no longer offered: the outcome belongs in the note, not in a second vocabulary. */
+      [['open','Open'],['contacted','Contacted'],['closed','Closed']].forEach(function(a){
+        var qs = (q.queue_status || q.status);
+        if(qs !== a[0]){
+          h += '<button data-set-status="'+esc(q.id)+'" data-status="'+a[0]+'" onclick="setRequestStatus(\''+esc(q.id)+'\',\''+a[0]+'\')" '
+            + 'style="padding:4px 8px;font-size:11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;cursor:pointer">'+a[1]+'</button>';
         }
       });
       h += '</div></div>'
