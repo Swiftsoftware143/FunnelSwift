@@ -2220,7 +2220,7 @@ mod tests {
         // Measured 2026-11-26: the alert said "waiting in the admin console" while the row it
         // promised was deleted a minute later, so the operator was pointed at nothing. The id in
         // the mail is what makes the console entry checkable — and the console prints it on the row.
-        let id = Uuid::parse_str("6c51df70-4135-4018-a42a-02dcb3920727").unwrap();
+        let id = Uuid::from_u128(0x6c51df70_4135_4018_a42a_02dcb3920727);
         let (subject, text, html) = plan_request_operator_alert_copy(
             "EMI Mold Removal Tulsa OK",
             "Agency / Scale",
