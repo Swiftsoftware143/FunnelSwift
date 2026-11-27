@@ -14,6 +14,32 @@ use crate::state::AppState;
 use crate::tag_logic;
 use sqlx::Row;
 
+// ── Column-width guards for the plan writers ──
+
+/// Column widths these two writers bind into, read from the LIVE schema (`plans`), so nothing that
+/// fits today is refused and a value that never fit stops reaching the INSERT.
+///
+/// MEASURED LIVE 2026-11-27 at the origin: `POST /api/v1/plans` answered
+/// `500 {"error":"Database error"}` for a 300-character `name`, for a `name` holding U+0000, and for a
+/// 20-character `billing_cycle` (`varchar(10)`) — three ways to lose the whole plan save with no field
+/// named. `PUT /api/v1/plans/{id}` binds the same values, so a rename could lose an edit the same way.
+/// A NUL is not storable in ANY text/varchar column (`invalid byte sequence for encoding "UTF8": 0x00`),
+/// and the plan editor is a PANEL door: the operator is present and can fix the text, so the value is
+/// REFUSED with a 422 that names the field (the public capture doors scrub instead — see
+/// `security::lead_fields`).
+const PLAN_NAME_CHARS: usize = 255; // plans.name
+const PLAN_SLUG_CHARS: usize = 255; // plans.slug
+/// `plans.billing_cycle`.
+const BILLING_CYCLE_CHARS: usize = 10;
+/// `plans.payment_provider`.
+const PAYMENT_PROVIDER_CHARS: usize = 64;
+
+/// Refuse a plan text field the column cannot hold, naming it, instead of failing inside the INSERT.
+fn check_plan_text(value: &str, max_chars: usize, label: &str) -> AppResult<()> {
+    crate::security::display_name::check_len(value, max_chars, label)
+        .map_err(AppError::UnprocessableEntity)
+}
+
 // ── Retired `features` keys ──
 
 /// Refuse a plan `features` object that carries the RETIRED key `card_types`.
@@ -575,6 +601,14 @@ pub async fn create_plan(
         require_hosted_payment_url_resolves(&url).await?;
     }
     let plan_id = Uuid::new_v4();
+    check_plan_text(&req.name, PLAN_NAME_CHARS, "name")?;
+    check_plan_text(&req.slug, PLAN_SLUG_CHARS, "slug")?;
+    if let Some(cycle) = req.billing_cycle.as_deref() {
+        check_plan_text(cycle, BILLING_CYCLE_CHARS, "billing_cycle")?;
+    }
+    if let Some(provider) = req.payment_provider.as_deref() {
+        check_plan_text(provider, PAYMENT_PROVIDER_CHARS, "payment_provider")?;
+    }
     // Column list == placeholder list == bind list, or this INSERT dies before it runs. It was
     // broken twice over (kanban t_9c30ce49, both measured live: `POST /api/v1/plans` answered
     // 500 "Database error" for every caller):
@@ -665,6 +699,18 @@ pub async fn update_plan(
     }
     if let Some(f) = &req.features {
         reject_retired_feature_keys(f)?;
+    }
+    if let Some(name) = req.name.as_deref() {
+        check_plan_text(name, PLAN_NAME_CHARS, "name")?;
+    }
+    if let Some(slug) = req.slug.as_deref() {
+        check_plan_text(slug, PLAN_SLUG_CHARS, "slug")?;
+    }
+    if let Some(cycle) = req.billing_cycle.as_deref() {
+        check_plan_text(cycle, BILLING_CYCLE_CHARS, "billing_cycle")?;
+    }
+    if let Some(provider) = req.payment_provider.as_deref() {
+        check_plan_text(provider, PAYMENT_PROVIDER_CHARS, "payment_provider")?;
     }
     let existing = sqlx::query_as::<_, Plan>(plan_select!("WHERE id = $1"))
         .bind(id)
