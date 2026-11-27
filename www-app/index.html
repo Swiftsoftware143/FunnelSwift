@@ -5088,6 +5088,24 @@ function fnCopy(url,btn){
     navigator.clipboard.writeText(url).then(ok,function(){window.prompt("Copy this link:",url);});
   } else window.prompt("Copy this link:",url);
 }
+/* DUPLICATE A FUNNEL (2026-11-27). A page that works is the best brief for the next one: the fork
+   keeps the words and the settings and leaves the original untouched. The copy starts PAUSED (the
+   server writes is_active=false), so nothing goes live at a link nobody chose — the person opens
+   it, edits it, and resumes it. The banner goes through `fnSay`, which survives the re-render that
+   `LAFN()` triggers. */
+function fnDuplicate(f,btn){
+  if(btn){ btn.disabled=true; btn.textContent="Duplicating…"; }
+  api("/api/v1/funnels/"+f.id+"/duplicate",{method:"POST"})
+    .then(function(r){
+      fnSay("Duplicated — the copy is paused until you open it. Its link is "
+        +((r&&r.slug)?("/funnel/"+r.slug):"ready")+".",false);
+      LAFN();
+    })
+    .catch(function(e){
+      if(btn){ btn.disabled=false; btn.textContent="Duplicate"; }
+      fnSay((e&&e.message)||"Could not duplicate the funnel.",true);
+    });
+}
 function fnRename(f){
   var nm=window.prompt("Funnel name (the shared link does not change):",f.name);
   if(nm===null) return;
@@ -5254,6 +5272,8 @@ function LAFN(){
       td.appendChild(document.createTextNode(" "));
       var cp=El("button",{"class":"btn btn-sm",onclick:function(){fnCopy(url,cp);}},"Copy link");
       td.appendChild(cp); td.appendChild(document.createTextNode(" "));
+      var dup=El("button",{"class":"btn btn-sm",title:"Copy this page and its words into a new funnel, paused until you open it",onclick:function(){fnDuplicate(f,dup);}},"Duplicate");
+      td.appendChild(dup); td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){QRF(f);}},"QR code"));
       td.appendChild(document.createTextNode(" "));
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){fnRename(f);}},"Rename"));
