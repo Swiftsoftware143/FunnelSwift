@@ -321,7 +321,7 @@ pub async fn track_card_event(
     let is_share = event_type == "share";
 
     sqlx::query(
-        "INSERT INTO kinetic_card_daily_stats (id, card_id, tenant_id, stat_date, views, clicks, shares, utm_source, utm_medium, utm_campaign) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (card_id, stat_date, utm_source, utm_medium, utm_campaign) DO UPDATE SET views = kinetic_card_daily_stats.views + $4, clicks = kinetic_card_daily_stats.clicks + $5, shares = kinetic_card_daily_stats.shares + $6"
+        "INSERT INTO kinetic_card_daily_stats (id, card_id, tenant_id, stat_date, views, clicks, shares, utm_source, utm_medium, utm_campaign) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (card_id, stat_date, (COALESCE(utm_source, '')), (COALESCE(utm_medium, '')), (COALESCE(utm_campaign, ''))) DO UPDATE SET views = kinetic_card_daily_stats.views + $4, clicks = kinetic_card_daily_stats.clicks + $5, shares = kinetic_card_daily_stats.shares + $6"
     )
     .bind(card_id)
     .bind(tenant_id)
@@ -520,7 +520,12 @@ pub async fn get_card_analytics(
     // unwrap_or_default() reported it as `daily_stats: []` (kanban t_4385aa2c). Cast in SQL: the
     // tenant-wide daily_trend below returns SUM(views)/SUM(clicks) as INT8 into the same struct.
     let daily_stats: Vec<DailyStatsRow> = sqlx::query_as(
-        "SELECT stat_date as date, views::bigint as views, clicks::bigint as clicks FROM kinetic_card_daily_stats WHERE card_id=$1 ORDER BY stat_date DESC LIMIT 30"
+        // ONE POINT PER DAY (2026-11-27, migration 149). The rollup's key is the NULL-safe
+        // (card, day, coalesce(utm…)) triple, so direct traffic used to insert a NEW row per event
+        // instead of incrementing the day's row: this query returned one point per event, the chart
+        // drew them as separate days, and `LIMIT 30` could not reach 30 days back. Summing by date
+        // here keeps a correct trend even for rows written before the migration was applied.
+        "SELECT stat_date as date, SUM(views)::bigint as views, SUM(clicks)::bigint as clicks FROM kinetic_card_daily_stats WHERE card_id=$1 GROUP BY stat_date ORDER BY stat_date DESC LIMIT 30"
     )
     .bind(card_id)
     .fetch_all(&state.pool)
