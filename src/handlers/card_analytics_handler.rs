@@ -44,6 +44,35 @@ pub struct UpdateCardUtmRequest {
     pub utm_term: Option<String>,
 }
 
+/// Every free-text value this module writes, made storable before it reaches a `text` column.
+///
+/// A NUL byte is not storable in a Postgres `text` column: the driver answers `invalid byte
+/// sequence for encoding "UTF8": 0x00`, the statement fails, and the caller is told nothing useful.
+/// Measured live 2026-11-26 on BOTH doors in this file:
+/// `PUT /api/v1/card-analytics/<card>/utm` with `utm_campaign = "spring\u0000sale"` answered
+/// `500 {"error":"Database error"}` and stored NOTHING — the operator's whole UTM save lost, with
+/// no field named — and the public tracker's `POST /card/<id>/track` lost the event the same way,
+/// because a visitor's URL can carry `%00` inside any utm parameter.
+///
+/// These are SCRUBBED, never refused, on the same house rule as the rest of the free-text sweep:
+/// UTM values, user agents, referrer and click URLs are machine text where no control character is
+/// ever meant, the byte is invisible so there is nothing for the caller to point at, and the rest of
+/// the value is still exactly what they meant.
+fn storable(value: Option<String>) -> Option<String> {
+    value.map(|v| v.chars().filter(|c| !c.is_control()).collect())
+}
+
+/// [`storable`] for a value the caller always sends.
+fn storable_text(value: String) -> String {
+    value.chars().filter(|c| !c.is_control()).collect()
+}
+
+/// [`storable`] for a label copied out of a page: newlines and tabs are legitimate there, a NUL is
+/// not, so only the unstorable byte goes.
+fn storable_label(value: Option<String>) -> Option<String> {
+    value.map(|v| crate::security::lead_fields::strip_nul(&v))
+}
+
 /// Classify a referrer URL into UTM source/medium when no UTMs are present.
 /// Returns None if the referrer doesn't match any known pattern.
 fn classify_referrer(referrer: &str, device_type: &Option<String>) -> Option<(String, String)> {
@@ -202,32 +231,35 @@ pub async fn track_card_event(
     };
 
     let event_id = Uuid::new_v4();
-    let event_type = payload.event_type.clone();
+    // A visitor's URL, referrer and click text all reach these columns verbatim; scrub the
+    // unstorable byte once, here, so the event row and the rollups below all get the same value.
+    let event_type = storable_text(payload.event_type.clone());
 
     // Use UTM from payload (JS tracker parses URL params)
-    let mut utm_source = payload.utm_source.clone();
-    let mut utm_medium = payload.utm_medium.clone();
-    let utm_campaign = payload.utm_campaign.clone();
-    let utm_content = payload.utm_content.clone();
-    let utm_term = payload.utm_term.clone();
+    let mut utm_source = storable(payload.utm_source.clone());
+    let mut utm_medium = storable(payload.utm_medium.clone());
+    let utm_campaign = storable(payload.utm_campaign.clone());
+    let utm_content = storable(payload.utm_content.clone());
+    let utm_term = storable(payload.utm_term.clone());
+    let referrer_url = storable(payload.referrer_url.clone());
+    let device_type = storable(payload.device_type.clone());
+    let screen_size = storable(payload.screen_size.clone());
+    let click_label = storable_label(payload.click_label.clone());
+    let click_url = storable(payload.click_url.clone());
 
     // Referrer-based attribution fallback — when no UTMs are present,
     // classify traffic by referrer URL so mobile shares and direct links
     // still show up as attributed traffic in analytics.
     if utm_source.is_none() {
-        let ref_url = payload
-            .referrer_url
-            .clone()
-            .unwrap_or_default()
-            .to_lowercase();
-        if let Some((src, med)) = classify_referrer(&ref_url, &payload.device_type) {
+        let ref_url = referrer_url.clone().unwrap_or_default().to_lowercase();
+        if let Some((src, med)) = classify_referrer(&ref_url, &device_type) {
             utm_source = Some(src);
             utm_medium = Some(med);
         }
     }
 
     // Parse browser/OS from user agent
-    let ua = payload.user_agent.clone().unwrap_or_default();
+    let ua = storable(payload.user_agent.clone()).unwrap_or_default();
     let (browser_family, os_family) = parse_user_agent(&ua);
 
     // Geography comes from the edge that terminated the connection, never from the payload
@@ -250,11 +282,11 @@ pub async fn track_card_event(
     .bind(&ua)
     .bind(&browser_family)
     .bind(&os_family)
-    .bind(&payload.referrer_url)
-    .bind(&payload.device_type)
-    .bind(&payload.screen_size)
-    .bind(&payload.click_label)
-    .bind(&payload.click_url)
+    .bind(&referrer_url)
+    .bind(&device_type)
+    .bind(&screen_size)
+    .bind(&click_label)
+    .bind(&click_url)
     .bind(Option::<String>::None) // ip_address — skip for privacy
     .bind(Option::<String>::None) // session_id
     .bind(&country) // country — from CF-IPCountry (kanban t_0534f248)
@@ -629,16 +661,25 @@ pub async fn update_card_utm(
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid tenant".into()))?;
 
+    // Scrubbed, not refused: a pasted control character is invisible, so there is nothing for the
+    // operator to correct and no field to name — but bound as-is it failed the statement and the
+    // whole save was lost with a raw 500 (measured live 2026-11-26, see `storable`).
+    let utm_source = storable(payload.utm_source);
+    let utm_medium = storable(payload.utm_medium);
+    let utm_campaign = storable(payload.utm_campaign);
+    let utm_content = storable(payload.utm_content);
+    let utm_term = storable(payload.utm_term);
+
     let result = sqlx::query(
         "UPDATE kinetic_cards SET utm_source=$3, utm_medium=$4, utm_campaign=$5, utm_content=$6, utm_term=$7 WHERE id=$1 AND tenant_id=$2"
     )
     .bind(card_id)
     .bind(tenant_id)
-    .bind(&payload.utm_source)
-    .bind(&payload.utm_medium)
-    .bind(&payload.utm_campaign)
-    .bind(&payload.utm_content)
-    .bind(&payload.utm_term)
+    .bind(&utm_source)
+    .bind(&utm_medium)
+    .bind(&utm_campaign)
+    .bind(&utm_content)
+    .bind(&utm_term)
     .execute(&state.pool)
     .await?;
     if result.rows_affected() == 0 {
@@ -772,4 +813,35 @@ fn parse_user_agent(ua: &str) -> (Option<String>, Option<String>) {
     };
 
     (browser, os)
+}
+
+#[cfg(test)]
+mod storable_tests {
+    use super::*;
+
+    /// The defect this guards: measured live 2026-11-26, `utm_campaign = "spring\u{0}sale"`
+    /// answered `500 {"error":"Database error"}` on the panel save and lost the public event.
+    #[test]
+    fn an_unstorable_byte_is_dropped_and_the_rest_of_the_value_kept() {
+        assert_eq!(
+            storable(Some("spring\u{0}sale".to_string())).as_deref(),
+            Some("springsale")
+        );
+        assert_eq!(storable(None), None);
+        assert_eq!(storable_text("google\u{0}".to_string()), "google");
+        // A visible value is untouched, so nothing that used to store is changed.
+        assert_eq!(
+            storable(Some("email newsletter".to_string())).as_deref(),
+            Some("email newsletter")
+        );
+    }
+
+    /// A link's own visible text is legitimate multi-line text: only the NUL goes.
+    #[test]
+    fn a_click_label_keeps_its_newlines_but_loses_a_nul() {
+        assert_eq!(
+            storable_label(Some("Read\nmore\u{0}".to_string())).as_deref(),
+            Some("Read\nmore")
+        );
+    }
 }
