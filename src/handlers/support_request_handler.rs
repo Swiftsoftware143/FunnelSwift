@@ -277,7 +277,21 @@ pub async fn create_public(
             "Give your message a short subject so the team knows what it is about.".into(),
         ));
     }
-    let message = trim_cap(&body.body, MAX_BODY);
+    // THE NAME PREFIX IS SPENT FROM THE SAME BUDGET (measured live 2026-11-27): the body was capped
+    // at MAX_BODY and the "… wrote:" line was prepended AFTERWARDS, so `name` + body could exceed the
+    // column's own CHECK (`support_requests_body_len`: char_length(body) <= 4000) and the INSERT
+    // answered a raw `500 {"error":"Database error"}` with nothing written — a locked-out customer's
+    // whole message lost on the one door they have. Reproduced live on the running binary: a 5,000
+    // character message with any name answered 500 every time, while the panel door (which adds no
+    // prefix) stored its capped 4,000 fine, which is why this read as a public-form-only defect.
+    // The prefix is charged against the cap so the stored row can never exceed it.
+    let prefix = if name.is_empty() {
+        String::new()
+    } else {
+        format!("{name} wrote:\n\n")
+    };
+    let budget = MAX_BODY.saturating_sub(prefix.chars().count());
+    let message = trim_cap(&body.body, budget);
     if message.is_empty() {
         return Err(AppError::BadRequest(
             "Write your message so the team knows what you need.".into(),
@@ -285,11 +299,7 @@ pub async fn create_public(
     }
     // The name is context for the operator, never a separate column: the address the team replies
     // to is the one thing that must survive intact.
-    let message = if name.is_empty() {
-        message
-    } else {
-        format!("{name} wrote:\n\n{message}")
-    };
+    let message = format!("{prefix}{message}");
 
     let recent: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM support_requests
