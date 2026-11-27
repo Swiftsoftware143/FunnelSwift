@@ -33,6 +33,12 @@ pub struct TrackCardEventRequest {
     pub utm_content: Option<String>,
     pub utm_term: Option<String>,
     pub error_message: Option<String>,
+    /// The visitor's own browser session (2026-11-27). The page's tracker mints one per tab and
+    /// keeps it in `sessionStorage`, so two events from the same visitor count as ONE unique visitor
+    /// while a second device counts again. Until this field existed the INSERT bound `NULL`
+    /// unconditionally, so `unique_visitors` (`COUNT(DISTINCT session_id)` over rows where it is not
+    /// null) could never be anything but zero on a screen that displays it.
+    pub session_id: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -246,6 +252,18 @@ pub async fn track_card_event(
     let screen_size = storable(payload.screen_size.clone());
     let click_label = storable_label(payload.click_label.clone());
     let click_url = storable(payload.click_url.clone());
+    // The tracker's session id survives only as a bounded token: letters, digits, dash and
+    // underscore, at most 64 characters. Anything else is dropped, so a client cannot plant free
+    // text here and one visitor cannot smuggle a second identity in with punctuation.
+    let session_id: Option<String> = storable(payload.session_id.clone())
+        .map(|s| {
+            s.trim()
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .take(64)
+                .collect::<String>()
+        })
+        .filter(|s| !s.is_empty());
 
     // Referrer-based attribution fallback — when no UTMs are present,
     // classify traffic by referrer URL so mobile shares and direct links
@@ -288,7 +306,7 @@ pub async fn track_card_event(
     .bind(&click_label)
     .bind(&click_url)
     .bind(Option::<String>::None) // ip_address — skip for privacy
-    .bind(Option::<String>::None) // session_id
+    .bind(&session_id) // session_id — the tracker's per-visitor id
     .bind(&country) // country — from CF-IPCountry (kanban t_0534f248)
     .execute(&state.pool)
     .await
