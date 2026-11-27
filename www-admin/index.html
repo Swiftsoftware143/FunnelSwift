@@ -6521,6 +6521,14 @@ async function renderCardAnalytics() {
         <div class="stat-value">${(overview?.unique_visitors||0).toLocaleString()}</div>
         <div class="stat-label">Unique Visitors</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-value">${(overview?.total_shares||0).toLocaleString()}</div>
+        <div class="stat-label">Total Shares</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${(overview?.total_leaves||0).toLocaleString()}</div>
+        <div class="stat-label">Exits</div>
+      </div>
     </div>
 
     <!-- Charts Row -->
@@ -8519,7 +8527,7 @@ window.appGuidePages = {
   "rateBands": { title: "Rate Bands", desc: "Tiered commission rates that rise (or fall) with the volume an affiliate brings, so a high performer earns a better rate automatically.", actions: ["Define the bands", "Set the rate for each band", "Check which band an affiliate is in"] },
   "emailTemplates": { title: "Email Templates", desc: "The transactional emails this app sends — the welcome that carries a new customer's login details, and the others. Edit the wording without touching code.", actions: ["Preview a template", "Edit the subject and body", "Re-enable a template you switched off"] },
   "campaigns": { title: "Campaigns", desc: "Email campaigns sent to your leads. You choose the audience by tag and watch how it performs.", actions: ["Create a campaign", "Pick the audience by tag", "Send or schedule it"] },
-  "cardAnalytics": { title: "Card Analytics", desc: "How each capture card performs — views, claims and conversion. This is where you see which card is doing the work.", actions: ["Compare cards", "See views and claims over time", "Open a card to improve it"] },
+  "cardAnalytics": { title: "Card Analytics", desc: "How each capture card performs — views, clicks, shares and exits, and how many people visited. This is where you see which card is doing the work.", actions: ["Compare cards", "See views, clicks and shares over time", "Spot the cards visitors leave without a click"] },
   "cardLocations": { title: "Location Tracking", desc: "Where your visitors are: unique visitors, how many countries the cards reached and a views-by-country breakdown, all from your own card traffic. Views by country are a paid-plan feature, so a workspace whose plan does not include analytics sees a plan-limit notice here instead of an empty report.", actions: ["See unique visitors and countries reached", "Read the views-by-country breakdown", "Upgrade the plan if this workspace does not include analytics"] },
   "cardUtmBuilder": { title: "UTM Builder", desc: "Put tracking parameters on a card's link so you can tell which channel brought each visitor. Pick a card, set its UTM source, medium, campaign, content and term, save them, then generate the tracked URL to share instead of the plain card link. Views of the tracked URL are what the Location and Analytics screens count.", actions: ["Pick the card to track", "Set the UTM parameters and save them", "Generate and copy the tracked URL"] },
   "webhooks": { title: "Webhooks", desc: "Outgoing notifications: when something happens here, we POST it to a URL you control. Useful for wiring FunnelSwift into another system.", actions: ["Add a webhook URL", "Choose the events it receives", "Review recent deliveries"] },

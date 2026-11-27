@@ -551,6 +551,13 @@ pub struct TenantAnalyticsSummary {
     pub total_views: i64,
     pub total_clicks: i64,
     pub unique_visitors: i64,
+    /// Visits that ended without a click, across every card in the workspace — the tenant-level twin
+    /// of one card's own `total_leaves`. The `leave` event type only became storable in migration
+    /// 147, so this is the roll-up the per-card panel can finally contribute to.
+    pub total_leaves: i64,
+    /// Shares recorded against the workspace's cards, from the same daily-stats rollup the table
+    /// below reads, so the screen's own copy ("views, clicks and shares") names a real total.
+    pub total_shares: i64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub top_cards: Vec<CardPerformanceRow>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -614,6 +621,24 @@ pub async fn get_tenant_analytics(
         "SELECT COUNT(DISTINCT session_id) FROM kinetic_card_events WHERE tenant_id=$1 AND session_id IS NOT NULL"
     ).bind(tenant_id).fetch_one(&state.pool).await.unwrap_or(0);
 
+    let total_shares: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(shares), 0) FROM kinetic_card_daily_stats WHERE tenant_id=$1",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    // `leave` is the card page's own exit event (migration 147). A workspace whose traffic predates
+    // it simply reads 0 here, which is honest: nothing was recorded to count.
+    let total_leaves: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kinetic_card_events WHERE tenant_id=$1 AND event_type='leave'",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
     let top_cards: Vec<CardPerformanceRow> = sqlx::query_as(
         // kanban t_747b4dd6 — this aliases `kinetic_cards.template_type` as `card_type`. Same column,
         // same value space (the canonical card types declared in `crate::card_types`), so the JSON key
@@ -658,6 +683,8 @@ pub async fn get_tenant_analytics(
         total_views,
         total_clicks,
         unique_visitors,
+        total_leaves,
+        total_shares,
         top_cards,
         top_countries,
         daily_trend,
