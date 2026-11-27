@@ -862,7 +862,13 @@ pub async fn create_checkout_session(
                     .as_ref()
                     .map(|(_, n, _, _)| n.clone())
                     .unwrap_or_else(|| plan_slug.clone());
-                if let Some(uid) = user_id {
+                // The row's own id, so the receipt is stamped against exactly the ask it acknowledges.
+                let request_id = plan_request
+                    .as_ref()
+                    .and_then(|v| v.get("id"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok());
+                if let (Some(uid), Some(request_id)) = (user_id, request_id) {
                     let filer: Option<(String, String)> = sqlx::query_as(
                         "SELECT email, COALESCE(NULLIF(name, ''), '') FROM users WHERE id = $1",
                     )
@@ -890,6 +896,7 @@ pub async fn create_checkout_session(
                         match crate::email::send_plan_request_received_email(
                             &state.pool,
                             tenant_id,
+                            request_id,
                             &email,
                             &greeting,
                             &asked_name,
@@ -1181,7 +1188,15 @@ pub async fn create_checkout_session(
                         .and_then(|v| v.as_bool())
                         == Some(false);
                     if fresh {
-                        if let Ok(uid) = Uuid::parse_str(&auth.user_id) {
+                        // The row this receipt acknowledges; stamped before the mail leaves.
+                        let request_id = plan_request
+                            .as_ref()
+                            .and_then(|v| v.get("id"))
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| Uuid::parse_str(s).ok());
+                        if let (Ok(uid), Some(request_id)) =
+                            (Uuid::parse_str(&auth.user_id), request_id)
+                        {
                             let filer: Option<(String, String)> = sqlx::query_as(
                                 "SELECT email, COALESCE(NULLIF(name, ''), '') FROM users WHERE id = $1",
                             )
@@ -1202,6 +1217,7 @@ pub async fn create_checkout_session(
                                 match crate::email::send_plan_request_received_email(
                                     &state.pool,
                                     tenant_id,
+                                    request_id,
                                     &email,
                                     &greeting,
                                     &plan_name,
@@ -2327,6 +2343,7 @@ async fn record_upgrade_request(db: &sqlx::PgPool, ask: UpgradeAsk<'_>) -> Optio
             if let Err(e) = crate::email::send_plan_request_operator_alert(
                 db,
                 tenant_id,
+                id,
                 plan_name,
                 requested_by,
                 &format!("Filed when the customer pressed Upgrade and {filed_because}."),

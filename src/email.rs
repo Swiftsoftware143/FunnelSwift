@@ -1145,6 +1145,7 @@ pub async fn send_reset_email_outcome(
 pub async fn send_plan_request_received_email(
     pool: &PgPool,
     tenant_id: Uuid,
+    request_id: Uuid,
     to: &str,
     name: &str,
     plan_name: &str,
@@ -1173,6 +1174,33 @@ pub async fn send_plan_request_received_email(
     // the same lie one layer down. The verdict below reads the SAME predicate the dispatcher used, so
     // the two cannot disagree — and the dispatcher still writes its own `withheld` row with the real
     // subject, which is the history the operator needs.
+    //
+    // AN ACKNOWLEDGEMENT IS BOUND TO A COMMITTED ROW BEFORE THE MAIL LEAVES (2026-11-26).
+    // Measured: a live probe filed request 6c51df70… for a real customer, both the receipt and the
+    // operator alert went out, and the probe deleted the row a minute later. The customer held a
+    // written "we have your request" while no row existed anywhere. Ordering alone cannot fix that:
+    // the row was committed before the mail. The durable fix is `plan_requests.acknowledged_at`,
+    // stamped HERE and BEFORE the send, plus a database trigger that refuses to delete a stamped
+    // row (migration 148). A failed stamp therefore refuses the send — never the other way round.
+    let will_send = crate::security::probe_addr::harness_domain(to).is_none();
+    if will_send {
+        let marked = sqlx::query(
+            "UPDATE plan_requests SET acknowledged_at = COALESCE(acknowledged_at, now()) \
+              WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(request_id)
+        .bind(tenant_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            format!("plan request {request_id}: could not stamp the acknowledgement: {e}")
+        })?;
+        if marked.rows_affected() == 0 {
+            return Err(format!(
+                "plan request {request_id} is not on record for this workspace; the receipt was not sent"
+            ));
+        }
+    }
     let mut vars = std::collections::HashMap::new();
     vars.insert("name", name);
     vars.insert("plan_name", plan_name);
@@ -1189,7 +1217,7 @@ pub async fn send_plan_request_received_email(
         &bound_vars(vars),
     )
     .await?;
-    Ok(crate::security::probe_addr::harness_domain(to).is_none())
+    Ok(will_send)
 }
 
 /// Acknowledge an ORDINARY support request the moment the customer files it (2026-11-16).
@@ -1375,6 +1403,47 @@ async fn requester_is_platform_admin(pool: &PgPool, email: &str) -> bool {
         .any(|role| crate::auth::global_auth::is_platform_admin(role))
 }
 
+/// The operator alert's words, in one place so a test can read them without a database.
+///
+/// THE REQUEST ID IS PART OF THE ALERT (2026-11-26). The alert used to say "waiting in the admin
+/// console" and nothing else. Measured the next morning: a probe had deleted the row a minute after
+/// mailing, so the operator was pointed at a queue entry that no longer existed and had no way to
+/// tell. The id makes the promise checkable — the console prints it on the row, so "not in the queue"
+/// is visible instead of silent.
+fn plan_request_operator_alert_copy(
+    workspace: &str,
+    plan_name: &str,
+    requester_email: &str,
+    note: &str,
+    request_id: Uuid,
+) -> (String, String, String) {
+    let subject = format!("A customer asked to buy {plan_name}");
+    let text = format!(
+        "{workspace} asked to be moved onto {plan_name}.\n\n\
+         Request ID: {request_id}\n\
+         Requested by: {requester_email}\n\
+         Plan: {plan_name}\n\
+         Note from the customer: {note}\n\n\
+         Find this request by its ID in the admin console (Plans -> Plan requests); the queue \
+         prints the request ID on the row. Moving it to done puts that workspace on the plan."
+    );
+    let html = format!(
+        "<p><strong>{}</strong> asked to be moved onto <strong>{}</strong>.</p>\
+         <p>Request ID: <code>{}</code></p>\
+         <p>Requested by: {}</p>\
+         <p>Note from the customer: {}</p>\
+         <p>Find this request by its ID in the admin console (Plans &rarr; Plan requests); the \
+         queue prints the request ID on the row. Moving it to <em>done</em> puts that workspace on \
+         the plan.</p>",
+        crate::templates::html_escape(workspace),
+        crate::templates::html_escape(plan_name),
+        request_id,
+        crate::templates::html_escape(requester_email),
+        crate::templates::html_escape(note),
+    );
+    (subject, text, html)
+}
+
 /// Tell the OPERATOR that a workspace asked to buy a plan (2026-11-09).
 ///
 /// `POST /api/v1/plan-requests` already mails the person who filed the ask; this is the other half
@@ -1393,6 +1462,7 @@ async fn requester_is_platform_admin(pool: &PgPool, email: &str) -> bool {
 pub async fn send_plan_request_operator_alert(
     pool: &PgPool,
     tenant_id: Uuid,
+    request_id: Uuid,
     plan_name: &str,
     requester_email: &str,
     note: &str,
@@ -1446,26 +1516,8 @@ pub async fn send_plan_request_operator_alert(
     } else {
         note.trim()
     };
-    let subject = format!("A customer asked to buy {plan_name}");
-    let text = format!(
-        "{workspace} asked to be moved onto {plan_name}.\n\n\
-         Requested by: {requester_email}\n\
-         Plan: {plan_name}\n\
-         Note from the customer: {note}\n\n\
-         The request is waiting in the admin console (Plans -> Plan requests). Moving it to done \
-         puts that workspace on the plan."
-    );
-    let html = format!(
-        "<p><strong>{}</strong> asked to be moved onto <strong>{}</strong>.</p>\
-         <p>Requested by: {}</p>\
-         <p>Note from the customer: {}</p>\
-         <p>The request is waiting in the admin console (Plans &rarr; Plan requests). Moving it to \
-         <em>done</em> puts that workspace on the plan.</p>",
-        crate::templates::html_escape(&workspace),
-        crate::templates::html_escape(plan_name),
-        crate::templates::html_escape(requester_email),
-        crate::templates::html_escape(note),
-    );
+    let (subject, text, html) =
+        plan_request_operator_alert_copy(&workspace, plan_name, requester_email, note, request_id);
     dispatch_for_tenant(pool, None, to, &subject, Some(&text), Some(&html)).await
 }
 
@@ -2161,6 +2213,32 @@ mod tests {
         assert!(text.contains("nothing has been charged"));
         assert!(text.contains("please call me on Monday"));
         assert!(text.contains("/upgrade"), "where to look is missing");
+    }
+
+    #[test]
+    fn plan_request_operator_alert_carries_the_request_id_it_promises() {
+        // Measured 2026-11-26: the alert said "waiting in the admin console" while the row it
+        // promised was deleted a minute later, so the operator was pointed at nothing. The id in
+        // the mail is what makes the console entry checkable — and the console prints it on the row.
+        let id = Uuid::parse_str("6c51df70-4135-4018-a42a-02dcb3920727").unwrap();
+        let (subject, text, html) = plan_request_operator_alert_copy(
+            "EMI Mold Removal Tulsa OK",
+            "Agency / Scale",
+            "contact@example.com",
+            "please call",
+            id,
+        );
+        assert_eq!(subject, "A customer asked to buy Agency / Scale");
+        assert!(text.contains(&id.to_string()), "text was {text}");
+        assert!(html.contains(&id.to_string()), "html was {html}");
+        assert!(
+            text.contains("prints the request ID on the row"),
+            "text was {text}"
+        );
+        assert!(
+            !text.contains("The request is waiting in the admin console"),
+            "the old unnamed-queue sentence is back: {text}"
+        );
     }
 
     #[test]

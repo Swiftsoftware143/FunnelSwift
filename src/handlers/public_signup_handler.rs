@@ -241,9 +241,11 @@ pub async fn file_chosen_plan_request(
         .await
         .payment_instructions
         .unwrap_or_default();
+    let request_id: Uuid = r.get("id");
     let receipt_sent = match crate::email::send_plan_request_received_email(
         pool,
         tenant_id,
+        request_id,
         requested_by,
         &greeting,
         &plan_name,
@@ -268,6 +270,7 @@ pub async fn file_chosen_plan_request(
     if let Err(e) = crate::email::send_plan_request_operator_alert(
         pool,
         tenant_id,
+        request_id,
         &plan_name,
         requested_by,
         "Chosen on the pricing page at signup.",

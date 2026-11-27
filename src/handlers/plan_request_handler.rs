@@ -275,9 +275,13 @@ pub async fn create(
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "there".to_string());
+    // The id the receipt is bound to: it is already committed (the INSERT above returned it), and
+    // the mail layer stamps `acknowledged_at` on THIS row before it sends anything.
+    let request_id: Uuid = row.get("id");
     let acknowledged = match crate::email::send_plan_request_received_email(
         &state.pool,
         tenant_id,
+        request_id,
         &auth.email,
         &greeting,
         &plan_display,
@@ -305,6 +309,7 @@ pub async fn create(
     if let Err(e) = crate::email::send_plan_request_operator_alert(
         &state.pool,
         tenant_id,
+        request_id,
         &plan_display,
         &auth.email,
         &note,

@@ -7932,9 +7932,15 @@ async function renderPlanRequests() {
       : (String(r.billing_cycle || '').trim().toLowerCase() === 'monthly'
         ? '<span style="background:#f1f5f9;color:#475569;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700;margin-left:6px">Monthly</span>'
         : '');
-    return '<tr data-plan-request="' + x(r.id) + '">' +
+    return '<tr data-plan-request="' + x(r.id) + '" id="plan-request-' + x(r.id) + '">' +
       '<td><strong>' + x(r.tenant_name || r.tenant_id) + '</strong><div style="font-size:11px;color:var(--muted)">' +
-      x(r.requested_by || '') + '</div></td>' +
+      x(r.requested_by || '') + '</div>' +
+      // THE ID THE OPERATOR ALERT PRINTS (2026-11-26). The alert mails the request id and tells the
+      // operator the queue prints it; without this line that sentence was a promise with nothing
+      // behind it. Printing it also makes a MISSING row visible: the mail names an id, and an
+      // operator can see at a glance that no row carries it.
+      '<div style="font-size:10px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,monospace">' +
+      'request ' + x(r.id) + '</div></td>' +
       '<td>' + x(r.plan_name || r.plan_slug) + term +
       (r.note ? '<div style="font-size:11px;color:var(--muted);max-width:280px">' + x(r.note) + '</div>' : '') + '</td>' +
       '<td>' + planReqChip(r.status) +
