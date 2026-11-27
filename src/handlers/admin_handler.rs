@@ -1620,6 +1620,11 @@ pub async fn list_provisioning_log(
 #[derive(serde::Deserialize)]
 pub struct CheckoutRequestQuery {
     pub limit: Option<i64>,
+    /// `include_probe=1` folds OUR OWN attempts back into the list. The fleet's two notions of
+    /// "not a customer" are the same ones this file's `admin_stats` counters already use
+    /// (`probe_harness` tag, fleet-identity addresses), so the number on the dashboard and the rows
+    /// on this screen can never disagree again.
+    pub include_probe: Option<String>,
 }
 
 /// List purchase attempts that never turned into money, across every workspace (admin only).
@@ -1645,7 +1650,20 @@ pub async fn list_checkout_requests(
         return Err(AppError::Forbidden("Admin access required".into()));
     }
     let limit = params.limit.unwrap_or(100).clamp(1, 500);
+    let include_probe = params
+        .include_probe
+        .as_deref()
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
+    // CUSTOMERS FIRST (2026-11-27). This screen listed EVERY refused attempt, and the operator's
+    // own workspace had made 25 of the 26 live rows — so the one real customer asking to buy
+    // (EMI Mold, 2026-11-26) was buried under the owner's own clicking, with nothing on the row to
+    // say which was which. The dashboard already split those two populations
+    // (`checkouts_refused` vs `checkouts_refused_test`, this file's `admin_stats`); the queue had no
+    // such split at all. The SAME two notions are applied here — the `probe_harness` tag and the
+    // fleet-identity addresses — and the held-back count is returned instead of being silently
+    // dropped, so a big test number still says the flow was exercised.
     let rows = sqlx::query(
         r#"SELECT cs.id, cs.tenant_id, cs.status, cs.amount::text AS amount, cs.currency,
                   cs.created_at, cs.metadata,
@@ -1674,18 +1692,42 @@ pub async fn list_checkout_requests(
                          AND (tps.plan_id = cs.purchasable_id
                               OR (cs.purchasable_id IS NULL
                                   AND pj.slug = cs.metadata->>'plan_slug'))
-                  ) AS plan_applied
+                  ) AS plan_applied,
+                  ($2::bool OR NOT (
+                       COALESCE(t.probe_harness, '') <> ''
+                    OR lower(COALESCE(o.owner_email, '')) LIKE ANY (ARRAY[
+                           'swiftsoftware143%', 'certifiedtb143%',
+                           '%@swiftsoftware.com', '%@swiftsoftware.net', '%@funnelswift.net'])
+                  )) AS is_customer
              FROM checkout_sessions cs
              LEFT JOIN tenants t ON t.id = cs.tenant_id
+             LEFT JOIN LATERAL (
+                   SELECT u.email AS owner_email FROM users u WHERE u.tenant_id = cs.tenant_id
+                    ORDER BY CASE WHEN u.role IN ('admin','company_admin') THEN 0 ELSE 1 END,
+                             u.created_at ASC
+                    LIMIT 1) o ON true
              LEFT JOIN plans p
                     ON cs.purchasable_type = 'plan' AND p.id = cs.purchasable_id
             WHERE cs.status IN ('provider_missing', 'failed', 'cancelled')
             ORDER BY cs.created_at DESC
-            LIMIT $1"#,
+            LIMIT 2000"#,
     )
     .bind(limit)
+    .bind(include_probe)
     .fetch_all(&state.pool)
     .await?;
+
+    // The split happens here, AFTER the read and BEFORE the limit, so a page of our own attempts can
+    // never push a customer's row off the screen — and the count of what was held back travels with
+    // the answer (`admin_stats`'s two-number rule, applied to the list it describes).
+    let mut hidden_test = 0usize;
+    let mut rows: Vec<_> = rows;
+    if !include_probe {
+        let before = rows.len();
+        rows.retain(|r| r.try_get::<bool, _>("is_customer").unwrap_or(true));
+        hidden_test = before - rows.len();
+    }
+    rows.truncate(limit as usize);
 
     let requests: Vec<Value> = rows
         .iter()
@@ -1705,6 +1747,10 @@ pub async fn list_checkout_requests(
                 // as settled and hides the assign control, so the operator cannot assign the same
                 // plan twice or read an already-honoured request as outstanding work.
                 "plan_applied": r.try_get::<bool, _>("plan_applied").unwrap_or(false),
+                // WHOSE ATTEMPT THIS IS. `is_test` is the same predicate the dashboard counters
+                // split on; the screen prints it as a badge, so a folded-back row (`include_probe=1`)
+                // can never be mistaken for a customer wanting to buy.
+                "is_test": !r.try_get::<bool, _>("is_customer").unwrap_or(true),
                 "reason": r
                     .try_get::<Option<Value>, _>("metadata")
                     .unwrap_or(None)
@@ -1717,7 +1763,11 @@ pub async fn list_checkout_requests(
         })
         .collect();
 
-    Ok(Json(
-        json!({ "count": requests.len(), "requests": requests }),
-    ))
+    Ok(Json(json!({
+        "count": requests.len(),
+        "requests": requests,
+        // HOW MANY OUR OWN ATTEMPTS WERE HELD BACK — never silently dropped. A failing / missing
+        // value reads as 0, which leaves the screen exactly as it was before this split existed.
+        "hidden_test": hidden_test
+    })))
 }

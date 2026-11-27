@@ -1936,6 +1936,14 @@ window._withdrawPlanRequest = async function (id) {
 // yearly term from `plans.annual_price` since 2026-10-24. So from this screen the annual deal
 // the site advertises could not be bought at all.
 let PLAN_TERM = 'month';
+// SHOW OUR OWN PURCHASE ATTEMPTS (2026-11-27). The queue applies the fleet's own "not a customer"
+// predicate (probe harness tag + fleet-identity addresses), so the owner's clicking no longer buries
+// a real customer asking to buy — but nothing is hidden for good: this flag asks the server to fold
+// them back in, and every such row is badged "our test" so it cannot be mistaken for a sale.
+let PREQ_SHOW_OWN = false;
+window._showOwnPurchaseAttempts = function () { PREQ_SHOW_OWN = true; renderApp(); };
+window._hideOwnPurchaseAttempts = function () { PREQ_SHOW_OWN = false; renderApp(); };
+
 async function renderPlans() {
   let plans = [];
   try { plans = await api('/plans'); } catch(e) { plans = []; }
@@ -1988,9 +1996,13 @@ async function renderPlans() {
   // customer opening Plans fired a request the token can never be allowed to make — measured live
   // on a fresh signup: `403 /api/v1/admin/checkout-requests` in the console on every visit, and a
   // block of operator prose they could not use. Gate it on the operator role.
-  let preq = [];
+  let preq = [], preqHidden = 0;
   if (isSuperAdmin()) {
-    try { const r = await api('/admin/checkout-requests?limit=50'); preq = (r && r.requests) || []; } catch(e) { preq = []; }
+    try {
+      const r = await api('/admin/checkout-requests?limit=50' + (PREQ_SHOW_OWN ? '&include_probe=1' : ''));
+      preq = (r && r.requests) || [];
+      preqHidden = Number((r && r.hidden_test) || 0);
+    } catch(e) { preq = []; preqHidden = 0; }
   }
   // THE CUSTOMER'S OWN ASKS (2026-10-27). `GET /api/v1/plan-requests` (list_mine) and its withdraw
   // twin `DELETE /api/v1/plan-requests/:id` shipped for the app-root console but had no control in
@@ -2097,10 +2109,15 @@ async function renderPlans() {
         }).join('')}</tbody>
       </table></div>
     </div>`:''}
-    ${preq.length > 0 ? `
+    ${(preq.length > 0 || preqHidden > 0) ? `
     <div class="card" style="margin-top:20px" id="purchase-requests">
       <div style="margin-bottom:12px"><h3 style="font-size:16px;font-weight:700;margin:0">Purchase requests</h3>
-      <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Workspaces that pressed Upgrade while this installation had no payment provider connected. Nothing was charged. Switch the workspace to the plan they asked for, or connect a provider under Provider Keys, and the next attempt will charge normally.</p></div>
+      <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Workspaces that pressed Upgrade while this installation had no payment provider connected. Nothing was charged. Switch the workspace to the plan they asked for, or connect a provider under Provider Keys, and the next attempt will charge normally.</p>
+      ${preqHidden > 0 || PREQ_SHOW_OWN ? `<p style="font-size:12px;color:var(--muted);margin:8px 0 0">${PREQ_SHOW_OWN
+        ? `Showing every attempt, including our own testing — those rows are badged. <button class="btn btn-secondary btn-xs" onclick="window._hideOwnPurchaseAttempts()">Show customers only</button>`
+        : `${preqHidden} attempt${preqHidden === 1 ? '' : 's'} from our own workspace or a test harness ${preqHidden === 1 ? 'is' : 'are'} held back — ${preqHidden === 1 ? 'it is' : 'they are'} not a customer wanting to buy. <button class="btn btn-secondary btn-xs" onclick="window._showOwnPurchaseAttempts()">Show ${preqHidden === 1 ? 'it' : 'them'}</button>`}</p>` : ''}
+      </div>
+      ${preq.length > 0 ? `
       <div class="table-wrap"><table class="table">
         <thead><tr><th>When</th><th>Workspace</th><th>Plan they asked for</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
         <tbody>${preq.map(q => {
@@ -2110,7 +2127,7 @@ async function renderPlans() {
           const cls = q.status === 'provider_missing' ? 'badge-yellow' : 'badge-red';
           return `<tr>
             <td style="white-space:nowrap;font-size:12px;color:var(--muted)">${x(when)}</td>
-            <td>${x(q.tenant_name || '—')}</td>
+            <td>${x(q.tenant_name || '—')}${q.is_test ? ' <span class="badge badge-muted">our test</span>' : ''}</td>
             <td>${q.plan_name ? `<strong>${x(q.plan_name)}</strong>` : '—'}${q.plan_slug ? `<div style="font-size:11px;color:var(--muted)">${x(q.plan_slug)}</div>` : ''}</td>
             <td>${q.amount ? formatCurrency(Number(q.amount)) : '—'}</td>
             <td><span class="badge ${cls}">${x(label)}</span></td>
@@ -2121,7 +2138,7 @@ async function renderPlans() {
                   : `<span style="color:var(--muted);font-size:12px">that plan is no longer offered</span>`)}</td>
           </tr>`;
         }).join('')}</tbody>
-      </table></div>
+      </table></div>` : ''}
     </div>`:''}
   </div>`;
 }
