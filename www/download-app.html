@@ -47,6 +47,11 @@ h1{font-size:24px;font-weight:700;margin-bottom:6px}
 .dl-btn.gray{background:#374151;cursor:default}
 .dl-btn.gray:hover{background:#374151}
 .version{color:#94a3b8;font-size:12px;margin-top:10px}
+.howto{text-align:left;margin-top:14px;padding:12px 14px;border:1px solid #2d3748;border-radius:10px;background:rgba(148,163,184,.06)}
+.howto-h{color:#e2e8f0;font-size:13px;font-weight:600;margin:0 0 6px}
+.howto ol{margin:0;padding-left:18px;color:#cbd5e1;font-size:13px;line-height:1.6}
+.howto li{margin:4px 0}
+.howto-f{color:#94a3b8;font-size:12px;margin:8px 0 0}
 
 /* iOS "notify me" capture — the form the page used to promise and not provide */
 #ios-notify{display:flex;gap:8px;margin-top:12px}
@@ -106,6 +111,15 @@ h1{font-size:24px;font-weight:700;margin-bottom:6px}
 <p>APK download &mdash; works on Android 8.0+</p>
 <a class="dl-btn" href="https://funnelswift.net/funnelswift-59fd4ed7.apk" download>Download APK (106 MB)</a>
 <p class="version">v1.0.24 &bull; build 59fd4ed7 &bull; 106 MB &bull; Android 8.0+</p>
+<div class="howto">
+<p class="howto-h">How to install it</p>
+<ol>
+<li>Tap <strong>Download APK</strong> and let the file finish downloading.</li>
+<li>When your phone asks, let your browser install apps &mdash; Android calls this &ldquo;Install unknown apps&rdquo; (Settings &rarr; Apps &rarr; your browser &rarr; Install unknown apps).</li>
+<li>Open the downloaded file and tap <strong>Install</strong>. FunnelSwift then sits with your other apps.</li>
+</ol>
+<p class="howto-f">Updating later is the same download: install it over the old one and your data stays.</p>
+</div>
 </div>
 
 <!-- iOS -->
@@ -117,7 +131,7 @@ h1{font-size:24px;font-weight:700;margin-bottom:6px}
 <input id="ios-email" type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Your email address" required>
 <button type="submit">Notify Me</button>
 </form>
-<p class="version" id="ios-note">TestFlight beta coming Q3 2026</p>
+<p class="version" id="ios-note">No iOS build yet &mdash; the Android app is available today.</p>
 </div>
 
 </div>
