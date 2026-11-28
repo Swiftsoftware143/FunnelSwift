@@ -42,6 +42,35 @@ fn check_card_text(body: &serde_json::Value) -> AppResult<()> {
     Ok(())
 }
 
+/// A share description is ONE line of plain text: a bio is a textarea and can carry newlines, and a
+/// crawler shows a truncated summary. Collapse the whitespace and cut at a word boundary.
+fn meta_summary(raw: &str, max_chars: usize) -> String {
+    let flat = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= max_chars {
+        return flat;
+    }
+    let mut out = String::new();
+    for word in flat.split(' ') {
+        let next = out.chars().count() + if out.is_empty() { 0 } else { 1 } + word.chars().count();
+        if next > max_chars.saturating_sub(1) {
+            break;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(word);
+    }
+    if out.is_empty() {
+        flat.chars()
+            .take(max_chars.saturating_sub(1))
+            .collect::<String>()
+            + "…"
+    } else {
+        out.push('…');
+        out
+    }
+}
+
 /// Resolve canonical URL from Host header
 /// kntcrd.com subdomain → https://{tenant}.kntcrd.com/k/{slug}
 /// funnelswift.net → 301 redirect to kntcrd.com (never canonical)
@@ -1663,10 +1692,6 @@ pub async fn render_card(
         .try_get::<Option<String>, _>("tagline")
         .unwrap_or(None)
         .map(|t| html_escape(&t));
-    let meta_desc: Option<String> = r
-        .try_get::<Option<String>, _>("meta_description")
-        .unwrap_or(None)
-        .map(|d| html_escape(&d));
     let card_id: Uuid = r.try_get("id").unwrap_or_default();
 
     // ── Card-level password gate (plan feature `has_card_gating`) ──────────────────
@@ -1951,18 +1976,54 @@ pub async fn render_card(
     let social_html = crate::card_blocks::social_links_row(&social_items);
 
     // ── Tenant site meta overrides for OG tags ──
+    // MEASURED 2026-11-28: all four live cards served `og:description content=""` while the page
+    // itself printed the card's tagline, so every share of a card went out with no description at
+    // all. Two causes, both here:
+    //   * the chain stopped at `meta_description` (which these cards never set) and never looked at
+    //     the tagline/bio the page already renders; and
+    //   * `title`/`meta_desc` arrive ALREADY html-escaped — they are escaped for the page body a few
+    //     lines above — and both were escaped a SECOND time into the meta tags, so a title carrying
+    //     `&` reached the crawler as `&amp;`.
+    // Both fixed in one place: read RAW values, walk meta → tagline → bio → a neutral sentence that
+    // names the card, and escape exactly once.
+    let raw_title = r.try_get::<String, _>("title").unwrap_or_default();
+    let raw_meta_description = r
+        .try_get::<Option<String>, _>("meta_description")
+        .unwrap_or(None)
+        .unwrap_or_default();
+    let raw_tagline = r
+        .try_get::<Option<String>, _>("tagline")
+        .unwrap_or(None)
+        .unwrap_or_default();
+    let raw_bio = r.try_get::<String, _>("bio").unwrap_or_default();
     let og_title = html_escape(
         tenant_site_meta
             .get("og_title")
             .and_then(|v| v.as_str())
-            .unwrap_or(&title),
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&raw_title),
     );
-    let og_desc = html_escape(
-        tenant_site_meta
-            .get("og_description")
-            .and_then(|v| v.as_str())
-            .unwrap_or(meta_desc.as_deref().unwrap_or("")),
-    );
+    let tenant_og_desc = tenant_site_meta
+        .get("og_description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let described = if !tenant_og_desc.trim().is_empty() {
+        tenant_og_desc
+    } else if !raw_meta_description.trim().is_empty() {
+        &raw_meta_description
+    } else if !raw_tagline.trim().is_empty() {
+        &raw_tagline
+    } else {
+        &raw_bio
+    };
+    let og_desc = html_escape(&if described.trim().is_empty() {
+        format!(
+            "{} — a digital business card. Save the contact, send a message, or open the website.",
+            raw_title.trim()
+        )
+    } else {
+        meta_summary(described, 160)
+    });
     let og_image_html = tenant_site_meta.get("og_image")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
