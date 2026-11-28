@@ -159,13 +159,14 @@ pub async fn create_funnel(
             .ok_or_else(|| AppError::BadRequest("ask_phone must be true or false".into()))?,
     };
     // The public page is addressed by SLUG ALONE (`/funnel/<slug>`, no tenant in the path), so the
-    // slug must be (a) URL-safe and (b) unique across the fleet: the old transform was
+    // slug must be (a) URL-safe and (b) unique WITHIN THIS WORKSPACE: the old transform was
     // `name.to_lowercase().replace(' ', "-")`, which put an apostrophe ("Sam's Funnel"),
     // or a SLASH ("Q3 / Q4 Promo" -> `q3-/-q4-promo`, a path that splits and does not route) into a
-    // live URL, and let two workspaces that both called a funnel "My Funnel" share one page — one
-    // workspace's name answered the other's link. `slugify` is the app's ONE slug transform; a name
-    // of only punctuation slugifies to "", so that falls back to a stable word. A collision gets
-    // `-2`, `-3`, … and `uq_funnels_slug` (migration 108) is what makes the insert refuse a race.
+    // live URL. `slugify` is the app's ONE slug transform; a name of only punctuation slugifies to
+    // "", so that falls back to a stable word. A collision inside the workspace gets `-2`, `-3`, …
+    // and the (tenant_id, slug) unique index (migration 151) decides a race. A collision with
+    // ANOTHER workspace is not a collision at all: the host decides which page a visitor gets
+    // (kanban t_c50db970), so two businesses may both own `/spring-promo`.
     let base = {
         let s = slugify(&name);
         if s.is_empty() {
@@ -180,7 +181,7 @@ pub async fn create_funnel(
         let res = sqlx::query(
             "INSERT INTO funnels (id, tenant_id, name, slug, headline, subheadline, cta_label, \
              thank_you, ask_phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
-             ON CONFLICT (slug) DO NOTHING",
+             ON CONFLICT (tenant_id, slug) DO NOTHING",
         )
         .bind(id)
         .bind(tenant_id)
@@ -241,8 +242,10 @@ pub async fn create_funnel(
 /// * **The source is the caller's row or nothing.** The read is scoped by `tenant_id`; a row that
 ///   belongs to another workspace answers 404 (never 403 — a 403 would confirm the row exists).
 /// * **A fresh link from the same allocator the create path uses**, so the fork cannot collide with
-///   the original, with another workspace, or with a page minted at the same instant
-///   (`ON CONFLICT (slug) DO NOTHING` plus the `-2`, `-3`, … retry; `uq_funnels_slug` decides a race).
+///   the original, with another page in THIS workspace, or with a page minted at the same instant
+///   (`ON CONFLICT (tenant_id, slug) DO NOTHING` plus the `-2`, `-3`, … retry; the
+///   (tenant_id, slug) unique index decides a race). Another workspace's identical slug is not a
+///   collision: the host decides which page a visitor gets (t_c50db970).
 pub async fn duplicate_funnel(
     auth: AuthUser,
     State(state): State<AppState>,
@@ -294,7 +297,7 @@ pub async fn duplicate_funnel(
             "INSERT INTO funnels (id, tenant_id, name, slug, headline, subheadline, cta_label, \
              thank_you, ask_phone, is_active, views) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, 0) \
-             ON CONFLICT (slug) DO NOTHING",
+             ON CONFLICT (tenant_id, slug) DO NOTHING",
         )
         .bind(id)
         .bind(tenant_id)
@@ -573,6 +576,7 @@ fn looks_like_link_preview(headers: &HeaderMap) -> bool {
 
 pub async fn render_funnel(
     axum::extract::Path(slug): axum::extract::Path<String>,
+    axum::extract::Host(host): axum::extract::Host,
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> axum::response::Response {
@@ -625,6 +629,16 @@ pub async fn render_funnel(
     // is a missing resource -> 404, a failed lookup is a server error -> 500, a real row -> 200.
     // 410 is deliberately not used: a funnel slug can be created again, so "gone for good" would
     // be a lie.
+    // THE PAGE BELONGS TO THE WORKSPACE THAT OWNS THE ADDRESS (kanban t_c50db970). Measured
+    // 2026-11-28: `GET /funnel/zz-probe-funnel-capture` with `Host: c.zaarhub.com` answered the
+    // Swift Admin's Workspace page, because this lookup matched `WHERE slug = $1` on the whole
+    // install while a funnel belongs to ONE workspace (`funnels.tenant_id`). The workspace that
+    // CLAIMED the request host decides first (the same `request_scope` the kinetic card uses, so
+    // the rule has one owner); only when it holds no such slug does the account-wide row answer —
+    // every link printed before this change keeps working — and that fallback is logged below.
+    // `NULLS LAST` matters: with the request on an unclaimed host there is no scope, the sort is
+    // then all-NULL and the row falls back to the oldest, i.e. exactly the previous behaviour.
+    let scope = super::kinetic_handler::request_scope(&state, &host, &headers).await;
     let looked_up = sqlx::query_as::<_, (
         String,
         Option<String>,
@@ -634,10 +648,14 @@ pub async fn render_funnel(
         bool,
         bool,
         Uuid,
+        Uuid,
     )>(
-        "SELECT name, headline, subheadline, cta_label, thank_you, is_active, ask_phone, tenant_id FROM funnels WHERE slug = $1 ORDER BY created_at ASC LIMIT 1",
+        "SELECT name, headline, subheadline, cta_label, thank_you, is_active, ask_phone, tenant_id, id \
+         FROM funnels WHERE slug = $1 \
+         ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
     )
     .bind(&slug)
+    .bind(scope)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| tracing::error!("render_funnel lookup failed for slug '{}': {:?}", slug, e));
@@ -648,6 +666,22 @@ pub async fn render_funnel(
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, None),
     };
 
+    // SAY SO WHEN A BRANDED DOMAIN IS ANSWERING ANOTHER WORKSPACE'S PAGE (t_c50db970). The
+    // fallback keeps older links alive; it must never be silent, or the cross-workspace render is
+    // rediscovered as a fresh defect — which is exactly how THIS card was found.
+    if let (Some(scope), Some(r)) = (scope, row.as_ref()) {
+        if r.7 != scope {
+            tracing::warn!(
+                "funnel scope fallback: host '{}' asked for '/funnel/{}' but its workspace {} \
+                 holds no such funnel; serving the account-wide funnel owned by workspace {}",
+                host,
+                slug,
+                scope,
+                r.7
+            );
+        }
+    }
+
     // ONE VIEW, COUNTED HERE (2026-11-24). The Funnels screen showed how many leads a page captured
     // but not how many people opened it, so "which funnel is working" had no denominator. This is
     // the denominator: a real page view of an EXISTING page (a 404 for a mistyped link is not a
@@ -655,14 +689,17 @@ pub async fn render_funnel(
     //
     // Best-effort by design: a page must never fail to render because its counter could not be
     // written, so the error is logged and the render continues. The counter is a single UPDATE on
-    // the row this request already read, by slug — no extra round-trip before the response.
+    // the row this request already read, BY ID (t_c50db970): keyed by slug it would also count
+    // hits on a page whose slug another workspace owns, inflating a stranger's number.
     if status == StatusCode::OK && !looks_like_link_preview(&headers) {
-        if let Err(e) = sqlx::query("UPDATE funnels SET views = views + 1 WHERE slug = $1")
-            .bind(&slug)
-            .execute(&state.pool)
-            .await
-        {
-            tracing::warn!(slug = %slug, "funnel view counter could not be written: {:?}", e);
+        if let Some(funnel_id) = row.as_ref().map(|r| r.8) {
+            if let Err(e) = sqlx::query("UPDATE funnels SET views = views + 1 WHERE id = $1")
+                .bind(funnel_id)
+                .execute(&state.pool)
+                .await
+            {
+                tracing::warn!(slug = %slug, "funnel view counter could not be written: {:?}", e);
+            }
         }
     }
 
@@ -743,7 +780,7 @@ pub async fn render_funnel(
     // lead instead of "under construction". The RAW values are kept for the inline script (a JS
     // string must not carry HTML entities) and escaped only on the way into the markup.
     let (raw_name, raw_headline, raw_subheadline, raw_cta, raw_thanks) = match row {
-        Some((name, h, sl, c, t, _, _, _)) => {
+        Some((name, h, sl, c, t, _, _, _, _)) => {
             let headline = h
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| name.clone());
@@ -949,18 +986,43 @@ button:disabled{{opacity:.6;cursor:default}}
 /// exists either).
 pub async fn submit_funnel_lead(
     Path(slug): Path<String>,
+    axum::extract::Host(host): axum::extract::Host,
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    // WHICH PAGE THIS LEAD BELONGS TO IS DECIDED THE SAME WAY THE PAGE ITSELF WAS (t_c50db970):
+    // the workspace that claimed the request host first, account-wide only when it holds no such
+    // slug. Before this, two workspaces holding one slug would have written the visitor's details
+    // onto whichever funnel the database happened to return first — a cross-workspace write, not
+    // just a wrong page.
+    let scope = super::kinetic_handler::request_scope(&state, &host, &headers).await;
     let funnel: Option<(Uuid, Uuid, bool, String)> = sqlx::query_as(
-        "SELECT id, tenant_id, is_active, COALESCE(name,'') FROM funnels WHERE slug = $1 LIMIT 1",
+        "SELECT id, tenant_id, is_active, COALESCE(name,'') FROM funnels WHERE slug = $1 \
+         ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
     )
     .bind(&slug)
+    .bind(scope)
     .fetch_optional(&state.pool)
     .await?;
     let Some((funnel_id, tenant_id, is_active, funnel_name)) = funnel else {
         return Err(AppError::NotFound("Funnel not found".into()));
     };
+    // A branded domain that answers another workspace's page is logged here too (the render arm
+    // logs it on GET; this arm is where a WRONG WRITE would happen, so it cannot be the quiet one).
+    if let Some(scope) = scope {
+        if tenant_id != scope {
+            tracing::warn!(
+                "funnel submit scope fallback: host '{}' posted to '/funnel/{}/submit' but its \
+                 workspace {} holds no such funnel; the lead lands on the account-wide funnel \
+                 owned by workspace {}",
+                host,
+                slug,
+                scope,
+                tenant_id
+            );
+        }
+    }
     // The operator closed this page (migration 116). A browser still holding the OPEN copy — a
     // cached page, a tab left open, or a direct POST — must be told plainly rather than have its
     // details stored against a form that is meant to be closed. 409 (not 404) is deliberate: the

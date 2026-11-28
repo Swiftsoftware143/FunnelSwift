@@ -608,7 +608,14 @@ mod tests {
             // card link is the credential), and they sit OFF the `/api/` surface, so only the served
             // bucket moved: 259 mounts, 259 unique, 227 on the API surface, 26 public, 3 internal,
             // 198 private, 32 served.
-            (259, 259, 227, 26, 3, 198, 32),
+            // 2026-11-28 (kanban t_c50db970, found while running the gate for the funnel-address
+            // change): +1 mounted API route, PRIVATE — `POST /api/v1/funnels/:id/duplicate` (commit
+            // 4131015, "a funnel can be duplicated"). It was committed without moving this pin, so
+            // the suite was red at HEAD again. It reads and writes only the caller's own workspace
+            // (the source row is scoped by `tenant_id`, a foreign row answers 404), so it belongs in
+            // `private`: 260 mounts, 260 unique, 228 on the API surface, 26 public, 3 internal,
+            // 199 private, 32 served.
+            (260, 260, 228, 26, 3, 199, 32),
             "the census in the module docs no longer matches the router"
         );
     }

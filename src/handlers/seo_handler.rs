@@ -99,8 +99,16 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
     .fetch_all(&state.pool)
     .await
     {
+        // A slug is unique PER WORKSPACE since t_c50db970, so two businesses' `/funnel/spring-promo`
+        // are two rows but ONE sitemap URL (the shared host serves the older one). Listing it twice
+        // is a duplicate entry a crawler must be told nothing about, so the same address is emitted
+        // once.
+        let mut seen_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
         for row in &rows {
             let slug: String = row.try_get("slug").unwrap_or_default();
+            if !seen_slugs.insert(slug.clone()) {
+                continue;
+            }
             // `funnels.created_at` is `timestamp without time zone` (migration 054), because
             // funnel_handler decodes it as NaiveDateTime; decoding it here as DateTime<Utc>
             // was a silent type mismatch whose `unwrap_or(None)` dropped every <lastmod> from

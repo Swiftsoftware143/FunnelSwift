@@ -144,7 +144,11 @@ fn clean_host(raw_host: &str) -> String {
 /// `None` means the host is not a claimed name: the fleet's own names (`funnelswift.net` and its
 /// subdomains), `kntcrd.com` itself and `www.kntcrd.com`, any bare IP or `localhost`, and every
 /// host no tenant has claimed. Those keep resolving account-wide, exactly as before.
-async fn host_claim(state: &AppState, raw_host: &str) -> Option<(uuid::Uuid, String)> {
+///
+/// `pub(crate)`: the FUNNEL page and its submit arm (kanban t_c50db970) turn the same Host into the
+/// same workspace through here, so the rule is one function for every public surface and cannot
+/// drift between them.
+pub(crate) async fn host_claim(state: &AppState, raw_host: &str) -> Option<(uuid::Uuid, String)> {
     let host = clean_host(raw_host);
     if host.is_empty()
         || host == "localhost"
@@ -187,7 +191,10 @@ async fn host_claim(state: &AppState, raw_host: &str) -> Option<(uuid::Uuid, Str
 /// `Host localhost` and the public name in `x-forwarded-host`, which is therefore consulted
 /// second. Preference only: the lookup below still falls back, it just cannot be steered by a
 /// header into serving a DIFFERENT workspace's card than the one a host resolves to.
-async fn request_scope(
+///
+/// `pub(crate)` for the same reason as [`host_claim`]: the funnel page and its submit arm scope a
+/// public request through this one function (kanban t_c50db970).
+pub(crate) async fn request_scope(
     state: &AppState,
     host: &str,
     headers: &axum::http::HeaderMap,
