@@ -110,7 +110,13 @@ button:disabled{opacity:.6;cursor:default}
           f.querySelectorAll('input,textarea').forEach(function(el){ el.value=''; });
           b.disabled=true; b.textContent='Sent';
         } else {
-          say(m,(res.body&&res.body.message)||'That did not go through. Try again in a moment.',false);
+          // THE SERVER'S OWN SENTENCE, WHICHEVER FIELD IT CAME IN (measured live 2026-11-28). This
+          // branch read `message` only, but every refusal from this app's API answers `error` (the
+          // validator's field sentence, the rate limit's paragraph), so the person saw the generic
+          // fallback for every one of them. Both keys are read, `message` first because a 200 body
+          // uses it.
+          var why=(res.body&&(res.body.message||res.body.error))||'That did not go through. Try again in a moment.';
+          say(m,why,false);
           b.disabled=false;
         }
       })
