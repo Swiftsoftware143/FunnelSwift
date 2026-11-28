@@ -976,6 +976,44 @@ button:disabled{{opacity:.6;cursor:default}}
         .into_response()
 }
 
+/// The public funnel door's CoreSwift hand-off (kanban t_934b3a07). One place, so the new-lead arm
+/// and the repeat-submission arm cannot drift apart: both describe the same capture.
+///
+/// The form answers the workspace stored (`custom_fields`: funnel id + slug) are mapped into the
+/// hub's `fields`, which is what turns them into columns on the contact instead of being lost —
+/// the Zapier property the owner asked for.
+fn push_public_funnel_lead(
+    state: &AppState,
+    tenant_id: Uuid,
+    lead_id: Uuid,
+    name: String,
+    email: Option<String>,
+    phone: Option<String>,
+    custom_fields: Value,
+) {
+    crate::coreswift::spawn_lead_push(
+        state.pool.clone(),
+        tenant_id,
+        Some(lead_id),
+        crate::coreswift::LeadPayload {
+            email,
+            phone,
+            name: Some(name),
+            source: Some("funnel".to_string()),
+            fields: custom_fields
+                .as_object()
+                .map(|o| {
+                    o.iter()
+                        .filter(|(_, v)| !v.is_null())
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            ..Default::default()
+        },
+    );
+}
+
 /// `POST /funnel/:slug/submit` — the public opt-in form on a shared funnel page.
 ///
 /// The visitor is anonymous by construction: no session, no cookie, no credential anywhere in the
@@ -1132,6 +1170,18 @@ pub async fn submit_funnel_lead(
             funnel = %funnel_id,
             "repeat funnel submission refreshed the existing lead"
         );
+        // The repeat is the same capture — but it may be the first one that happens after the
+        // workspace switched CoreSwift sync on, so it gets the same (idempotent: the hub upserts
+        // on email) push. kanban t_934b3a07.
+        push_public_funnel_lead(
+            &state,
+            tenant_id,
+            existing_id,
+            name.clone(),
+            email.clone(),
+            phone.clone(),
+            custom_fields.clone(),
+        );
         return Ok((StatusCode::CREATED, Json(json!({ "status": "ok" }))));
     }
 
@@ -1186,6 +1236,21 @@ pub async fn submit_funnel_lead(
         Some("funnel"),
     )
     .await;
+
+    // THE PUBLIC FORM DOOR (kanban t_934b3a07). This was the one lead-creating door with NO
+    // CoreSwift push at all, so a visitor who opted in on a funnel page — the app's primary public
+    // capture surface — never reached the customer's CRM unless a human pressed push. Same
+    // best-effort contract as every other door: the capture is already stored, and the workspace's
+    // switch decides (absent = off).
+    push_public_funnel_lead(
+        &state,
+        tenant_id,
+        lead_id,
+        name.clone(),
+        email.clone(),
+        phone.clone(),
+        custom_fields.clone(),
+    );
 
     // TELL THE OWNER (2026-11-01). The lead is written and the webhook has fired; without this the
     // owner only found out by opening the panel. Best effort by design: a mail problem must never

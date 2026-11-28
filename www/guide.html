@@ -250,7 +250,7 @@
         <div class="feature-card">
           <div class="fc-icon">🔗</div>
           <h4>CoreSync</h4>
-          <p>Leads automatically sync to CoreSwift CRM with tags, source data, and stage mapping</p>
+          <p>Leads you capture sync to CoreSwift CRM with their tags, source and stage mapping &mdash; switched on per workspace on the Integrations screen</p>
         </div>
       </div>
 
@@ -266,7 +266,7 @@
       <p style="font-size:13px;color:var(--text-muted);margin-top:-8px">Example figures — your dashboard shows your own numbers.</p>
 
       <h2 id="leads">👤 Leads</h2>
-      <p>Manage your prospect leads in the Leads section. Each lead stores name, email, phone, company, source, tags, and custom fields. Leads are auto-synced to CoreSwift CRM. Every lead also carries an owner: open a lead's Edit and choose a teammate in the Owner box — only this workspace's own active logins are offered — then press Save to hand it over, and the Leads list shows who holds each lead in its Owner column.</p>
+      <p>Manage your prospect leads in the Leads section. Each lead stores name, email, phone, company, source, tags, and custom fields. Leads are pushed to CoreSwift CRM when your workspace has switched lead sync on (see CoreSwift CRM &mdash; automatic lead sync); each lead records whether its hand-off was pushed, skipped or failed. Every lead also carries an owner: open a lead's Edit and choose a teammate in the Owner box — only this workspace's own active logins are offered — then press Save to hand it over, and the Leads list shows who holds each lead in its Owner column.</p>
       <p>The table shows 50 leads at a time with a pager underneath it (Previous / Next and a line reading, for example, "Showing 1–50 of 214 leads"), so every lead in the workspace can be reached, not only the newest ones. <strong>View</strong> opens the lead you clicked, whichever page it sits on. The search box searches the <em>whole workspace</em>: type part of a name, email, phone or company and pause (or press Enter) and the server returns the matching leads from every page — the small status badges beside the title count only the rows on the page you are looking at, so a quiet badge does not mean a quiet workspace.</p>
 
       <h3>Adding Leads</h3>
@@ -320,7 +320,7 @@
       <p>Tags help organize leads by categories: Source, Status, Events, Services, Engagement, and Custom. Tags are grouped into tag groups for structured organization. Tags auto-sync from plan mappings and are workspace-specific.</p>
 
       <h3>Creating Tags</h3>
-      <p>From the Tags section, you can create new tags, assign colors, and organize them into groups. Tags applied to leads in FunnelSwift are automatically pushed to CoreSwift CRM as well.</p>
+      <p>From the Tags section, you can create new tags, assign colors, and organize them into groups. A lead's tags travel to CoreSwift CRM with the contact whenever lead sync is on, and the extra tags you map on the CoreSwift card are added to every synced contact.</p>
       <p>The group drop-down in a tag's editor always offers <strong>— No group —</strong>. Choosing it and saving removes the tag from its group. A tag whose group is shared from the system taxonomy shows that group by name, or by its id when this workspace cannot name it.</p>
 
       <h3 id="tag-automation">Tag automation — rules that change tags by themselves</h3>
@@ -684,6 +684,38 @@ window.FunnelSwiftConfig = {
       <h3>Rate Limiting</h3>
       <p>Default 100 submissions per hour per workspace. Configure per config under Web-to-Lead settings.</p>
 
+      <h2 id="coreswift">🔄 CoreSwift CRM — automatic lead sync</h2>
+      <p>FunnelSwift hands every lead it captures straight to your CoreSwift CRM. There is no middleman
+      and no automation platform to build: the two products talk to each other directly, and your
+      workspace decides what goes across.</p>
+
+      <h3>Turning it on</h3>
+      <ol class="step-list">
+        <li>Open <strong>Integrations</strong> and find the <strong>CoreSwift CRM</strong> card.</li>
+        <li>Paste your CoreSwift API key (minted inside CoreSwift under API keys) and press <strong>Connect</strong>.</li>
+        <li>Tick <strong>Sync captured leads into CoreSwift automatically</strong>.</li>
+        <li>Choose the <strong>list</strong> the leads should join (or leave it on "No list"), add any
+        <strong>extra tags</strong> you want on every synced contact, then press
+        <strong>Save sync settings</strong>.</li>
+      </ol>
+      <p><strong>Sync stays off until you switch it on.</strong> Connecting a key on its own does not start
+      a sync, so no workspace ships its leads anywhere by surprise.</p>
+
+      <h3>Which doors feed it</h3>
+      <p>Every lead-creating surface in FunnelSwift: a funnel page submission, a Kinetic card's lead form,
+      web-to-lead posts from your own site, a lead you add by hand in the panel, a stage change on an
+      existing lead, and a CSV import. Each contact carries the capture's own tags, its source, and the
+      funnel or card it came from as fields on the contact.</p>
+
+      <h3>If CoreSwift is unreachable</h3>
+      <p>Your lead is safe: it is stored in FunnelSwift first and the hand-off is retried in the
+      background. The lead row records what happened — <em>pushed</em>, <em>skipped</em> (nothing to
+      identify the lead, or CoreSwift is not connected) or <em>failed</em> with CoreSwift's own reason — so
+      a missing contact is visible in your lead list rather than in a log you never read. The
+      <strong>Push a lead now</strong> button on the same card remains as a manual fallback.</p>
+      <p>Pushing the same person twice never makes a second contact: CoreSwift matches on the email
+      address, so the second push updates the first contact.</p>
+
       <h2 id="webhooks">🔗 Webhooks</h2>
       <p>Webhooks let your own software hear from FunnelSwift. Each webhook is a named endpoint you
       register for a list of events &mdash; for example <code>lead.created</code> &mdash; and the
@@ -965,7 +997,7 @@ window.FunnelSwiftConfig = {
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Does FunnelSwift sync with CoreSwift CRM?</button>
-        <div class="faq-a">Yes. Leads captured in FunnelSwift (via web-to-lead, Kinetic forms, manual entry, or mobile app) are automatically synced to CoreSwift CRM with their tags, source, and stage data. No separate configuration needed.</div>
+        <div class="faq-a">Yes &mdash; directly, with no automation platform in between. Store your CoreSwift API key on the Integrations screen, then tick <strong>Sync captured leads into CoreSwift automatically</strong> and pick the list and extra tags you want. Leads captured through every door (funnel pages, Kinetic forms, web-to-lead, manual entry, CSV import, mobile app) then land in your CRM with their tags, source and stage data. Until that switch is on, nothing is pushed.</div>
       </div>
       <div class="faq-item">
         <button class="faq-q" onclick="this.nextElementSibling.classList.toggle('open')">Where is the inline guide / help?</button>

@@ -2809,10 +2809,12 @@ pub async fn submit_lead(
     }
 
     // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be able
-    // to land in CoreSwift as a contact. Fire-and-forget, a no-op without a `coreswift` BYOK key.
+    // to land in CoreSwift as a contact. Fire-and-forget, and a no-op unless the workspace switched
+    // sync ON (kanban t_934b3a07 — absent means off) and holds a `coreswift` BYOK key.
     crate::coreswift::spawn_lead_push(
         state.pool.clone(),
         tenant_id,
+        Some(lead_id),
         crate::coreswift::LeadPayload {
             email,
             phone,

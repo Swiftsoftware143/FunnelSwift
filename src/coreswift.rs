@@ -144,6 +144,120 @@ pub async fn resolve_conn(db: &PgPool, tenant_id: Uuid) -> Result<Option<CoreSwi
     Ok(Some(CoreSwiftConn { base_url, api_key }))
 }
 
+// ───────────────── per-workspace sync switch (kanban t_934b3a07) ─────────────────
+//
+// The Zapier property the owner asked for: every workspace says FOR ITSELF whether its captures
+// flow into CoreSwift, into which list, and with which tags. Stored as a plain `tenant_settings`
+// row, key `coreswift_sync`:
+//
+//     {"enabled": true, "list_id": "<hub list uuid>", "tags": ["vip", "webinar"]}
+//
+// ABSENT MEANS OFF. Before this switch the push ran for every workspace holding a CoreSwift key,
+// which meant a workspace that pasted a key for a one-off test shipped all its later captures. A
+// capture is the customer's data, so the default is the quiet one; migration 152 opts in exactly
+// the workspaces that had already opted in by storing a live key.
+
+/// The `tenant_settings` key holding a workspace's automatic-sync switch.
+pub const SYNC_SETTINGS_KEY: &str = "coreswift_sync";
+/// A workspace may map a handful of tags, not a taxonomy: the hub's tag name is varchar(100).
+pub const SYNC_MAX_TAGS: usize = 25;
+pub const SYNC_MAX_TAG_CHARS: usize = 100;
+
+/// A workspace's automatic lead-sync configuration.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SyncSettings {
+    pub enabled: bool,
+    /// Hub list every synced lead joins (`GET /api/external/lists` ids).
+    pub list_id: Option<String>,
+    /// Extra tags applied to every synced lead, on top of the capture's own tags.
+    pub tags: Vec<String>,
+}
+
+/// Read a stored `coreswift_sync` document. `enabled` accepts either the object form above or a
+/// bare boolean (the shape `lead_notifications` uses), so a hand-written row still reads.
+pub fn sync_settings_from_value(v: &Value) -> SyncSettings {
+    let enabled = v
+        .get("enabled")
+        .and_then(|e| e.as_bool())
+        .or_else(|| v.as_bool())
+        .unwrap_or(false);
+    let list_id = v
+        .get("list_id")
+        .and_then(|l| l.as_str())
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        // A list id the hub cannot parse is not a list: it is dropped here rather than sent as a
+        // body field, where CoreSwift would ignore it and the lead would silently miss the list.
+        .filter(|l| Uuid::parse_str(l).is_ok())
+        .map(str::to_string);
+    let mut tags: Vec<String> = Vec::new();
+    if let Some(arr) = v.get("tags").and_then(|t| t.as_array()) {
+        for tag in arr {
+            let Some(tag) = tag.as_str().map(str::trim).filter(|t| !t.is_empty()) else {
+                continue;
+            };
+            let tag = tag.chars().take(SYNC_MAX_TAG_CHARS).collect::<String>();
+            if !tags.contains(&tag) {
+                tags.push(tag);
+            }
+            if tags.len() >= SYNC_MAX_TAGS {
+                break;
+            }
+        }
+    }
+    SyncSettings {
+        enabled,
+        list_id,
+        tags,
+    }
+}
+
+/// Load a workspace's sync switch. A read error is treated as OFF and logged: an unreadable switch
+/// must never ship a workspace's leads somewhere the workspace did not ask for.
+pub async fn load_sync_settings(db: &PgPool, tenant_id: Uuid) -> SyncSettings {
+    let stored: Result<Option<Value>, sqlx::Error> =
+        sqlx::query_scalar("SELECT value FROM tenant_settings WHERE tenant_id = $1 AND key = $2")
+            .bind(tenant_id)
+            .bind(SYNC_SETTINGS_KEY)
+            .fetch_optional(db)
+            .await;
+    match stored {
+        Ok(Some(v)) => sync_settings_from_value(&v),
+        Ok(None) => SyncSettings::default(),
+        Err(e) => {
+            tracing::warn!(%tenant_id, "coreswift sync setting unreadable, treating as off: {e}");
+            SyncSettings::default()
+        }
+    }
+}
+
+/// Fold the workspace's list + extra tags into a hub contact body. A list the CALLER named wins
+/// (the manual push and the panel's per-lead push both send one).
+fn apply_sync_settings(body: &mut Value, settings: &SyncSettings) {
+    let Some(obj) = body.as_object_mut() else {
+        return;
+    };
+    if !obj.contains_key("list_id") {
+        if let Some(list_id) = settings.list_id.as_deref() {
+            obj.insert("list_id".to_string(), json!(list_id));
+        }
+    }
+    if settings.tags.is_empty() {
+        return;
+    }
+    let mut merged: Vec<Value> = obj
+        .get("tags")
+        .and_then(|t| t.as_array())
+        .cloned()
+        .unwrap_or_default();
+    for tag in &settings.tags {
+        if !merged.iter().any(|t| t.as_str() == Some(tag.as_str())) {
+            merged.push(json!(tag));
+        }
+    }
+    obj.insert("tags".to_string(), Value::Array(merged));
+}
+
 /// A captured lead, in hub terms.
 #[derive(Clone, Debug, Default)]
 pub struct LeadPayload {
@@ -152,10 +266,12 @@ pub struct LeadPayload {
     /// Full name — split into first/last when those are not given.
     pub name: Option<String>,
     pub company: Option<String>,
-    /// Hub tags (idempotent; auto-created hub-side).
+    /// The capture's own tags (idempotent; auto-created hub-side).
     pub tags: Vec<String>,
     /// Where the lead came from inside FunnelSwift (e.g. "web_to_lead").
     pub source: Option<String>,
+    /// Hub list to put this lead in. `None` falls back to the workspace's configured list.
+    pub list_id: Option<String>,
     /// Extra key/values — the hub auto-provisions them as per-tenant custom fields.
     pub fields: serde_json::Map<String, Value>,
 }
@@ -213,11 +329,33 @@ fn lead_body(lead: &LeadPayload) -> Value {
         tags.push(format!("funnelswift:{src}"));
     }
     tags.extend(lead.tags.iter().cloned());
-    tags.dedup();
-    body.insert("tags".into(), json!(tags));
+    // `dedup()` only collapses CONSECUTIVE repeats, so a capture tagging "vip" twice with another
+    // tag between them sent the hub a duplicated tag (and the RAW value, whitespace included).
+    // Copy trimmed, non-empty, first-seen-wins.
+    let mut unique: Vec<String> = Vec::new();
+    for tag in tags {
+        let tag = tag.trim().to_string();
+        if !tag.is_empty() && !unique.contains(&tag) {
+            unique.push(tag);
+        }
+    }
+    body.insert("tags".into(), json!(unique));
     body.insert("source_app".into(), json!("funnelswift"));
+    // The hub's reserved keys are `list_id` (top level) and `fields` (the custom data points). Both
+    // were wrong here before kanban t_934b3a07: the list was sent INSIDE `custom_fields`, which is
+    // not a reserved key, and its value is an object — so the hub could not read it as text, never
+    // provisioned it, and the contact was never put in the list. `fields` is the mapping the hub
+    // documents (`POST /api/external/contacts`), and it is what makes form answers become columns.
+    if let Some(list_id) = lead
+        .list_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+    {
+        body.insert("list_id".into(), json!(list_id));
+    }
     if !lead.fields.is_empty() {
-        body.insert("custom_fields".into(), Value::Object(lead.fields.clone()));
+        body.insert("fields".into(), Value::Object(lead.fields.clone()));
     }
     Value::Object(body)
 }
@@ -334,17 +472,25 @@ fn push_backoff_secs(attempt: i32) -> i64 {
     (PUSH_BACKOFF_BASE_SECS * factor).min(PUSH_BACKOFF_MAX_SECS)
 }
 
-/// Record a push the hub refused, so it is retried instead of dropped.
-async fn enqueue_push(db: &PgPool, tenant_id: Uuid, body: &Value, error: &str) {
+/// Record a push the hub refused, so it is retried instead of dropped. `lead_id` rides along so a
+/// successful retry can clear the "failed" mark on the lead it belongs to.
+async fn enqueue_push(
+    db: &PgPool,
+    tenant_id: Uuid,
+    lead_id: Option<Uuid>,
+    body: &Value,
+    error: &str,
+) {
     let reason: String = error.chars().take(500).collect();
     let inserted = sqlx::query(
-        "INSERT INTO coreswift_push_queue (tenant_id, payload, last_error, next_retry_at) \
-         VALUES ($1, $2, $3, now() + make_interval(secs => $4))",
+        "INSERT INTO coreswift_push_queue (tenant_id, payload, last_error, next_retry_at, lead_id) \
+         VALUES ($1, $2, $3, now() + make_interval(secs => $4), $5)",
     )
     .bind(tenant_id)
     .bind(body)
     .bind(&reason)
     .bind(PUSH_BACKOFF_BASE_SECS as f64)
+    .bind(lead_id)
     .execute(db)
     .await;
     match inserted {
@@ -360,16 +506,142 @@ async fn enqueue_push(db: &PgPool, tenant_id: Uuid, body: &Value, error: &str) {
     }
 }
 
+/// Record what happened to ONE lead's sync, on the lead itself (migration 152). The customer opens
+/// the lead, not the app log — a hub that refused is a fact about that row and has to be readable
+/// there. Best effort: failing to record an outcome must never fail the capture.
+pub async fn record_sync(db: &PgPool, lead_id: Option<Uuid>, status: &str, detail: Option<&str>) {
+    let Some(lead_id) = lead_id else {
+        return;
+    };
+    let detail: Option<String> = detail.map(|d| d.chars().take(500).collect());
+    let written = sqlx::query(
+        "UPDATE leads SET coreswift_sync_status = $2, coreswift_sync_detail = $3, \
+         coreswift_synced_at = CASE WHEN $2 = 'pushed' THEN now() ELSE coreswift_synced_at END \
+         WHERE id = $1",
+    )
+    .bind(lead_id)
+    .bind(status)
+    .bind(detail)
+    .execute(db)
+    .await;
+    if let Err(e) = written {
+        tracing::warn!(%lead_id, "coreswift sync outcome not recorded: {e}");
+    }
+}
+
 /// Fire-and-forget wrapper for capture handlers: the visitor's submission must never fail
-/// or slow down because the hub is missing, slow or broken. A real failure is queued.
-pub fn spawn_lead_push(db: PgPool, tenant_id: Uuid, lead: LeadPayload) {
+/// or slow down because the hub is missing, slow or broken. A real failure is queued AND recorded
+/// on the lead.
+///
+/// `lead_id` is the row this capture wrote, so the outcome lands somewhere a person can see it.
+/// A workspace whose switch is OFF (or absent — the default) does nothing at all here, not even a
+/// settings write.
+pub fn spawn_lead_push(db: PgPool, tenant_id: Uuid, lead_id: Option<Uuid>, lead: LeadPayload) {
     tokio::spawn(async move {
-        let Some(body) = pushable_body(&lead) else {
+        let settings = load_sync_settings(&db, tenant_id).await;
+        if !settings.enabled {
+            tracing::debug!(%tenant_id, "coreswift sync off for this workspace; capture stays local");
+            return;
+        }
+        let Some(mut body) = pushable_body(&lead) else {
+            record_sync(
+                &db,
+                lead_id,
+                "skipped",
+                Some("nothing to identify the lead (or a reserved test address)"),
+            )
+            .await;
             return;
         };
-        if let Err(e) = push_body_to_coreswift(&db, tenant_id, &body).await {
-            enqueue_push(&db, tenant_id, &body, &e).await;
+        apply_sync_settings(&mut body, &settings);
+        match push_body_to_coreswift(&db, tenant_id, &body).await {
+            Ok(true) => record_sync(&db, lead_id, "pushed", None).await,
+            Ok(false) => {
+                record_sync(
+                    &db,
+                    lead_id,
+                    "skipped",
+                    Some("CoreSwift is not connected for this workspace"),
+                )
+                .await
+            }
+            Err(e) => {
+                enqueue_push(&db, tenant_id, lead_id, &body, &e).await;
+                record_sync(&db, lead_id, "failed", Some(&e)).await;
+            }
         }
+    });
+}
+
+/// The IMPORT door: a CSV can carry thousands of rows, so this loads the switch once and walks the
+/// batch sequentially in ONE background task instead of spawning a task per row (5,000 tasks, 5,000
+/// timeouts when the hub is down). After three consecutive failures the hub is treated as down: the
+/// remaining rows are queued for retry rather than each waiting out a 10s timeout.
+const PUSH_BATCH_FAILURE_LIMIT: usize = 3;
+
+pub fn spawn_leads_push(db: PgPool, tenant_id: Uuid, leads: Vec<(Uuid, LeadPayload)>) {
+    if leads.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let settings = load_sync_settings(&db, tenant_id).await;
+        if !settings.enabled {
+            tracing::debug!(%tenant_id, "coreswift sync off; {} imported leads stay local", leads.len());
+            return;
+        }
+        let mut consecutive_failures = 0usize;
+        for (lead_id, lead) in leads {
+            let Some(mut body) = pushable_body(&lead) else {
+                record_sync(
+                    &db,
+                    Some(lead_id),
+                    "skipped",
+                    Some("nothing to identify the lead (or a reserved test address)"),
+                )
+                .await;
+                continue;
+            };
+            apply_sync_settings(&mut body, &settings);
+            if consecutive_failures >= PUSH_BATCH_FAILURE_LIMIT {
+                enqueue_push(
+                    &db,
+                    tenant_id,
+                    Some(lead_id),
+                    &body,
+                    "hub treated as down during an import; queued for retry",
+                )
+                .await;
+                record_sync(
+                    &db,
+                    Some(lead_id),
+                    "failed",
+                    Some("hub treated as down during an import; queued for retry"),
+                )
+                .await;
+                continue;
+            }
+            match push_body_to_coreswift(&db, tenant_id, &body).await {
+                Ok(true) => {
+                    consecutive_failures = 0;
+                    record_sync(&db, Some(lead_id), "pushed", None).await;
+                }
+                Ok(false) => {
+                    record_sync(
+                        &db,
+                        Some(lead_id),
+                        "skipped",
+                        Some("CoreSwift is not connected for this workspace"),
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    consecutive_failures += 1;
+                    enqueue_push(&db, tenant_id, Some(lead_id), &body, &e).await;
+                    record_sync(&db, Some(lead_id), "failed", Some(&e)).await;
+                }
+            }
+        }
+        tracing::info!(tenant = %tenant_id, "coreswift import sync finished");
     });
 }
 
@@ -398,15 +670,15 @@ async fn sweep_pushes_once(pool: &PgPool) -> Result<usize, sqlx::Error> {
     let mut handled = 0usize;
     while handled < PUSH_SWEEP_BATCH {
         let mut tx = pool.begin().await?;
-        let claimed: Option<(Uuid, Uuid, Value, i32, i32)> = sqlx::query_as(
-            "SELECT id, tenant_id, payload, attempt, max_attempts FROM coreswift_push_queue \
+        let claimed: Option<(Uuid, Uuid, Value, i32, i32, Option<Uuid>)> = sqlx::query_as(
+            "SELECT id, tenant_id, payload, attempt, max_attempts, lead_id FROM coreswift_push_queue \
              WHERE status = 'pending' AND attempt < max_attempts \
                AND (next_retry_at IS NULL OR next_retry_at <= now()) \
              ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
         )
         .fetch_optional(&mut *tx)
         .await?;
-        let Some((id, tenant_id, payload, attempt, max_attempts)) = claimed else {
+        let Some((id, tenant_id, payload, attempt, max_attempts, lead_id)) = claimed else {
             tx.commit().await?;
             break;
         };
@@ -438,6 +710,8 @@ async fn sweep_pushes_once(pool: &PgPool) -> Result<usize, sqlx::Error> {
                 .bind(id)
                 .execute(pool)
                 .await?;
+                // The lead said "failed" when it was queued; this retry is what makes it true.
+                record_sync(pool, lead_id, "pushed", None).await;
             }
             Some(reason) => {
                 let exhausted = attempted >= max_attempts;
@@ -454,6 +728,7 @@ async fn sweep_pushes_once(pool: &PgPool) -> Result<usize, sqlx::Error> {
                 .bind(delay as f64)
                 .execute(pool)
                 .await?;
+                record_sync(pool, lead_id, "failed", Some(&reason)).await;
                 if exhausted {
                     tracing::error!(
                         %tenant_id,

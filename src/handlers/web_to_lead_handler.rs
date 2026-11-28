@@ -497,10 +497,12 @@ pub async fn handle_web_to_lead(
 
     // INBOUND CoreSwift push (fleet standard 2026-09-20 §R2): every captured opt-in must be
     // able to land in CoreSwift as a contact. Fire-and-forget: the visitor's submission above
-    // already succeeded, and this is a no-op when the tenant has no `coreswift` BYOK key.
+    // already succeeded, and this is a no-op unless the workspace switched sync ON (kanban
+    // t_934b3a07 — absent means off) and holds a `coreswift` BYOK key.
     crate::coreswift::spawn_lead_push(
         state.pool.clone(),
         tenant_id,
+        Some(id),
         crate::coreswift::LeadPayload {
             email: payload
                 .get("email")
@@ -518,6 +520,7 @@ pub async fn handle_web_to_lead(
                 .get("company")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            tags: tag_names.clone(),
             source: Some("web_to_lead".to_string()),
             ..Default::default()
         },

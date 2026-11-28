@@ -162,6 +162,68 @@ pub async fn update_settings(
         value = serde_json::Value::String(normalized);
     }
 
+    // CoreSwift lead sync (kanban t_934b3a07). Every capture door reads this switch, so a document
+    // it cannot interpret must never be stored: a list id the hub cannot parse would silently put
+    // the workspace's leads OUTSIDE the list it chose, and "on" with no credential would put every
+    // capture straight into "skipped" without anyone noticing.
+    if key == crate::coreswift::SYNC_SETTINGS_KEY {
+        let Some(obj) = value.as_object() else {
+            return Err(AppError::BadRequest(
+                "coreswift_sync must be an object such as {\"enabled\": true, \"list_id\": \"<hub list id>\", \"tags\": [\"vip\"]}".into(),
+            ));
+        };
+        if obj.get("enabled").and_then(|v| v.as_bool()).is_none() {
+            return Err(AppError::BadRequest(
+                "coreswift_sync: `enabled` must be true or false".into(),
+            ));
+        }
+        if let Some(list) = obj.get("list_id") {
+            if !list.is_null() {
+                let text = list.as_str().map(str::trim).ok_or_else(|| {
+                    AppError::BadRequest(
+                        "coreswift_sync: `list_id` must be a CoreSwift list id (\"\" for none)"
+                            .into(),
+                    )
+                })?;
+                if !text.is_empty() && Uuid::parse_str(text).is_err() {
+                    return Err(AppError::BadRequest(
+                        "coreswift_sync: `list_id` is not a CoreSwift list id — pick one from \
+                         GET /api/v1/integrations/coreswift/lists"
+                            .into(),
+                    ));
+                }
+            }
+        }
+        if let Some(tags) = obj.get("tags") {
+            if !tags.is_null() && !tags.is_array() {
+                return Err(AppError::BadRequest(
+                    "coreswift_sync: `tags` must be a list of tag names".into(),
+                ));
+            }
+        }
+        let settings = crate::coreswift::sync_settings_from_value(&value);
+        if settings.enabled
+            && crate::coreswift::resolve_conn(&state.pool, tenant_id)
+                .await
+                .map_err(AppError::Internal)?
+                .is_none()
+        {
+            return Err(AppError::BadRequest(
+                "Connect CoreSwift first: store your CoreSwift API key on the Integration \
+                     Center, then switch lead sync on. Without a key there is nothing to push into \
+                     and no capture could reach your CRM."
+                    .into(),
+            ));
+        }
+        // Store the NORMALISED document — trimmed, de-duplicated tags and a validated list id — so
+        // the reader (`coreswift::load_sync_settings`) and this writer cannot disagree.
+        value = json!({
+            "enabled": settings.enabled,
+            "list_id": settings.list_id,
+            "tags": settings.tags,
+        });
+    }
+
     // tenant_settings.id is NOT NULL with no default — the insert omitted it, so every
     // settings save died with "null value in column id violates not-null constraint".
     sqlx::query(

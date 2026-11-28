@@ -588,17 +588,17 @@ pub async fn login(
     )
     .map_err(|e| AppError::Internal(format!("JWT encode error: {e}")))?;
 
-    //     let cs_pool = state.db.clone();
-    //     let cs_url = state.coreswift_url.clone();
-    //     let cs_key = state.internal_sync_key.clone();
-    //     let cs_lead_id = user.id;
-    //     let cs_tenant_id = user.tenant_id;
-    //     tokio::spawn(async move {
-    //         crate::handlers::coreswift_push::push_to_coreswift(
-    //             &cs_pool, &cs_url, &cs_key, cs_lead_id, cs_tenant_id,
-    //         ).await;
-    //     });
-    //
+    // THE SIGNUP DOOR DOES NOT PUSH A LEAD — and the dead code that pretended it might is gone
+    // (kanban t_934b3a07). What sat here was a commented-out `coreswift_push::push_to_coreswift`
+    // call using the global internal-sync key and the NEW TENANT's own id as the CoreSwift tenant.
+    // It could never work: that helper no longer exists (its callee refused every call and was
+    // deleted 2026-09-25), a tenant created one millisecond ago holds no CoreSwift BYOK key, and
+    // FunnelSwift tenant ids are not CoreSwift tenant ids. The direct lead path this app DOES own
+    // is per-workspace (src/coreswift.rs) and runs on the capture doors — funnel page, web-to-lead,
+    // kinetic card, panel create, stage change and CSV import — never on signup. Leaving the
+    // commented block in place is how the "nothing pushes automatically" gap survived a year of
+    // reading this file, so it is deleted rather than kept.
+
     Ok(Json(json!({
         "token": token,
         "user": {

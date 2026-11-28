@@ -254,6 +254,10 @@ pub async fn create_lead(
     let lead_id = Uuid::new_v4();
     // The user account this lead flows through — the affiliate attribution anchor.
     let created_by = Uuid::parse_str(&auth.user_id).ok();
+    // The tags this create will end up storing (the typed ones plus the ones picked by id, resolved
+    // below). Captured here because the INSERT consumes `req.tags`, and the CoreSwift sync further
+    // down maps the SAME tag list into the CRM (kanban t_934b3a07).
+    let mut synced_tags: Vec<String> = req.tags.clone().unwrap_or_default();
 
     sqlx::query(
         r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company, source, stage, tags, custom_fields, notes, assigned_to, created_by)
@@ -298,6 +302,7 @@ pub async fn create_lead(
         )
         .await?;
     }
+    synced_tags.extend(created_tag_names.iter().cloned());
 
     // Outbound webhook delivery (kanban t_431faa99): the console's own Create Lead is a writer of a
     // `leads` row like any capture path, so it emits the same `lead.created`. Emitted AFTER the tag
@@ -373,16 +378,28 @@ pub async fn create_lead(
     // Best-effort push to CoreSwift CRM — the ONE CoreSwift path is the tenant BYOK client in
     // `crate::coreswift` (fleet standard 2026-09-20). The previous env/internal-shared-key push
     // was replaced: credentials belong to the tenant, not to a global paste.
+    //
+    // kanban t_934b3a07: the workspace's OWN switch decides (absent = off), the lead row carries
+    // the outcome, and the capture's tags/custom fields are mapped through so a panel-created lead
+    // lands in the CRM with the same shape it has here.
     crate::coreswift::spawn_lead_push(
         state.pool.clone(),
         tenant_id,
+        Some(lead_id),
         crate::coreswift::LeadPayload {
             email: req.email.as_deref().map(str::to_string),
             phone: req.phone.as_deref().map(str::to_string),
             name: Some(display_name.clone()),
             company: req.company.as_deref().map(str::to_string),
+            tags: synced_tags,
             source: req.source.as_deref().map(str::to_string),
-            ..Default::default()
+            list_id: None,
+            fields: req
+                .custom_fields
+                .as_ref()
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default(),
         },
     );
 
@@ -974,6 +991,7 @@ pub async fn update_lead_stage(
             crate::coreswift::spawn_lead_push(
                 state.pool.clone(),
                 tenant_id,
+                Some(id),
                 crate::coreswift::LeadPayload {
                     email,
                     phone,
@@ -1930,14 +1948,19 @@ pub async fn import_leads(
 
     let created_by = Uuid::parse_str(&auth.user_id).ok();
     let mut tx = state.pool.begin().await?;
+    // Each imported row gets its id collected: the CoreSwift sync below runs AFTER the commit, in
+    // ONE background task, and records its outcome on the row it belongs to (kanban t_934b3a07).
+    let mut imported: Vec<(Uuid, crate::coreswift::LeadPayload)> =
+        Vec::with_capacity(prepared.len());
     for r in &prepared {
+        let lead_id = Uuid::new_v4();
         sqlx::query(
             r#"INSERT INTO leads (id, tenant_id, first_name, last_name, name, email, phone, company,
                                   source, stage, status, score, tags, custom_fields, notes, created_by)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'New'),
                        COALESCE($11, 'new'), $12, $13, NULL, $14, $15)"#,
         )
-        .bind(Uuid::new_v4())
+        .bind(lead_id)
         .bind(tenant_id)
         .bind(&r.first_name)
         .bind(&r.last_name)
@@ -1954,8 +1977,34 @@ pub async fn import_leads(
         .bind(created_by)
         .execute(&mut *tx)
         .await?;
+
+        imported.push((
+            lead_id,
+            crate::coreswift::LeadPayload {
+                email: r.email.clone(),
+                phone: r.phone.clone(),
+                name: Some(r.name.clone()),
+                company: r.company.clone(),
+                tags: r
+                    .tags
+                    .as_ref()
+                    .and_then(|t| t.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                source: r.source.clone(),
+                ..Default::default()
+            },
+        ));
     }
     tx.commit().await?;
+
+    // The import is a lead-creating door like any other: the same best-effort hand-off to the
+    // workspace's CRM, walked in one background task (a CSV can hold thousands of rows).
+    crate::coreswift::spawn_leads_push(state.pool.clone(), tenant_id, imported);
 
     // Activity feed (best-effort): ONE row for the whole import, not one per lead — a 5,000-row CSV
     // would otherwise bury every other event in the 50-row window the dashboard reads.

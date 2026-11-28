@@ -42,6 +42,10 @@ pub async fn coreswift_status(
         ),
     };
 
+    // The workspace's OWN switch, so the Integration Center can render the real state instead of
+    // guessing (kanban t_934b3a07). `enabled` is what every capture door honours.
+    let sync = coreswift::load_sync_settings(&state.pool, tenant_id).await;
+
     Ok(Json(json!({
         "provider": "coreswift",
         "name": "CoreSwift CRM",
@@ -50,6 +54,11 @@ pub async fn coreswift_status(
         "key_preview": key_preview,
         "direction": "inbound",
         "description": "Push leads into CoreSwift CRM",
+        "sync": {
+            "enabled": sync.enabled,
+            "list_id": sync.list_id,
+            "tags": sync.tags,
+        },
     })))
 }
 
@@ -104,8 +113,10 @@ pub async fn coreswift_push(
     }
 
     let mut fields = serde_json::Map::new();
-    if let Some(list_id) = payload.get("list_id") {
-        fields.insert("list_id".into(), list_id.clone());
+    if let Some(f) = payload.get("fields").and_then(|v| v.as_object()) {
+        for (k, v) in f {
+            fields.insert(k.clone(), v.clone());
+        }
     }
     let tags: Vec<String> = payload
         .get("tags")
@@ -137,6 +148,15 @@ pub async fn coreswift_push(
             .map(String::from),
         tags,
         source: Some("manual".to_string()),
+        // `list_id` is a RESERVED top-level key on `POST /api/external/contacts`. It used to be
+        // smuggled into `custom_fields`, where the hub could not read it — so "push into this list"
+        // silently created the contact OUTSIDE the list. kanban t_934b3a07.
+        list_id: payload
+            .get("list_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from),
         fields,
     };
 
