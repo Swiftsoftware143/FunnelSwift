@@ -105,13 +105,47 @@ fn resolve_canonical_url(host: &str, prefix: &str, slug: &str) -> String {
 /// `app.`/`admin.`/`www.`), any bare IP or `localhost`, and every unclaimed host keep the service
 /// line untouched, so the uptime watchdog and the health route behave exactly as before.
 pub async fn card_for_host(state: &AppState, raw_host: &str) -> Option<String> {
-    let host = raw_host
+    let (tenant_id, claimed) = host_claim(state, raw_host).await?;
+    // The card whose own address matches the claimed name wins (a subdomain is named after its
+    // card); otherwise the workspace's newest active card is what its front door stands for.
+    sqlx::query_scalar(
+        "SELECT slug FROM kinetic_cards \
+         WHERE tenant_id = $1 AND is_active \
+         ORDER BY (lower(slug) = $2) DESC, created_at DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(&claimed)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+}
+
+/// A request host reduced to the shape a CLAIM is stored in: no port, no trailing dot, lower case.
+fn clean_host(raw_host: &str) -> String {
+    raw_host
+        .split(',')
+        .next()
+        .unwrap_or(raw_host)
         .split(':')
         .next()
         .unwrap_or(raw_host)
         .trim()
         .trim_end_matches('.')
-        .to_lowercase();
+        .to_lowercase()
+}
+
+/// The workspace (tenant) that has CLAIMED a host, plus the name it claimed under.
+///
+/// ONE owner for this rule. The card page, the vCard download, the lead form and the password
+/// unlock all turn a Host into the same workspace through here, so a branded domain can never
+/// answer one business's card on another business's page (kanban t_89f6de9c).
+///
+/// `None` means the host is not a claimed name: the fleet's own names (`funnelswift.net` and its
+/// subdomains), `kntcrd.com` itself and `www.kntcrd.com`, any bare IP or `localhost`, and every
+/// host no tenant has claimed. Those keep resolving account-wide, exactly as before.
+async fn host_claim(state: &AppState, raw_host: &str) -> Option<(uuid::Uuid, String)> {
+    let host = clean_host(raw_host);
     if host.is_empty()
         || host == "localhost"
         || host.parse::<std::net::IpAddr>().is_ok()
@@ -120,7 +154,7 @@ pub async fn card_for_host(state: &AppState, raw_host: &str) -> Option<String> {
     {
         return None;
     }
-    let claim: Option<(uuid::Uuid, String)> = match host.strip_suffix(".kntcrd.com") {
+    match host.strip_suffix(".kntcrd.com") {
         Some(sub) if !sub.is_empty() && sub != "www" => sqlx::query_as(
             "SELECT tenant_id, lower(value #>> '{}') FROM tenant_settings \
              WHERE key = 'subdomain' AND lower(value #>> '{}') = $1 LIMIT 1",
@@ -142,21 +176,31 @@ pub async fn card_for_host(state: &AppState, raw_host: &str) -> Option<String> {
         .await
         .ok()
         .flatten(),
-    };
-    let (tenant_id, claimed) = claim?;
-    // The card whose own address matches the claimed name wins (a subdomain is named after its
-    // card); otherwise the workspace's newest active card is what its front door stands for.
-    sqlx::query_scalar(
-        "SELECT slug FROM kinetic_cards \
-         WHERE tenant_id = $1 AND is_active \
-         ORDER BY (lower(slug) = $2) DESC, created_at DESC LIMIT 1",
-    )
-    .bind(tenant_id)
-    .bind(&claimed)
-    .fetch_optional(&state.pool)
-    .await
-    .ok()
-    .flatten()
+    }
+}
+
+/// The workspace a PUBLIC card request is scoped to, or `None` when the request is not on a
+/// claimed name (then the address resolves account-wide, as every card link printed before
+/// t_89f6de9c expects).
+///
+/// The card vhosts forward the visitor's name in `Host`; the `funnelswift.net` vhost proxies with
+/// `Host localhost` and the public name in `x-forwarded-host`, which is therefore consulted
+/// second. Preference only: the lookup below still falls back, it just cannot be steered by a
+/// header into serving a DIFFERENT workspace's card than the one a host resolves to.
+async fn request_scope(
+    state: &AppState,
+    host: &str,
+    headers: &axum::http::HeaderMap,
+) -> Option<uuid::Uuid> {
+    if let Some((tenant_id, _)) = host_claim(state, host).await {
+        return Some(tenant_id);
+    }
+    let forwarded = headers
+        .get("x-forwarded-host")
+        .and_then(|v| v.to_str().ok())
+        .map(clean_host)
+        .filter(|h| !h.is_empty())?;
+    host_claim(state, &forwarded).await.map(|(t, _)| t)
 }
 
 /// Map URL prefix to branded CTA label + card type label
@@ -388,16 +432,19 @@ pub async fn create_card(
     // allowance is one card. The documented rule is that a double press of Create is ONE card; apply
     // it here as well, and only inside a short window: a card of THIS workspace with the SAME title
     // holding the address, created in the last two minutes, is the same press arriving twice and the
-    // existing row is answered. A holder older than that (or another workspace's, or another title's)
-    // keeps the old behaviour — reserve the next free address and create the card the customer asked
-    // for, so a genuine second card with a repeated title is never refused.
+    // existing row is answered. A holder older than that, or another title's, keeps the old
+    // behaviour — reserve the next free address and create the card the customer asked for, so a
+    // genuine second card with a repeated title is never refused. A holder in ANOTHER workspace no
+    // longer matters at all (t_89f6de9c): addresses are unique per workspace, so the same
+    // `/k/<slug>` may exist in two workspaces and neither shadows the other.
     let mut same_press: Option<(Uuid, String)> = None;
     for attempt in 1..=20u32 {
         let holder: Option<(Uuid, Uuid, String, Option<f64>)> = sqlx::query_as(
             "SELECT id, tenant_id, title, EXTRACT(EPOCH FROM (now() - created_at))::float8 \
-               FROM kinetic_cards WHERE slug = $1",
+               FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2",
         )
         .bind(&slug)
+        .bind(tenant_id)
         .fetch_optional(&state.pool)
         .await?;
         match holder {
@@ -589,9 +636,10 @@ pub async fn create_card(
                 for n in 2..=20u32 {
                     let candidate = format!("{requested}-{n}");
                     let taken: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)",
+                        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2)",
                     )
                     .bind(&candidate)
+                    .bind(tenant_id)
                     .fetch_one(&state.pool)
                     .await?;
                     if !taken {
@@ -719,20 +767,23 @@ pub async fn update_card(
                     "A card address needs at least three letters or numbers \u{2014} try your name, like /k/jane-doe.".into(),
                 ));
             }
-            let other: Option<Uuid> =
-                sqlx::query_scalar("SELECT id FROM kinetic_cards WHERE slug = $1 AND id <> $2")
-                    .bind(&want)
-                    .bind(id)
-                    .fetch_optional(&state.pool)
-                    .await?;
+            let other: Option<Uuid> = sqlx::query_scalar(
+                "SELECT id FROM kinetic_cards WHERE slug = $1 AND id <> $2 AND tenant_id = $3",
+            )
+            .bind(&want)
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
             if other.is_some() {
                 let mut suggestion = want.clone();
                 for n in 2..=20u32 {
                     let candidate = format!("{want}-{n}");
                     let taken: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)",
+                        "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2)",
                     )
                     .bind(&candidate)
+                    .bind(tenant_id)
                     .fetch_one(&state.pool)
                     .await?;
                     if !taken {
@@ -789,6 +840,7 @@ pub async fn update_card(
         Ok(r) => r,
         Err(sqlx::Error::Database(db))
             if db.code().as_deref() == Some("23505")
+                || db.message().contains("kinetic_cards_tenant_slug_key")
                 || db.message().contains("kinetic_cards_slug_key") =>
         {
             let want = slug_change.clone().unwrap_or_default();
@@ -796,9 +848,10 @@ pub async fn update_card(
             for n in 2..=20u32 {
                 let candidate = format!("{want}-{n}");
                 let taken: bool = sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1)",
+                    "SELECT EXISTS(SELECT 1 FROM kinetic_cards WHERE slug = $1 AND tenant_id = $2)",
                 )
                 .bind(&candidate)
+                .bind(tenant_id)
                 .fetch_one(&state.pool)
                 .await?;
                 if !taken {
@@ -824,11 +877,14 @@ pub async fn update_card(
     if let Some(before) = slug_before.as_deref() {
         if before != saved_slug {
             if let Err(e) = sqlx::query(
-                "INSERT INTO kinetic_card_slug_aliases (old_slug, card_id) VALUES ($1, $2) \
-                 ON CONFLICT (old_slug) DO UPDATE SET card_id = EXCLUDED.card_id, created_at = now()",
+                "INSERT INTO kinetic_card_slug_aliases (old_slug, card_id, tenant_id) \
+                 VALUES ($1, $2, $3) \
+                 ON CONFLICT (tenant_id, old_slug) \
+                 DO UPDATE SET card_id = EXCLUDED.card_id, created_at = now()",
             )
             .bind(before)
             .bind(id)
+            .bind(tenant_id)
             .execute(&state.pool)
             .await
             {
@@ -1481,14 +1537,22 @@ pub async fn render_card(
     } else {
         prefix
     };
+    // THE ADDRESS IS SCOPED TO THE WORKSPACE THE HOST BELONGS TO (kanban t_89f6de9c).
+    // Measured 2026-11-28: `c.zaarhub.com/david` answered a card owned by the Swift Admin's
+    // Workspace, because this lookup matched the slug on the whole install (`WHERE k.slug = $1`)
+    // while a card belongs to a WORKSPACE. The workspace that CLAIMED the host now decides first;
+    // only when it holds no such slug does the account-wide card answer (a link printed before
+    // this change keeps working) and that fallback is logged below, never silent.
+    let scope = request_scope(&state, &host, &headers).await;
     let row = sqlx::query(
         // tenant_plan_subscriptions is the real table — this query used to join a
         // `tenant_plans` table that does not exist, and the error was swallowed by
         // `.unwrap_or(None)` that used to sit below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
-        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.linkedin_url, k.twitter_url, k.instagram_url, k.tiktok_url, k.youtube_url, k.facebook_url, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 LIMIT 1"
+        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.linkedin_url, k.twitter_url, k.instagram_url, k.tiktok_url, k.youtube_url, k.facebook_url, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 ORDER BY (k.tenant_id = $2) DESC NULLS LAST, k.created_at ASC, k.id LIMIT 1"
     )
     .bind(&slug)
+    .bind(scope)
     .fetch_optional(&state.pool)
     .await;
     let row = match row {
@@ -1612,16 +1676,32 @@ pub async fn render_card(
         // keeps every link already in the world: look the old address up in the alias table and send
         // the reader to the card's CURRENT address. The live lookup above ran FIRST, so an address a
         // DIFFERENT card now owns serves that card and is never hijacked by this arm.
-        let retired: Option<String> = sqlx::query_scalar(
-            "SELECT c.slug FROM kinetic_card_slug_aliases a \
+        let retired: Option<(String, Uuid)> = sqlx::query_as(
+            "SELECT c.slug, c.tenant_id FROM kinetic_card_slug_aliases a \
              JOIN kinetic_cards c ON c.id = a.card_id \
-             WHERE a.old_slug = $1 LIMIT 1",
+             WHERE a.old_slug = $1 \
+             ORDER BY (c.tenant_id = $2) DESC NULLS LAST, a.created_at DESC LIMIT 1",
         )
         .bind(&slug)
+        .bind(scope)
         .fetch_optional(&state.pool)
         .await
         .unwrap_or(None);
-        if let Some(target) = retired {
+        if let Some((target, alias_tenant)) = retired {
+            if let Some(scope) = scope {
+                if alias_tenant != scope {
+                    tracing::warn!(
+                        "card scope fallback (retired address): host '{}' asked for '/{}/{}' but its \
+                         workspace {} holds no such retired address; redirecting to the account-wide \
+                         card owned by workspace {}",
+                        host,
+                        prefix,
+                        slug,
+                        scope,
+                        alias_tenant
+                    );
+                }
+            }
             if !target.is_empty() && target != slug {
                 // 302, not 301: a retired address may be claimed by a different card later, and a
                 // browser must ask again rather than cache this hop for ever. The query string rides
@@ -1641,6 +1721,23 @@ pub async fn render_card(
     }
 
     let r = row.unwrap();
+    // SAY SO WHEN A BRANDED DOMAIN IS ANSWERING ANOTHER WORKSPACE'S CARD (t_89f6de9c). The
+    // fallback exists so links printed before addresses were scoped keep working; it must never
+    // be silent, or the same cross-workspace render is rediscovered as a fresh defect.
+    let served_tenant: Uuid = r.try_get::<Uuid, _>("tenant_id").unwrap_or_default();
+    if let Some(scope) = scope {
+        if served_tenant != scope {
+            tracing::warn!(
+                "card scope fallback: host '{}' asked for '/{}/{}' but its workspace {} holds no \
+                 such card; serving the account-wide card owned by workspace {}",
+                host,
+                prefix,
+                slug,
+                scope,
+                served_tenant
+            );
+        }
+    }
     // ── Load tenant-level site meta (overrides card-level OG tags for their subdomain) ──
     let tenant_id_for_meta: Uuid = r.try_get::<Uuid, _>("tenant_id").unwrap_or_default();
     let tenant_site_meta: Value = sqlx::query_as::<_, (Value,)>(
@@ -2237,17 +2334,6 @@ pub async fn download_vcard(
     headers: axum::http::HeaderMap,
     State(state): State<AppState>,
 ) -> AppResult<axum::response::Response> {
-    let row: Option<(String, serde_json::Value)> = sqlx::query_as(
-        "SELECT COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
-           FROM kinetic_cards WHERE slug = $1 LIMIT 1",
-    )
-    .bind(&slug)
-    .fetch_optional(&state.pool)
-    .await?;
-    let Some((title, blocks)) = row else {
-        return Err(AppError::NotFound("Card not found".into()));
-    };
-
     // The card's address on the host the visitor actually used (the same host that rendered the
     // page), so the saved contact links back to the live card. A proxied request carries the
     // public name in `x-forwarded-host`; `Host` is the extractor's fallback.
@@ -2258,6 +2344,22 @@ pub async fn download_vcard(
         .unwrap_or(&host)
         .trim()
         .to_string();
+    // A saved contact must describe the card the visitor is looking at, i.e. the one scoped to
+    // this host's workspace (t_89f6de9c) — not any install-wide holder of the same address.
+    let scope = request_scope(&state, &public_host, &headers).await;
+    let row: Option<(String, serde_json::Value)> = sqlx::query_as(
+        "SELECT COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
+           FROM kinetic_cards WHERE slug = $1 \
+         ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
+    )
+    .bind(&slug)
+    .bind(scope)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((title, blocks)) = row else {
+        return Err(AppError::NotFound("Card not found".into()));
+    };
+
     let card_url = format!("https://{public_host}/k/{slug}");
 
     let Some(vcard) = crate::card_blocks::vcard_for(&blocks, &title, &card_url) else {
@@ -2304,14 +2406,24 @@ pub async fn download_vcard(
 /// visitor because of a quota is the same defect class this card closes.
 pub async fn submit_lead(
     Path(slug): Path<String>,
+    axum::extract::Host(host): axum::extract::Host,
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
     Json(body): Json<Value>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
+    // WHICH CARD THIS LEAD BELONGS TO IS DECIDED THE SAME WAY THE PAGE WAS (t_89f6de9c): the
+    // workspace that claimed the request host first, account-wide only when it holds no such
+    // address. Before this, two workspaces holding one slug would have written the visitor's
+    // details onto whichever card the database happened to return first — a cross-workspace write,
+    // not just a wrong page.
+    let scope = request_scope(&state, &host, &headers).await;
     let card: Option<(Uuid, Uuid, Uuid, String, serde_json::Value)> = sqlx::query_as(
         "SELECT id, tenant_id, user_id, COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
-           FROM kinetic_cards WHERE slug = $1 LIMIT 1",
+           FROM kinetic_cards WHERE slug = $1 \
+         ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
     )
     .bind(&slug)
+    .bind(scope)
     .fetch_optional(&state.pool)
     .await?;
     let Some((card_id, tenant_id, owner_id, card_title, layout_blocks)) = card else {
@@ -3081,15 +3193,25 @@ pub struct CardUnlockRequest {
 /// unlock cookie. Response shape is JSON; the gate page reloads on 2xx.
 pub async fn unlock_card(
     axum::extract::Path(slug): axum::extract::Path<String>,
+    axum::extract::Host(host): axum::extract::Host,
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
     Json(req): Json<CardUnlockRequest>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     use sqlx::Row;
-    let row = sqlx::query("SELECT id, password_hash FROM kinetic_cards WHERE slug = $1 LIMIT 1")
-        .bind(&slug)
-        .fetch_optional(&state.pool)
-        .await;
+    // The card whose password is being checked is the card the host's workspace owns
+    // (t_89f6de9c): on a branded domain the visitor is unlocking the page they can see, never
+    // another workspace's same-named card.
+    let scope = request_scope(&state, &host, &headers).await;
+    let row = sqlx::query(
+        "SELECT id, password_hash FROM kinetic_cards WHERE slug = $1 \
+         ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
+    )
+    .bind(&slug)
+    .bind(scope)
+    .fetch_optional(&state.pool)
+    .await;
     let r = match row {
         Ok(Some(r)) => r,
         Ok(None) => {
