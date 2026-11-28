@@ -310,19 +310,11 @@ pub async fn create_public(
     // to is the one thing that must survive intact.
     let message = format!("{prefix}{message}");
 
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)::bigint FROM support_requests
-          WHERE lower(requested_by) = $1 AND created_at > now() - interval '1 hour'",
-    )
-    .bind(&email)
-    .fetch_one(&state.pool)
-    .await?;
-    if recent >= 3 {
-        return Err(AppError::TooManyAttempts {
-            retry_after_secs: 3600,
-        });
-    }
-
+    // AN EXACT REPEAT IS ANSWERED BEFORE THE FLOOD BUDGET IS SPENT (2026-11-28). The hourly count
+    // used to run first, so a person whose browser re-posted (or who pressed the button twice) spent
+    // a third of the budget on a message that was never going to be written, and the third click was
+    // answered `429 too many requests` instead of "we already have this message". Idempotence comes
+    // first; the count below then bounds only the messages that would actually create rows.
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM support_requests
           WHERE tenant_id IS NULL AND lower(requested_by) = $1
@@ -343,6 +335,19 @@ pub async fn create_public(
                 "message": "We already have this message — the team will reply to the address you gave."
             })),
         ));
+    }
+
+    let recent: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM support_requests
+          WHERE lower(requested_by) = $1 AND created_at > now() - interval '1 hour'",
+    )
+    .bind(&email)
+    .fetch_one(&state.pool)
+    .await?;
+    if recent >= 3 {
+        return Err(AppError::TooManyAttempts {
+            retry_after_secs: 3600,
+        });
     }
 
     let row = sqlx::query(
