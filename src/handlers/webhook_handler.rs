@@ -95,10 +95,34 @@ pub(crate) fn validate_webhook_url(url: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// The newest delivery attempt of ONE webhook, as the list screen prints it (see `list_webhooks`).
+#[derive(Debug, sqlx::FromRow)]
+struct LatestDelivery {
+    webhook_id: Uuid,
+    status: String,
+    status_code: Option<i32>,
+    event: String,
+    delivered_at: chrono::NaiveDateTime,
+    attempt: i32,
+    max_attempts: i32,
+}
+
+/// `GET /api/v1/webhooks` — the workspace's own endpoints, each carrying the outcome of its MOST
+/// RECENT delivery.
+///
+/// WHY (measured live 2026-11-28): this workspace's only webhook had recorded **24 failed attempts in
+/// 24 hours** — every `lead.created`, three attempts each, all `404` from the receiving endpoint —
+/// while the console's Status column read `Active` and looked as healthy as a working row. The
+/// failures were visible only inside the per-row Log drawer, so a customer's integration could be
+/// dead for days with nothing on the screen they actually look at saying so.
+///
+/// `last_delivery` is the newest `webhook_delivery_log` row for that webhook, or `null` when nothing
+/// has ever been attempted (the console then claims nothing). The read is bound to the SAME tenant id
+/// as the list, so one workspace can never see another's attempt outcome.
 pub async fn list_webhooks(
     auth: AuthUser,
     State(state): State<AppState>,
-) -> AppResult<Json<Vec<Webhook>>> {
+) -> AppResult<Json<Vec<serde_json::Value>>> {
     let tenant_id: Uuid = auth
         .tenant_id
         .parse()
@@ -111,7 +135,50 @@ pub async fn list_webhooks(
     .fetch_all(&state.pool)
     .await?;
 
-    Ok(Json(webhooks))
+    // ONE row per webhook: its newest attempt. `DISTINCT ON` pinned to the same leading ORDER BY key
+    // is what makes this a single round trip instead of one query per row on the screen.
+    let latest = sqlx::query_as::<_, LatestDelivery>(
+        "SELECT DISTINCT ON (webhook_id) webhook_id, status, status_code, event, \
+                delivered_at, attempt, max_attempts \
+         FROM webhook_delivery_log WHERE tenant_id = $1 \
+         ORDER BY webhook_id, delivered_at DESC",
+    )
+    .bind(tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut by_webhook: std::collections::HashMap<Uuid, serde_json::Value> =
+        std::collections::HashMap::new();
+    for row in latest {
+        by_webhook.insert(
+            row.webhook_id,
+            json!({
+                "status": row.status,
+                "status_code": row.status_code,
+                "event": row.event,
+                "delivered_at": row.delivered_at,
+                "attempt": row.attempt,
+                "max_attempts": row.max_attempts,
+            }),
+        );
+    }
+
+    let out: Vec<serde_json::Value> = webhooks
+        .into_iter()
+        .map(|webhook| {
+            let mut value =
+                serde_json::to_value(&webhook).unwrap_or_else(|_| json!({ "id": webhook.id }));
+            let last = by_webhook
+                .remove(&webhook.id)
+                .unwrap_or(serde_json::Value::Null);
+            if let Some(object) = value.as_object_mut() {
+                object.insert("last_delivery".to_string(), last);
+            }
+            value
+        })
+        .collect();
+
+    Ok(Json(out))
 }
 
 pub async fn create_webhook(

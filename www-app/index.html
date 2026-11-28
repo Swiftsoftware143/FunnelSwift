@@ -5635,6 +5635,22 @@ function LINS(days){
     $("ct").innerHTML='<div class="cc"><h3>Insights</h3><p style="color:#dc2626">Could not read your insights: '+X((e&&e.message)||"unknown error")+'</p></div>';
   });
 }
+/* THE STATUS COLUMN TELLS THE TRUTH ABOUT DELIVERY (2026-11-28). It used to print Active/Inactive and
+   nothing else, so a webhook whose every delivery its own endpoint refused looked exactly as healthy as
+   one that works: measured on this install, 24 failed attempts in 24 hours (404 from the receiving
+   workflow) while the row read "Active", and the failures were visible only inside the Log drawer.
+   `last_delivery` is the newest attempt the app recorded for this webhook (GET /api/v1/webhooks);
+   absent or null means nothing has ever been attempted, and then nothing is claimed. */
+function deliveryChip(d){
+  if(!d||!d.status)return '';
+  var when=d.delivered_at?(' · '+TSFMT(d.delivered_at,0)):'';
+  var code=(d.status_code!==null&&d.status_code!==undefined)?(' ('+d.status_code+')'):'';
+  if(d.status==='failed')
+    return '<div style="margin-top:4px"><span class="badge br" data-webhook-delivery="failed">Last delivery failed'+code+when+'</span></div>';
+  if(d.status==='success')
+    return '<div style="margin-top:4px"><span class="badge bg" data-webhook-delivery="success">Last delivery ok'+when+'</span></div>';
+  return '<div style="margin-top:4px"><span class="badge bb" data-webhook-delivery="'+X(d.status)+'">Delivery '+X(d.status)+when+'</span></div>';
+}
 function LW(){
   api("/api/v1/webhooks").then(function(d){
     var a=Array.isArray(d)?d:(d&&d.data?d.data:[]);
@@ -5663,7 +5679,7 @@ function LW(){
       var tr=El("tr");
       // kanban t_9ae9e586: the cell read w.event - a key the Webhook model never serializes - so every
       // row printed "-" on a row that has events. `events` is a JSONB array; print its badges.
-      tr.innerHTML='<td><strong>'+X(w.name||"-")+'</strong></td><td>'+(Array.isArray(w.events)&&w.events.length?w.events.map(function(e){return '<span class="badge bb">'+X(e)+'</span>';}).join(" "):"-")+'</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(w.url||"-")+'</td><td><span class="badge '+(w.is_active===false?"br":"bg")+'">'+(w.is_active===false?"Inactive":"Active")+'</span></td><td>'+(w.created_at?TSFMT(w.created_at,0):"-")+'</td><td></td>';
+      tr.innerHTML='<td><strong>'+X(w.name||"-")+'</strong></td><td>'+(Array.isArray(w.events)&&w.events.length?w.events.map(function(e){return '<span class="badge bb">'+X(e)+'</span>';}).join(" "):"-")+'</td><td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+X(w.url||"-")+'</td><td><span class="badge '+(w.is_active===false?"br":"bg")+'">'+(w.is_active===false?"Inactive":"Active")+'</span>'+deliveryChip(w.last_delivery)+'</td><td>'+(w.created_at?TSFMT(w.created_at,0):"-")+'</td><td></td>';
       var td=tr.querySelectorAll("td")[5];
       td.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFW(w.id)}},"Edit"));
       td.appendChild(document.createTextNode(" "));
