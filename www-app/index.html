@@ -1911,12 +1911,37 @@ function srcLabel(s){
   var t=k.replace(/_/g," ").replace(/\s+/g," ");
   return t.charAt(0).toUpperCase()+t.slice(1);
 }
+/* Server-side paging and search (2026-11-27). `GET /api/v1/leads` has always paginated — 20 rows a
+   page by default — and this screen asked for exactly ONE page with no control to leave it: a
+   workspace with more than 20 leads saw the newest 20 and nothing else, while the header printed the
+   real total (measured: total=120, 20 rows rendered), and the search box only filtered the rows that
+   were already loaded. The API has carried page/per_page/search the whole time, so the fix is to
+   drive them from here instead of re-inventing a filter in the browser. */
+var LD_PAGE=1, LD_PER=50, LD_SEARCH="";
+function LD_go(p){ LD_PAGE=p; LD(); }
+function LD_srch(){
+  var s=document.querySelector("#ld-filters input");
+  LD_SEARCH=s?(s.value||"").trim():"";
+  LD_PAGE=1;
+  LD();
+}
 function LD(){
-  var ldu="/api/v1/leads";
-  if(LD_FUNNEL) ldu+="?funnel_id="+encodeURIComponent(LD_FUNNEL)+"&per_page=100";
+  /* EVERY list call the screen makes now carries the page and the term, so the row count on screen
+     and the `total` in the header describe the SAME query (the old code sent no page at all and the
+     server silently answered page 1). */
+  var ldu="/api/v1/leads?page="+LD_PAGE+"&per_page="+LD_PER
+    +(LD_FUNNEL?"&funnel_id="+encodeURIComponent(LD_FUNNEL):"")
+    +(LD_SEARCH?"&search="+encodeURIComponent(LD_SEARCH):"");
   api(ldu).then(function(d){
     var a=(d&&d.data)?d.data:(Array.isArray(d)?d:[]);
     var total=d&&d.total?d.total:a.length;
+    /* A page emptied by a delete (or a stale page number) lands back on the last page that holds
+       rows, instead of showing the "no leads" empty state over a workspace that has hundreds. */
+    if(!a.length&&LD_PAGE>1&&total>0){
+      LD_PAGE=Math.max(1,Math.ceil(total/LD_PER));
+      LD();
+      return;
+    }
     
     $("ct").innerHTML='<div class="cc"><h3>Leads ('+total+') <span id="ld-add-span"></span><span id="ld-stats"></span></h3><div id="ld-filters" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center"></div><div id="ld-list"></div></div>';
     
@@ -1925,6 +1950,10 @@ function LD(){
     a.forEach(function(l){var st=l.status||"new";counts[st]=(counts[st]||0)+1;});
     var sum="";
     Object.keys(counts).forEach(function(s){sum+='<span class="badge" style="margin-left:4px;font-size:10px;cursor:pointer" data-ld-filter="'+X(s)+'" onclick="LDf(\''+X(s)+'\')">'+X(s)+': '+counts[s]+'</span>';});
+    /* These badges are computed from the rows this PAGE holds, so as soon as there is more than one
+       page the count is a page count, not a workspace figure — say so instead of letting "new: 3"
+       read as "this workspace has 3 new leads" when the header says 120. */
+    if(total>a.length){sum='<span style="font-size:10px;color:#64748b">on this page:</span> '+sum;}
     $("ld-stats").innerHTML=sum;$("ld-add-span").appendChild(El("button",{"class":"btn btn-sm",style:"margin-left:8px",onclick:function(){MFL()}},"+ Add Lead"));
     /* cron 2026-10-24: POST /api/v1/bulk/leads (tenant-scoped, DELETE ... AND tenant_id=$2)
        had no caller in either console, and this table could remove nothing at all. */
@@ -1943,10 +1972,20 @@ function LD(){
       fclr.onclick=function(){LD_FUNNEL=null;LD_FUNNEL_NAME="";S("leads");};
       sf.appendChild(fchip); sf.appendChild(fclr);
     }
-    var sb=El("input",{style:"padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:200px",placeholder:"Search leads..."});
-    sb.oninput=function(){LDf(null)};
+    var sb=El("input",{style:"padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:200px",placeholder:"Search leads...",value:LD_SEARCH});
+    /* The term goes to the SERVER (400 ms after typing stops), so it reaches every lead in the
+       workspace instead of the 50 rows already on screen; the in-page row filter still runs so the
+       list narrows instantly while the request is in flight. */
+    var ldTmr=null;
+    sb.oninput=function(){
+      LDf(null);
+      if(ldTmr) clearTimeout(ldTmr);
+      ldTmr=setTimeout(LD_srch,400);
+    };
+    sb.onkeydown=function(e){ if(e.key==="Enter"){ if(ldTmr) clearTimeout(ldTmr); LD_srch(); } };
     sf.appendChild(sb);
-    sf.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){sb.value="";LDf(null)}},"Clear"));
+    /* Clear resets BOTH the server term and the page, or the next render would re-send the old term. */
+    sf.appendChild(El("button",{"class":"btn btn-sm btn-o",onclick:function(){sb.value="";LD_SEARCH="";LD_PAGE=1;LD();}},"Clear"));
     /* 2026-10-31: GET /api/v1/leads/export had NO caller in this console. The operator's console got
        the button; the customer's did not, while this screen's own inline guide lists "Export" among
        what the Leads table does. So a customer who bought a plan FOR its import/export entitlement
@@ -2006,7 +2045,10 @@ function LD(){
           var d={};try{d=JSON.parse(t)}catch(e){}
           if(!r.ok){showMsg((d&&(d.message||d.error))||("Import refused ("+r.status+")"),"me");return}
           showMsg(d.message||"Imported.","ok");
-          LDf(null);
+          /* Reload from the SERVER: the import may have added leads to a page this screen is not on,
+             and a client-side filter cannot see rows it never fetched. */
+          LD_PAGE=1;
+          LD();
         });
       }).catch(function(e){showMsg("Import failed: "+((e&&e.message)||e),"me")})
         .then(function(){ldImp.disabled=false;ldImp.textContent=label;ldImpFile.value=""});
@@ -2014,7 +2056,21 @@ function LD(){
     sf.appendChild(ldImp);sf.appendChild(ldImpFile);
     
     var list=$("ld-list");
-    if(!a.length){list.innerHTML='<div style="color:#64748b;padding:20px;max-width:640px">'
+    if(!a.length){
+      /* The empty state must tell the truth about WHY it is empty: a search that matched nothing in a
+         workspace full of leads is not "no leads have arrived yet", and clearing the term has to be
+         one click (the term now lives on the server query, so nothing on screen would clear it). */
+      if(LD_SEARCH){
+        list.innerHTML='<div style="color:#64748b;padding:20px;max-width:640px">'
+          +'<p style="margin:0 0 10px;color:#334155;font-size:15px"><strong>No leads match &ldquo;'+X(LD_SEARCH)+'&rdquo;.</strong></p>'
+          +'<p style="margin:0 0 12px">Searches cover every lead in this workspace, not just the page you were on.</p>'
+          +'</div>';
+        var clr=El("button",{"class":"btn"},"Show all leads");
+        clr.onclick=function(){LD_SEARCH="";LD_PAGE=1;LD();};
+        list.firstChild.appendChild(clr);
+        return;
+      }
+      list.innerHTML='<div style="color:#64748b;padding:20px;max-width:640px">'
       +'<p style="margin:0 0 6px;color:#334155;font-size:15px"><strong>No leads have arrived yet.</strong></p>'
       +'<p style="margin:0 0 12px">A lead appears in this table the moment someone submits one of your pages. '
       +'There are two ways to get the first one:</p>'
@@ -2054,6 +2110,23 @@ function LD(){
       tbl.appendChild(tr);
     });
     list.appendChild(tbl);
+    /* Pager. Before this, page 1 was the only page that existed for the customer: rows 21+ (or 51+)
+       were in the database, counted in the header, and unreachable from the console. */
+    var pages=Math.max(1,Math.ceil(total/LD_PER));
+    if(pages>1){
+      var first=(LD_PAGE-1)*LD_PER+1, last=(LD_PAGE-1)*LD_PER+a.length;
+      var pg=El("div",{style:"display:flex;gap:8px;align-items:center;margin-top:12px;font-size:12px;color:#64748b;flex-wrap:wrap"});
+      var prev=El("button",{"class":"btn btn-sm btn-o"},"\u2039 Previous");
+      prev.disabled=(LD_PAGE<=1);
+      prev.onclick=function(){ if(LD_PAGE>1) LD_go(LD_PAGE-1); };
+      var next=El("button",{"class":"btn btn-sm btn-o"},"Next \u203a");
+      next.disabled=(LD_PAGE>=pages);
+      next.onclick=function(){ if(LD_PAGE<pages) LD_go(LD_PAGE+1); };
+      pg.appendChild(prev);
+      pg.appendChild(El("span",{},"Showing "+first+"\u2013"+last+" of "+total+" leads \u00b7 page "+LD_PAGE+" of "+pages));
+      pg.appendChild(next);
+      list.appendChild(pg);
+    }
     ldWireSelect();
     fnLabelSources();
     owFill();
@@ -2238,10 +2311,13 @@ function LDC(id,currentStatus){
   });
 }
 function LDV(id){
-  api("/api/v1/leads").then(function(d){
-    var a=(d&&d.data)?d.data:(Array.isArray(d)?d:[]);
-    var l=a.find(function(x){return x.id===id});
-    if(!l){showMsg("Lead not found","me");return;}
+  /* BY ID, not by scanning the loaded list (2026-11-27). This used to re-fetch `GET /api/v1/leads` —
+     page 1 only, 20 rows — and search it in the browser, so "View" on any lead past the first page
+     answered "Lead not found" about a lead the customer was looking at. The detail route is
+     tenant-scoped (`WHERE id = $1 AND tenant_id = $2`) and always answers the one row asked for. */
+  api("/api/v1/leads/"+encodeURIComponent(id)).then(function(d){
+    var l=(d&&d.lead)?d.lead:((d&&d.data)?d.data:d);
+    if(!l||!l.id){showMsg("Lead not found","me");return;}
     O("Lead Detail",function(){
       $("mb").innerHTML="";
       var info=El("div",{style:"display:grid;grid-template-columns:1fr 1fr;gap:8px"});
@@ -2264,7 +2340,7 @@ function LDV(id){
       $("mb").appendChild(info);
       $("mf").appendChild(El("button",{"class":"btn",onclick:C},"Close"));
     });
-  });
+  }).catch(function(e){ showMsg((e&&e.message)||"That lead could not be opened.","me"); });
 }
 /* kanban t_382c37c0: this entry point used to be called `MF` — the SAME global name as the card
    editor's field builder (`function MF(label,id,value,placeholder,type)` further down, line ~1150).
