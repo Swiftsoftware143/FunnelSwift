@@ -693,6 +693,7 @@ pub async fn deliver(
     subject: &str,
     text: &str,
     html: Option<&str>,
+    reply_to: Option<&str>,
 ) -> Result<(), String> {
     // ── HARNESS / RESERVED RECIPIENTS NEVER REACH A RELAY (kanban t_36b55ed2) ───────────────────
     // The signup handler refuses this class before it gets here, but two admin surfaces call
@@ -727,12 +728,12 @@ pub async fn deliver(
                     Some(cfg.smtp_encryption.clone())
                 },
             };
-            crate::smtp::send_via_smtp(&sc, to, subject, text, html).await
+            crate::smtp::send_via_smtp(&sc, to, subject, text, html, reply_to).await
         }
-        "sendgrid" => send_sendgrid(cfg, to, subject, text, html).await,
-        "sendiio" => send_sendiio(cfg, to, subject, text, html).await,
+        "sendgrid" => send_sendgrid(cfg, to, subject, text, html, reply_to).await,
+        "sendiio" => send_sendiio(cfg, to, subject, text, html, reply_to).await,
         // "mailgun" — and any unknown value, so a pre-provider row keeps working.
-        _ => send_mailgun(cfg, to, subject, text, html).await,
+        _ => send_mailgun(cfg, to, subject, text, html, reply_to).await,
     }
 }
 
@@ -742,6 +743,7 @@ async fn send_mailgun(
     subject: &str,
     text: &str,
     html: Option<&str>,
+    reply_to: Option<&str>,
 ) -> Result<(), String> {
     let url = if !cfg.api_url.is_empty() {
         cfg.api_url.clone()
@@ -760,6 +762,10 @@ async fn send_mailgun(
     ];
     if let Some(h) = html.filter(|h| !h.is_empty()) {
         params.push(("html", h.to_string()));
+    }
+    // Mailgun takes arbitrary headers as `h:<Name>` form fields.
+    if let Some(rt) = reply_to.map(str::trim).filter(|s| !s.is_empty()) {
+        params.push(("h:Reply-To", rt.to_string()));
     }
 
     let resp = reqwest::Client::new()
@@ -786,6 +792,7 @@ async fn send_sendgrid(
     subject: &str,
     text: &str,
     html: Option<&str>,
+    reply_to: Option<&str>,
 ) -> Result<(), String> {
     let url = if cfg.api_url.is_empty() {
         "https://api.sendgrid.com/v3/mail/send".to_string()
@@ -798,12 +805,15 @@ async fn send_sendgrid(
         content.push(json!({ "type": "text/html", "value": h }));
     }
 
-    let payload = json!({
+    let mut payload = json!({
         "personalizations": [{ "to": [{ "email": to }] }],
         "from": { "email": cfg.from_address, "name": cfg.from_name },
         "subject": subject,
         "content": content,
     });
+    if let Some(rt) = reply_to.map(str::trim).filter(|s| !s.is_empty()) {
+        payload["reply_to"] = json!({ "email": rt });
+    }
 
     let resp = reqwest::Client::new()
         .post(&url)
@@ -829,6 +839,7 @@ async fn send_sendiio(
     subject: &str,
     text: &str,
     html: Option<&str>,
+    reply_to: Option<&str>,
 ) -> Result<(), String> {
     let url = if cfg.api_url.is_empty() {
         "https://sendiio.com/api/v1/smtp/send".to_string()
@@ -836,7 +847,7 @@ async fn send_sendiio(
         cfg.api_url.clone()
     };
 
-    let payload = json!({
+    let mut payload = json!({
         "api_key": cfg.api_key,
         "from_email": cfg.from_address,
         "from_name": cfg.from_name,
@@ -845,6 +856,9 @@ async fn send_sendiio(
         "text": text,
         "html": html.unwrap_or(""),
     });
+    if let Some(rt) = reply_to.map(str::trim).filter(|s| !s.is_empty()) {
+        payload["reply_to"] = json!(rt);
+    }
 
     let resp = reqwest::Client::new()
         .post(&url)

@@ -385,6 +385,7 @@ pub async fn test_email_config(
         "FunnelSwift — workspace email test",
         body.as_deref().unwrap_or_default(),
         None,
+        None,
     )
     .await
     {

@@ -707,6 +707,7 @@ pub async fn test_email_config(
         "FunnelSwift System Email Test",
         body.as_deref().unwrap_or_default(),
         None,
+        None,
     )
     .await;
 

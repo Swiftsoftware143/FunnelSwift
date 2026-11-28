@@ -147,6 +147,7 @@ async fn dispatch_for_tenant_outcome(
     subject: &str,
     body: Option<&str>,
     html: Option<&str>,
+    reply_to: Option<&str>,
 ) -> Result<SendOutcome, String> {
     let Some(cfg) = crate::email_provider::resolve(pool, tenant_id).await else {
         tracing::warn!(
@@ -173,7 +174,8 @@ async fn dispatch_for_tenant_outcome(
         );
     };
 
-    let outcome = crate::email_provider::deliver(&cfg, to, subject, body.unwrap_or(""), html).await;
+    let outcome =
+        crate::email_provider::deliver(&cfg, to, subject, body.unwrap_or(""), html, reply_to).await;
     // `deliver` answers Ok(()) for a reserved/harness recipient — it deliberately attempts nothing —
     // so Ok alone is not a delivery. Recording that as accepted is the misreport this line exists to
     // prevent; the withheld case is recorded as the non-send it is (2026-10-14, same class fixed on
@@ -217,7 +219,7 @@ async fn dispatch_for_tenant(
     body: Option<&str>,
     html: Option<&str>,
 ) -> Result<(), String> {
-    dispatch_for_tenant_outcome(pool, tenant_id, to, subject, body, html)
+    dispatch_for_tenant_outcome(pool, tenant_id, to, subject, body, html, None)
         .await
         .map(|_| ())
 }
@@ -483,7 +485,7 @@ pub async fn send_template_email_for_tenant(
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
 ) -> Result<(), String> {
-    send_template_email_for_tenant_outcome(pool, tenant_id, aid, to, template_type, vars)
+    send_template_email_for_tenant_outcome(pool, tenant_id, aid, to, template_type, vars, None)
         .await
         .map(|_| ())
 }
@@ -497,6 +499,7 @@ pub async fn send_template_email_for_tenant_outcome(
     to: &str,
     template_type: &str,
     vars: &std::collections::HashMap<&str, &str>,
+    reply_to: Option<&str>,
 ) -> Result<SendOutcome, String> {
     let mail_class = crate::compliance::class_of(template_type);
     let (final_subject, final_body, final_html) =
@@ -537,6 +540,7 @@ pub async fn send_template_email_for_tenant_outcome(
         &final_subject,
         final_body.as_deref(),
         final_html.as_deref(),
+        reply_to,
     )
     .await
 }
@@ -1130,6 +1134,7 @@ pub async fn send_reset_email_outcome(
         to,
         "password_reset",
         &bound_vars(vars),
+        None,
     )
     .await
 }
@@ -1898,15 +1903,21 @@ pub async fn send_new_lead_email(
     vars.insert("lead_email", lead_email);
     vars.insert("lead_phone", lead_phone.unwrap_or(""));
     vars.insert("funnel_name", funnel_name);
-    send_template_email_for_tenant(
+    // THE PROMISE THIS MAKES IS THE REASON FOR THE HEADER (2026-11-27): the body tells the owner to
+    // "reply to this message to answer them directly". Until this arm passed a Reply-To the reply
+    // went to the sending address (no-reply@), so the sentence described something the product did
+    // not do. A lead with no address keeps the previous behaviour (no header).
+    send_template_email_for_tenant_outcome(
         pool,
         tenant_id,
         tenant_id,
         to,
         "new_lead",
         &bound_vars(vars),
+        Some(lead_email).filter(|e| !e.trim().is_empty()),
     )
     .await
+    .map(|_| ())
 }
 
 /// The exact subject of the plan-ceiling notice.

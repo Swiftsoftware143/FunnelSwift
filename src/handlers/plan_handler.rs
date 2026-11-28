@@ -1410,6 +1410,7 @@ pub(crate) async fn notify_plan_change(
         to,
         "plan_changed",
         &vars,
+        None,
     )
     .await
     {

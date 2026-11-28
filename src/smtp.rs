@@ -21,6 +21,7 @@ pub async fn send_via_smtp(
     subject: &str,
     body: &str,
     html: Option<&str>,
+    reply_to: Option<&str>,
 ) -> Result<(), String> {
     use lettre::message::{MultiPart, SinglePart};
     use lettre::{
@@ -41,6 +42,17 @@ pub async fn send_via_smtp(
             .parse()
             .map_err(|e| format!("Invalid to address: {}", e))?)
         .subject(subject);
+
+    // WHO A REPLY GOES TO (2026-11-27). The new-lead notification tells the owner to "reply to this
+    // message to answer them directly"; without a Reply-To the reply lands on the sending address
+    // (no-reply@), which is nobody. A blank/absent value keeps the previous behaviour.
+    let builder = match reply_to.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(rt) => builder.reply_to(
+            rt.parse()
+                .map_err(|e| format!("Invalid reply-to address: {}", e))?,
+        ),
+        None => builder,
+    };
 
     let email = match html.filter(|h| !h.is_empty()) {
         Some(h) => builder
