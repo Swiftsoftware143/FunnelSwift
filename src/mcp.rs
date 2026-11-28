@@ -795,8 +795,8 @@ fn spec_archive_page() -> ToolSpec {
          its address answers 404 on every host shape (kntcrd.com, a tenant subdomain, a customer \
          domain, and any retired spelling of a renamed card). The row, its blocks and its \
          statistics stay untouched and readable, so nothing is deleted and the card keeps its \
-         slug; to serve the page again, set is_active = true on the row. A foreign id answers \
-         not_found. Audited.",
+         slug; to serve the page again, send `update_page` with is_active = true. A foreign id \
+         answers not_found. Audited.",
     )
     .title("Archive page")
     .idempotent()
