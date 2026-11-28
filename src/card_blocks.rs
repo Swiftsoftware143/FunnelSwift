@@ -103,20 +103,60 @@ fn esc(v: Option<&str>) -> String {
 ///
 /// `javascript:`/`data:`/`vbscript:` and anything with control characters are refused; http(s),
 /// mailto:, tel:, sms:, root-relative (`/…`) and fragment (`#…`) targets are allowed.
+///
+/// A bare hostname (`zaarhub.com/palm-bay`, the shape a person types into a "URL" box and the shape
+/// the card's own authoring tools store) is accepted and given `https://`. Before this it was
+/// refused, which silently DELETED the whole block from the page — a link row with no visible
+/// reason to be missing (kanban t_fc4d9e05).
 pub fn safe_url(raw: &str) -> Option<String> {
     let t = raw.trim();
     if t.is_empty() || t.len() > 2000 || t.chars().any(|c| c.is_control()) {
         return None;
     }
     let l = t.to_ascii_lowercase();
-    let ok = l.starts_with("http://")
+    if l.starts_with("http://")
         || l.starts_with("https://")
         || l.starts_with("mailto:")
         || l.starts_with("tel:")
         || l.starts_with("sms:")
         || t.starts_with('/')
-        || t.starts_with('#');
-    ok.then(|| t.to_string())
+        || t.starts_with('#')
+    {
+        return Some(t.to_string());
+    }
+    bare_host_url(t)
+}
+
+/// `"zaarhub.com/palm-bay"` → `Some("https://zaarhub.com/palm-bay")`, `None` for anything that is not
+/// provably a hostname + optional path. The host part must be letters/digits/dots/hyphens with a
+/// dotted alphabetic suffix, so `javascript:alert(1)` and `data:text/html,…` can never qualify.
+fn bare_host_url(t: &str) -> Option<String> {
+    let host = t.split(['/', '?', '#']).next().unwrap_or("");
+    if host.is_empty() || !host.contains('.') || host != host.trim() {
+        return None;
+    }
+    if !host
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        return None;
+    }
+    if host.starts_with('.') || host.starts_with('-') || host.ends_with('.') {
+        return None;
+    }
+    let tld = host.rsplit('.').next().unwrap_or("");
+    if tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    // The rest of the value (path/query/fragment) must still be made of URL-safe characters; a
+    // space or a control character means it was never a URL.
+    if !t
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "/?#&=%._~+:@!$()*,'-".contains(c))
+    {
+        return None;
+    }
+    Some(format!("https://{t}"))
 }
 
 /// A CSS fragment (the hero's `gradient_colors` / `gradient_angle`) that is provably incapable of
@@ -756,6 +796,204 @@ pub fn social_links_row(items: &[Value]) -> String {
     format!("<div class=\"socials\">{out}</div>")
 }
 
+/// The block types a link TREE is built from — the vocabulary the theme catalogue
+/// (`handlers::theme_endpoint`'s `layout_blocks`) advertises with `items:[{label,url}]`, plus the
+/// generic spellings a builder or an API client reaches for.
+///
+/// kanban t_fc4d9e05: measured on a live card, every one of these saved fine and rendered NOTHING,
+/// so a builder of a link tree had to fake each row as a `hero` "panel". A link tree is the primary
+/// use of a kinetic card, so the renderer draws the whole family.
+pub const LINK_LIST_TYPES: &[&str] = &[
+    "link_list",
+    "links_list",
+    "link_tree",
+    "link_stack",
+    "links_row",
+    "stacked_links",
+    "featured_links",
+    "project_links",
+    "profile_links",
+    "action_stack",
+    "purchase_grid",
+];
+
+/// True when [`single_block`] produces markup for `ty`. The ONE declaration used by the theme
+/// catalogue's `renders` flag and by the console's own "this block will not appear" notice.
+pub fn renders_type(ty: &str) -> bool {
+    matches!(
+        ty.trim(),
+        "hero"
+            | "hero_page"
+            | "features"
+            | "feature_grid"
+            | "lead_form"
+            | "form"
+            | "business_card"
+            | "bio_link"
+            | "bio"
+            | "mini_funnel"
+            | "thank_you"
+            | "buttons"
+            | "button_list"
+            | "social"
+            | "socials"
+            | "social_links"
+            | "social_icons"
+            | "link"
+            | "link_button"
+            | "image"
+            | "image_block"
+            | "video"
+            | "video_block"
+            | "qr"
+            | "qr_code"
+            | "title_block"
+            | "headline"
+            | "glass_bio"
+            | "bio_snippet"
+            | "avatar"
+            | "logo_mark"
+    ) || LINK_LIST_TYPES.contains(&ty.trim())
+}
+
+/// A LINK LIST block: one section, one full-width row per link, exactly as the theme catalogue,
+/// the console's "Link list" control and a link-tree owner lay them out.
+///
+/// Rows are read from `items` (the catalogue's key), `links` or `buttons`; each row may carry
+/// `label|title|text|name`, `url|href|link`, an optional `icon|emoji` and an optional
+/// `description|subtitle`. A row without a usable URL is SKIPPED (never rendered as a dead link) —
+/// the console warns about those before saving, because a row that silently disappears is the
+/// defect this family caused in the first place.
+fn link_list_html(block: &Value) -> Option<String> {
+    let items = block
+        .get("items")
+        .or_else(|| block.get("links"))
+        .or_else(|| block.get("buttons"))
+        .and_then(|v| v.as_array())?;
+    let mut rows = String::new();
+    for it in items {
+        let label = s(it, "label")
+            .or_else(|| s(it, "title"))
+            .or_else(|| s(it, "text"))
+            .or_else(|| s(it, "name"));
+        let url = s(it, "url")
+            .or_else(|| s(it, "href"))
+            .or_else(|| s(it, "link"));
+        let (Some(label), Some(url)) = (label, url) else {
+            continue;
+        };
+        let Some(href) = safe_url(url) else {
+            continue;
+        };
+        let icon = s(it, "icon").or_else(|| s(it, "emoji"));
+        let desc = s(it, "description").or_else(|| s(it, "subtitle"));
+        // The icon column is ALWAYS emitted, empty when the row has no icon, so every label starts
+        // at the same x — a row without an icon must not shift left of the rows above it.
+        let icon_html = format!(
+            "<span class=\"klink-ico\" aria-hidden=\"true\">{}</span>",
+            esc(icon)
+        );
+        let desc_html = match desc {
+            Some(d) => format!("<span class=\"klink-desc\">{}</span>", html_escape(d)),
+            None => String::new(),
+        };
+        rows.push_str(&format!(
+            "<a class=\"kbtn kbtn-block klink\" href=\"{}\" rel=\"noopener\">{icon_html}\
+             <span class=\"klink-label\">{}</span>{desc_html}</a>",
+            html_escape(&href),
+            html_escape(label)
+        ));
+    }
+    if rows.is_empty() {
+        return None;
+    }
+    let title = match s(block, "title").or_else(|| s(block, "heading")) {
+        Some(t) => format!("<h2 class=\"ksect-title\">{}</h2>", html_escape(t)),
+        None => String::new(),
+    };
+    Some(format!(
+        "<section class=\"kblock klinks\">{title}{rows}</section>"
+    ))
+}
+
+/// `title_block` / `headline` — the name-and-subtitle header the theme catalogue opens every card
+/// with (and the shape David's own card carries).
+fn title_block_html(block: &Value) -> Option<String> {
+    let headline = s(block, "headline")
+        .or_else(|| s(block, "title"))
+        .or_else(|| s(block, "text"));
+    let subtitle = s(block, "subtitle").or_else(|| s(block, "tagline"));
+    if headline.is_none() && subtitle.is_none() {
+        return None;
+    }
+    let mut out = String::from("<section class=\"kblock ktitle\">");
+    if let Some(h) = headline {
+        out.push_str(&format!(
+            "<h2 class=\"khero-title\">{}</h2>",
+            html_escape(h)
+        ));
+    }
+    if let Some(st) = subtitle {
+        out.push_str(&format!("<p class=\"khero-sub\">{}</p>", html_escape(st)));
+    }
+    out.push_str("</section>");
+    Some(out)
+}
+
+/// `glass_bio` / `bio_snippet` — a paragraph of body copy in the card's own panel style.
+fn glass_bio_html(block: &Value) -> Option<String> {
+    let text = s(block, "content")
+        .or_else(|| s(block, "text"))
+        .or_else(|| s(block, "bio"));
+    let text = text?;
+    Some(format!(
+        "<section class=\"kblock kbio\"><p class=\"kbio-bio\">{}</p></section>",
+        html_escape(text)
+    ))
+}
+
+/// `avatar` / `logo_mark` — the round portrait or monogram the catalogue's cards open with. An
+/// image is used when the block carries one; otherwise the monogram is the catchphrase's first
+/// letter, drawn in the card's accent. The catchphrase/initial text is always shown, so a block
+/// with no image still renders the words the owner typed.
+fn avatar_html(block: &Value) -> Option<String> {
+    let img = s(block, "image_url")
+        .or_else(|| s(block, "avatar_url"))
+        .or_else(|| s(block, "image"))
+        .or_else(|| s(block, "url"));
+    let phrase = s(block, "catchphrase")
+        .or_else(|| s(block, "name"))
+        .or_else(|| s(block, "headline"));
+    let initial = s(block, "initial").map(|i| i.to_string()).or_else(|| {
+        phrase.and_then(|p| {
+            p.chars()
+                .find(|c| c.is_alphanumeric())
+                .map(|c| c.to_string())
+        })
+    });
+    let image = img.and_then(|u| image_html(u, "", "kbc-av"));
+    if image.is_none() && initial.is_none() && phrase.is_none() {
+        return None;
+    }
+    let mut out = String::from("<section class=\"kblock kavatar\">");
+    match image {
+        Some(i) => out.push_str(&i),
+        None => {
+            if let Some(i) = initial {
+                out.push_str(&format!(
+                    "<div class=\"kavatar-mono\">{}</div>",
+                    html_escape(i.to_uppercase().as_str())
+                ));
+            }
+        }
+    }
+    if let Some(p) = phrase {
+        out.push_str(&format!("<p class=\"khero-sub\">{}</p>", html_escape(p)));
+    }
+    out.push_str("</section>");
+    Some(out)
+}
+
 fn single_block(block: &Value, opts: &BlockOptions<'_>, form_index: &mut usize) -> Option<String> {
     let ty = s(block, "type")?;
     let html = match ty {
@@ -818,6 +1056,13 @@ fn single_block(block: &Value, opts: &BlockOptions<'_>, form_index: &mut usize) 
             )
         }
         "qr" | "qr_code" => qr_html(block),
+        // The three shapes that open most cards in the theme catalogue, and the three blocks on
+        // David's own live card — all silently absent before t_fc4d9e05.
+        "title_block" | "headline" => title_block_html(block)?,
+        "glass_bio" | "bio_snippet" => glass_bio_html(block)?,
+        "avatar" | "logo_mark" => avatar_html(block)?,
+        // A link TREE is the primary use of a kinetic card (t_fc4d9e05).
+        ty if LINK_LIST_TYPES.contains(&ty) => link_list_html(block)?,
         // A type nobody ships a renderer for is ignored, never an error and never a broken page.
         _ => return None,
     };
@@ -895,7 +1140,7 @@ display:flex;flex-direction:column;gap:20px;text-align:left}}\
 .kform-msg{{font-size:13px;font-weight:600;min-height:18px;text-align:center}}\
 .kok{{color:#22c55e}}.kerr{{color:#f87171}}\
 .kcap{{font-size:12px;text-align:center;opacity:.75;margin-top:8px}}\
-.kqr{{display:block;margin:0 auto;width:100%;max-width:200px}}\n.kbc-save{{display:block;width:max-content;margin:14px auto 0;padding:11px 22px;border-radius:999px;background:{a};color:#fff;font-size:14px;font-weight:700;text-decoration:none}}\n"
+.kqr{{display:block;margin:0 auto;width:100%;max-width:200px}}\n.kbc-save{{display:block;width:max-content;margin:14px auto 0;padding:11px 22px;border-radius:999px;background:{a};color:#fff;font-size:14px;font-weight:700;text-decoration:none}}\n.klink{{display:flex;flex-wrap:wrap;align-items:center;gap:12px;width:100%;max-width:100%;margin:8px 0;padding:14px 18px;border-radius:14px;background:{a}b3;color:#fff;text-align:left}}\n.klink-ico{{font-size:18px;line-height:1;flex:0 0 1.5em;text-align:center}}\n.klink-label{{font-size:15px;font-weight:700;flex:1 1 auto;word-break:break-word}}\n.klink-desc{{display:block;flex-basis:100%;font-size:12px;font-weight:500;opacity:.85;margin-top:2px}}\n.kavatar{{text-align:center}}\n.kavatar-mono{{width:84px;height:84px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;color:#fff;background:{a};box-shadow:0 0 0 3px {a}55}}\n.ktitle{{text-align:center}}\n"
     )
 }
 
@@ -1290,5 +1535,198 @@ mod t114_social_row_tests {
         let html = social_links_row(&items);
         assert!(!html.contains("<img"), "{html}");
         assert!(html.contains("&lt;img"), "{html}");
+    }
+}
+
+#[cfg(test)]
+mod t_fc4d9e05_link_blocks_render {
+    use super::*;
+    use serde_json::json;
+
+    fn opts<'a>() -> BlockOptions<'a> {
+        BlockOptions {
+            accent: "#8b5cf6",
+            lead_action: "/k/probe/lead",
+            vcard_href: "/k/probe/vcard",
+        }
+    }
+
+    /// The four link-list types the theme catalogue advertises (all `items:[{label,url}]`) —
+    /// measured 2026-11-28: every one rendered ZERO markup on the public card.
+    #[test]
+    fn every_advertised_link_list_type_renders_every_row() {
+        for ty in [
+            "link_list",
+            "stacked_links",
+            "featured_links",
+            "project_links",
+            "action_stack",
+        ] {
+            let blocks = json!([{
+                "type": ty,
+                "items": [
+                    {"label": "Palm Bay", "icon": "🌴", "url": "https://palmbaypulse.com"},
+                    {"label": "Palm Coast", "url": "palmcoastinsider.com"}
+                ]
+            }]);
+            let r = render(&blocks, &[], &opts());
+            assert_eq!(r.rendered, vec![ty.to_string()], "{ty} rendered nothing");
+            assert!(
+                r.section.contains(">Palm Bay</span>"),
+                "{ty}: {}",
+                r.section
+            );
+            assert!(
+                r.section.contains("href=\"https://palmbaypulse.com\""),
+                "{ty}: {}",
+                r.section
+            );
+            // A bare host typed into the URL box is a link, not a silently dropped row.
+            assert!(
+                r.section.contains("href=\"https://palmcoastinsider.com\""),
+                "{ty}: {}",
+                r.section
+            );
+            assert_eq!(
+                r.section.matches("class=\"kbtn kbtn-block klink\"").count(),
+                2,
+                "{ty}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_link_row_with_no_url_is_skipped_not_rendered_as_a_dead_link() {
+        let blocks = json!([{"type":"link_list","items":[
+            {"label":"Real","url":"https://example.com"},
+            {"label":"No URL"},
+            {"url":"https://example.com/unlabelled"}
+        ]}]);
+        let r = render(&blocks, &[], &opts());
+        assert_eq!(r.section.matches("klink-label").count(), 1, "{}", r.section);
+        assert!(r.section.contains(">Real<"), "{}", r.section);
+    }
+
+    #[test]
+    fn the_three_blocks_on_the_live_card_render_their_own_words() {
+        let blocks = json!([
+            {"type":"avatar","style":"circle_glow","catchphrase":"David J Giraudy"},
+            {"type":"title_block","headline":"David J Giraudy","subtitle":"Account Manager — ZaarHub"},
+            {"type":"glass_bio","content":"I look after the city newsletters."}
+        ]);
+        let r = render(&blocks, &[], &opts());
+        assert_eq!(r.rendered, vec!["avatar", "title_block", "glass_bio"]);
+        assert!(r.section.contains("kavatar-mono"), "{}", r.section);
+        assert!(r.section.contains("David J Giraudy"), "{}", r.section);
+        assert!(r.section.contains("Account Manager"), "{}", r.section);
+        assert!(r.section.contains("city newsletters"), "{}", r.section);
+    }
+
+    #[test]
+    fn renders_type_agrees_with_the_renderer_for_every_type_it_names() {
+        for ty in [
+            "hero",
+            "link",
+            "link_list",
+            "stacked_links",
+            "avatar",
+            "title_block",
+            "glass_bio",
+        ] {
+            assert!(renders_type(ty), "{ty}");
+        }
+        assert!(!renders_type("stat_row"), "stat_row has no renderer");
+        // The catalogue's own decorative types stay honestly marked as not rendered.
+        assert!(!renders_type("concert_header"));
+    }
+
+    #[test]
+    fn a_bare_host_is_promoted_but_a_dangerous_scheme_is_still_refused() {
+        assert_eq!(
+            safe_url("zaarhub.com").as_deref(),
+            Some("https://zaarhub.com")
+        );
+        assert_eq!(
+            safe_url(" c.swiftsoftware.net/k/david ").as_deref(),
+            Some("https://c.swiftsoftware.net/k/david")
+        );
+        assert_eq!(safe_url("javascript:alert(1)"), None);
+        assert_eq!(safe_url("data:text/html,x"), None);
+        assert_eq!(safe_url("not a url"), None);
+        assert_eq!(
+            safe_url("https://ok.example/x"),
+            Some("https://ok.example/x".into())
+        );
+    }
+    // ── the drift guard ────────────────────────────────────────────────────────────────────────
+    // The defect this module was fixed for was a VOCABULARY drift: the console and the theme
+    // catalogue offered block types the public renderer silently dropped. These two tests read the
+    // served console source and fail the build if that ever becomes possible again.
+    const SPA: &str = include_str!("../www-app/index.html");
+
+    fn spa_block_type_ids() -> Vec<String> {
+        const DECL: &str = "var MC_BLOCK_TYPES=[";
+        let start = SPA
+            .find(DECL)
+            .expect("the console must declare MC_BLOCK_TYPES")
+            + DECL.len();
+        let end = SPA[start..]
+            .find("];")
+            .expect("MC_BLOCK_TYPES must close with ];")
+            + start;
+        let mut rest = &SPA[start..end];
+        let mut ids = Vec::new();
+        while let Some(pos) = rest.find("[\"") {
+            rest = &rest[pos + 2..];
+            match rest.find('"') {
+                Some(close) => {
+                    ids.push(rest[..close].to_string());
+                    rest = &rest[close + 1..];
+                }
+                None => break,
+            }
+        }
+        ids
+    }
+
+    fn spa_alias_targets() -> Vec<String> {
+        const DECL: &str = "var MC_ALIAS={";
+        let start = SPA.find(DECL).expect("the console must declare MC_ALIAS") + DECL.len();
+        let end = SPA[start..]
+            .find("};")
+            .expect("MC_ALIAS must close with };")
+            + start;
+        let mut out = Vec::new();
+        for part in SPA[start..end].split(',') {
+            if let Some((_, v)) = part.split_once(':') {
+                let v = v.trim().trim_matches('"');
+                if !v.is_empty() {
+                    out.push(v.to_string());
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn every_block_type_the_console_offers_has_a_renderer() {
+        let ids = spa_block_type_ids();
+        assert!(ids.len() >= 13, "parsed only {:?}", ids);
+        for id in &ids {
+            assert!(
+                renders_type(id),
+                "the console offers block type '{id}' but card_blocks cannot draw it"
+            );
+        }
+    }
+
+    #[test]
+    fn every_console_alias_points_at_a_type_that_renders() {
+        for target in spa_alias_targets() {
+            assert!(
+                renders_type(&target),
+                "a console alias points at '{target}', which the public renderer cannot draw"
+            );
+        }
     }
 }

@@ -41,6 +41,26 @@ fn annotate_catalogue(
             obj.insert("tier".to_string(), json!(tier));
             obj.insert("locked".to_string(), json!(locked));
         }
+        // Every `layout_blocks` entry carries `renders`: whether the public card's renderer
+        // (`card_blocks::renders_type`) can draw it. The catalogue is a LOOK preview and has always
+        // mixed block names from many design vocabularies; without this flag an API client cannot
+        // tell a block the card draws from one it silently drops (kanban t_fc4d9e05 — a builder
+        // copied this vocabulary onto a live card and every link block vanished).
+        if let Some(blocks) = item.get_mut("layout_blocks").and_then(|v| v.as_array_mut()) {
+            for block in blocks.iter_mut() {
+                let ty = block
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if let Some(b) = block.as_object_mut() {
+                    b.insert(
+                        "renders".to_string(),
+                        json!(crate::card_blocks::renders_type(&ty)),
+                    );
+                }
+            }
+        }
     }
 }
 

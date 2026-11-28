@@ -3089,14 +3089,21 @@ function MFC(data){
   var MC_BLOCK_TYPES=[
     ["hero","Hero"],["features","Features"],["lead_form","Lead Form"],["business_card","Business Card"],
     ["bio_link","Bio / Links"],["mini_funnel","Mini Funnel"],["thank_you","Thank You"],
-    ["buttons","Buttons"],["socials","Social Icons"],["link","Link"],["image","Image"],
-    ["video","Video"],["qr","QR Code"]
+    ["buttons","Buttons"],["socials","Social Icons"],["link","Link"],["link_list","Link list"],
+    ["title_block","Title"],["glass_bio","Bio card"],["avatar","Avatar"],
+    ["image","Image"],["video","Video"],["qr","QR Code"]
   ];
   // Aliases the renderer accepts, so a stored `hero_page`/`form`/`social_links` block still gets
   // real fields in the editor (the alias itself is NOT rewritten unless the owner changes it).
+  // The link-list family is the vocabulary the theme catalogue advertises, so a card carrying one
+  // opens with real row fields here instead of "no editor fields".
   var MC_ALIAS={hero_page:"hero",feature_grid:"features",form:"lead_form",bio:"bio_link",links:"bio_link",
     button_list:"buttons",social:"socials",social_links:"socials",social_icons:"socials",
-    link_button:"link",image_block:"image",video_block:"video",qr_code:"qr"};
+    link_button:"link",image_block:"image",video_block:"video",qr_code:"qr",
+    links_list:"link_list",link_tree:"link_list",link_stack:"link_list",links_row:"link_list",
+    stacked_links:"link_list",featured_links:"link_list",project_links:"link_list",
+    profile_links:"link_list",action_stack:"link_list",purchase_grid:"link_list",
+    headline:"title_block",bio_snippet:"glass_bio",logo_mark:"avatar"};
   var MC_SCHEMA={
     hero:[["title","Title"],["subtitle","Subtitle"],["hero_image_url","Background image URL"],["cta_text","CTA button text"],["cta_url","CTA button URL"]],
     features:[["title","Section heading"]],
@@ -3106,6 +3113,10 @@ function MFC(data){
     mini_funnel:[["title","Title"],["subtitle","Subtitle"],["product_image_url","Product image URL"],["cta_text","CTA button text"],["cta_url","CTA button URL"]],
     thank_you:[["headline","Headline"],["message","Message"]],
     link:[["label","Label"],["url","URL"]],
+    link_list:[["title","Section heading (optional)"]],
+    title_block:[["headline","Headline"],["subtitle","Subtitle"]],
+    glass_bio:[["content","Bio text"]],
+    avatar:[["catchphrase","Caption"],["image_url","Image URL (optional)"]],
     image:[["image_url","Image URL"],["caption","Caption"],["alt_text","Alt text"]],
     video:[["video_url","MP4 video URL"]],
     qr:[["url","QR image URL"]]
@@ -3114,9 +3125,42 @@ function MFC(data){
     features:["items",[["title","Title"],["description","Description"]]],
     lead_form:["fields",[["name","Field name"],["label","Label"],["field_type","Input type"],["required","Required"]]],
     socials:["items",[["platform","Platform"],["url","URL"]]],
-    buttons:["items",[["label","Label"],["url","URL"]]]
+    buttons:["items",[["label","Label"],["url","URL"]]],
+    link_list:["items",[["label","Label"],["url","URL"],["icon","Icon (optional)"]]]
   };
   function mcCanon(b){var t=(b&&b.type)||"";return MC_SCHEMA[t]?t:(MC_SCHEMA[MC_ALIAS[t]]?MC_ALIAS[t]:"");}
+  // A block the public page cannot draw, or a link row with no usable URL, is EXACTLY the defect
+  // this editor must not let through silently (kanban t_fc4d9e05): the owner adds a row, saves, and
+  // the row is simply absent from the live card. Returns "" when the block will appear.
+  function mcRenderWarning(b){
+    var can=mcCanon(b);
+    if(!can){
+      return "The public page has no renderer for this block type, so it will be stored but appear NOWHERE on your card.";
+    }
+    function rowIssue(it){
+      var u=(it&&(it.url||it.href||it.link))||"";
+      u=String(u).trim();
+      if(!u) return "a row has no URL";
+      if(/^(javascript|data|vbscript):/i.test(u)) return "a URL uses a scheme the card refuses ("+u.split(":")[0]+":)";
+      if(!/^(https?:\/\/|mailto:|tel:|sms:|\/|#)/i.test(u) && !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}([\/?#]|$)/i.test(u)){
+        return "a URL does not look like a web address ("+u+")";
+      }
+      return "";
+    }
+    if(can==="link"){
+      var one=rowIssue({url:b.url||b.href});
+      if(one) return "This link will NOT appear on your page: "+one+".";
+    }
+    if(can==="link_list"||can==="buttons"||can==="socials"||can==="features"){
+      var arrK=(MC_LISTS[can]||["items"])[0];
+      var rows=Array.isArray(b[arrK])?b[arrK]:[];
+      var bad=0;
+      rows.forEach(function(it){ if(can!=="features" && rowIssue(it)) bad++; });
+      if(bad) return bad+" row(s) will NOT appear on your page — every row needs a real URL.";
+      if(!rows.length) return "This block has no rows yet, so it will not appear on your page.";
+    }
+    return "";
+  }
   function mcTypeLabel(b){
     var t=(b&&b.type)||"(no type)";
     for(var i=0;i<MC_BLOCK_TYPES.length;i++) if(MC_BLOCK_TYPES[i][0]===t) return MC_BLOCK_TYPES[i][1];
@@ -3190,7 +3234,13 @@ function MFC(data){
       row.appendChild(mcField(b,f[0],f[1],(f[0]==="bio"||f[0]==="biography"||f[0]==="message")));
     });
     if(MC_LISTS[can]) row.appendChild(mcListEditor(b,MC_LISTS[can]));
-    if(!can) row.appendChild(El("p",{style:"font-size:9px;color:#94a3b8;margin:2px 0;line-height:1.4"},"The public renderer has no fields for this block type, so it is stored and carried through exactly as it is. Use Advanced (JSON) to edit it."));
+    // The live-render check: says out loud what the public page will do with this block.
+    var warnEl=El("p",{style:"font-size:10px;color:#b91c1c;margin:4px 0 0;font-weight:600;line-height:1.35;display:none"});
+    function updWarn(){var w=mcRenderWarning(b);warnEl.textContent=w?("\u26a0 "+w):"";warnEl.style.display=w?"block":"none";}
+    row.addEventListener("input",updWarn);
+    row.addEventListener("change",updWarn);
+    row.appendChild(warnEl);
+    updWarn();
     var det=El("details",{style:"margin-top:4px"});
     det.appendChild(El("summary",{style:"font-size:10px;color:#4f46e5;cursor:pointer"},"Advanced (JSON)"));
     var jt=El("textarea",{rows:"4",style:"width:100%;font-family:monospace;font-size:10px;border:1px solid #e2e8f0;border-radius:5px;box-sizing:border-box;margin-top:3px"});
@@ -3525,6 +3575,7 @@ function MFC(data){
       seed.fields=[{name:"name",label:"Name",field_type:"text",required:true},
                    {name:"email",label:"Email",field_type:"email",required:true}]; }
     if(t==="socials"||t==="buttons") seed.items=[];
+    if(t==="link_list") seed.items=[{label:"",url:"",icon:""}];
     if(t==="features") seed.items=[{title:"",description:""}];
     mcBlocks.push(seed);
     mcAddMsg.style.color="#16a34a"; mcAddMsg.textContent="Block added — Save to publish it.";
