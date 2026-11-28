@@ -406,4 +406,61 @@ mod tests {
                 .unwrap_or_else(|e| panic!("`{key}` is published and must be accepted: {e:?}"));
         }
     }
+
+    /// kanban t_01430679 — AN ARCHIVED CARD IS NOT A PUBLIC PAGE ANY MORE.
+    ///
+    /// Measured live 2026-11-28: `archive_page` set `is_active = false` and answered "the public
+    /// page no longer serves", while `GET /<slug>`, `/k/<slug>` and `/thank/<slug>` kept answering
+    /// 200 with the card's full blocks — the render statement never read `k.is_active`, so every
+    /// agent believed a takedown had happened that had not. A guard that only greps the column
+    /// would pass on a SELECT list that projects it and drops it in the WHERE, so each public arm
+    /// is checked for the column AND for the refusal filter, and the page arm is checked to answer
+    /// 404 rather than a 200 shell. A refactor that drops either half fails here instead of
+    /// silently shipping takedown that does not take down.
+    #[test]
+    fn every_public_card_arm_refuses_an_archived_card() {
+        const CARD_HANDLER: &str = include_str!("handlers/kinetic_handler.rs");
+
+        /// One handler's own source, from its signature to the next handler.
+        fn body(handler: &'static str, name: &str) -> &'static str {
+            let needle = format!("pub async fn {name}(");
+            let start = handler
+                .find(&needle)
+                .unwrap_or_else(|| panic!("kinetic_handler.rs no longer defines `{needle}`"));
+            let rest = &handler[start..];
+            match rest[1..].find("\npub async fn ") {
+                Some(i) => &rest[..i + 1],
+                None => rest,
+            }
+        }
+
+        let render = body(CARD_HANDLER, "render_card");
+        assert!(
+            render.contains("k.is_active,"),
+            "the public card statement must SELECT is_active, so the refusal is explicit in the \
+             same statement that resolves the card"
+        );
+        assert!(
+            render.contains("WHERE k.slug = $1 AND k.is_active"),
+            "the public card page must REFUSE an archived card in the WHERE clause — without this \
+             filter `archive_page` sets is_active = false and the page keeps serving (measured)"
+        );
+        assert!(
+            render.contains("card_not_found_page(StatusCode::NOT_FOUND)"),
+            "an archived card must answer 404, not a 200 shell — the status is the takedown"
+        );
+        // A renamed card's retired address must not forward a reader onto an archived card.
+        assert!(
+            CARD_HANDLER.contains("WHERE a.old_slug = $1 AND c.is_active"),
+            "the retired-address arm must not redirect onto an archived card"
+        );
+        // The card's other public arms: the contact file, the lead form and the password gate.
+        for name in ["download_vcard", "submit_lead", "unlock_card"] {
+            let arm = body(CARD_HANDLER, name);
+            assert!(
+                arm.contains("AND is_active"),
+                "`{name}` is a public surface of the same card and must refuse an archived row"
+            );
+        }
+    }
 }

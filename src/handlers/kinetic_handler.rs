@@ -1635,7 +1635,17 @@ pub async fn render_card(
         // `tenant_plans` table that does not exist, and the error was swallowed by
         // `.unwrap_or(None)` that used to sit below, so EVERY card page rendered "Card not found"
         // (with HTTP 200) and no Kinetic card has ever been publicly viewable.
-        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.linkedin_url, k.twitter_url, k.instagram_url, k.tiktok_url, k.youtube_url, k.facebook_url, k.created_at, k.updated_at, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 ORDER BY (k.tenant_id = $2) DESC NULLS LAST, k.created_at ASC, k.id LIMIT 1"
+        //
+        // AN ARCHIVED CARD IS NOT A PUBLIC PAGE (kanban t_01430679). Measured live 2026-11-28:
+        // `archive_page` set is_active = false and answered "the public page no longer serves",
+        // while this page kept answering 200 with the card's full blocks — this statement never
+        // read the column, so every agent believed a takedown had happened that had not. The
+        // filter below makes an archived card fall through the same arms as a missing one: the
+        // retired-address table is consulted (that query filters is_active too) and otherwise the
+        // answer is 404 — the status IS the takedown. The host→workspace scope and the
+        // cross-workspace fallback (t_89f6de9c) are untouched: this only removes rows the owner
+        // has already retired. `src/mcp_guard.rs` fails the build if either half is dropped.
+        "SELECT k.id, k.password_hash, k.consent_required, k.age_gate_type, k.age_gate_message, k.consent_decline_redirect, k.tenant_id, k.title, k.slug, k.bio, k.bg_color, k.accent_color, k.text_color, k.tagline, k.meta_description, k.avatar_url, k.template_type, k.video_provider, k.video_id, k.layout_blocks, k.linkedin_url, k.twitter_url, k.instagram_url, k.tiktok_url, k.youtube_url, k.facebook_url, k.created_at, k.updated_at, k.is_active, t.affiliate_code, t.settings as tenant_settings, COALESCE(p.features->>'white_label','false') as white_label, COALESCE(p.features->>'remove_branding','false') as remove_branding FROM kinetic_cards k LEFT JOIN tenants t ON t.id = k.tenant_id LEFT JOIN tenant_plan_subscriptions tp ON tp.tenant_id = k.tenant_id AND tp.status = 'active' LEFT JOIN plans p ON p.id = tp.plan_id WHERE k.slug = $1 AND k.is_active ORDER BY (k.tenant_id = $2) DESC NULLS LAST, k.created_at ASC, k.id LIMIT 1"
     )
     .bind(&slug)
     .bind(scope)
@@ -1765,7 +1775,7 @@ pub async fn render_card(
         let retired: Option<(String, Uuid)> = sqlx::query_as(
             "SELECT c.slug, c.tenant_id FROM kinetic_card_slug_aliases a \
              JOIN kinetic_cards c ON c.id = a.card_id \
-             WHERE a.old_slug = $1 \
+             WHERE a.old_slug = $1 AND c.is_active \
              ORDER BY (c.tenant_id = $2) DESC NULLS LAST, a.created_at DESC LIMIT 1",
         )
         .bind(&slug)
@@ -2437,7 +2447,7 @@ pub async fn download_vcard(
     let scope = request_scope(&state, &public_host, &headers).await;
     let row: Option<(String, serde_json::Value)> = sqlx::query_as(
         "SELECT COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
-           FROM kinetic_cards WHERE slug = $1 \
+           FROM kinetic_cards WHERE slug = $1 AND is_active \
          ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
     )
     .bind(&slug)
@@ -2509,7 +2519,7 @@ pub async fn submit_lead(
     let scope = request_scope(&state, &host, &headers).await;
     let card: Option<(Uuid, Uuid, Uuid, String, serde_json::Value)> = sqlx::query_as(
         "SELECT id, tenant_id, user_id, COALESCE(title, ''), COALESCE(layout_blocks, '[]'::jsonb) \
-           FROM kinetic_cards WHERE slug = $1 \
+           FROM kinetic_cards WHERE slug = $1 AND is_active \
          ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
     )
     .bind(&slug)
@@ -3295,7 +3305,7 @@ pub async fn unlock_card(
     // another workspace's same-named card.
     let scope = request_scope(&state, &host, &headers).await;
     let row = sqlx::query(
-        "SELECT id, password_hash FROM kinetic_cards WHERE slug = $1 \
+        "SELECT id, password_hash FROM kinetic_cards WHERE slug = $1 AND is_active \
          ORDER BY (tenant_id = $2) DESC NULLS LAST, created_at ASC, id LIMIT 1",
     )
     .bind(&slug)

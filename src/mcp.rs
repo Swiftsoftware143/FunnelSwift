@@ -782,9 +782,12 @@ fn spec_update_page() -> ToolSpec {
 fn spec_archive_page() -> ToolSpec {
     ToolSpec::write(
         "archive_page",
-        "Archive a landing page: sets is_active = false, so the public page stops serving while the \
-         row, its blocks and its statistics stay untouched and readable. Nothing is deleted. \
-         Reversible by a console edit. A foreign id answers not_found. Audited.",
+        "Archive a landing page: sets is_active = false and the public page stops serving at once — \
+         its address answers 404 on every host shape (kntcrd.com, a tenant subdomain, a customer \
+         domain, and any retired spelling of a renamed card). The row, its blocks and its \
+         statistics stay untouched and readable, so nothing is deleted and un-archiving is a \
+         console edit that sets is_active = true. Archive does not delete the card and does not \
+         free its slug for another card. A foreign id answers not_found. Audited.",
     )
     .title("Archive page")
     .idempotent()
@@ -1988,7 +1991,7 @@ pub fn registry(state: AppState) -> Registry {
                 Ok(Some(row)) => Ok(json!({
                     "id": uuid(&row, "id"),
                     "archived": true,
-                    "note": "is_active is false: the public page no longer serves; nothing was deleted."
+                    "note": "is_active is false: the public page now answers 404 on every host; nothing was deleted."
                 })),
                 Ok(None) => Err(ToolError::NotFound),
                 Err(e) => Err(ToolError::Unavailable(format!("archive failed: {e}"))),
