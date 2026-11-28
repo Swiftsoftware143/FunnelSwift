@@ -79,15 +79,54 @@ fn meta_summary(raw: &str, max_chars: usize) -> String {
 /// kntcrd.com subdomain → https://{tenant}.kntcrd.com/{prefix}/{slug}
 /// funnelswift.net → redirect to kntcrd.com root
 /// custom domain → https://{domain}/{prefix}/{slug}
+///
+/// THE CANONICAL MUST BE THE ADDRESS THAT ANSWERS 200 (kanban t_c4fcafa7). Measured 2026-11-28
+/// on the live install: every card page emitted a canonical built on `/{prefix}/{slug}`, while
+/// `sites/kntcrd.conf` and `sites/funnelswift-custom-domains.conf` both 301 that ONE spelling
+/// (`location ~ ^/k/([A-Za-z0-9_-]+)/?$ { return 301 https://$host/$1$is_args$args; }`) onto the
+/// short `/{slug}`. So a card at `https://c.zaarhub.com/david` said its canonical was
+/// `https://c.zaarhub.com/k/david`, and that URL answered 301 — the self-referencing canonical
+/// pointed at a redirect and never at itself. The short form is the 200 URL on every host that
+/// serves a card, so it is now the canonical for the default (`k`) card type. The other five
+/// prefixes (`/b/ /c/ /m/ /f/ /h/`) are NOT redirected by any vhost and already answer 200 at
+/// their own address, so their canonical stays exactly what they serve.
 fn resolve_canonical_url(host: &str, prefix: &str, slug: &str) -> String {
     let host_clean = host.split(':').next().unwrap_or(host).to_lowercase();
-    if host_clean.ends_with("funnelswift.net") {
-        return format!("https://kntcrd.com/{}/{}", prefix, slug);
+    // A funnelswift.net-family host is a SHELL (the marketing page or the app console), never a
+    // card's own home: the card's canonical address has always been its kntcrd.com one, and
+    // kntcrd.com serves the short form. Every other host (a `*.kntcrd.com` subdomain, a claimed
+    // custom domain) is the card's own home and names itself.
+    let public_host = if host_clean.ends_with("funnelswift.net") {
+        "kntcrd.com".to_string()
+    } else {
+        host_clean
+    };
+    if prefix == "k" {
+        format!("https://{}/{}", public_host, slug)
+    } else {
+        format!("https://{}/{}/{}", public_host, prefix, slug)
     }
-    if host_clean.ends_with("kntcrd.com") {
-        return format!("https://{}/{}/{}", host_clean, prefix, slug);
+}
+
+/// The `Location` a renamed card's retired address answers with — the card's CURRENT address, in
+/// the spelling that answers 200 on that host (kanban t_c4fcafa7).
+///
+/// 302, never 301: a retired address may be claimed by a different card later, so a browser must
+/// ask again rather than cache the hop for ever (the caller keeps that status).
+///
+/// The short form is the 200 address on every card vhost, so a retired address there used to cost
+/// TWO hops — `c.zaarhub.com/david-giraudy` answered `302 /k/david`, and `/k/david` then answered
+/// `301 /david` (measured 2026-11-28). The intermediate hop is now gone. The funnelswift.net
+/// shells are the exception the measurement found: `funnelswift.net/<slug>` is a 404 and only
+/// `/k/<slug>` is proxied to the app, so those hosts keep the prefixed target — there the
+/// prefixed URL is itself the 200 answer, not a hop.
+fn retired_address_target(host: &str, prefix: &str, target: &str) -> String {
+    let host_clean = host.split(':').next().unwrap_or(host).to_lowercase();
+    if prefix == "k" && !host_clean.ends_with("funnelswift.net") {
+        format!("/{}", target)
+    } else {
+        format!("/{}/{}", prefix, target)
     }
-    format!("https://{}/{}/{}", host_clean, prefix, slug)
 }
 
 /// The card a tenant's OWN address must show when a visitor asks for its ROOT.
@@ -1752,8 +1791,10 @@ pub async fn render_card(
             if !target.is_empty() && target != slug {
                 // 302, not 301: a retired address may be claimed by a different card later, and a
                 // browser must ask again rather than cache this hop for ever. The query string rides
-                // along so `?preview=1` and campaign parameters survive the rename.
-                let mut loc = format!("/{}/{}", prefix, target);
+                // along so `?preview=1` and campaign parameters survive the rename. The target is
+                // the card's 200 address for THIS host (kanban t_c4fcafa7): the short form on every
+                // card vhost, the prefixed form on the funnelswift.net shells that do not route it.
+                let mut loc = retired_address_target(&host, prefix, &target);
                 if let Some(q) = uri.query() {
                     loc.push('?');
                     loc.push_str(q);
@@ -2407,7 +2448,9 @@ pub async fn download_vcard(
         return Err(AppError::NotFound("Card not found".into()));
     };
 
-    let card_url = format!("https://{public_host}/k/{slug}");
+    // The card's own public address, in the spelling that answers 200 on this host (the same one
+    // the page emits as its canonical): a saved contact must not carry a redirect.
+    let card_url = resolve_canonical_url(&public_host, "k", &slug);
 
     let Some(vcard) = crate::card_blocks::vcard_for(&blocks, &title, &card_url) else {
         return Err(AppError::NotFound(
@@ -3607,5 +3650,97 @@ mod t114_write_key_tests {
         assert_eq!(v[5].as_deref(), Some("https://facebook.com/x"));
         let absent = social_column_values(&json!({"title":"x"}));
         assert!(absent.iter().all(|v| v.is_none()));
+    }
+}
+
+#[cfg(test)]
+mod canonical_address_tests {
+    use super::*;
+
+    /// A card's canonical must be the address that ANSWERS 200 (kanban t_c4fcafa7). Every card
+    /// vhost 301s `/k/<slug>` onto `/<slug>`, so the short form is the canonical — measured live
+    /// 2026-11-28 on c.zaarhub.com and kntcrd.com.
+    #[test]
+    fn a_kinetic_canonical_is_the_short_address_that_answers_200() {
+        assert_eq!(
+            resolve_canonical_url("c.zaarhub.com", "k", "david"),
+            "https://c.zaarhub.com/david"
+        );
+        assert_eq!(
+            resolve_canonical_url("kntcrd.com", "k", "david"),
+            "https://kntcrd.com/david"
+        );
+        assert_eq!(
+            resolve_canonical_url("www.kntcrd.com", "k", "david"),
+            "https://www.kntcrd.com/david"
+        );
+        assert_eq!(
+            resolve_canonical_url("zaarhub.kntcrd.com", "k", "david"),
+            "https://zaarhub.kntcrd.com/david"
+        );
+    }
+
+    /// The funnelswift.net shells do not route the short form (`funnelswift.net/<slug>` is a 404
+    /// there, measured 2026-11-28), so a card's canonical names its kntcrd.com short address,
+    /// which does answer 200 — never the shell's own 404 path.
+    #[test]
+    fn a_funnelswift_shell_canonical_is_the_kntcrd_short_address() {
+        assert_eq!(
+            resolve_canonical_url("funnelswift.net", "k", "david"),
+            "https://kntcrd.com/david"
+        );
+        assert_eq!(
+            resolve_canonical_url("app.funnelswift.net", "k", "david"),
+            "https://kntcrd.com/david"
+        );
+    }
+
+    /// The five non-default prefixes are redirected by NO vhost, so their own prefixed address is
+    /// already the 200 answer and stays the canonical.
+    #[test]
+    fn a_prefixed_card_keeps_its_own_address() {
+        assert_eq!(
+            resolve_canonical_url("kntcrd.com", "b", "david"),
+            "https://kntcrd.com/b/david"
+        );
+        assert_eq!(
+            resolve_canonical_url("funnelswift.net", "c", "david"),
+            "https://kntcrd.com/c/david"
+        );
+        assert_eq!(
+            resolve_canonical_url("c.zaarhub.com", "thank", "david"),
+            "https://c.zaarhub.com/thank/david"
+        );
+    }
+
+    /// Case and port never leak into a printed address.
+    #[test]
+    fn host_is_lowercased_and_the_port_is_dropped() {
+        assert_eq!(
+            resolve_canonical_url("C.ZaarHub.com:443", "k", "david"),
+            "https://c.zaarhub.com/david"
+        );
+    }
+
+    /// A renamed card's retired address costs ONE hop on a card vhost, and stays on the prefixed
+    /// URL only where that prefixed URL is itself the 200 answer (the funnelswift.net shell).
+    #[test]
+    fn a_retired_address_targets_the_200_address() {
+        assert_eq!(
+            retired_address_target("c.zaarhub.com", "k", "david"),
+            "/david"
+        );
+        assert_eq!(
+            retired_address_target("www.kntcrd.com", "k", "david"),
+            "/david"
+        );
+        assert_eq!(
+            retired_address_target("funnelswift.net", "k", "david"),
+            "/k/david"
+        );
+        assert_eq!(
+            retired_address_target("kntcrd.com", "b", "david"),
+            "/b/david"
+        );
     }
 }

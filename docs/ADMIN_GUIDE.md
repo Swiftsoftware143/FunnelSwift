@@ -489,9 +489,16 @@ This map is authoritative. Defined in `kinetic_handler.rs` (`resolve_canonical_u
 **How it works:** The Rust handler reads the URL prefix from the request path (`/{prefix}/{slug}`), maps it to a card type label, and injects the correct canonical URL + branded CTA. The branding badge at the bottom of every public card auto-adjusts based on the URL prefix — a `/c/myjones` card shows "Claim your free Digital Business Card →" while `/b/mylinks` shows "Claim your free Bio Link →".
 
 **Rules:**
-- `funnelswift.net/{prefix}/{slug}` → canonical redirects to `kntcrd.com/{prefix}/{slug}`
-- `{tenant}.kntcrd.com/{prefix}/{slug}` → canonical uses the subdomain directly
+- The canonical URL is the address that ANSWERS 200. Every card vhost serves the short form
+  `/{slug}` and 301s the default `/k/{slug}` spelling onto it, so a Kinetic card's canonical is
+  `kntcrd.com/{slug}` / `{tenant}.kntcrd.com/{slug}` / the custom domain's `/{slug}`.
+- `funnelswift.net/{prefix}/{slug}` → canonical is `kntcrd.com/{slug}` (the marketing and app hosts
+  are shells, not a card's home, and they do not route the short form)
+- `{tenant}.kntcrd.com/{slug}` → canonical uses the subdomain directly
 - Custom domains → canonical uses the custom domain
+- A renamed card's retired address answers `302` straight to the card's current short address, so a
+  rename costs one hop (302 is deliberate — a retired address may be claimed again later)
+- The sitemap, the saved contact (vCard) and the QR code all print the same short address
 
 ---
 

@@ -74,7 +74,11 @@ pub async fn sitemap_xml(State(state): State<AppState>) -> Response {
             let lastmod = updated.map(|d| d.format("%Y-%m-%d").to_string());
             urls.push(xml_url(
                 "https://kntcrd.com",
-                &format!("/k/{}", slug),
+                // The card's canonical address, not the prefixed spelling (kanban t_c4fcafa7):
+                // `kntcrd.com/k/<slug>` answers 301, so listing it in the sitemap advertised a
+                // redirect the page's own canonical then contradicted. `/<slug>` is the URL that
+                // answers 200 and that the card names as its canonical.
+                &format!("/{}", slug),
                 "daily",
                 "0.8",
                 lastmod,

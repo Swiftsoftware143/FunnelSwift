@@ -21,6 +21,21 @@ const CARD_ORIGIN: &str = "https://kntcrd.com";
 /// canonical link from, so a printed QR opens exactly the page the console's "your page" link does.
 const FUNNEL_ORIGIN: &str = "https://funnelswift.net";
 
+/// The address a card QR code opens, in the spelling that ANSWERS 200 (kanban t_c4fcafa7).
+///
+/// Every card vhost 301s `kntcrd.com/k/<slug>` onto `kntcrd.com/<slug>` (sites/kntcrd.conf), so a
+/// QR printed on the `/k/` spelling sent every scanner through a redirect to reach the very page
+/// the code was for. The default card type's address IS the short form; the other five types are
+/// not redirected by any vhost and keep their prefix.
+fn card_public_url(template_type: Option<&str>, slug: &str) -> String {
+    let prefix = card_types::url_prefix(template_type.unwrap_or_default());
+    if prefix == "k" {
+        format!("{CARD_ORIGIN}/{slug}")
+    } else {
+        format!("{CARD_ORIGIN}/{prefix}/{slug}")
+    }
+}
+
 /// The URL a QR code `id` should open, and whether the row is switched on. `None` when the row or
 /// its card is gone.
 async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<(String, bool)>> {
@@ -41,12 +56,7 @@ async fn qr_target_url(state: &AppState, id: Uuid) -> AppResult<Option<(String, 
     };
     if let Some(slug) = card_slug {
         return Ok(Some((
-            format!(
-                "{}/{}/{}",
-                CARD_ORIGIN,
-                card_types::url_prefix(template_type.as_deref().unwrap_or_default()),
-                slug
-            ),
+            card_public_url(template_type.as_deref(), &slug),
             is_active,
         )));
     }
@@ -428,4 +438,45 @@ pub async fn get_qr_png(
         ],
         qr_png(&url)?,
     ))
+}
+
+#[cfg(test)]
+mod card_public_url_tests {
+    use super::*;
+
+    /// A printed QR must open the address that ANSWERS 200 (kanban t_c4fcafa7). A card that
+    /// publishes under the `/k/` slot is the case that was broken: `kntcrd.com/k/<slug>` answers
+    /// 301, so its code sent every scanner through a redirect. Two live cards carry the
+    /// `default` type, which is what lands in that slot.
+    #[test]
+    fn a_k_slot_card_prints_the_short_address() {
+        assert_eq!(
+            card_public_url(Some("default"), "david"),
+            "https://kntcrd.com/david"
+        );
+        assert_eq!(
+            card_public_url(Some("thank_you"), "david"),
+            "https://kntcrd.com/david"
+        );
+    }
+
+    /// An untyped card stores the DEFAULT type, which is a Bio Link — its `/b/` address is not
+    /// redirected by any vhost, so that address is already the 200 one.
+    #[test]
+    fn an_untyped_card_keeps_the_default_types_prefix() {
+        assert_eq!(card_public_url(None, "david"), "https://kntcrd.com/b/david");
+    }
+
+    /// The other five types are redirected by no vhost, so their prefixed address IS the 200 one.
+    #[test]
+    fn the_other_card_types_keep_their_prefix() {
+        assert_eq!(
+            card_public_url(Some("bio_link"), "david"),
+            "https://kntcrd.com/b/david"
+        );
+        assert_eq!(
+            card_public_url(Some("business_card"), "david"),
+            "https://kntcrd.com/c/david"
+        );
+    }
 }

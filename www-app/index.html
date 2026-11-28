@@ -549,7 +549,7 @@ var helpContent={
   "insights":'<h4>Insights</h4><p>Which traffic source actually converts, measured from your own leads. Pick 7, 30 or 90 days; every lead counts under the <strong>source</strong> recorded when it was captured &mdash; give each channel its own link slug and the comparison is per channel. A lead with no source is counted as <code>(direct)</code>, so the rows always add up to the window total.</p><ul><li><strong>Converted</strong> counts leads whose status is <code>converted</code>. <code>qualified</code> is interest, not a customer, so it is not counted here.</li><li><strong>Day by day</strong> is every day in the window that captured at least one lead; <strong>Where they stand</strong> is the status mix of the same leads.</li></ul>',
   "dashboard":'<h4>Dashboard</h4><p>Your command center. Total leads, new today, conversion rates, and active cards at a glance. Click any stat to drill in.</p>',
   "leads":'<h4>Leads</h4><p>All captured leads in one place. <strong>Check the box</strong> next to leads and use the <strong>Bulk Actions</strong> bar to delete, tag, or export multiple leads at once.</p><ul><li>Click a lead to view/edit details</li><li>Use <strong>Tags</strong> to organize — admin-managed system tags are shared with every account</li><li><strong>Status</strong> tracks progress (the leads list badge and the Edit modal both edit it): new → contacted → qualified → converted → lost. The tenant pipeline on the <strong>Lead Stages</strong> screen is a separate field (Stage).</li><li><strong>Import CSV / Export CSV</strong> &mdash; both buttons use the same columns (Name, Email, Phone, Company, Source, Stage, Status, Score, Notes), so a file you exported can be imported back. Import is part of the plan&rsquo;s import/export entitlement (Agency): it refuses before writing a single row when the plan does not carry it or the file would not fit, and it reports how many rows were new, already present, or unreadable.</li></ul>',
-  "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Every card has a public URL, and they all live on the card host — <b>www.kntcrd.com</b> — not on the address you are signed in to:</p><ul><li><code>www.kntcrd.com/k/slug</code> — Kinetic Card (original)</li><li><code>www.kntcrd.com/b/slug</code> — Bio Link</li><li><code>www.kntcrd.com/c/slug</code> — Digital Business Card</li><li><code>www.kntcrd.com/m/slug</code> — Micro Page</li><li><code>www.kntcrd.com/f/slug</code> — Mini Funnel</li><li><code>www.kntcrd.com/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
+  "cards":'<h4>Kinetic Cards</h4><p>Your digital business cards, bio links, landing pages, and mini funnels. Every card has a public URL, and they all live on the card host — <b>www.kntcrd.com</b> — not on the address you are signed in to:</p><ul><li><code>www.kntcrd.com/slug</code> — Kinetic Card (original)</li><li><code>www.kntcrd.com/b/slug</code> — Bio Link</li><li><code>www.kntcrd.com/c/slug</code> — Digital Business Card</li><li><code>www.kntcrd.com/m/slug</code> — Micro Page</li><li><code>www.kntcrd.com/f/slug</code> — Mini Funnel</li><li><code>www.kntcrd.com/h/slug</code> — Hero Page</li></ul><p><strong>+ New Card</strong> opens the template gallery — choose from 54 templates. Click a card to preview, edit, or copy its URL. The branding badge at the bottom auto-adjusts: a <code>/c/</code> card says "Claim your free Digital Business Card →" while a <code>/b/</code> card says "Claim your free Bio Link →". <strong>Free plans:</strong> 1 card, 8 templates. <strong>Paid:</strong> 500+ cards, all 54 templates.</p>',
   "tags":'<h4>My Tags</h4><p>Create and manage tags to organize your leads. Tags can be regular labels or <strong>System Tags</strong> created by an admin and shared with every account.</p><ul><li><strong>+ New Tag</strong> — create a tag with a color</li><li><strong>System Tags</strong> are admin-managed and shared across all tenants — they do not provision anything in other apps</li></ul>',
   "tg":'<h4>My Tag Groups</h4><p>Group related tags together for cleaner organization. Name your group and select which tags belong to it.</p>',
   "tagrules":'<h4>Tag Automation</h4><p>Rules that change a lead for you the moment a trigger tag goes on it. The rule runs on the server as the tag is applied, so a lead form, a card scan, a bulk action or the API all set it off \u2014 there is nothing to run by hand.</p><ul><li><strong>Create rule</strong> picks the trigger tag, what happens (<strong>also add a tag</strong>, <strong>remove a tag</strong>, or <strong>replace every tag with one</strong>) and the tag it acts on.</li><li>The switch in <strong>Active</strong> pauses a rule without deleting it; <strong>Delete</strong> removes it for good. A paused rule is skipped.</li><li>The shared rules the platform ships (for example &quot;Sold removes Qualified&quot;) are managed centrally and still run for your leads; the rules you write apply to this workspace only.</li><li><strong>Recent tag changes</strong> lists every tag added or removed on your leads, newest first, including the ones a rule made.</li></ul>',
@@ -2825,7 +2825,7 @@ function LCM(){
 
       var act=El("div",{"class":"act"});
       act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){MFC(c)}},"Edit"));
-      var kurl=(KCB&&KCB.subdomain)?("https://"+KCB.subdomain+".kntcrd.com/k/"):"https://kntcrd.com/k/";
+      var kurl=(KCB&&KCB.subdomain)?("https://"+KCB.subdomain+".kntcrd.com/"):"https://kntcrd.com/";
       act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){window.open(kurl+(c.slug||"")+"?preview=1","_blank")}},"Preview"));
       act.appendChild(El("a",{"class":"btn btn-sm btn-o",style:"text-decoration:none",href:kurl+(c.slug||""),target:"_blank"},"View"));
       act.appendChild(El("button",{"class":"btn btn-sm",onclick:function(){QRC(c)}},"QR"));
@@ -2840,9 +2840,9 @@ function LCM(){
   // Domain Settings
   b.appendChild(El("hr",{style:"margin:24px 0;border-color:#e2e8f0"}));
   b.appendChild(El("h4",{style:"font-size:14px;color:#1e1b4b;margin-bottom:6px"},"Your Card Domain"));
-  b.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin-bottom:12px"},"Your cards are published at <b>https://"+((KCB&&KCB.subdomain)?X(KCB.subdomain)+".kntcrd.com/k/":"kntcrd.com/k/")+"your-slug</b>"));
+  b.appendChild(El("p",{style:"color:#64748b;font-size:12px;margin-bottom:12px"},"Your cards are published at <b>https://"+((KCB&&KCB.subdomain)?X(KCB.subdomain)+".kntcrd.com/":"kntcrd.com/")+"your-slug</b>"));
   var df=El("div",{id:"lc-df"});
-  df.innerHTML='<div class="fld"><label>Your Subdomain</label><div style="display:flex;gap:6px;align-items:center"><input id="lc-sub" value="'+X(KCB.subdomain||"")+'" placeholder="yourname" style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" oninput="if(this.value){this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,\'\')}"><span style="color:#94a3b8;font-size:13px">.kntcrd.com</span></div><p style="font-size:11px;color:#94a3b8;margin-top:4px">3-63 characters — lowercase letters, numbers, hyphens. Your cards then serve from <b id="lc-sub-preview">'+((KCB.subdomain)?X(KCB.subdomain)+".kntcrd.com/k/your-slug":"yourname.kntcrd.com/k/your-slug")+'</b></p></div>';
+  df.innerHTML='<div class="fld"><label>Your Subdomain</label><div style="display:flex;gap:6px;align-items:center"><input id="lc-sub" value="'+X(KCB.subdomain||"")+'" placeholder="yourname" style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" oninput="if(this.value){this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,\'\')}"><span style="color:#94a3b8;font-size:13px">.kntcrd.com</span></div><p style="font-size:11px;color:#94a3b8;margin-top:4px">3-63 characters — lowercase letters, numbers, hyphens. Your cards then serve from <b id="lc-sub-preview">'+((KCB.subdomain)?X(KCB.subdomain)+".kntcrd.com/your-slug":"yourname.kntcrd.com/your-slug")+'</b></p></div>';
   // t_7caf7873: this footer control is appended BELOW every markup write on the same parent.
   // A parent markup write re-parses its subtree, recreating children that were appended before
   // it WITHOUT their property-assigned handlers — the control then renders dead on the served
@@ -3282,7 +3282,7 @@ function MFC(data){
 
   right.appendChild(El("p",{style:"font-size:11px;color:#94a3b8;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em"},"Live Preview"));
   right.appendChild(previewBox);
-  right.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin-top:6px;text-align:center"},(c.title||"Untitled")+" at kntcrd.com/k/"+(c.slug||"your-slug")));
+  right.appendChild(El("p",{style:"font-size:10px;color:#94a3b8;margin-top:6px;text-align:center"},(c.title||"Untitled")+" at kntcrd.com/"+(c.slug||"your-slug")));
   // The block preview is the SAME server renderer the public page uses (POST /api/v1/kinetic/preview-blocks),
   // on the blocks currently in the editor — so a block change can be seen BEFORE it is public. The old
   // preview here was the template-gallery wireframe, which drew a lead form as a grey bar.
@@ -3327,7 +3327,7 @@ function MFC(data){
   var slugWrap = MF("Card address","mc-slug",c.slug||"","my-card");
   var slugInput = slugWrap.querySelector("input");
   var slugHint = El("p",{id:"mc-slug-hint",style:"font-size:11px;color:#94a3b8;margin:4px 0 0"});
-  var slugBase = "https://"+(((typeof KCB!="undefined" && KCB && KCB.subdomain) ? KCB.subdomain+".kntcrd.com" : "kntcrd.com"))+"/k/";
+  var slugBase = "https://"+(((typeof KCB!="undefined" && KCB && KCB.subdomain) ? KCB.subdomain+".kntcrd.com" : "kntcrd.com"))+"/";
   function normSlug(v){
     var s=String(v||"").toLowerCase(), out="";
     for(var i=0;i<s.length;i++){
@@ -3775,7 +3775,7 @@ function SC2(id){
     // page link in silence (measured live 2026-11-15: the second card titled the same used to answer
     // 500, so it never got an address at all).
     if(!id && r && r.slug && String(r.slug) !== String(d.slug))
-      showMsg("That page address was already taken, so your card was published at /k/"+r.slug+".","mi");
+      showMsg("That page address was already taken, so your card was published at /"+r.slug+".","mi");
     /* An EDIT says which address the card now answers on (2026-11-16). The server returns the slug
        the row actually holds after its own normalising, so the confirmation quotes the saved link
        rather than the text that was typed over it. */
@@ -3784,7 +3784,7 @@ function SC2(id){
          used to answer on and redirects it to this one, so a printed business card, a QR code or a
          post already out in the world still lands on the card. Said here because the customer is
          looking at the address change and needs to know their old link did not die with it. */
-      showMsg("Saved \u2014 your card is published at /k/"+r.slug+". Links to your old address still reach it.","mk");
+      showMsg("Saved \u2014 your card is published at /"+r.slug+". Links to your old address still reach it.","mk");
     C(); KCB.tab="my"; S("cards");
   }).catch(function(e){showMsg(e.message||"Save failed","me")});
 }
@@ -3819,7 +3819,7 @@ function LCSV(){
   m.className="msg"; m.textContent="Saving...";
   api("/api/v1/kinetic/subdomain",{method:"PUT",body:JSON.stringify({subdomain:v})}).then(function(d){
     KCB.subdomain=d.subdomain||v;
-    if($("lc-sub-preview")) $("lc-sub-preview").textContent=KCB.subdomain+".kntcrd.com/k/your-slug";
+    if($("lc-sub-preview")) $("lc-sub-preview").textContent=KCB.subdomain+".kntcrd.com/your-slug";
     m.className="msg mk"; m.textContent="Saved — your cards are served from "+KCB.subdomain+".kntcrd.com";
     setTimeout(function(){m.className="msg"},5000);
   }).catch(function(e){ m.className="msg me"; m.textContent=(e&&e.message)||"Could not save subdomain"; });
@@ -6974,7 +6974,7 @@ function LM(){
     // Subdomain
     var sdDiv=El("div",{style:"border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:10px"});
     var sdHas=!!String(sd.value||'').trim();
-    var sdLabel=sdHas?(X(sd.value)+'.kntcrd.com'):'Not set yet — until you choose one, your cards serve from kntcrd.com/k/your-slug';
+    var sdLabel=sdHas?(X(sd.value)+'.kntcrd.com'):'Not set yet — until you choose one, your cards serve from kntcrd.com/your-slug';
     sdDiv.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:13px">Card Subdomain</strong><br><span id="lmsd-label" style="font-size:12px;color:#4f46e5">'+sdLabel+'</span></div><div style="display:flex;gap:6px;align-items:center"><input id="lmsd" value="'+X(sd.value||'')+'" placeholder="yourname" style="width:120px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"><button class="btn btn-sm" onclick="saveSubdomain()">Save</button></div></div>';
     list.appendChild(sdDiv);
     
