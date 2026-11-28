@@ -312,4 +312,98 @@ mod tests {
         // The audit subject is the key PREFIX; the plaintext must never be formatted into a string.
         assert!(SRC.contains("format!(\"key {key_prefix}\")"));
     }
+
+    /// kanban t_47d24788 — THE PAGE TOOLS PUBLISH THE BLOCK VOCABULARY.
+    ///
+    /// Measured live: `create_page` stored `layout_blocks` all along, but its published schema never
+    /// named the key, so an agent reading the tool list had no way to send blocks; the shape an agent
+    /// reaches for instead (`blocks`) was accepted, ignored and answered 201, leaving `blocks: 0` — a
+    /// page that had to be finished by hand in the editor, reported as "the platform cannot draw
+    /// link blocks". Both spellings are published now, an omitted array is documented as an EMPTY
+    /// page, and a key the tool does not publish is refused by name.
+    #[tokio::test]
+    async fn the_page_tools_publish_their_block_vocabulary() {
+        for name in ["create_page", "update_page"] {
+            let tool = spec(name);
+            let props = tool
+                .pointer("/inputSchema/properties")
+                .and_then(|v| v.as_object())
+                .unwrap_or_else(|| panic!("{name} must publish a properties object"));
+            for key in super::super::mcp::PAGE_BLOCK_KEYS {
+                assert!(
+                    props.contains_key(key),
+                    "{name} must publish `{key}` — a block key the tool does not name is a payload \
+                     an agent cannot send (or sends and loses in silence)"
+                );
+            }
+            assert_eq!(
+                tool.pointer("/inputSchema/additionalProperties"),
+                Some(&serde_json::Value::Bool(false)),
+                "{name} must keep additionalProperties false"
+            );
+            let description = tool
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            assert!(
+                description.contains("empty"),
+                "{name} must say plainly that a page created without blocks is an empty page"
+            );
+        }
+    }
+
+    /// kanban t_47d24788 — NOTHING IS PUBLISHED THAT THE CARD WRITER DOES NOT READ.
+    ///
+    /// The failure that caused the report was the reverse (the writer read a key nothing published),
+    /// and the neighbouring one was found in the same sweep: `create_page` published
+    /// `button_bg_color` / `button_text_color` while the handler filled those columns from
+    /// `sub_color` / `btn_color`, so every colour the editor sent was dropped. This asserts the
+    /// published names against the handler's own source, so a schema key that no statement reads
+    /// fails the build instead of lying to a customer.
+    #[tokio::test]
+    async fn every_published_page_key_is_read_by_the_card_writer() {
+        let handler = include_str!("handlers/kinetic_handler.rs");
+        for name in ["create_page", "update_page"] {
+            let tool = spec(name);
+            let props = tool
+                .pointer("/inputSchema/properties")
+                .and_then(|v| v.as_object())
+                .expect("properties");
+            for key in props.keys() {
+                assert!(
+                    handler.contains(&format!("\"{key}\"")),
+                    "{name} publishes `{key}`, which kinetic_handler.rs never reads — \
+                     an argument that is advertised and dropped"
+                );
+            }
+        }
+    }
+
+    /// kanban t_47d24788 — AN UNPUBLISHED ARGUMENT IS A REFUSAL THAT NAMES IT.
+    #[tokio::test]
+    async fn an_unknown_argument_is_refused_by_name() {
+        let card = spec("create_page");
+        let schema = card.get("inputSchema").expect("schema");
+        let unknown = serde_json::json!({"title": "Probe", "blockz": [{"type": "link"}]});
+        let err = super::super::mcp::refuse_unknown_args("create_page", &unknown, schema)
+            .expect_err("an argument the tool does not publish must be refused");
+        let text = format!("{err:?}");
+        assert!(
+            text.contains("blockz"),
+            "the refusal must name the key: {text}"
+        );
+        assert!(
+            text.contains("layout_blocks"),
+            "a block-shaped key must be pointed at layout_blocks: {text}"
+        );
+
+        // Every published key is accepted, including the plain `blocks` alias.
+        for key in super::super::mcp::PAGE_BLOCK_KEYS {
+            let mut args = serde_json::json!({"title": "Probe"});
+            args[key] = serde_json::json!([]);
+            super::super::mcp::refuse_unknown_args("create_page", &args, schema)
+                .unwrap_or_else(|e| panic!("`{key}` is published and must be accepted: {e:?}"));
+        }
+    }
 }

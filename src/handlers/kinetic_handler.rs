@@ -287,11 +287,21 @@ fn social_column_values(body: &Value) -> Vec<Option<String>> {
 /// they cannot drift apart again.
 ///
 /// Returns `None` when the body carries neither key (leave the column alone / take the default).
+///
+/// kanban t_47d24788 — `blocks` is ACCEPTED too, and it is the name an agent reaches for first: the
+/// preview route in this file has always called the same array `blocks` (`PreviewBlocksBody`), so a
+/// client that read this product's own JSON had two spellings to choose from and the one it did not
+/// pick was dropped in silence. Measured live 2026-11-28 through the MCP door: `create_page
+/// {title, blocks: [...]}` answered 201 with `blocks: 0`, while the same array under `layout_blocks`
+/// was stored. Precedence is the honest key first, then the plain name, then the legacy alias.
 fn blocks_from_body(body: &Value) -> Option<Value> {
     if let Some(v) = body.get("layout_blocks") {
         // An explicit `null` means "not supplied", like an absent key: `[]` is how a client CLEARS
         // every block, and binding a JSON null into the jsonb column would store the literal
         // `null` there instead of leaving it alone.
+        return (!v.is_null()).then(|| v.clone());
+    }
+    if let Some(v) = body.get("blocks") {
         return (!v.is_null()).then(|| v.clone());
     }
     match body.get("social_links") {
@@ -503,8 +513,21 @@ pub async fn create_card(
     let bg_color = body["bg_color"].as_str().unwrap_or("#0f172a");
     let accent_color = body["accent_color"].as_str().unwrap_or("#6366f1");
     let text_color = body["text_color"].as_str().unwrap_or("#ffffff");
-    let sub_color = body["sub_color"].as_str().unwrap_or("#94a3b8");
-    let btn_color = body["btn_color"].as_str().unwrap_or("#6366f1");
+    // kanban t_47d24788 — TWO SPELLINGS OF ONE COLOUMN PAIR, and the one the EDITOR sends was the
+    // one nobody read. This route filled `button_bg_color` from `sub_color` and `button_text_color`
+    // from `btn_color`; the card editor (`www-app/index.html`) sends `button_bg_color` /
+    // `button_text_color` and has never sent `sub_color`/`btn_color` (0 occurrences), so every
+    // colour a customer picked for their buttons was dropped in silence. The honest names win now;
+    // the old ones stay as a fallback so an existing API client keeps working, and the defaults are
+    // unchanged so a card that sends neither looks exactly as it did.
+    let button_bg_color = body["button_bg_color"]
+        .as_str()
+        .or_else(|| body["sub_color"].as_str())
+        .unwrap_or("#94a3b8");
+    let button_text_color = body["button_text_color"]
+        .as_str()
+        .or_else(|| body["btn_color"].as_str())
+        .unwrap_or("#6366f1");
     let card_kind = body["type"].as_str().or(body["card_type"].as_str());
     // kanban t_747b4dd6 — ONE value space for `kinetic_cards.template_type`: the card TYPE, spelled
     // in the editor's underscore ids (`crate::card_types::CARD_TYPES`). The hyphenated card kinds
@@ -537,8 +560,14 @@ pub async fn create_card(
     let blocks = crate::security::lead_fields::strip_nul_json(
         &blocks_from_body(&body).unwrap_or_else(|| json!([])),
     );
+    // kanban t_47d24788 — echo the block count, so a caller learns in the SAME round trip whether
+    // its payload landed. Measured live: an agent-created page answered "Card created" with no
+    // count while the array had been dropped under a key nobody named, and the page came out empty.
+    let block_count = blocks.as_array().map(Vec::len).unwrap_or(0);
     let socials = social_column_values(&body);
-    let theme = body["theme_slug"].as_str();
+    let theme = body["theme_slug"]
+        .as_str()
+        .or_else(|| body["theme"].as_str());
     let video_provider = body["video_provider"].as_str();
     let video_id = body["video_id"].as_str();
 
@@ -583,7 +612,7 @@ pub async fn create_card(
     let mut last_err: Option<sqlx::Error> = None;
     for _attempt in 0..3u32 {
         let insert = sqlx::query("INSERT INTO kinetic_cards (id, tenant_id, user_id, title, slug, bio, bg_color, accent_color, text_color, button_bg_color, button_text_color, template_type, tagline, meta_description, avatar_url, layout_blocks, theme, video_provider, video_id, linkedin_url, twitter_url, instagram_url, tiktok_url, youtube_url, facebook_url, is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,true)")
-            .bind(id).bind(tenant_id).bind(id).bind(title).bind(&attempt_slug).bind(&bio).bind(bg_color).bind(accent_color).bind(text_color).bind(sub_color).bind(btn_color).bind(&template_type).bind(&tagline).bind(&meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
+            .bind(id).bind(tenant_id).bind(id).bind(title).bind(&attempt_slug).bind(&bio).bind(bg_color).bind(accent_color).bind(text_color).bind(button_bg_color).bind(button_text_color).bind(&template_type).bind(&tagline).bind(&meta_desc).bind(avatar).bind(&blocks).bind(theme).bind(video_provider).bind(video_id)
             .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
             .execute(&state.pool)
             .await;
@@ -591,7 +620,8 @@ pub async fn create_card(
             Ok(_) => {
                 outcome = Some((
                     StatusCode::CREATED,
-                    json!({"id": id, "slug": attempt_slug, "message": "Card created"}),
+                    json!({"id": id, "slug": attempt_slug, "message": "Card created",
+                           "blocks": block_count}),
                 ));
                 break;
             }
@@ -821,8 +851,10 @@ pub async fn update_card(
         .bind(body["title"].as_str())
         .bind(bio)
         .bind(body["bg_color"].as_str()).bind(body["accent_color"].as_str())
-        .bind(body["text_color"].as_str()).bind(body["sub_color"].as_str())
-        .bind(body["btn_color"].as_str()).bind(body["avatar_url"].as_str())
+        .bind(body["text_color"].as_str())
+        .bind(body["button_bg_color"].as_str().or_else(|| body["sub_color"].as_str()))
+        .bind(body["button_text_color"].as_str().or_else(|| body["btn_color"].as_str()))
+        .bind(body["avatar_url"].as_str())
         .bind(&blocks)
         .bind(tagline)
         .bind(meta_desc)
@@ -831,7 +863,7 @@ pub async fn update_card(
         // the footer CTA is the plan feature `kinetic_cta_text` and per-block CTAs live inside
         // `layout_blocks`. Naming it made this UPDATE fail 42703 on every card edit.
         .bind(slug_change.as_deref())
-        .bind(body["theme"].as_str())
+        .bind(body["theme_slug"].as_str().or_else(|| body["theme"].as_str()))
         .bind(template_type)
         .bind(vp_change.is_some())
         .bind(vp_change.flatten())
@@ -904,7 +936,13 @@ pub async fn update_card(
             }
         }
     }
-    Ok(Json(json!({"message": "Card updated", "slug": saved_slug})))
+    // kanban t_47d24788 — the same one-round-trip check as create: when this save carried blocks,
+    // say how many are now stored, so a caller never has to guess whether its array was understood.
+    let mut answer = json!({"message": "Card updated", "slug": saved_slug});
+    if let Some(count) = blocks.as_ref().and_then(Value::as_array).map(Vec::len) {
+        answer["blocks"] = json!(count);
+    }
+    Ok(Json(answer))
 }
 
 #[derive(Deserialize)]

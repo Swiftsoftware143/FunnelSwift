@@ -817,6 +817,13 @@ window.FunnelSwiftConfig = {
         a <code>Bearer</code> placeholder where your key goes; <strong>Copy config</strong> puts it on your
         clipboard.</li>
       </ul>
+      <p><strong>Building a page from your AI client:</strong> <code>create_page</code> takes the
+      page&rsquo;s content with the page. Send <code>layout_blocks</code> (or <code>blocks</code>) and the
+      link list, buttons, hero and lead form you name are stored and drawn on the public page straight away
+      &mdash; the answer says how many blocks were stored. A page created without them is an
+      <em>empty</em> page waiting for the editor, not a broken one, and <code>update_page</code> replaces the
+      whole array when you send it. An argument the tool does not list is refused and named, never silently
+      ignored.</p>
       <p>If the token block says you have no active key, create one on the <strong>API Keys</strong> screen and
       come back &mdash; both screens read the same key, so they can never disagree. If a client says it cannot
       reach the server, check that the key is the one this screen lists: a regenerated or revoked key stops

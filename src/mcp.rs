@@ -442,6 +442,59 @@ fn id_of(v: &Value) -> Option<Uuid> {
         .and_then(|s| Uuid::parse_str(s).ok())
 }
 
+/// Refuse an argument the tool does not publish, naming it (kanban t_47d24788).
+///
+/// The door hands `params.arguments` to the handler untouched — it does not validate them against
+/// `inputSchema` — so before this a key the tool never advertised was accepted, ignored and answered
+/// 201. Measured live on `create_page`: `{title, blocks: [...]}` came back "Card created" with
+/// `blocks: 0` and the array nowhere, which is exactly how "the platform cannot draw link blocks"
+/// got reported when the truth was "the API dropped my payload and did not say so". A client that
+/// honours the published `additionalProperties: false` drops such a key on ITS side, which costs the
+/// same payload silently. The tool's own schema is the allowed set — one list, no drift — so a key
+/// the handler honours can never be unadvertised, and a typo is a refusal that says its name.
+pub(crate) fn refuse_unknown_args(
+    tool: &str,
+    args: &Value,
+    schema: &Value,
+) -> Result<(), ToolError> {
+    let Some(given) = args.as_object() else {
+        return Ok(());
+    };
+    let Some(published) = schema.get("properties").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    let mut unknown: Vec<&str> = given
+        .keys()
+        .filter(|k| !published.contains_key(*k))
+        .map(String::as_str)
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    unknown.sort_unstable();
+    let mut accepted: Vec<&str> = published.keys().map(String::as_str).collect();
+    accepted.sort_unstable();
+    // A block-shaped key gets a pointer at the array the tool does publish, because that is the
+    // mistake an agent building a biolink actually makes.
+    let hint = if unknown
+        .iter()
+        .any(|k| k.contains("block") || k.contains("link"))
+    {
+        " Send the block array in `layout_blocks` (alias `blocks`)."
+    } else {
+        ""
+    };
+    Err(ToolError::Invalid(format!(
+        "`{tool}` does not take {}. Accepted arguments: {}.{hint} Nothing was changed by this call.",
+        unknown
+            .iter()
+            .map(|k| format!("`{k}`"))
+            .collect::<Vec<_>>()
+            .join(", "),
+        accepted.join(", ")
+    )))
+}
+
 /// Resolve the acting key to the app's own identity: the key's row (audit actor), its account, and
 /// the live user a write is attributed to. A key minted for an account with no user falls back to
 /// that account's first active user; an account with none refuses the write rather than inventing
@@ -608,30 +661,98 @@ fn spec_archive_funnel() -> ToolSpec {
     }))
 }
 
+/// Every argument the page tools publish — and therefore accept (kanban t_47d24788).
+///
+/// THE BUG THIS CLOSES: the door hands `params.arguments` straight to `kinetic_handler::create_card`
+/// without validating them against `inputSchema`, so a key the schema did not name was accepted,
+/// ignored, and answered 201. The schema named eleven keys, while the card writer honours the ones
+/// below. `create_page {title, layout_blocks: [...]}` really did store the blocks (the handler reads
+/// `layout_blocks`), but nothing advertised that key, so an agent had no way to know it existed, and
+/// the shape an agent reaches for — `blocks`, the same word this app uses in its own preview route —
+/// was dropped in silence and produced exactly the empty card the SwiftImpact CEO measured. A client
+/// that honours the published `additionalProperties: false` drops such a key on ITS side, which is
+/// the same loss seen from the agent's end: "the API makes an empty card".
+///
+/// The rule now: the published vocabulary IS the accepted vocabulary. Every key a page writer reads
+/// is published, and `refuse_unknown_args` refuses anything else BY NAME (with a pointer at
+/// `layout_blocks` for a block-shaped key), so a wrong key is a visible refusal instead of a page
+/// that silently comes out empty.
+pub(crate) const PAGE_BLOCK_KEYS: [&str; 3] = ["layout_blocks", "blocks", "social_links"];
+
+/// The published `properties` of `create_page` / `update_page`, in one place so the two tools cannot
+/// disagree about the card vocabulary.
+fn page_write_properties() -> Value {
+    json!({
+        "title": { "type": "string", "description": "Required. The page's name; the address is derived from it when `slug` is omitted." },
+        "slug": { "type": "string", "description": "Public address (`/k/<slug>`); made unique inside this workspace when taken." },
+        "bio": { "type": "string" },
+        "tagline": { "type": "string" },
+        "meta_description": { "type": "string", "description": "The one-line summary a link preview shows." },
+        "avatar_url": { "type": "string" },
+        "type": { "type": "string", "description": "Card kind, e.g. bio-link, business_card, hero, mini_funnel (the editor's underscore ids or their hyphenated aliases)." },
+        "card_type": { "type": "string", "description": "Alias of `type`." },
+        "template_type": { "type": "string", "description": "Catalogue template id. Premium templates are refused when the plan does not grant them." },
+        "theme_slug": { "type": "string", "description": "Card theme. Premium themes are refused when the plan does not grant them." },
+        "theme": { "type": "string", "description": "Alias of `theme_slug`." },
+        "bg_color": { "type": "string" },
+        "text_color": { "type": "string" },
+        "accent_color": { "type": "string" },
+        "button_bg_color": { "type": "string" },
+        "button_text_color": { "type": "string" },
+        "video_provider": { "type": "string", "description": "e.g. youtube, vimeo." },
+        "video_id": { "type": "string" },
+        "layout_blocks": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "The page's blocks, drawn in order on the public page: link lists (link_list, stacked_links, featured_links, project_links), buttons, hero, lead form, socials and so on. THIS IS WHAT MAKES A CARD USABLE — a page created without it is an empty page."
+        },
+        "blocks": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "Alias of `layout_blocks` (preferred spelling: layout_blocks)."
+        },
+        "social_links": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "Legacy alias of `layout_blocks`, kept for older clients. The six social URIs have their own keys below."
+        },
+        "linkedin_url": { "type": "string" },
+        "twitter_url": { "type": "string" },
+        "instagram_url": { "type": "string" },
+        "tiktok_url": { "type": "string" },
+        "youtube_url": { "type": "string" },
+        "facebook_url": { "type": "string" }
+    })
+}
+
+/// `update_page` publishes the whole card vocabulary plus the row id it changes.
+fn page_update_properties() -> Value {
+    let mut props = page_write_properties();
+    if let Some(map) = props.as_object_mut() {
+        map.insert(
+            "id".to_string(),
+            json!({ "type": "string", "description": "The card's uuid." }),
+        );
+    }
+    props
+}
+
 fn spec_create_page() -> ToolSpec {
     ToolSpec::write(
         "create_page",
         "Create a landing page (a kinetic card, public at /k/<slug>) in this workspace. `title` is \
-         required; the slug is derived from it (or from `slug`) and made unique. Optional: bio, \
-         tagline, theme, template_type and the five hex colours. Returns the new row. Audited with \
-         the key id and the card id.",
+         required; the slug is derived from it (or from `slug`) and made unique. Send `layout_blocks` \
+         to give the page its content — link lists, buttons, a hero, a lead form, socials — and the \
+         answer carries how many blocks were stored. Omitted, the page is created EMPTY, with no \
+         blocks on it: that is a page waiting to be finished in the editor or with `update_page`, not \
+         a broken one. The five colours, `theme_slug`, `template_type` and the six social URLs are \
+         optional. Any argument this tool does not list is refused by name rather than ignored. \
+         Returns the new row. Audited with the key id and the card id.",
     )
     .title("Create page")
     .schema(json!({
         "type": "object",
-        "properties": {
-            "title": { "type": "string" },
-            "slug": { "type": "string", "description": "Public address; derived from the title when omitted." },
-            "bio": { "type": "string" },
-            "tagline": { "type": "string" },
-            "template_type": { "type": "string" },
-            "theme": { "type": "string" },
-            "bg_color": { "type": "string" },
-            "text_color": { "type": "string" },
-            "accent_color": { "type": "string" },
-            "button_bg_color": { "type": "string" },
-            "button_text_color": { "type": "string" }
-        },
+        "properties": page_write_properties(),
         "required": ["title"],
         "additionalProperties": false
     }))
@@ -640,32 +761,19 @@ fn spec_create_page() -> ToolSpec {
 fn spec_update_page() -> ToolSpec {
     ToolSpec::write(
         "update_page",
-        "Change one of this workspace's landing pages: send only the fields to change (title, slug, \
-         bio, tagline, theme, template_type, avatar_url, the five colours, social urls, \
-         layout_blocks). Premium themes/templates are still refused when the plan does not grant \
-         them. A foreign id answers not_found. Audited.",
+        "Change one of this workspace's landing pages: send only the fields to change (everything \
+         `create_page` accepts, plus `id`) — title, slug, bio, tagline, theme_slug, template_type, \
+         avatar_url, the four colours, the six social URLs, or `layout_blocks` (the whole block array; \
+         `blocks` is the same key under its plain name, and `[]` leaves the page empty). Premium themes/templates are still refused \
+         when the plan does not grant them. When `layout_blocks` is sent the answer carries the block \
+         count now stored. A foreign id answers not_found. Any argument this tool does not list is \
+         refused by name rather than ignored. Audited.",
     )
     .title("Update page")
     .idempotent()
     .schema(json!({
         "type": "object",
-        "properties": {
-            "id": { "type": "string", "description": "The card's uuid." },
-            "title": { "type": "string" },
-            "slug": { "type": "string" },
-            "bio": { "type": "string" },
-            "tagline": { "type": "string" },
-            "theme": { "type": "string" },
-            "template_type": { "type": "string" },
-            "avatar_url": { "type": "string" },
-            "bg_color": { "type": "string" },
-            "text_color": { "type": "string" },
-            "accent_color": { "type": "string" },
-            "button_bg_color": { "type": "string" },
-            "button_text_color": { "type": "string" },
-            "meta_description": { "type": "string" },
-            "layout_blocks": { "type": "array", "items": { "type": "object" } }
-        },
+        "properties": page_update_properties(),
         "required": ["id"],
         "additionalProperties": false
     }))
@@ -1790,10 +1898,19 @@ pub fn registry(state: AppState) -> Registry {
                 key_id,
                 tenant,
             } = actor;
-            let out = kinetic_handler::create_card(auth, State(st.clone()), Json(args.clone()))
-                .await
-                .map(|(_status, Json(v))| v)
-                .map_err(tool_err);
+            // A key this tool does not publish is refused BY NAME before anything is written
+            // (kanban t_47d24788 — see `refuse_unknown_args`): a dropped payload must never look
+            // like a successful create.
+            let out =
+                match refuse_unknown_args("create_page", &args, &spec_create_page().input_schema) {
+                    Err(e) => Err(e),
+                    Ok(()) => {
+                        kinetic_handler::create_card(auth, State(st.clone()), Json(args.clone()))
+                            .await
+                            .map(|(_status, Json(v))| v)
+                            .map_err(tool_err)
+                    }
+                };
             audit_write(
                 &st,
                 tenant,
@@ -1820,10 +1937,18 @@ pub fn registry(state: AppState) -> Registry {
                 tenant,
             } = actor;
             let out =
-                kinetic_handler::update_card(auth, State(st.clone()), Path(target), Json(args))
+                match refuse_unknown_args("update_page", &args, &spec_update_page().input_schema) {
+                    Err(e) => Err(e),
+                    Ok(()) => kinetic_handler::update_card(
+                        auth,
+                        State(st.clone()),
+                        Path(target),
+                        Json(args),
+                    )
                     .await
                     .map(|Json(v)| v)
-                    .map_err(tool_err);
+                    .map_err(tool_err),
+                };
             audit_write(
                 &st,
                 tenant,
