@@ -2576,10 +2576,25 @@ async function renderLeads() {
   const per = 50;
   const page = Math.max(1, STATE.leadsPage || 1);
   const term = (STATE.leadsSearch || '').trim();
+  // WHICH FUNNEL BROUGHT THIS LEAD (cron default, 2026-11-27). A lead captured on a funnel page
+  // stores `custom_fields.funnel_id`, and `GET /leads?funnel_id=` has filtered on it since that
+  // filter shipped — but this console sent neither, so every funnel-captured lead read "funnel" as
+  // its Source and an operator with more than one page could not tell which page earned the lead.
+  // The funnel list is already served (`GET /funnels`, the same call the Funnels screen makes), so
+  // the names cost one request and no schema change.
+  const funnelFilter = (STATE.leadsFunnel || '').trim();
+  let funnels = [];
+  try {
+    const fr = await api('/funnels');
+    funnels = Array.isArray(fr) ? fr : ((fr && (fr.data || fr.funnels)) || []);
+  } catch (e) { funnels = []; }
+  const funnelName = {};
+  funnels.forEach(function (f) { if (f && f.id) funnelName[f.id] = f.name || 'Funnel'; });
   let payload = { data: [], total: 0 };
   try {
     payload = await api('/leads?per_page=' + per + '&page=' + page +
-      (term ? '&search=' + encodeURIComponent(term) : ''));
+      (term ? '&search=' + encodeURIComponent(term) : '') +
+      (funnelFilter ? '&funnel_id=' + encodeURIComponent(funnelFilter) : ''));
   } catch (e) { payload = { data: [], total: 0 }; }
   let leads = Array.isArray(payload) ? payload : (payload.data || payload.leads || []);
   const total = Array.isArray(payload) ? leads.length : (payload.total || leads.length);
@@ -2596,6 +2611,7 @@ async function renderLeads() {
         <input type="file" id="import-leads-file" accept=".csv,text/csv" style="display:none">
         <button class="btn btn-secondary btn-sm" id="import-leads-btn">📤 Import CSV</button>
         <button class="btn btn-secondary btn-sm" id="export-leads-btn">📥 Export CSV</button>
+        ${funnels.length ? `<select class="input" id="lead-funnel-filter" aria-label="Filter leads by funnel" title="Show only the leads one funnel captured" style="width:190px"><option value="">All funnels</option>${funnels.map(function (f) { return `<option value="${x(f.id)}"${funnelFilter === f.id ? ' selected' : ''}>${x(f.name || 'Funnel')}</option>`; }).join('')}</select>` : ''}
         <button class="btn btn-primary btn-sm" id="add-lead-btn">+ Add Lead</button>
       </div>
     </div>
@@ -2605,7 +2621,7 @@ async function renderLeads() {
         <tbody id="leads-tbody">${leads.map(l=>`<tr>
           <td><strong>${x(l.name||l.full_name||'-')}</strong></td>
           <td>${x(l.email||'-')}</td>
-          <td><span class="badge badge-blue">${x(l.source||'direct')}</span></td>
+          <td>${(() => { const fid = l.custom_fields && l.custom_fields.funnel_id; const nm = fid && funnelName[fid]; return nm ? `<span class="badge badge-blue" title="Captured on this funnel's public page">🧲 ${x(nm)}</span>` : `<span class="badge badge-blue">${x(l.source||'direct')}</span>`; })()}</td>
           <td>${leadStageCell(l)}</td>
           <td>${leadOwnerCell(l)}</td>
           <td>${(l.tags||[]).map(t=>`<span class="badge badge-green">${x(t.name||t)}</span>`).join(' ')}</td>
@@ -2747,6 +2763,13 @@ function bindLeads() {
       STATE.leadsPage = 1;
       renderApp();
     }, 350);
+  });
+  // The funnel picker. Server-side like the search box, and it returns to page 1 so a filter can
+  // never strand the operator on an empty page 3 of a narrower list.
+  document.getElementById('lead-funnel-filter')?.addEventListener('change', function () {
+    STATE.leadsFunnel = this.value || '';
+    STATE.leadsPage = 1;
+    renderApp();
   });
   document.getElementById('leads-prev')?.addEventListener('click', () => {
     STATE.leadsPage = Math.max(1, (STATE.leadsPage || 1) - 1);
