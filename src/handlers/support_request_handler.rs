@@ -345,8 +345,14 @@ pub async fn create_public(
     .fetch_one(&state.pool)
     .await?;
     if recent >= 3 {
-        return Err(AppError::TooManyAttempts {
+        return Err(AppError::TooManyRequests {
             retry_after_secs: 3600,
+            // The reader of THIS door is a person who wrote to support, not somebody typing a
+            // password: name what they did, tell them their words are safe, and ask them to wait.
+            message: "You have sent several messages to our team in the last hour. Every one of them \
+                      is with us, so there is nothing to resend — please wait an hour before writing \
+                      again. If it is urgent, reply to the address our team writes from."
+                .to_string(),
         });
     }
 

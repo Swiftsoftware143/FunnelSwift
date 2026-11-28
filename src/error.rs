@@ -102,6 +102,20 @@ pub enum AppError {
     /// `Retry-After` header and the wait spelled out in the sentence the panel shows.
     #[error("Too many sign-in attempts: retry after {retry_after_secs}s")]
     TooManyAttempts { retry_after_secs: u64 },
+
+    /// A rate limit on a door that is NOT a sign-in, with a sentence that fits that door. **429**,
+    /// same `Retry-After` contract as [`AppError::TooManyAttempts`].
+    ///
+    /// WHY (measured live 2026-11-28): the public support door reuses the sign-in limiter's answer,
+    /// so a locked-out person who had written three messages in an hour was told "Too many failed
+    /// sign-in attempts from this address … use \"Forgot your password?\"" — a cause that never
+    /// happened, on a form where they were never signing in, pointing at the exact flow that fails
+    /// for them. A rate-limit sentence must name what the reader actually did.
+    #[error("Rate limited: retry after {retry_after_secs}s")]
+    TooManyRequests {
+        retry_after_secs: u64,
+        message: String,
+    },
 }
 
 impl IntoResponse for AppError {
@@ -109,6 +123,9 @@ impl IntoResponse for AppError {
         // Read the pause budget BEFORE the match moves `self`.
         let too_many_retry = match &self {
             AppError::TooManyAttempts { retry_after_secs } => Some(*retry_after_secs),
+            AppError::TooManyRequests {
+                retry_after_secs, ..
+            } => Some(*retry_after_secs),
             _ => None,
         };
         let (status, error_message) = match self {
@@ -179,6 +196,10 @@ impl IntoResponse for AppError {
                     if minutes == 1 { "" } else { "s" }
                 )
             }),
+            AppError::TooManyRequests {
+                retry_after_secs: _,
+                message,
+            } => (StatusCode::TOO_MANY_REQUESTS, message),
         };
 
         // The paused-sign-in answer carries its retry budget in a header as well as in the body.
