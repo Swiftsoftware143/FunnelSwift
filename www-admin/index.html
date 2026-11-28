@@ -6013,7 +6013,7 @@ async function renderEmailBranding() {
     <div class="card" style="margin-bottom:20px">
       <div class="card-header">
         <span class="card-title">Your branding on transactional email</span>
-        <span class="badge ${logo||brand.brand_name?'badge-green':'badge-yellow'}">${logo||brand.brand_name?'branded':'not branded'}</span>
+        <span class="badge ${logo||brand.brand_name?'badge-green':'badge-yellow'}" id="brand-badge">${logo||brand.brand_name?'branded':'not branded'}</span>
       </div>
       <div style="padding:16px">
         <div style="font-size:12px;color:#64748b;margin-bottom:12px">
@@ -6198,6 +6198,24 @@ function bindEmailBranding() {
   if (picker) picker.addEventListener('input', window._brandPreview);
   if (hex) hex.addEventListener('input', window._brandPreview);
   window._brandPreview();
+  /* A stored logo_url whose BYTES are gone still paints an <img>, so the pane showed a broken
+     picture and a green "branded" badge while every mail was already going out without a logo
+     (the send path drops a pointer with no bytes). Measured live 2026-11-28: the Swift Admin
+     workspace's settings row pointed at /api/v1/branding/logo/<id>?v=… and the public route
+     answered 404. Fail the pane to the truthful unbranded state instead of promising branding. */
+  const logoImg = document.getElementById('brand-logo-img');
+  if (logoImg) logoImg.addEventListener('error', () => {
+    const box = document.getElementById('brand-logo-box');
+    if (box) box.innerHTML = '<span style="font-size:12px;color:#94a3b8">No logo yet</span>';
+    const nameField = document.getElementById('brand-name');
+    const badge = document.getElementById('brand-badge');
+    if (badge && !(nameField && nameField.value.trim())) {
+      badge.className = 'badge badge-yellow';
+      badge.textContent = 'not branded';
+    }
+    const pickBtn = document.getElementById('brand-logo-pick');
+    if (pickBtn) pickBtn.textContent = 'Upload logo';
+  });
   const file = document.getElementById('brand-logo-file');
   document.getElementById('brand-logo-pick')?.addEventListener('click', () => { if (file) file.click(); });
   if (file) file.addEventListener('change', uploadBrandLogo);
