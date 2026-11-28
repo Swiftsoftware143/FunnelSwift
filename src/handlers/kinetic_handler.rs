@@ -377,6 +377,11 @@ pub async fn list_cards(
         "meta_description": r.try_get::<Option<String>, _>("meta_description").unwrap_or_default(),
         "avatar_url": r.try_get::<Option<String>, _>("avatar_url").unwrap_or_default(),
         "layout_blocks": r.try_get::<Option<Value>, _>("layout_blocks").unwrap_or_default(),
+        // WHETHER THE PAGE IS PUBLIC (kanban t_c9f67241). `is_active` was SELECTed here but never
+        // published, so `GET /kinetic/cards` had no way to show an OFF-LINE card: only the MCP
+        // `list_pages` layer surfaced it, and the archive was invisible in the console that owns it.
+        // NOT NULL DEFAULT true in the schema, so a plain bool is right here.
+        "is_active": r.try_get::<bool, _>("is_active").unwrap_or(true),
         // The editor's Social tab prefills from these six; before t_114b706b they were not even
         // SELECTed here, so an owner could never see (or keep) a link they had typed.
         "linkedin_url": r.try_get::<Option<String>, _>("linkedin_url").unwrap_or_default(),
@@ -829,6 +834,19 @@ pub async fn update_card(
             ))
         }
     };
+    // THE WAY BACK FROM ARCHIVE (kanban t_c9f67241). `archive_page` sets `is_active = false` and
+    // tells the caller un-archiving is a console edit; until this column joined the SET list the
+    // only route back was raw SQL, so an archive was one-way through both the API and the console.
+    // An ABSENT key leaves the column alone (a plain card save must never re-publish the card).
+    let is_active_change: Option<bool> = match body.get("is_active") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => {
+            return Err(AppError::BadRequest(
+                "is_active must be true or false".into(),
+            ))
+        }
+    };
     // THE ADDRESS THE EDITOR SENDS, CHECKED BEFORE IT IS WRITTEN (measured live 2026-11-16). This
     // route wrote `body["slug"]` straight into a UNIQUE column: a taken address answered 500
     // "Database error", and any text was stored verbatim — `My Card/2026` left the card's own page
@@ -885,7 +903,7 @@ pub async fn update_card(
             .bind(tenant_id)
             .fetch_optional(&state.pool)
             .await?;
-    let result = sqlx::query_scalar::<_, String>("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url) WHERE id=$1 AND tenant_id=$2 RETURNING slug")
+    let result = sqlx::query_scalar::<_, String>("UPDATE kinetic_cards SET title=COALESCE($3,title), bio=COALESCE($4,bio), bg_color=COALESCE($5,bg_color), accent_color=COALESCE($6,accent_color), text_color=COALESCE($7,text_color), button_bg_color=COALESCE($8,button_bg_color), button_text_color=COALESCE($9,button_text_color), avatar_url=COALESCE($10,avatar_url), layout_blocks=COALESCE($11,layout_blocks), tagline=COALESCE($12,tagline), meta_description=COALESCE($13,meta_description), video_id=COALESCE($14,video_id), slug=COALESCE($15,slug), theme=COALESCE($16,theme), template_type=COALESCE($17::varchar,template_type), video_provider=CASE WHEN $18 THEN $19::varchar ELSE video_provider END, linkedin_url=COALESCE($20,linkedin_url), twitter_url=COALESCE($21,twitter_url), instagram_url=COALESCE($22,instagram_url), tiktok_url=COALESCE($23,tiktok_url), youtube_url=COALESCE($24,youtube_url), facebook_url=COALESCE($25,facebook_url), is_active=COALESCE($26,is_active) WHERE id=$1 AND tenant_id=$2 RETURNING slug")
         .bind(id).bind(tenant_id)
         .bind(body["title"].as_str())
         .bind(bio)
@@ -907,6 +925,7 @@ pub async fn update_card(
         .bind(vp_change.is_some())
         .bind(vp_change.flatten())
         .bind(&socials[0]).bind(&socials[1]).bind(&socials[2]).bind(&socials[3]).bind(&socials[4]).bind(&socials[5])
+        .bind(is_active_change)
         .fetch_optional(&state.pool).await;
     // THE ADDRESS WAS TAKEN BETWEEN THE CHECK AND THE WRITE (measured live 2026-11-17).
     // The pre-check above reads a free address and then this UPDATE writes it, so two saves that

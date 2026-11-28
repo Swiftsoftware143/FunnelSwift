@@ -733,6 +733,14 @@ fn page_update_properties() -> Value {
             "id".to_string(),
             json!({ "type": "string", "description": "The card's uuid." }),
         );
+        // THE OTHER HALF OF `archive_page` (kanban t_c9f67241): archive sets `is_active = false`,
+        // so the same update door must be able to set it back to true — otherwise the archive tool's
+        // "un-archiving is a console edit" is a promise with no route. Update-only: `create_page`
+        // does not accept it, because a new page is public by definition.
+        map.insert(
+            "is_active".to_string(),
+            json!({ "type": "boolean", "description": "true serves the page publicly again; false takes it off the public web (the same switch archive_page flips)." }),
+        );
     }
     props
 }
@@ -763,7 +771,8 @@ fn spec_update_page() -> ToolSpec {
         "update_page",
         "Change one of this workspace's landing pages: send only the fields to change (everything \
          `create_page` accepts, plus `id`) — title, slug, bio, tagline, theme_slug, template_type, \
-         avatar_url, the four colours, the six social URLs, or `layout_blocks` (the whole block array; \
+         avatar_url, the four colours, the six social URLs, `is_active` (false takes the page off the \
+         public web — the switch `archive_page` flips — and true serves it again), or `layout_blocks` (the whole block array; \
          `blocks` is the same key under its plain name, and `[]` leaves the page empty). Premium themes/templates are still refused \
          when the plan does not grant them. When `layout_blocks` is sent the answer carries the block \
          count now stored. A foreign id answers not_found. Any argument this tool does not list is \
