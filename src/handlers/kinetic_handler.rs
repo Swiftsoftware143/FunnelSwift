@@ -600,9 +600,11 @@ pub async fn create_card(
                 // allowance. Re-read the winner a few times before giving up on it: its INSERT
                 // commits in milliseconds and the address was free a moment before this attempt.
                 // The bounded waits are short (300 ms worst case) and only on the conflict path.
-                // A genuine cross-workspace collision still falls through to the next free address
-                // below, and a sequential second card with the same title is unaffected (it never
-                // reaches this arm — the reservation above already answered `-2`).
+                // A 23505 here now means THIS workspace already holds the address (uniqueness is
+                // per workspace since t_89f6de9c), so the next free address below is chosen inside
+                // this workspace only, and a sequential second card with the same title is
+                // unaffected (it never reaches this arm — the reservation above already answered
+                // `-2`).
                 let mut mine: Option<(Uuid, String)> = None;
                 for wait_ms in [0u64, 60, 140, 300] {
                     if wait_ms > 0 {
