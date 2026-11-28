@@ -253,6 +253,15 @@ async fn acknowledge_customer(
 /// minting a second one for the operator to reconcile. A visitor with no account cannot be trusted
 /// to be one visitor, so the bound is on the ADDRESS they type, which is also what the operator
 /// replies to.
+///
+/// THE REPEAT TEST IS THE MESSAGE, NOT THE SUBJECT (measured live 2026-11-28). "Same subject" was
+/// the whole test, so a person who wrote once, then wrote AGAIN with a new detail under the same
+/// subject, was answered "we already have your message with that subject" — and their second text
+/// was never stored. On the one door a locked-out customer has, that silently loses the detail the
+/// team needs to let them back in. A genuine double submit is the SAME text arriving twice (a
+/// re-post, a network retry, a double click), so the stored body is part of the key: identical
+/// text returns the existing row and writes nothing, a different message is a new row and the
+/// operator is alerted about it. The hourly count above still bounds a flood either way.
 pub async fn create_public(
     State(state): State<AppState>,
     Json(body): Json<PublicCreateBody>,
@@ -317,11 +326,12 @@ pub async fn create_public(
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM support_requests
           WHERE tenant_id IS NULL AND lower(requested_by) = $1
-            AND lower(subject) = lower($2) AND status = 'open'
+            AND lower(subject) = lower($2) AND body = $3 AND status = 'open'
           ORDER BY created_at DESC LIMIT 1",
     )
     .bind(&email)
     .bind(&subject)
+    .bind(&message)
     .fetch_optional(&state.pool)
     .await?;
     if let Some(id) = existing {
@@ -330,7 +340,7 @@ pub async fn create_public(
             Json(json!({
                 "id": id,
                 "status": "existing",
-                "message": "We already have your message with that subject — the team will reply to the address you gave."
+                "message": "We already have this message — the team will reply to the address you gave."
             })),
         ));
     }
