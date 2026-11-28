@@ -6215,6 +6215,9 @@ function bindEmailBranding() {
     }
     const pickBtn = document.getElementById('brand-logo-pick');
     if (pickBtn) pickBtn.textContent = 'Upload logo';
+    /* The mock header reads its src from this very <img>, so it was painted with the dead logo
+       too; now the element is gone, re-run it and the preview drops the logo with the pane. */
+    try { if (window._brandPreview) window._brandPreview(); } catch (e) {}
   });
   const file = document.getElementById('brand-logo-file');
   document.getElementById('brand-logo-pick')?.addEventListener('click', () => { if (file) file.click(); });
