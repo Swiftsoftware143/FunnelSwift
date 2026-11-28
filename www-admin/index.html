@@ -2630,7 +2630,7 @@ async function renderLeads() {
         </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--muted)">${term ? 'No lead matches that search.' : 'No leads yet — add one, or import a CSV.'}</td></tr>`}</tbody>
       </table></div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px">
-        <span style="font-size:13px;color:var(--muted)">Showing ${from}–${to} of ${total}${term ? ' matching "' + x(term) + '"' : ''}</span>
+        <span style="font-size:13px;color:var(--muted)">Showing ${from}–${to} of ${total}${term ? ' matching "' + x(term) + '"' : ''}${funnelFilter ? ' in “' + x(funnelName[funnelFilter] || 'this funnel') + '” — the picker above clears it' : ''}</span>
         <div class="btn-group">
           <button class="btn btn-secondary btn-sm" id="leads-prev" ${page <= 1 ? 'disabled' : ''}>← Previous</button>
           <button class="btn btn-secondary btn-sm" id="leads-next" ${to >= total ? 'disabled' : ''}>Next →</button>
